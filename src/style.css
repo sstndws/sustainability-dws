@@ -1,5 +1,24 @@
 /* Restored stable baseline style from previous local build */
-@import url("../dist/assets/index-C-lJTlsV.css");
+
+/* Base page visibility guard:
+   only the active page should be visible (login OR dashboard). */
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    HEADER
