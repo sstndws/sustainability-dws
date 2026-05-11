@@ -2374,7 +2374,14 @@ import { getSupabase } from './supabase-client.js';
       return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
     }
 
-    holder.innerHTML = entries.map(function(entry) {
+    // Sort by updated_at descending (newest first), then render all — container scrolls
+    const sorted = entries.slice().sort(function(a, b) {
+      const ta = new Date(String((a.primary||{})['updated_at'] || (a.primary||{})['SCR - Last Updated'] || 0)).getTime() || 0;
+      const tb = new Date(String((b.primary||{})['updated_at'] || (b.primary||{})['SCR - Last Updated'] || 0)).getTime() || 0;
+      return tb - ta;
+    });
+
+    holder.innerHTML = sorted.map(function(entry) {
       const active  = selectedKey && selectedKey === entry.key;
       const r       = entry.primary || {};
       const st      = String(r['SCR - Screening Status'] || '').trim();
@@ -2384,56 +2391,31 @@ import { getSupabase } from './supabase-client.js';
       const dateStr = fmtDate(r);
 
       const isDraft     = st.toLowerCase() === 'draft';
-      const statusColor = isDraft ? '#B45309' : '#047857';
-      const statusBg    = isDraft ? '#FFFBEB' : '#F0FDF4';
+      const statusClass = isDraft ? 'scr-status-draft' : 'scr-status-submitted';
       const statusLabel = isDraft ? 'Draft' : 'Submitted';
-      const statusDot   = isDraft ? '#F59E0B' : '#10B981';
 
-      return '<button type="button" data-scr-key="' + escHtml(entry.key) + '" style="'
-        + 'display:block;width:100%;text-align:left;cursor:pointer;font-family:Inter,sans-serif;'
-        + 'padding:12px 16px;margin:0;'
-        + 'background:' + (active ? '#FAFAF9' : '#fff') + ';'
-        + 'border:1px solid ' + (active ? '#C4A882' : '#E8E3DC') + ';'
-        + 'border-radius:6px;margin-bottom:4px;'
-        + 'box-shadow:' + (active ? '0 1px 6px rgba(0,0,0,0.06)' : 'none') + ';'
-        + 'transition:border-color 0.12s,background 0.12s;">'
+      return '<button type="button" data-scr-key="' + escHtml(entry.key) + '" class="scr-saved-item' + (active ? ' selected' : '') + '">'
 
-        // Row 1: status + type tag + date
-        + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">'
-
-        // Status dot + text — minimal, no pill shape
-        + '<span style="display:inline-flex;align-items:center;gap:4px;">'
-        + '<span style="width:5px;height:5px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;display:inline-block;"></span>'
-        + '<span style="font-size:11px;font-weight:500;color:' + statusColor + ';background:' + statusBg + ';padding:1px 6px;border-radius:3px;">' + statusLabel + '</span>'
-        + '</span>'
-
-        // Type — plain label, no background
-        + (tp ? '<span style="font-size:11px;font-weight:600;color:#78716C;letter-spacing:0.04em;">' + escHtml(tp) + '</span>' : '')
-
-        // Date — pushed right
-        + '<span style="margin-left:auto;font-size:11px;color:#A8A29E;white-space:nowrap;">' + (dateStr ? escHtml(dateStr) : '') + '</span>'
-
+        // Row 1: status badge + type chip + date
+        + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+        + '<span class="scr-saved-status ' + statusClass + '"><span class="scr-status-dot"></span>' + statusLabel + '</span>'
+        + (tp ? '<span style="font-size:10.5px;font-weight:700;color:#9C8A8A;letter-spacing:0.07em;text-transform:uppercase;">' + escHtml(tp) + '</span>' : '')
+        + '<span style="margin-left:auto;font-size:11px;color:#B09090;white-space:nowrap;">' + (dateStr ? escHtml(dateStr) : '') + '</span>'
         + '</div>'
 
-        // Row 2: group name
-        + '<div style="font-size:13px;font-weight:' + (active ? '700' : '600') + ';color:' + (active ? '#292524' : '#3D3835') + ';line-height:1.4;' + (mill ? 'margin-bottom:3px;' : '') + '">'
+        // Row 2: group name (bold)
+        + '<div style="font-size:13px;font-weight:' + (active ? '700' : '600') + ';color:#1A0A0A;line-height:1.35;' + (mill ? 'margin-bottom:2px;' : '') + '">'
         + (grp ? escHtml(grp) : '<span style="color:#C4BAB4;font-weight:400;">—</span>')
         + '</div>'
 
-        // Row 3: mill — only if exists
-        + (mill ? '<div style="font-size:11.5px;color:#78716C;">' + escHtml(mill) + '</div>' : '')
+        // Row 3: mill name (muted)
+        + (mill ? '<div style="font-size:11.5px;color:#9C8A8A;">' + escHtml(mill) + '</div>' : '')
 
         + '</button>';
     }).join('');
 
+    // hover handled by CSS .scr-saved-item:hover — no inline override needed
     holder.querySelectorAll('button[data-scr-key]').forEach(function(btn) {
-      const isActive = btn.getAttribute('data-scr-key') === selectedKey;
-      btn.addEventListener('mouseenter', function() {
-        if (!isActive) { btn.style.borderColor = '#C9C1B8'; btn.style.background = '#FAFAF8'; }
-      });
-      btn.addEventListener('mouseleave', function() {
-        if (!isActive) { btn.style.borderColor = '#E8E3DC'; btn.style.background = '#fff'; }
-      });
       btn.addEventListener('click', function() {
         const key = btn.getAttribute('data-scr-key') || '';
         const sel = document.getElementById('scr-saved-select');
@@ -3505,7 +3487,7 @@ import { getSupabase } from './supabase-client.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL or localStorage SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwHekUPHebuXZ8kRLkcVaABgC6RNHwIdGmfmMyrshRhFQhptHWnaC7zMu04_v_1JsmLFA/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzRVFziViQwwL7N_3yRSplKfCyS6N9gW4rYqZGSxLYPmiCcKJ84yIbPRpzf9fKhoeI3iA/exec';
 
 function getSddApiUrl() {
   var custom = (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) || '';
@@ -4572,7 +4554,7 @@ function initDashboardApp() {
     window.refreshSavedScreeningListGlobal();
   }
 
-  const MILL_FIELDS = ['COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
+  const MILL_FIELDS = ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
   let modalTaskKey = ''; // submission_id dari SDD yang di-add via Task List
   let allData = [];
@@ -4614,7 +4596,7 @@ function initDashboardApp() {
   };
 
   const FIELD_SECTIONS = [
-    { title: 'Identitas Mill', fields: ['COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
+    { title: 'Identitas Mill', fields: ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
     { title: 'Legalitas', fields: ['HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','LEGALITY'], totalField: 'SCORE', totalLabel: 'Score (auto)' },
     { title: 'Spatial & Peat', fields: ['DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','MILL LOC','COMPLIMENT/NOT COMPLIMENT'] },
     { title: 'Grievances', fields: ['DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT'], totalField: 'TOTAL GRIEVANCES', totalLabel: 'Total Grievances (auto)' },
@@ -4921,7 +4903,84 @@ function initDashboardApp() {
 
   // ─── MILL DATA ──────────────────────────────────────────
   let millFilteredRows = [];
+  let millSortKey = null;
+  let millSortAsc = true;
   let millTableDelegationBound = false;
+
+  /** Normalize sheet header key (trim, NBSP → space, lower). */
+  function millHeaderNorm_(k) {
+    return String(k || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+  }
+
+  /**
+   * Resolve Quarter / Year from row regardless of exact header spelling.
+   * Direct keys first, then scan all properties (handles "Quarter ", "QUARTER", "Kuartal", etc.).
+   */
+  function pickMillColumnValue_(row, wanted) {
+    if (!row || typeof row !== 'object') return '';
+    wanted = String(wanted || '').toLowerCase();
+    const tryVals = wanted === 'quarter'
+      ? [row['QUARTER'], row['Quarter'], row['quarter']]
+      : [row['YEAR'], row['Year'], row['year']];
+    for (let i = 0; i < tryVals.length; i++) {
+      const v = tryVals[i];
+      if (v != null && String(v).trim() !== '') return String(v).trim();
+    }
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      const nk = millHeaderNorm_(k);
+      if (wanted === 'quarter') {
+        if (nk === 'quarter' || nk === 'qtr' || nk === 'kuartal') {
+          const v = row[k];
+          if (v != null && String(v).trim() !== '') return String(v).trim();
+        }
+      } else {
+        if (nk === 'year' || nk === 'yr' || nk === 'tahun') {
+          if (/planted|tanam|ffb|tml|issue|expiry|commissioning|average|capacity|mill name/i.test(k)) continue;
+          const v = row[k];
+          if (v != null && String(v).trim() !== '') return String(v).trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  function millQuarterVal(row) {
+    return pickMillColumnValue_(row, 'quarter');
+  }
+  function millYearVal(row) {
+    return pickMillColumnValue_(row, 'year');
+  }
+  function parseMillYearSort(v) {
+    const s = String(v || '').trim();
+    const m = s.match(/(19|20)\d{2}/);
+    if (m) return parseInt(m[0], 10);
+    const n = parseInt(s, 10);
+    return isNaN(n) ? 0 : n;
+  }
+  function parseMillQuarterSort(v) {
+    const s = String(v || '').trim().toUpperCase().replace(/\s+/g, '');
+    let m = s.match(/^Q([1-4])$/);
+    if (m) return parseInt(m[1], 10);
+    m = s.match(/^([1-4])$/);
+    if (m) return parseInt(m[1], 10);
+    m = s.match(/TR[IY]M?(?:ESTER)?[:\s-]?([1-4])/);
+    if (m) return parseInt(m[1], 10);
+    m = s.match(/QUARTER[:\s-]?([1-4])/);
+    if (m) return parseInt(m[1], 10);
+    return 99;
+  }
+  function normalizeMillApiRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const o = Object.assign({}, row);
+    const q = pickMillColumnValue_(o, 'quarter');
+    if (q) o['QUARTER'] = q;
+    const y = pickMillColumnValue_(o, 'year');
+    if (y) o['YEAR'] = y;
+    return o;
+  }
 
   function bindMillTableDelegationOnce() {
     if (millTableDelegationBound) return;
@@ -4941,6 +5000,10 @@ function initDashboardApp() {
     if (!row || typeof row !== 'object') return row;
     const nblLower = String(row['BUYER NO BUY LIST'] || '').toLowerCase();
     const searchBlob = [
+      row['QUARTER'],
+      row['YEAR'],
+      row['Quarter'],
+      row['Year'],
       row['MILL NAME'],
       row['GROUP NAME'],
       row['COMPANY NAME'],
@@ -4954,9 +5017,404 @@ function initDashboardApp() {
     return row;
   }
 
+  // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
+  const MILL_PDF_EXPORT_COLS = [
+    { key: 'QUARTER', label: 'Quarter' },
+    { key: 'YEAR', label: 'Year' },
+    { key: 'GROUP NAME', label: 'Group' },
+    { key: 'COMPANY NAME', label: 'Company' },
+    { key: 'MILL NAME', label: 'Mill' },
+    { key: 'UML ID', label: 'UML ID' },
+    { key: 'PROVINCE', label: 'Province' },
+    { key: 'SUPPLIER STATUS', label: 'Supplier Status' },
+    { key: 'RISK LEVEL', label: 'Risk Level' },
+    { key: 'BUYER NO BUY LIST', label: 'No Buy List' },
+    { key: 'CERTIFICATION', label: 'Certification' },
+    { key: 'FACILITY NAME CPO', label: 'Facility CPO' },
+    { key: 'FACILITY NAME PK', label: 'Facility PK' },
+    { key: 'PRODUCT SUPPLY', label: 'Product Supply' },
+  ];
+  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', 'CERTIFICATION'];
+  let millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
+  let millPdfDimFilters = {
+    quarter: new Set(),
+    year: new Set(),
+    group: new Set(),
+    province: new Set(),
+  };
+  let millPdfDimOptions = { quarter: [], year: [], group: [], province: [] };
+
+  function millPdfEscHtml(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function millPdfTokenForCell(val) {
+    const t = String(val || '').trim();
+    return t ? t : '__EMPTY__';
+  }
+
+  function millPdfLabelForToken(tok) {
+    return tok === '__EMPTY__' ? '(kosong)' : tok;
+  }
+
+  function millRegistryChipFilter() {
+    return currentFilter === 'Task List' ? 'All' : currentFilter;
+  }
+
+  function millRowMatchesChipAndSearch(d) {
+    const nbl = d._sddNblLower || (d['BUYER NO BUY LIST'] || '').toString().toLowerCase();
+    const chip = millRegistryChipFilter();
+    const matchFilter = chip === 'All' ||
+      (chip === 'NBL' && (nbl === 'yes' || nbl.includes('nbl'))) ||
+      (chip === 'Non-NBL' && nbl !== 'yes' && !nbl.includes('nbl'));
+    const q = currentSearch;
+    const matchSearch = !q || (d._sddSearchBlob || '').includes(q);
+    return matchFilter && matchSearch;
+  }
+
+  function millRowMatchesPdfDimFilters(d) {
+    const qTok = millPdfTokenForCell(millQuarterVal(d));
+    const yTok = millPdfTokenForCell(millYearVal(d));
+    const gTok = millPdfTokenForCell(d['GROUP NAME']);
+    const pTok = millPdfTokenForCell(d['PROVINCE']);
+    if (millPdfDimFilters.quarter.size && !millPdfDimFilters.quarter.has(qTok)) return false;
+    if (millPdfDimFilters.year.size && !millPdfDimFilters.year.has(yTok)) return false;
+    if (millPdfDimFilters.group.size && !millPdfDimFilters.group.has(gTok)) return false;
+    if (millPdfDimFilters.province.size && !millPdfDimFilters.province.has(pTok)) return false;
+    return true;
+  }
+
+  function sortMillRowsForDisplay(filtered) {
+    let sorted = filtered;
+    if (millSortKey === 'YEAR') {
+      sorted = filtered.slice().sort(function(a, b) {
+        const ya = parseMillYearSort(millYearVal(a));
+        const yb = parseMillYearSort(millYearVal(b));
+        if (ya !== yb) return millSortAsc ? (ya - yb) : (yb - ya);
+        const qa = parseMillQuarterSort(millQuarterVal(a));
+        const qb = parseMillQuarterSort(millQuarterVal(b));
+        return millSortAsc ? (qa - qb) : (qb - qa);
+      });
+    } else if (millSortKey === 'QUARTER') {
+      sorted = filtered.slice().sort(function(a, b) {
+        const qa = parseMillQuarterSort(millQuarterVal(a));
+        const qb = parseMillQuarterSort(millQuarterVal(b));
+        if (qa !== qb) return millSortAsc ? (qa - qb) : (qb - qa);
+        const ya = parseMillYearSort(millYearVal(a));
+        const yb = parseMillYearSort(millYearVal(b));
+        return millSortAsc ? (ya - yb) : (yb - ya);
+      });
+    }
+    return sorted;
+  }
+
+  function getMillRowsForPdfExport() {
+    const filtered = allData.filter(function(d) {
+      return millRowMatchesChipAndSearch(d) && millRowMatchesPdfDimFilters(d);
+    });
+    return sortMillRowsForDisplay(filtered);
+  }
+
+  function updateMillPdfExportScope() {
+    const el = document.getElementById('millPdfExportScopeText');
+    if (!el) return;
+    if (!allData.length) {
+      el.textContent = 'Muat data mill terlebih dahulu';
+      return;
+    }
+    const tableN = sortMillRowsForDisplay(allData.filter(millRowMatchesChipAndSearch)).length;
+    const pdfN = getMillRowsForPdfExport().length;
+    if (tableN === pdfN) {
+      el.textContent = pdfN + ' baris · sama dengan tabel';
+    } else {
+      el.textContent = pdfN + ' baris untuk PDF · ' + tableN + ' di tabel';
+    }
+  }
+
+  function collectMillPdfDimTokens_() {
+    const sq = new Set(); const sy = new Set(); const sg = new Set(); const sp = new Set();
+    allData.forEach(function(row) {
+      sq.add(millPdfTokenForCell(millQuarterVal(row)));
+      sy.add(millPdfTokenForCell(millYearVal(row)));
+      sg.add(millPdfTokenForCell(row['GROUP NAME']));
+      sp.add(millPdfTokenForCell(row['PROVINCE']));
+    });
+    function sortQuarterTokens(arr) {
+      return arr.slice().sort(function(a, b) {
+        if (a === '__EMPTY__') return 1;
+        if (b === '__EMPTY__') return -1;
+        const c = parseMillQuarterSort(a) - parseMillQuarterSort(b);
+        return c !== 0 ? c : String(a).localeCompare(String(b), 'id');
+      });
+    }
+    function sortYearTokens(arr) {
+      return arr.slice().sort(function(a, b) {
+        if (a === '__EMPTY__') return 1;
+        if (b === '__EMPTY__') return -1;
+        const c = parseMillYearSort(b) - parseMillYearSort(a);
+        return c !== 0 ? c : String(a).localeCompare(String(b), 'id');
+      });
+    }
+    function sortStrTokens(arr) {
+      return arr.slice().sort(function(a, b) {
+        if (a === '__EMPTY__') return 1;
+        if (b === '__EMPTY__') return -1;
+        return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
+      });
+    }
+    millPdfDimOptions.quarter = sortQuarterTokens(Array.from(sq));
+    millPdfDimOptions.year = sortYearTokens(Array.from(sy));
+    millPdfDimOptions.group = sortStrTokens(Array.from(sg));
+    millPdfDimOptions.province = sortStrTokens(Array.from(sp));
+  }
+
+  function millPdfDimItemHtml(dim, tok, idx) {
+    const id = 'mill-pdf-chk-' + dim + '-' + idx;
+    const checked = millPdfDimFilters[dim] && millPdfDimFilters[dim].has(tok) ? ' checked' : '';
+    const lab = millPdfEscHtml(millPdfLabelForToken(tok));
+    const escTok = millPdfEscHtml(tok);
+    const searchHay = millPdfEscHtml(millPdfLabelForToken(tok).toLowerCase().replace(/"/g, ''));
+    return '<div class="ttp-dropdown-item mill-pdf-dim-item" data-mill-pdf-dim="' + dim + '" data-mill-pdf-search="' + searchHay + '">'
+      + '<input type="checkbox" id="' + id + '" data-mill-pdf-dim="' + dim + '" data-mill-pdf-val="' + escTok + '"' + checked + ' />'
+      + '<label for="' + id + '">' + lab + '</label></div>';
+  }
+
+  function renderMillPdfDimListEl(dim, listId) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    const arr = millPdfDimOptions[dim] || [];
+    el.innerHTML = arr.map(function(tok, idx) { return millPdfDimItemHtml(dim, tok, idx); }).join('');
+  }
+
+  function millPdfApplyGroupSearchFilter() {
+    const inp = document.getElementById('millPdfGroupSearch');
+    const q = (inp && inp.value || '').trim().toLowerCase();
+    const items = document.querySelectorAll('#millPdfDimListGroup .mill-pdf-dim-item');
+    items.forEach(function(node) {
+      const hay = (node.getAttribute('data-mill-pdf-search') || '').toLowerCase();
+      node.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+    });
+  }
+
+  function millPdfRebuildDimPanels() {
+    collectMillPdfDimTokens_();
+    renderMillPdfDimListEl('quarter', 'millPdfDimListQuarter');
+    renderMillPdfDimListEl('year', 'millPdfDimListYear');
+    renderMillPdfDimListEl('group', 'millPdfDimListGroup');
+    renderMillPdfDimListEl('province', 'millPdfDimListProvince');
+    millPdfApplyGroupSearchFilter();
+  }
+
+  function millPdfRenderColPanel() {
+    const el = document.getElementById('millPdfColList');
+    if (!el) return;
+    el.innerHTML = MILL_PDF_EXPORT_COLS.map(function(col, idx) {
+      const id = 'mill-pdf-col-' + idx + '-' + col.key.replace(/\s+/g, '-');
+      const checked = millPdfColSelected.has(col.key) ? ' checked' : '';
+      return '<div class="ttp-dropdown-item"><input type="checkbox" id="' + id + '" data-mill-pdf-col="' + millPdfEscHtml(col.key) + '"' + checked + ' />'
+        + '<label for="' + id + '">' + millPdfEscHtml(col.label) + '</label></div>';
+    }).join('');
+  }
+
+  function millPdfResetDim(dim) {
+    if (millPdfDimFilters[dim]) millPdfDimFilters[dim].clear();
+    document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-dim="' + dim + '"][data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
+    updateMillPdfExportScope();
+  }
+
+  function millPdfResetAllDims() {
+    millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+    document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
+    updateMillPdfExportScope();
+  }
+
+  function millExportToPdf() {
+    const toastErr = function(msg) {
+      if (typeof window.showSddToast === 'function') window.showSddToast(msg, 'error');
+    };
+    const rows = getMillRowsForPdfExport();
+    if (!rows.length) {
+      toastErr('Tidak ada baris untuk diekspor. Sesuaikan chip, pencarian, atau saringan export.');
+      return;
+    }
+    const cols = MILL_PDF_EXPORT_COLS.filter(function(c) { return millPdfColSelected.has(c.key); });
+    if (!cols.length) {
+      toastErr('Pilih minimal satu kolom di menu Kolom PDF.');
+      return;
+    }
+    const JsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+    if (!JsPDFLib) {
+      toastErr('Library jsPDF belum dimuat. Refresh halaman.');
+      return;
+    }
+    let probe;
+    try {
+      probe = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    } catch (e) {
+      toastErr('Gagal membuat PDF: ' + (e.message || e));
+      return;
+    }
+    if (typeof probe.autoTable !== 'function') {
+      toastErr('Plugin AutoTable belum dimuat. Refresh halaman.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-mill-export-pdf');
+    const prevHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Menghasilkan…'; }
+
+    try {
+      const doc = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+      const RED = [139, 26, 26];
+      const WHITE = [255, 255, 255];
+      const GRY = [110, 96, 96];
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor.apply(doc, RED);
+      doc.text('Mill Onboarding — Registry Export', 14, 14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor.apply(doc, GRY);
+      const stamp = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      doc.text('Diekspor: ' + stamp + ' · ' + rows.length + ' baris', 14, 20);
+
+      const body = rows.map(function(row) {
+        return cols.map(function(c) {
+          const v = row[c.key];
+          return String(v !== undefined && v !== null ? v : '').replace(/\r?\n/g, ' ');
+        });
+      });
+      doc.autoTable({
+        head: [cols.map(function(c) { return c.label; })],
+        body: body,
+        startY: 24,
+        margin: { left: 10, right: 10 },
+        styles: { fontSize: 6.2, cellPadding: 1.4, textColor: [26, 10, 10] },
+        headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 7 },
+        alternateRowStyles: { fillColor: [253, 250, 250] },
+        theme: 'striped',
+      });
+
+      const fname = 'Mill-Registry-' + new Date().toISOString().slice(0, 10) + '.pdf';
+      doc.save(fname);
+      if (typeof window.showSddToast === 'function') window.showSddToast('PDF berhasil diunduh.', 'success');
+    } catch (err) {
+      toastErr('Export PDF gagal: ' + (err.message || err));
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = prevHtml; }
+    }
+  }
+
+  (function bindMillPdfToolbarOnce() {
+    const btnPdf = document.getElementById('btn-mill-export-pdf');
+    const bFilter = document.getElementById('millPdfBtnFilterDims');
+    const bCols = document.getElementById('millPdfBtnCols');
+    const pFilter = document.getElementById('millPdfFilterDimsPanel');
+    const pCols = document.getElementById('millPdfColsPanel');
+    const gSearch = document.getElementById('millPdfGroupSearch');
+    if (!btnPdf || !bFilter || !bCols || !pFilter || !pCols) return;
+
+    bFilter.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openTTPDropdown('millPdfBtnFilterDims', 'millPdfFilterDimsPanel', 'millPdfColsPanel', 'millPdfBtnCols');
+    });
+    bCols.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openTTPDropdown('millPdfBtnCols', 'millPdfColsPanel', 'millPdfFilterDimsPanel', 'millPdfBtnFilterDims');
+    });
+
+    if (!window.__sddMillPdfDropdownOutsideClickBound) {
+      window.__sddMillPdfDropdownOutsideClickBound = true;
+      document.addEventListener('click', function(e) {
+        const w1 = document.getElementById('millPdfFilterWrap');
+        const w2 = document.getElementById('millPdfColWrap');
+        if (w1 && pFilter && !w1.contains(e.target)) {
+          pFilter.classList.remove('open');
+          bFilter.classList.remove('active');
+        }
+        if (w2 && pCols && !w2.contains(e.target)) {
+          pCols.classList.remove('open');
+          bCols.classList.remove('active');
+        }
+      });
+    }
+
+    pFilter.addEventListener('change', function(e) {
+      const t = e.target;
+      if (!t || t.type !== 'checkbox' || !t.dataset.millPdfDim || !t.dataset.millPdfVal) return;
+      const dim = t.dataset.millPdfDim;
+      const tok = t.dataset.millPdfVal;
+      if (!millPdfDimFilters[dim]) return;
+      if (t.checked) millPdfDimFilters[dim].add(tok);
+      else millPdfDimFilters[dim].delete(tok);
+      updateMillPdfExportScope();
+    });
+
+    const resetAll = document.getElementById('millPdfDimResetAll');
+    if (resetAll) resetAll.addEventListener('click', function(e) { e.stopPropagation(); millPdfResetAllDims(); });
+
+    pFilter.querySelectorAll('[data-mill-pdf-dim-reset]').forEach(function(b) {
+      b.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const dim = this.getAttribute('data-mill-pdf-dim-reset');
+        if (dim) millPdfResetDim(dim);
+      });
+    });
+
+    if (gSearch) {
+      gSearch.addEventListener('input', function() { millPdfApplyGroupSearchFilter(); });
+      gSearch.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+
+    pCols.addEventListener('change', function(e) {
+      const t = e.target;
+      if (!t || t.type !== 'checkbox' || !t.dataset.millPdfCol) return;
+      const k = t.dataset.millPdfCol;
+      if (t.checked) millPdfColSelected.add(k);
+      else millPdfColSelected.delete(k);
+      if (millPdfColSelected.size === 0) {
+        millPdfColSelected.add(k);
+        t.checked = true;
+        if (typeof window.showSddToast === 'function') window.showSddToast('Minimal satu kolom harus dipilih.', 'warning');
+      }
+    });
+
+    const bAll = document.getElementById('millPdfColAll');
+    const bDef = document.getElementById('millPdfColDefault');
+    if (bAll) bAll.addEventListener('click', function(e) {
+      e.stopPropagation();
+      millPdfColSelected = new Set(MILL_PDF_EXPORT_COLS.map(function(c) { return c.key; }));
+      millPdfRenderColPanel();
+    });
+    if (bDef) bDef.addEventListener('click', function(e) {
+      e.stopPropagation();
+      millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
+      millPdfRenderColPanel();
+    });
+
+    btnPdf.addEventListener('click', function() { millExportToPdf(); });
+    millPdfRenderColPanel();
+    updateMillPdfExportScope();
+  })();
+
   const scheduleRenderMillTable = makeRafScheduler(function() {
     renderMillTable();
   });
+
+  (function bindMillTableSortOnce() {
+    const tr = document.querySelector('#millTable thead tr');
+    if (!tr || tr.dataset.millSortBound) return;
+    tr.dataset.millSortBound = '1';
+    tr.addEventListener('click', function(e) {
+      const th = e.target.closest('[data-mill-sort]');
+      if (!th || !tr.contains(th)) return;
+      const key = th.getAttribute('data-mill-sort');
+      if (millSortKey === key) millSortAsc = !millSortAsc;
+      else { millSortKey = key; millSortAsc = true; }
+      scheduleRenderMillTable();
+    });
+  })();
 
   async function loadMillDataImpl() {
     const loading = document.getElementById('mill-loading');
@@ -4970,7 +5428,8 @@ function initDashboardApp() {
       loading.style.display = 'block';
       errorEl.style.display = 'none';
       table.style.display = 'none';
-      const rawData = await apiGet('mill');
+      const rawRows = await apiGet('mill');
+      const rawData = (Array.isArray(rawRows) ? rawRows : []).map(normalizeMillApiRow);
 
       // ── DEDUP: per Mill ID / UML ID, keep the row with most non-empty fields ──
       const dedupMap = new Map();
@@ -5040,6 +5499,8 @@ function initDashboardApp() {
       document.getElementById('stat-nbl').textContent = allData.filter(d => (d['BUYER NO BUY LIST']||'').toLowerCase() === 'yes' || (d['BUYER NO BUY LIST']||'').toLowerCase().includes('nbl')).length;
       loading.style.display = 'none';
       table.style.display = 'table';
+      millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+      millPdfRebuildDimPanels();
       scheduleRenderMillTable();
     } catch(err) {
       loading.style.display = 'none';
@@ -5090,21 +5551,27 @@ function initDashboardApp() {
     const body = document.getElementById('millTableBody');
     if (!body) return;
     bindMillTableDelegationOnce();
-    const filtered = allData.filter(d => {
-      const nbl = d._sddNblLower || (d['BUYER NO BUY LIST'] || '').toString().toLowerCase();
-      const matchFilter = currentFilter === 'All' ||
-        (currentFilter === 'NBL' && (nbl === 'yes' || nbl.includes('nbl'))) ||
-        (currentFilter === 'Non-NBL' && nbl !== 'yes' && !nbl.includes('nbl'));
-      const q = currentSearch;
-      const matchSearch = !q ||
-        (d._sddSearchBlob || '').includes(q);
-      return matchFilter && matchSearch;
-    });
-    millFilteredRows = filtered;
-    body.innerHTML = filtered.length === 0
-      ? `<tr><td colspan="11" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
-      : filtered.map((d, i) => `
+    const filtered = allData.filter(d => millRowMatchesChipAndSearch(d));
+    const sorted = sortMillRowsForDisplay(filtered);
+    millFilteredRows = sorted;
+    updateMillPdfExportScope();
+
+    const theadRow = document.querySelector('#millTable thead tr');
+    if (theadRow) {
+      theadRow.querySelectorAll('[data-mill-sort]').forEach(function(th) {
+        th.classList.remove('is-sorted', 'is-sorted-asc', 'is-sorted-desc');
+        if (millSortKey && th.getAttribute('data-mill-sort') === millSortKey) {
+          th.classList.add('is-sorted', millSortAsc ? 'is-sorted-asc' : 'is-sorted-desc');
+        }
+      });
+    }
+
+    body.innerHTML = sorted.length === 0
+      ? `<tr><td colspan="13" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
+      : sorted.map((d, i) => `
         <tr class="mill-row-clickable" data-idx="${i}" title="Klik untuk lihat detail lengkap">
+          <td>${millQuarterVal(d) || '—'}</td>
+          <td>${millYearVal(d) || '—'}</td>
           <td>${d['GROUP NAME'] || '—'}</td>
           <td>${d['COMPANY NAME'] || '—'}</td>
           <td><span class="mill-name">${d['MILL NAME'] || '—'}</span><div class="mill-id">${d['UML ID'] || ''}</div></td>
@@ -5132,6 +5599,7 @@ function initDashboardApp() {
       {
         title: 'Identitas Mill',
         fields: [
+          ['QUARTER','Quarter'], ['YEAR','Year'],
           ['COMPANY CODE','Company Code'], ['TRADER NAME','Trader Name'], ['GROUP NAME','Group Name'],
           ['COMPANY NAME','Company Name'], ['MILL NAME','Mill Name'], ['UML ID','UML ID'],
           ['PROVINCE','Province'],
@@ -5814,7 +6282,7 @@ function initDashboardApp() {
     updateTTPSelectionInfo();
   };
 
-  // ─── TTP DROPDOWN TOGGLE (position:fixed so never clipped) ──
+  // ─── TTP DROPDOWN TOGGLE (absolute under .ttp-dropdown-wrap — avoid position:fixed + ancestor transform mismatch) ──
   function openTTPDropdown(btnId, panelId, otherPanelId, otherBtnId) {
     const btn    = document.getElementById(btnId);
     const panel  = document.getElementById(panelId);
@@ -5829,17 +6297,23 @@ function initDashboardApp() {
     if (isOpen) {
       panel.classList.remove('open');
       btn.classList.remove('active');
+      panel.style.position = '';
+      panel.style.top = '';
+      panel.style.left = '';
+      panel.style.right = '';
+      panel.style.width = '';
+      panel.style.minWidth = '';
+      panel.style.maxWidth = '';
       return;
     }
 
-    // Position panel using fixed coords from button
-    const rect = btn.getBoundingClientRect();
-    panel.style.position = 'fixed';
-    panel.style.top  = (rect.bottom + 6) + 'px';
-    panel.style.left = rect.left + 'px';
-    panel.style.width = '300px';
-    panel.style.minWidth = '300px';
-    panel.style.maxWidth = '300px';
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.left = '';
+    panel.style.right = '';
+    panel.style.width = '';
+    panel.style.minWidth = '';
+    panel.style.maxWidth = '';
 
     panel.classList.add('open');
     btn.classList.add('active');
@@ -6309,6 +6783,11 @@ function initDashboardApp() {
     ttpLoaded = false;
     ttpData = [];
     allData = [];
+    millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+    millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
+    millPdfRebuildDimPanels();
+    millPdfRenderColPanel();
+    updateMillPdfExportScope();
     currentFilter = 'All';
     currentSearch = '';
     grvLoaded = false;
@@ -6359,6 +6838,13 @@ function initDashboardApp() {
     });
   });
 
+  const btnBlMonitoringBack = document.getElementById('btn-bl-monitoring-back');
+  if (btnBlMonitoringBack) {
+    btnBlMonitoringBack.addEventListener('click', function() {
+      switchPanel('overview');
+    });
+  }
+
   // ─── SIDEBAR TOGGLE ─────────────────────────────────────
   const sidebar = document.getElementById('mainSidebar');
   const sidebarToggle = document.getElementById('sidebarToggle');
@@ -6392,6 +6878,7 @@ function initDashboardApp() {
         if (taskPanel) taskPanel.style.display = 'block';
         if (tableCard) tableCard.style.display = 'none';
         renderMillTaskList();
+        updateMillPdfExportScope();
       } else {
         if (taskPanel) taskPanel.style.display = 'none';
         if (tableCard) tableCard.style.display = '';

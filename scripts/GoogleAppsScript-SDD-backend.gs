@@ -3,6 +3,9 @@
  * Salin isi file ini ke project Apps Script Anda (gabungkan dengan file lain bila perlu).
  *
  * Perubahan vs versi yang Anda kirim:
+ * - Mill sheet: payload dari dashboard memakai QUARTER / YEAR; sheet sering "Quarter"/"Year".
+ *   resolveMillQuarterYearKeys_ dipanggil di addRow/updateRow untuk sheet mill.
+ *   getAll('mill') memanggil mirrorMillQuarterYearOnRead_ agar JSON juga berisi QUARTER/YEAR.
  * - doPost: action "delete" — jika body.rows berisi array nomor baris, pakai bulkDelete
  *   (urut turun di dalam bulkDelete); jika tidak, fallback deleteRow(body.row).
  *   Ini selaras dengan klien sustain-dashboard yang mengirim { action, sheet, row, rows }.
@@ -595,6 +598,59 @@ function getByMillId(millId) {
 //  GENERIC CRUD
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Dashboard (sustain-dashboard) mengirim QUARTER / YEAR (uppercase).
+ * Sheet "Mill Onboarding Profile" sering memakai header "Quarter" / "Year".
+ * Salin payload ke nama kolom yang tepat sebelum map headers → baris.
+ */
+function resolveMillQuarterYearKeys_(data, headers) {
+  if (!data || typeof data !== 'object' || !Array.isArray(headers)) return;
+  var list = headers.map(function(x) { return String(x || '').trim(); });
+  function findQuarterCol() {
+    for (var i = 0; i < list.length; i++) {
+      if (/^quarter$/i.test(list[i])) return list[i];
+    }
+    return null;
+  }
+  function findYearCol() {
+    for (var i = 0; i < list.length; i++) {
+      var h = list[i];
+      if (h === 'Year' || h === 'YEAR') return h;
+    }
+    for (var j = 0; j < list.length; j++) {
+      var y = list[j];
+      if (!/^year$/i.test(y)) continue;
+      if (/planted|capacity|mill|tanam|ffb|tml|issue|expiry|average/i.test(y)) continue;
+      return y;
+    }
+    return null;
+  }
+  var qCol = findQuarterCol();
+  var yCol = findYearCol();
+  if (qCol && data['QUARTER'] !== undefined && String(data['QUARTER']).trim() !== '' &&
+      (data[qCol] === undefined || String(data[qCol]).trim() === '')) {
+    data[qCol] = data['QUARTER'];
+  }
+  if (yCol && data['YEAR'] !== undefined && String(data['YEAR']).trim() !== '' &&
+      (data[yCol] === undefined || String(data[yCol]).trim() === '')) {
+    data[yCol] = data['YEAR'];
+  }
+}
+
+/** Tambahkan QUARTER / YEAR di response getAll('mill') agar selaras dengan klien. */
+function mirrorMillQuarterYearOnRead_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    if (/^quarter$/i.test(String(k).trim()) && obj['QUARTER'] === undefined) obj['QUARTER'] = obj[k];
+  });
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    var t = String(k).trim();
+    if ((t === 'Year' || t === 'YEAR') && obj['YEAR'] === undefined) obj['YEAR'] = obj[k];
+  });
+}
+
 function getData(sheetKey) {
   const sheet = getSheet(sheetKey);
   const rows  = sheet.getDataRange().getValues();
@@ -604,6 +660,7 @@ function getData(sheetKey) {
   return rows.slice(1).map(function(row, i) {
     const obj = { _row: i + 2 };
     headers.forEach(function(h, j) { obj[h] = row[j]; });
+    if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     return obj;
   });
 }
@@ -611,6 +668,7 @@ function getData(sheetKey) {
 function addRow(sheetKey, data) {
   const sheet   = getSheet(sheetKey);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const newRow  = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
   sheet.appendRow(newRow);
   return { success: true };
@@ -622,6 +680,7 @@ function updateRow(sheetKey, rowNum, data) {
   if (!r || r < 2) throw new Error('Invalid row number for update: ' + rowNum);
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
 
   const updatedRow = headers.map(function(h, j) {

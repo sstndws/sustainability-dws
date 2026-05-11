@@ -1,104 +1,199 @@
+<!-- jsPDF + AutoTable (registry PDF); browser-cached if SDD panel already loaded scripts. -->
+<script>
+  (function() {
+    function loadScript(src, id) {
+      if (document.getElementById(id)) return;
+      var s = document.createElement('script');
+      s.id = id; s.src = src;
+      document.head.appendChild(s);
+    }
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf-core');
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js', 'jspdf-autotable');
+  })();
+</script>
 <!-- ── MILL ONBOARDING PANEL ── -->
-      <div class="panel active" id="panel-mill-onboarding">
-        <div class="breadcrumb">Dashboard <span>/ Mill Onboarding</span></div>
-        <div class="page-header">
-          <h1>Mill Onboarding</h1>
-          <p>Manage and track all mill profiles in your supply chain network</p>
-        </div>
+<div class="panel active" id="panel-mill-onboarding">
+  <div class="breadcrumb">Dashboard <span>/ Mill Onboarding</span></div>
+  <div class="page-header">
+    <h1>Mill Onboarding</h1>
+    <p>Manage and track all mill profiles in your supply chain network</p>
+  </div>
 
-        <div class="stats-row">
-          <div class="stat-card">
-            <div class="stat-card-num" id="stat-total">—</div>
-            <div class="stat-card-label">Total Mills</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-num" id="stat-groups">—</div>
-            <div class="stat-card-label">Groups</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-num" id="stat-high-risk">—</div>
-            <div class="stat-card-label">High Risk</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-num" id="stat-nbl">—</div>
-            <div class="stat-card-label">No Buy List</div>
-          </div>
-        </div>
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-card-num" id="stat-total">—</div>
+      <div class="stat-card-label">Total Mills</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-num" id="stat-groups">—</div>
+      <div class="stat-card-label">Groups</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-num" id="stat-high-risk">—</div>
+      <div class="stat-card-label">High Risk</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-num" id="stat-nbl">—</div>
+      <div class="stat-card-label">No Buy List</div>
+    </div>
+  </div>
 
-        <!-- ── TOP 5 RECENTLY UPDATED ── -->
-        <div id="top5-card" style="display:none;background:white;border:1px solid rgba(139,26,26,0.1);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 2px 12px rgba(139,26,26,0.06);">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-            <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#8B1A1A,#C03030);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <!-- ── TOP 5 RECENTLY UPDATED ── -->
+  <div id="top5-card" style="display:none;background:white;border:1px solid rgba(139,26,26,0.1);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 2px 12px rgba(139,26,26,0.06);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#8B1A1A,#C03030);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#1A0A0A;letter-spacing:0.2px;">Recently Updated</div>
+        <div style="font-size:11px;color:#9C8080;margin-top:1px;">Top 5 companies — most recently saved to database</div>
+      </div>
+    </div>
+    <div id="top5-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
+  <div class="filters">
+    <button class="filter-chip active" data-filter="All">All Mills</button>
+    <button class="filter-chip" data-filter="NBL">NBL</button>
+    <button class="filter-chip" data-filter="Non-NBL">Non-NBL</button>
+    <button class="filter-chip filter-chip-task" data-filter="Task List">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Task List
+    </button>
+  </div>
+
+  <!-- Task List Panel (shown when filter=Task List) -->
+  <div id="mill-task-list-panel" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Submitted Supplier Screenings</div>
+        <div style="font-size:12px;color:#9C8080;margin-top:2px;">Screenings yang sudah disubmit — klik untuk tambah ke Mill Registry</div>
+      </div>
+      <span id="mill-task-count" style="font-size:12px;font-weight:700;color:#8B1A1A;background:rgba(139,26,26,0.08);padding:4px 12px;border-radius:999px;">— entries</span>
+    </div>
+    <div id="mill-task-list-body" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="mill-task-empty" style="display:none;padding:40px;text-align:center;color:#9C8080;font-size:14px;">
+      Belum ada submitted screening yang tersedia.<br>
+      <span style="font-size:12px;">Submit screening di Supplier Due Diligence terlebih dahulu.</span>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <h3>Mill Registry</h3>
+      <div class="table-actions">
+        <button class="btn-sm btn-filled" id="btn-add-mill">+ Add Mill</button>
+      </div>
+    </div>
+    <div class="search-bar">
+      <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
+      <input type="text" id="millSearch" placeholder="Search mill name, group, province..." />
+      <button class="search-clear" id="millSearchClear">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- Export / column filters (same component language as Monitoring TTM/TTP) -->
+    <div class="ttp-toolbar mill-export-toolbar" id="millExportToolbar" aria-label="Saring dan export Mill Registry">
+      <div class="ttp-dropdown-wrap" id="millPdfFilterWrap">
+        <button type="button" class="ttp-btn-select" id="millPdfBtnFilterDims" aria-expanded="false" aria-controls="millPdfFilterDimsPanel">
+          <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span>
+          Filter export
+          <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="ttp-dropdown-panel mill-pdf-filter-panel" id="millPdfFilterDimsPanel" role="region" aria-label="Filter nilai untuk PDF">
+          <div class="ttp-dropdown-head">
+            <span class="ttp-dropdown-title">Nilai yang diekspor</span>
+            <div class="ttp-dropdown-actions">
+              <button type="button" id="millPdfDimResetAll">Reset semua</button>
             </div>
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#1A0A0A;letter-spacing:0.2px;">Recently Updated</div>
-              <div style="font-size:11px;color:#9C8080;margin-top:1px;">Top 5 companies — most recently saved to database</div>
+          </div>
+          <p class="mill-pdf-toolbar-hint">Kosongkan semua centang pada satu dimensi = tidak membatasi dimensi itu. Kombinasi dengan chip NBL / Non-NBL dan kotak pencarian di atas.</p>
+          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="quarter">
+            <div class="mill-pdf-dim-head">
+              <span>Quarter</span>
+              <div class="ttp-dropdown-actions">
+                <button type="button" data-mill-pdf-dim-reset="quarter">Reset</button>
+              </div>
             </div>
+            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListQuarter"></div>
           </div>
-          <div id="top5-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-        </div>
-
-        <div class="filters">
-          <button class="filter-chip active" data-filter="All">All Mills</button>
-          <button class="filter-chip" data-filter="NBL">NBL</button>
-          <button class="filter-chip" data-filter="Non-NBL">Non-NBL</button>
-          <button class="filter-chip filter-chip-task" data-filter="Task List">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Task List
-          </button>
-        </div>
-
-        <!-- Task List Panel (shown when filter=Task List) -->
-        <div id="mill-task-list-panel" style="display:none;">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
-            <div>
-              <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Submitted Supplier Screenings</div>
-              <div style="font-size:12px;color:#9C8080;margin-top:2px;">Screenings yang sudah disubmit — klik untuk tambah ke Mill Registry</div>
+          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="year">
+            <div class="mill-pdf-dim-head">
+              <span>Year</span>
+              <div class="ttp-dropdown-actions">
+                <button type="button" data-mill-pdf-dim-reset="year">Reset</button>
+              </div>
             </div>
-            <span id="mill-task-count" style="font-size:12px;font-weight:700;color:#8B1A1A;background:rgba(139,26,26,0.08);padding:4px 12px;border-radius:999px;">— entries</span>
+            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListYear"></div>
           </div>
-          <div id="mill-task-list-body" style="display:flex;flex-direction:column;gap:8px;"></div>
-          <div id="mill-task-empty" style="display:none;padding:40px;text-align:center;color:#9C8080;font-size:14px;">
-            Belum ada submitted screening yang tersedia.<br>
-            <span style="font-size:12px;">Submit screening di Supplier Due Diligence terlebih dahulu.</span>
-          </div>
-        </div>
-
-        <div class="table-card">
-          <div class="table-header">
-            <h3>Mill Registry</h3>
-            <div class="table-actions">
-              <button class="btn-sm btn-filled" id="btn-add-mill">+ Add Mill</button>
+          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="group">
+            <div class="mill-pdf-dim-head">
+              <span>Group</span>
+              <div class="ttp-dropdown-actions">
+                <button type="button" data-mill-pdf-dim-reset="group">Reset</button>
+              </div>
             </div>
+            <div class="ttp-dropdown-search"><input type="text" id="millPdfGroupSearch" placeholder="Cari group…" autocomplete="off" /></div>
+            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListGroup"></div>
           </div>
-          <div class="search-bar">
-            <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
-            <input type="text" id="millSearch" placeholder="Search mill name, group, province..." />
-            <button class="search-clear" id="millSearchClear">
-              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="province">
+            <div class="mill-pdf-dim-head">
+              <span>Province</span>
+              <div class="ttp-dropdown-actions">
+                <button type="button" data-mill-pdf-dim-reset="province">Reset</button>
+              </div>
+            </div>
+            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListProvince"></div>
           </div>
-          <div id="mill-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
-          <div>
-            <table id="millTable" style="display:none;">
-              <thead>
-                <tr>
-                  <th>Group Name</th>
-                  <th>Company Name</th>
-                  <th>Mill Name</th>
-                  <th>Province</th>
-                  <th>Supplier Status</th>
-                  <th>Risk Level</th>
-                  <th>No Buy List</th>
-                  <th>Certification</th>
-                  <th>Facility CPO</th>
-                  <th>Facility PK</th>
-                  <th>Product Supply</th>
-                </tr>
-              </thead>
-              <tbody id="millTableBody"></tbody>
-            </table>
-          </div>
-          <div id="mill-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
         </div>
       </div>
+      <div class="ttp-dropdown-wrap" id="millPdfColWrap">
+        <button type="button" class="ttp-btn-filter" id="millPdfBtnCols" aria-expanded="false" aria-controls="millPdfColsPanel">
+          <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          Columns PDF
+          <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="ttp-dropdown-panel" id="millPdfColsPanel" role="region" aria-label="Pilih kolom PDF">
+          <div class="ttp-dropdown-head">
+            <span class="ttp-dropdown-title">Kolom di PDF</span>
+            <div class="ttp-dropdown-actions">
+              <button type="button" id="millPdfColAll">Semua</button>
+              <button type="button" id="millPdfColDefault">Default</button>
+            </div>
+          </div>
+          <div class="ttp-dropdown-list" id="millPdfColList"></div>
+        </div>
+      </div>
+      <button type="button" class="ttp-btn-export-xlsx mill-pdf-export-btn" id="btn-mill-export-pdf" title="Ekspor baris yang memenuhi filter ke PDF">
+        <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h4M10 16h7"/></svg></span>
+        Export PDF
+      </button>
+      <div class="mill-pdf-scope-wrap" id="millPdfExportScopeWrap">
+        <span class="mill-pdf-scope-label" id="millPdfExportScopeText">—</span>
+      </div>
+    </div>
+    <div id="mill-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
+    <div class="table-scroll">
+      <table id="millTable" style="display:none;">
+        <thead>
+          <tr>
+            <th class="mill-th-sort" data-mill-sort="QUARTER" scope="col"><span class="mill-th-sort-lbl">Quarter</span><span class="mill-th-sort-ind" aria-hidden="true"></span></th>
+            <th class="mill-th-sort" data-mill-sort="YEAR" scope="col"><span class="mill-th-sort-lbl">Year</span><span class="mill-th-sort-ind" aria-hidden="true"></span></th>
+            <th>Group Name</th>
+            <th>Company Name</th>
+            <th>Mill Name</th>
+            <th>Province</th>
+            <th>Supplier Status</th>
+            <th>Risk Level</th>
+            <th>No Buy List</th>
+            <th>Certification</th>
+            <th>Facility CPO</th>
+            <th>Facility PK</th>
+            <th>Product Supply</th>
+          </tr>
+        </thead>
+        <tbody id="millTableBody"></tbody>
+      </table>
+    </div>
+    <div id="mill-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
+  </div>
+</div>

@@ -2,22 +2,51 @@
 #panel-overview {
   padding: 0 !important;
   margin: calc(-1 * var(--main-pad-y)) calc(-1 * var(--main-pad-x));
-  min-height: calc(100vh - var(--header-h));
   position: relative;
   overflow: hidden;
 }
 
+/* Fill the entire main column (flex parent: .main-content) */
+#panel-overview.panel.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #overview-root {
-  min-height: calc(100vh - var(--header-h));
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .ov-ld {
   position: relative;
   width: 100%;
-  min-height: calc(100vh - var(--header-h));
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
   overflow: hidden auto;
   background: #e8ddd8;
+}
+
+/* Bottom wash so empty space below cards feels intentional */
+.ov-ld::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: min(52vh, 520px);
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to top,
+    rgba(72, 38, 32, 0.07) 0%,
+    rgba(72, 38, 32, 0.02) 45%,
+    transparent 100%
+  );
 }
 
 .ov-ld__glow {
@@ -43,8 +72,9 @@
   z-index: 2;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: clamp(1.75rem, 4vw, 3.25rem) clamp(1.25rem, 4vw, 4rem);
-  min-height: calc(100vh - var(--header-h));
 }
 
 .ov-ld__header {

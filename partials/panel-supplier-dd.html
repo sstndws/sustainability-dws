@@ -19,19 +19,19 @@
               <p class="panel-subtitle">Upload an Excel file to extract and view all data in a clean table.</p>
             </div>
           </div>
-          <div class="panel-card" style="margin-bottom:12px;padding:12px;position:relative;">
-            <label for="scr-saved-select" style="display:block;font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8B1A1A;margin-bottom:10px;">Saved screening (Draft / Submitted)</label>
-            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-              <button type="button" id="scr-refresh-list" style="padding:9px 20px;background:#fff;border:1.5px solid rgba(139,26,26,0.3);border-radius:8px;color:#7a2d2d;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;">Refresh List</button>
-              <button type="button" id="scr-exit-load" style="padding:9px 20px;background:#fff7ed;border:1.5px solid rgba(194,65,12,0.3);border-radius:8px;color:#9a3412;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;">Exit Load Mode</button>
+          <div class="panel-card sdd-saved-card">
+            <label class="sdd-section-label" for="scr-saved-select">Saved screening (Draft / Submitted)</label>
+            <div class="sdd-toolbar">
+              <button type="button" id="scr-refresh-list" class="btn-sm btn-outline">Refresh List</button>
+              <button type="button" id="scr-exit-load" class="btn-sm btn-outline-warm">Exit Load Mode</button>
             </div>
             <select id="scr-saved-select" class="scr-saved-select-sr" aria-hidden="true" tabindex="-1">
               <option value="">— Select saved screening —</option>
             </select>
             <div id="scr-saved-list-wrap" class="scr-saved-list-outer"></div>
           </div>
-          <div class="panel-card" style="margin-bottom:16px;">
-            <div class="field" style="margin-bottom:12px;">
+          <div class="panel-card sdd-upload-card">
+            <div class="field sdd-field-tight">
               <label for="supplierExcelFile">Choose Excel file (.xlsx or .xls)</label>
               <input type="file" id="supplierExcelFile" accept=".xlsx,.xls" onchange="supplierHandleFileUpload(event)">
             </div>
