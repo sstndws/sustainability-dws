@@ -27,6 +27,8 @@ import { getSupabase } from './supabase-client.js';
     window._sddIsLoadedSaved = false;
     window._sddLastInsertedRow = null;
     window._scrLoadedRowNum = null;
+    window._scrLoadedKey = '';
+    window._sddSubmissionId = null;
     window._loadedPrimarySddRow = null;
     // Anti-leak: import baru tidak boleh membawa data screening dari supplier sebelumnya.
     window._tmlScreeningData = {};
@@ -989,6 +991,11 @@ import { getSupabase } from './supabase-client.js';
     const imp = window._sddImportFirstRow;
     if (!imp || typeof imp !== 'object') return Object.assign({}, payload);
     const out = Object.assign({}, imp);
+    // Keputusan (statusSDD) hanya dari UI / server — jangan ambil dari baris Excel
+    // (template sering punya kolom "Approved" dsb. yang menimpa Hold saat Submit).
+    ['statusSDD', 'statusSdd', 'Status SDD', 'statusBossDecision', 'Status Boss Decision', 'StatusSDD', 'STATUSSDD'].forEach(function(k) {
+      delete out[k];
+    });
     const manualKeys = Object.keys(payload || {});
     manualKeys.forEach(function(k) {
       const v = payload[k];
@@ -1017,10 +1024,22 @@ import { getSupabase } from './supabase-client.js';
     const container = document.getElementById('supplierExcelData');
     container.innerHTML = '';
     window._scrData = {};
+    // Fresh workbook view must not reuse relational keys from a previous load/session;
+    // otherwise Approve calls setSubmissionStatus on the wrong row and UI can desync.
+    window._sddSubmissionId = null;
+    window._scrLoadedKey = '';
+    window._scrLoadedRowNum = null;
+    window._sddIsLoadedSaved = false;
     const fileName = document.getElementById('supplierExcelFile')?.files[0]?.name || '';
     const tp = getCurrentSddSupplierType();
     window._scrKey = ((tp ? tp + '_' : '') + fileName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()) || 'default';
     window._loadedPrimarySddRow = null;
+    // Determine which sheet gets the SDD screening form (only one, to avoid duplicate IDs)
+    const sddSheetIdx = supplierWorkbook.SheetNames.findIndex(function(n) {
+      return String(n).trim().toLowerCase() === 'sdd data';
+    });
+    const scrFormSheetName = supplierWorkbook.SheetNames[sddSheetIdx >= 0 ? sddSheetIdx : 0];
+
     supplierWorkbook.SheetNames.forEach(function(name) {
       const worksheet = supplierWorkbook.Sheets[name];
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'dd mmm yyyy' });
@@ -1032,9 +1051,12 @@ import { getSupabase } from './supabase-client.js';
         + '<span class="sec-chev" style="display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:50%;background:rgba(44,40,40,0.08);transition:transform 0.2s;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3D3535" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>'
         + '</div><div id="' + sheetId + '" style="border:1.5px solid rgba(44,40,40,0.14);border-top:none;border-radius:0 0 10px 10px;padding:10px 6px 10px;margin-bottom:8px;"></div>';
       container.appendChild(wrapper);
-      // Render into the sheet body div
+      // Only the designated SDD sheet gets the screening form appended.
+      // Other sheets use appendScrForm:false to prevent duplicate IDs
+      // (scr-form-wrap, sdd-approver-approve, etc.) which break Save/Submit buttons.
       const sheetBody = wrapper.querySelector('[id^="sheet-body-"]');
-      supplierDisplayExcelDataTo(sheetBody, jsonData);
+      const sheetOpts = (name === scrFormSheetName) ? {} : { appendScrForm: false };
+      supplierDisplayExcelDataTo(sheetBody, jsonData, sheetOpts);
     });
     cacheSddImportRowsFromWorkbook();
   }
@@ -1101,9 +1123,9 @@ import { getSupabase } from './supabase-client.js';
       var sId = 'sec-body-' + idx;
       var hId = 'sec-hdr-' + idx;
       const shownTitle = relabelForSupplier(title);
-      var isApprover = window._sddUserRole === 'APPROVER';
+      var isApprover = false;
 
-      // Approver: tiap section punya warna header berbeda
+      // Legacy: approver-only section colours (disabled — single staff UX).
       var secLetter = shownTitle ? shownTitle.trim().charAt(0).toUpperCase() : '';
       var headerBg, headerBorder, chevronBg, chevronStroke, labelColor;
       if (isApprover && secLetter) {
@@ -1369,6 +1391,14 @@ import { getSupabase } from './supabase-client.js';
         + '<label for="noteBossDecision" style="font-size:11px;font-weight:700;color:#8B1A1A;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;">Approver Note <span style="font-weight:400;color:#9C8080;text-transform:none;letter-spacing:0;">(optional — saved with Draft / Submit)</span></label>'
         + '</div>'
         + '<textarea id="noteBossDecision" rows="3" placeholder="Tulis catatan untuk approver di sini..." style="width:100%;min-height:80px;border:1px solid rgba(139,26,26,0.18);border-radius:10px;padding:11px 14px;font-size:13px;color:#1A0A0A;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box;font-family:Inter,sans-serif;background:#fff;box-shadow:0 1px 4px rgba(139,26,26,0.06);"></textarea>'
+        + '<div id="sdd-staff-decision-wrap" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed rgba(139,26,26,0.22);">'
+        + '<div style="font-size:11px;font-weight:700;color:#8B1A1A;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px;">Keputusan screening</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">'
+        + '<span id="sdd-staff-decision-badge" style="font-size:12px;font-weight:600;color:#5F4A48;min-height:1.2em;flex:1;min-width:140px;">Decision: —</span>'
+        + '<button type="button" id="sdd-approver-approve" disabled style="padding:8px 16px;border-radius:8px;border:none;background:#047857;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">Approve</button>'
+        + '<button type="button" id="sdd-approver-hold" disabled style="padding:8px 16px;border-radius:8px;border:none;background:#D97706;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">On Hold</button>'
+        + '<button type="button" id="sdd-approver-reject" disabled style="padding:8px 16px;border-radius:8px;border:1.5px solid #B91C1C;background:#fff;color:#B91C1C;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">Reject</button>'
+        + '</div></div>'
         + '<div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center;">'
         + '<button type="button" data-sdd-save="delete" onclick="window._saveScrScreening(\'delete\')" style="padding:9px 20px;border-radius:8px;border:1.5px solid rgba(239,68,68,0.4);background:#fff;color:#EF4444;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(239,68,68,0.08);margin-right:auto;">Delete</button>'
         + '<button type="button" id="sdd-cancel-to-draft-btn" data-sdd-save="cancel" style="display:none;padding:9px 20px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.4);background:#fff7ed;color:#9a3412;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(217,119,6,0.12);">Cancel</button>'
@@ -1662,6 +1692,32 @@ import { getSupabase } from './supabase-client.js';
     container.innerHTML = html || '<p style="color:#9C8080;font-size:13px;padding:16px;">No data found.</p>';
     if (opts.appendScrForm !== false) {
       initScrForm();
+      // Fresh Excel import: no submission_id yet, status = Draft.
+      // syncSddApproverDecisionUI never fires on this path, so manually show
+      // the decision buttons so the user can pick Approve/Hold/Reject before saving.
+      // Use setTimeout(0) so all synchronous initScrForm internal calls finish first,
+      // and the DOM is fully flushed before we try to show sdd-staff-decision-wrap.
+      setTimeout(function() {
+        var fn = (typeof _refreshDecisionChromeForDraft === 'function')
+          ? _refreshDecisionChromeForDraft
+          : window._refreshDecisionChromeForDraft;
+        if (typeof fn === 'function') fn();
+        // Belt-and-suspenders: directly show the wrap in case fn is not accessible
+        var wrap = document.getElementById('sdd-staff-decision-wrap');
+        if (wrap) {
+          wrap.style.display = 'block';
+          // Enable all three decision buttons (they start as disabled in buildScrForm HTML)
+          ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
+            var b = document.getElementById(id);
+            if (!b) return;
+            b.disabled = false;
+            b.style.opacity = '1';
+            b.style.cursor = 'pointer';
+            b.style.filter = '';
+            b.title = '';
+          });
+        }
+      }, 0);
     }
   }
 
@@ -1805,31 +1861,21 @@ import { getSupabase } from './supabase-client.js';
   window._scrSavedGroupsByKey = window._scrSavedGroupsByKey || {};
   window._pendingScrLoadKey = '';
 
-  /** Hide staff-only trace controls for approver accounts. Note/RequestedData visible tapi readonly. */
+  /** Trace chrome: single staff role (no separate approver account). */
   window.refreshSddApproverStaffTraceChrome = function() {
-    var ap = window._sddUserRole === 'APPROVER';
     document.querySelectorAll('.sdd-hide-for-approver').forEach(function(el) {
-      if (el) el.style.display = ap ? 'none' : '';
+      if (el) el.style.display = '';
     });
-    // Note & Requested Data: tampil untuk approver tapi readonly
     ['traceRecInput', 'requestedDataInput'].forEach(function(id) {
       var el = document.getElementById(id);
       if (!el) return;
-      if (ap) {
-        el.readOnly = true;
-        el.style.background = '#f8f6f5';
-        el.style.color = '#5F4A48';
-        el.style.cursor = 'default';
-      } else {
-        el.readOnly = false;
-        el.style.background = '';
-        el.style.color = '#1A0A0A';
-        el.style.cursor = '';
-      }
+      el.readOnly = false;
+      el.style.background = '';
+      el.style.color = '#1A0A0A';
+      el.style.cursor = '';
     });
-    // Start Screening button: sembunyikan untuk approver, View Screening tetap tampil
     var startBtn = document.querySelector('#sdd-trace-action-btn-wrap button[onclick*="openTmlScreeningPicker"]');
-    if (startBtn) startBtn.style.display = ap ? 'none' : '';
+    if (startBtn) startBtn.style.display = '';
 
     // Boss decision panel — disabled, always hidden
     var bossPanel = document.getElementById('sdd-boss-decision-panel');
@@ -1844,6 +1890,29 @@ import { getSupabase } from './supabase-client.js';
     if (bossPanel) bossPanel.style.display = 'none';
     var bossViewer = document.getElementById('sdd-boss-decision-viewer');
     if (bossViewer) bossViewer.style.display = 'none';
+  };
+
+  /** Submitted lock: show decision badge, keep note read-only, disable decision buttons. */
+  window.refreshSddPostSubmitDecisionChrome = function() {
+    var nb = document.getElementById('noteBossDecision');
+    if (nb) {
+      nb.readOnly = true;
+      nb.disabled = false;
+      nb.style.background = '#f5f1f1';
+      nb.style.color = '#5F4A48';
+      nb.style.cursor = 'default';
+    }
+    var wrap = document.getElementById('sdd-staff-decision-wrap');
+    if (wrap) wrap.style.display = 'block';
+    ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
+      var b = document.getElementById(id);
+      if (!b) return;
+      b.disabled = true;
+      b.style.opacity = '0.38';
+      b.style.cursor = 'not-allowed';
+      b.title = 'Screening sudah Submitted — keputusan terkunci. Gunakan Cancel to Draft untuk mengubah.';
+    });
+    _syncDecisionBadge();
   };
 
   function normStr(v) {
@@ -2469,17 +2538,11 @@ import { getSupabase } from './supabase-client.js';
     if (!sel) return;
     try {
       // Fetch from MAIN sheet only — no mixed TML/FFB rows
-      const scrFilter = window._sddUserRole === 'APPROVER' ? 'Submitted' : undefined;
-      const listResult = await apiListSubmissions(
-        scrFilter ? { scr_status: scrFilter, page_size: 200 } : { page_size: 200 }
-      );
+      const listResult = await apiListSubmissions({ page_size: 200 });
       const mainRows = (listResult && Array.isArray(listResult.data)) ? listResult.data : [];
 
-      // For STAFF also include Draft (listSubmissions returns all active by default without filter).
-      // When no scr_status filter is passed, we get everything — filter client-side.
       const visibleRows = mainRows.filter(function(r) {
         const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
-        if (window._sddUserRole === 'APPROVER') return st === 'submitted';
         return st === 'draft' || st === 'submitted';
       });
 
@@ -2925,6 +2988,8 @@ import { getSupabase } from './supabase-client.js';
       if (wrap) wrap.classList.toggle('sdd-approver-readonly', !!locked);
       document.querySelectorAll('#scr-form-wrap input, #scr-form-wrap textarea, #scr-form-wrap select, #scr-form-wrap button').forEach(function(el) {
         if (!el) return;
+        if (el.id === 'noteBossDecision') return;
+        if (el.id === 'sdd-approver-approve' || el.id === 'sdd-approver-hold' || el.id === 'sdd-approver-reject') return;
         if (el.id === 'scr-grv-add' || el.id === 'scr-pri-add') {
           el.style.display = locked ? 'none' : '';
           el.disabled = !!locked;
@@ -2949,7 +3014,7 @@ import { getSupabase } from './supabase-client.js';
 
     function hideSddApproverPanel() {
       window._sddApproverRecordLoaded = false;
-      applySddApproverStaffReadOnly(window._sddUserRole === 'APPROVER');
+      applySddApproverStaffReadOnly(false);
       ['draft', 'submit', 'delete'].forEach(function(k) {
         var b = document.querySelector('[data-sdd-save="' + k + '"]');
         if (b) b.style.display = '';
@@ -2959,23 +3024,35 @@ import { getSupabase } from './supabase-client.js';
       if (typeof window.refreshSddApproverStaffTraceChrome === 'function') window.refreshSddApproverStaffTraceChrome();
     }
 
-    function syncSddApproverDecisionUI(s, sourceLabel, rowNum) {
-      var fromSaved = rowNum != null && rowNum !== '' && String(sourceLabel || '').indexOf('SDD') !== -1;
+    function syncSddApproverDecisionUI(s, sourceLabel, rowNum, key) {
+      var hasKey = String(key || '').trim() !== '';
+      var fromSaved = (hasKey || (rowNum != null && rowNum !== '' && rowNum !== 0)) &&
+        String(sourceLabel || '').indexOf('SDD') !== -1;
       if (!fromSaved) {
         hideSddApproverPanel();
         return;
       }
+      var status = String((s && s.status) || '').toLowerCase();
+      var isSubmitted = status === 'submitted';
+
       window._sddApproverRecordLoaded = true;
-      applySddApproverStaffReadOnly(false);
-      ['draft', 'submit', 'delete'].forEach(function(k) {
-        var btn = document.querySelector('[data-sdd-save="' + k + '"]');
-        if (btn) btn.style.display = 'none';
-      });
-      var cancelBtn = document.querySelector('[data-sdd-save="cancel"]');
-      if (cancelBtn) cancelBtn.style.display = 'none';
-      var scrSaveOk = document.getElementById('scr-save-ok');
-      if (scrSaveOk) scrSaveOk.style.display = 'none';
-      if (typeof window.refreshSddApproverStaffTraceChrome === 'function') window.refreshSddApproverStaffTraceChrome();
+
+      if (isSubmitted) {
+        ['draft', 'submit', 'delete'].forEach(function(k) {
+          var btn = document.querySelector('[data-sdd-save="' + k + '"]');
+          if (btn) btn.style.display = 'none';
+        });
+        var cancelBtnAD = document.querySelector('[data-sdd-save="cancel"]');
+        if (cancelBtnAD) cancelBtnAD.style.display = 'none';
+        var scrSaveOk = document.getElementById('scr-save-ok');
+        if (scrSaveOk) scrSaveOk.style.display = 'none';
+      } else {
+        _refreshDecisionChromeForDraft();
+      }
+
+      if (typeof window.refreshSddApproverStaffTraceChrome === 'function') {
+        window.refreshSddApproverStaffTraceChrome();
+      }
     }
 
     async function cancelSubmittedToDraft() {
@@ -3003,20 +3080,29 @@ import { getSupabase } from './supabase-client.js';
           await window.loadSavedScrByKeyGlobal(sid);
         } catch (_e) {
           syncSubmittedStaffLockUI({ status: 'Draft' }, sid);
+          _refreshDecisionChromeForDraft();
         }
       } else {
         syncSubmittedStaffLockUI({ status: 'Draft' }, sid);
+        _refreshDecisionChromeForDraft();
       }
     }
 
     function syncSubmittedStaffLockUI(s, sidOrRowNum) {
-      if (window._sddUserRole === 'APPROVER') return;
       // fromSaved = true when we have either a submission_id or a legacy row num
       var fromSaved = !!(sidOrRowNum != null && sidOrRowNum !== '' && sidOrRowNum !== 0);
       var isSubmitted = String((s && s.status) || '').toLowerCase() === 'submitted';
       var cancelBtn = document.querySelector('[data-sdd-save="cancel"]');
       if (isSubmitted && fromSaved) {
         applySddApproverStaffReadOnly(true);
+        if (typeof window.refreshSddPostSubmitDecisionChrome === 'function') {
+          window.refreshSddPostSubmitDecisionChrome();
+          setTimeout(function() {
+            if (typeof window.refreshSddPostSubmitDecisionChrome === 'function') {
+              window.refreshSddPostSubmitDecisionChrome();
+            }
+          }, 0);
+        }
         ['draft', 'submit', 'delete'].forEach(function(k) {
           var btn = document.querySelector('[data-sdd-save="' + k + '"]');
           if (btn) btn.style.display = 'none';
@@ -3067,9 +3153,35 @@ import { getSupabase } from './supabase-client.js';
           if (btn) btn.style.display = '';
         });
         if (cancelBtn) cancelBtn.style.display = 'none';
-        // Hide PDF export button when back to Draft
-        var pdfBtnDraft = document.getElementById('sdd-export-pdf-btn');
-        if (pdfBtnDraft) pdfBtnDraft.style.display = 'none';
+
+        if (fromSaved) {
+          _refreshDecisionChromeForDraft();
+          var existingPdfDraft = document.getElementById('sdd-export-pdf-btn');
+          if (!existingPdfDraft) {
+            var pdfBtnD = document.createElement('button');
+            pdfBtnD.id = 'sdd-export-pdf-btn';
+            pdfBtnD.type = 'button';
+            pdfBtnD.textContent = '⬇ Export PDF';
+            pdfBtnD.style.cssText = 'padding:9px 20px;border-radius:8px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(139,26,26,0.2);letter-spacing:0.2px;';
+            pdfBtnD.onmouseenter = function() { this.style.background = '#6e1414'; };
+            pdfBtnD.onmouseleave = function() { this.style.background = '#8B1A1A'; };
+            pdfBtnD.onclick = function() { sddExportPdf(); };
+            var actionRowD = document.querySelector('[data-sdd-save="draft"]');
+            actionRowD = actionRowD ? actionRowD.parentNode : null;
+            if (actionRowD) actionRowD.appendChild(pdfBtnD);
+            else {
+              var panelBoxD = document.querySelector('#panel-supplier-dd .panel-box');
+              if (panelBoxD) panelBoxD.appendChild(pdfBtnD);
+            }
+          } else {
+            existingPdfDraft.style.display = '';
+          }
+        } else {
+          var pdfBtnDraft = document.getElementById('sdd-export-pdf-btn');
+          if (pdfBtnDraft) pdfBtnDraft.style.display = 'none';
+          // fromSaved=false means fresh Excel import — do NOT hide the decision wrap.
+          // The setTimeout in supplierDisplayExcelData will show it. Only the PDF btn is hidden.
+        }
       }
     }
 
@@ -3091,7 +3203,9 @@ import { getSupabase } from './supabase-client.js';
         date: row['SCR - Last Updated'] || '',
         noteSdd: row['noteSDD'] || row['noteSdd'] || row['Note SDD'] || '',
         noteBossDecision: row['noteBossDecision'] || row['noteSDD'] || row['noteSdd'] || '',
-        statusSdd: row['statusSDD'] || row['statusSdd'] || row['Status SDD'] || '',
+        statusSdd: row['statusSDD'] || row['statusSdd'] || row['Status SDD'] ||
+          row['statusBossDecision'] || row['Status Boss Decision'] ||
+          row['StatusSDD'] || row['STATUSSDD'] || '',
         grvRows: [],
         priRows: []
       };
@@ -3170,11 +3284,11 @@ import { getSupabase } from './supabase-client.js';
       window._scrLoadedRowNum = rowNum || null;
       window._scrLoadedKey = key || '';
       window._scrData = s;
-      syncSddApproverDecisionUI(s, sourceLabel, rowNum);
+      syncSddApproverDecisionUI(s, sourceLabel, rowNum, key);
       // Use submission_id (key) as the "fromSaved" signal; fall back to legacy rowNum
       syncSubmittedStaffLockUI(s, key || rowNum || null);
       const saveOk = document.getElementById('scr-save-ok');
-      if (window._sddUserRole !== 'APPROVER' && saveOk && s.status) {
+      if (saveOk && s.status) {
         saveOk.style.color = '#059669';
         saveOk.textContent = '✓ Loaded: ' + s.status + (s.date ? ' (' + s.date + ')' : '') + (sourceLabel ? ' · ' + sourceLabel : '');
         saveOk.style.display = 'inline';
@@ -3301,17 +3415,20 @@ import { getSupabase } from './supabase-client.js';
     // Save flow: source of truth is Google Sheets (no localStorage persistence for screening data)
     window._saveScrScreening = async function(status) {
       if (window._sddSaveInFlight) return;
-      if (window._sddUserRole === 'APPROVER') {
-        if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Akun approver tidak bisa menyimpan draft/submit di sini. Gunakan catatan dan tombol Approve / Hold / Reject di bawah.', 'info');
-        }
-        return;
-      }
       if (typeof location !== 'undefined' && location.protocol === 'file:') {
         var fileMsg = 'Cannot save while opened as file://. Please run this HTML from http://localhost (for example with Live Server) and try again.';
         if (typeof window.showSddToast === 'function') window.showSddToast(fileMsg, 'error');
         if (typeof window.showSddNotification === 'function') window.showSddNotification('Save Blocked', fileMsg, 'error');
         return;
+      }
+      var _carryDecision = '';
+      if (window._scrData && String(window._scrData.statusSdd || '').trim()) {
+        _carryDecision = String(window._scrData.statusSdd).trim();
+      } else if (window._loadedPrimarySddRow) {
+        _carryDecision = String(
+          window._loadedPrimarySddRow['statusSDD'] || window._loadedPrimarySddRow['statusSdd'] ||
+          window._loadedPrimarySddRow['statusBossDecision'] || ''
+        ).trim();
       }
       const scrData = {
         owners:   document.getElementById('scr-owners')?.value||'',
@@ -3327,6 +3444,8 @@ import { getSupabase } from './supabase-client.js';
         requestedData: document.getElementById('requestedDataInput')?.value||'',
         noteSdd:  document.getElementById('noteBossDecision')?.value||document.getElementById('noteSDD')?.value||'',
         noteBossDecision: document.getElementById('noteBossDecision')?.value||document.getElementById('noteSDD')?.value||'',
+        statusSdd: _carryDecision,
+        statusBossDecision: _carryDecision,
         attachments: window._traceAttachments || [],
         grvRows: [], priRows: [],
       };
@@ -3758,73 +3877,124 @@ async function apiListSubmissions(params) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── SDD DECISION HELPERS (used by initDashboardApp + PDF export) ───────────
+
+function _normalizeDecisionLabel(raw) {
+  if (!raw) return '';
+  var s = String(raw).trim().toLowerCase();
+  if (s === 'approve' || s === 'approved') return 'APPROVED';
+  if (s === 'hold' || s === 'on hold') return 'ON HOLD';
+  if (s === 'reject' || s === 'rejected') return 'REJECTED';
+  return String(raw).trim().toUpperCase();
+}
+
+function _readCurrentDecisionRaw() {
+  if (window._scrData && String(window._scrData.statusSdd || '').trim()) {
+    return String(window._scrData.statusSdd).trim();
+  }
+  if (window._loadedPrimarySddRow) {
+    return String(
+      window._loadedPrimarySddRow['statusSDD'] ||
+      window._loadedPrimarySddRow['statusSdd'] ||
+      window._loadedPrimarySddRow['statusBossDecision'] || ''
+    ).trim();
+  }
+  return '';
+}
+
+function _syncDecisionBadge() {
+  var badge = document.getElementById('sdd-staff-decision-badge');
+  if (!badge) return;
+  var raw = _readCurrentDecisionRaw();
+  badge.textContent = raw
+    ? 'Decision: ' + _normalizeDecisionLabel(raw)
+    : 'Decision: — (pilih tombol di bawah)';
+}
+
+function _refreshDecisionChromeForDraft() {
+  var wrap = document.getElementById('sdd-staff-decision-wrap');
+  if (wrap) wrap.style.display = 'block';
+  ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = false;
+    b.style.opacity = '1';
+    b.style.cursor = 'pointer';
+    b.style.filter = '';
+    b.title = '';
+  });
+  var nb = document.getElementById('noteBossDecision');
+  if (nb) {
+    nb.readOnly = false;
+    nb.disabled = false;
+    nb.style.background = '#fff';
+    nb.style.color = '#1A0A0A';
+    nb.style.cursor = 'text';
+  }
+  _syncDecisionBadge();
+}
+// Expose to window so nested scopes (e.g. supplierDisplayExcelData inside initDashboardApp) can call it
+window._refreshDecisionChromeForDraft = _refreshDecisionChromeForDraft;
+window._syncDecisionBadge = _syncDecisionBadge;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Approver workflow — rewritten to use relational APIs.
- * statusSDD is written via setSubmissionStatus; noteSDD (free-text) via updateSubmission.
+ * Screening decision (Approve / Hold / Reject) — only while SCR status is Draft.
+ * Same mental model as screening fields: only updates in-memory state here; the server
+ * gets statusSDD / noteBossDecision when the user clicks Save Draft or Submit (create/update).
  */
-window._submitSddApproverDecision = async function(statusSdd) {
-  if (window._sddUserRole !== 'APPROVER') {
-    if (typeof window.showSddToast === 'function') window.showSddToast('Approver sign-in required.', 'error');
+window._submitSddApproverDecision = function(statusSdd) {
+  var scrSt = String(
+    (window._scrData && window._scrData.status) ||
+    (window._loadedPrimarySddRow && window._loadedPrimarySddRow['SCR - Screening Status']) || ''
+  ).trim().toLowerCase();
+
+  if (scrSt === 'submitted') {
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast(
+        '⛔ Screening sudah Submitted — keputusan tidak dapat diubah. ' +
+        'Gunakan "Cancel to Draft" terlebih dahulu jika perlu koreksi.',
+        'error'
+      );
+    }
     return;
   }
-  var sid = window._sddSubmissionId || window._scrLoadedKey || null;
-  if (!sid) {
-    if (typeof window.showSddToast === 'function') window.showSddToast('Load a screening record first.', 'error');
-    return;
-  }
+
   var ta   = document.getElementById('noteBossDecision') || document.getElementById('noteSDD');
   var note = ta ? String(ta.value || '').trim() : '';
-  try {
-    // Write statusSDD via lightweight status patch
-    await apiSetSubmissionStatus({ submission_id: sid, statusSDD: statusSdd });
-    // Write approver fields to relational MAIN row
-    await apiUpdateSubmission({
-      submission_id: sid,
-      main: {
-        noteSDD: note,
-        noteBossDecision: note,
-        statusBossDecision: statusSdd,
-      }
-    });
-    if (window._loadedPrimarySddRow) {
-      window._loadedPrimarySddRow['noteSDD']          = note;
-      window._loadedPrimarySddRow['noteBossDecision']  = note;
-      window._loadedPrimarySddRow['statusSDD']        = statusSdd;
-      window._loadedPrimarySddRow['statusBossDecision'] = statusSdd;
-    }
-    if (window._scrData && typeof window._scrData === 'object') {
-      window._scrData.noteSdd           = note;
-      window._scrData.statusSdd         = statusSdd;
-      window._scrData.noteBossDecision  = note;
-      window._scrData.statusBossDecision = statusSdd;
-    }
-    if (typeof window.refreshSavedScreeningListGlobal === 'function') {
-      await window.refreshSavedScreeningListGlobal(sid);
-    }
-    if (typeof window.refreshSddBossDecisionViewer === 'function') {
-      window.refreshSddBossDecisionViewer();
-    }
-    if (typeof window.showSddToast === 'function') {
-      window.showSddToast('Approver decision saved (' + statusSdd + ').', 'success');
-    }
-    if (typeof window.showSddNotification === 'function') {
-      window.showSddNotification('Saved', 'Approver decision saved to Google Sheets.', 'success');
-    }
-  } catch (e) {
-    var msg = (e && e.message) ? e.message : String(e);
-    if (typeof window.showSddToast === 'function') window.showSddToast('Save failed: ' + msg, 'error');
-    if (typeof window.showSddNotification === 'function') window.showSddNotification('Save Failed', msg, 'error');
+
+  if (!window._scrData) window._scrData = {};
+  window._scrData.statusSdd = statusSdd;
+  window._scrData.statusBossDecision = statusSdd;
+  window._scrData.noteSdd = note;
+  window._scrData.noteBossDecision = note;
+
+  if (window._loadedPrimarySddRow) {
+    window._loadedPrimarySddRow['noteSDD'] = note;
+    window._loadedPrimarySddRow['noteBossDecision'] = note;
+    window._loadedPrimarySddRow['statusSDD'] = statusSdd;
+    window._loadedPrimarySddRow['statusBossDecision'] = statusSdd;
+  }
+
+  _syncDecisionBadge();
+  _refreshDecisionChromeForDraft();
+  if (typeof window.showSddToast === 'function') {
+    window.showSddToast(
+      'Keputusan: ' + statusSdd + '. Disimpan ke server saat Save Draft atau Submit.',
+      'info'
+    );
   }
 };
 
 if (!window.__sddApproverDecisionClickBound) {
   window.__sddApproverDecisionClickBound = true;
   document.addEventListener('click', function(ev) {
-    var t = ev.target;
-    if (!t || !t.id) return;
-    if (t.id === 'sdd-approver-hold' || t.id === 'boss-btn-hold') { ev.preventDefault(); window._submitSddApproverDecision('Hold'); }
-    else if (t.id === 'sdd-approver-approve' || t.id === 'boss-btn-approve') { ev.preventDefault(); window._submitSddApproverDecision('Approve'); }
-    else if (t.id === 'sdd-approver-reject' || t.id === 'boss-btn-reject') { ev.preventDefault(); window._submitSddApproverDecision('Reject'); }
+    var btn = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+    if (!btn || !btn.id) return;
+    if (btn.id === 'sdd-approver-hold' || btn.id === 'boss-btn-hold') { ev.preventDefault(); window._submitSddApproverDecision('Hold'); }
+    else if (btn.id === 'sdd-approver-approve' || btn.id === 'boss-btn-approve') { ev.preventDefault(); window._submitSddApproverDecision('Approve'); }
+    else if (btn.id === 'sdd-approver-reject' || btn.id === 'boss-btn-reject') { ev.preventDefault(); window._submitSddApproverDecision('Reject'); }
   });
 }
 
@@ -3897,6 +4067,8 @@ function buildScrDataPayload(scrData) {
     'SCR - Requested Data': scrData.requestedData || '',
     'noteSDD': scrData.noteSdd || '',
     'noteBossDecision': scrData.noteBossDecision || scrData.noteSdd || '',
+    'statusSDD': scrData.statusSdd || scrData.statusSDD || '',
+    'statusBossDecision': scrData.statusBossDecision || scrData.statusSdd || scrData.statusSDD || '',
     'SCR - Screening Status': scrData.status || '',
     'SCR - Last Updated': scrData.date || ''
   };
@@ -6616,8 +6788,21 @@ function initDashboardApp() {
       target.classList.add('active');
       target.setAttribute('aria-hidden', 'false');
     }
+    const dash = document.getElementById('dashboard');
+    const loginEl = document.getElementById('login');
+    if (dash) dash.inert = id !== 'dashboard';
+    if (loginEl) loginEl.inert = id !== 'login';
     resetScrollToTopEverywhere();
   }
+
+  (function syncInitialPageInert_() {
+    var active = document.querySelector('.page.active');
+    var aid = active && active.id;
+    var dash = document.getElementById('dashboard');
+    var lo = document.getElementById('login');
+    if (dash && aid) dash.inert = aid !== 'dashboard';
+    if (lo && aid) lo.inert = aid !== 'login';
+  })();
 
   function switchPanel(name) {
     panelEls.forEach(function(p) { p.classList.remove('active'); });
@@ -6628,6 +6813,10 @@ function initDashboardApp() {
     if (navItem) navItem.classList.add('active');
     const grp = document.getElementById('navGroupTrace');
     if (grp && !grp.classList.contains('open')) grp.classList.add('open');
+    const grpPrograms = document.getElementById('navGroupPrograms');
+    if (grpPrograms && ['performa-facility', 'eudr-potential', 'contact-list-supplier', 'priority-supplier-engagement'].indexOf(name) !== -1) {
+      if (!grpPrograms.classList.contains('open')) grpPrograms.classList.add('open');
+    }
     if (name === 'mill-onboarding' && allData.length) {
       if (currentFilter === 'Task List') {
         currentFilter = 'All';
@@ -6653,16 +6842,13 @@ function initDashboardApp() {
   // ─── LOGIN / LOGOUT ─────────────────────────────────────
   function resolveSddRoleFromSupabaseUser_(user) {
     if (!user) return 'STAFF';
-    var um = user.user_metadata || {};
-    var am = user.app_metadata || {};
-    var r = String(um.sdd_role || um.role || am.sdd_role || '').trim().toUpperCase();
-    if (r === 'APPROVER') return 'APPROVER';
+    // Approver role retired — all accounts use the same SDD workflow (decision on staff UI).
     return 'STAFF';
   }
 
   async function finalizeSuccessfulLogin_(displayEmail, role) {
-    window._sddUserRole = role || 'STAFF';
-    document.body.classList.toggle('sdd-role-approver', role === 'APPROVER');
+    window._sddUserRole = 'STAFF';
+    document.body.classList.remove('sdd-role-approver');
     if (typeof window.refreshSddApproverStaffTraceChrome === 'function') window.refreshSddApproverStaffTraceChrome();
     if (typeof updateSavedScreeningPickerUI === 'function') updateSavedScreeningPickerUI();
     var err = document.getElementById('loginErr');
@@ -6674,6 +6860,8 @@ function initDashboardApp() {
     if (typeof window.updateOverviewWelcome === 'function') window.updateOverviewWelcome(displayEmail);
     showPage('dashboard');
     if (typeof switchPanel === 'function') switchPanel('overview');
+    var sbNav = document.getElementById('mainSidebar');
+    if (sbNav) sbNav.classList.remove('expanded');
     try {
       await loadMillData();
       console.log('✅ Dashboard loaded successfully');
@@ -6844,6 +7032,11 @@ function initDashboardApp() {
       switchPanel('overview');
     });
   }
+  document.querySelectorAll('.nav-soon-back').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      switchPanel('overview');
+    });
+  });
 
   // ─── SIDEBAR TOGGLE ─────────────────────────────────────
   const sidebar = document.getElementById('mainSidebar');
@@ -6861,6 +7054,14 @@ function initDashboardApp() {
   if (navGroupTraceHeader && navGroupTrace) {
     navGroupTraceHeader.addEventListener('click', function() {
       navGroupTrace.classList.toggle('open');
+    });
+  }
+
+  const navGroupProgramsHeader = document.getElementById('navGroupProgramsHeader');
+  const navGroupPrograms = document.getElementById('navGroupPrograms');
+  if (navGroupProgramsHeader && navGroupPrograms) {
+    navGroupProgramsHeader.addEventListener('click', function() {
+      navGroupPrograms.classList.toggle('open');
     });
   }
 
@@ -7075,8 +7276,10 @@ function initDashboardApp() {
       (window._scrData && window._scrData.status) ||
       (window._loadedPrimarySddRow && window._loadedPrimarySddRow['SCR - Screening Status']) || ''
     ).trim().toLowerCase();
-    if (status !== 'submitted') {
-      if (typeof window.showSddToast === 'function') window.showSddToast('Export PDF hanya tersedia untuk screening dengan status Submitted.', 'error');
+    if (!status || (status !== 'submitted' && status !== 'draft')) {
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Load screening record terlebih dahulu sebelum export PDF.', 'error');
+      }
       return;
     }
     if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
@@ -7133,7 +7336,7 @@ function initDashboardApp() {
         note        : val('traceRecInput', 'traceNote','SCR - Notes'),
         reqData     : val('requestedDataInput','requestedData',['SCR - Requested Data','Requested Data']),
         approverNote: val('noteBossDecision','noteBossDecision',['noteBossDecision','noteSDD','noteSdd']),
-        approverStat: val(null,'statusSdd',['statusSDD','statusSdd','Status SDD']),
+        approverStat: val(null,'statusSdd',['statusSDD','statusSdd','Status SDD','statusBossDecision','Status Boss Decision','StatusSDD','STATUSSDD']),
         status      : (sc.status || p['SCR - Screening Status'] || '').toUpperCase(),
         date        : (sc.date || p['SCR - Last Updated'] || p['updated_at'] || '')
       };
@@ -7142,6 +7345,15 @@ function initDashboardApp() {
       var supplierType = String(window._sddSupplierType || p['Supplier Type'] || '').toUpperCase();
       var supplierName = String(p['Company Name'] || p['Mill Name'] || '').trim() || '—';
       var exportedAt   = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+
+      // Header "Status" = decision (Approve/Hold/Reject); else PENDING.
+      var approverRaw = String(f.approverStat || '').trim();
+      var metaStatusLine;
+      if (approverRaw) {
+        metaStatusLine = _normalizeDecisionLabel(approverRaw) || approverRaw.toUpperCase();
+      } else {
+        metaStatusLine = 'PENDING';
+      }
 
       // Mill & FFB rows
       var cachedGroup = (window._scrSavedGroupsByKey && sid) ? window._scrSavedGroupsByKey[sid] : null;
@@ -7203,7 +7415,7 @@ function initDashboardApp() {
       doc.text('Supplier Due Diligence — Screening Report', mL, 13);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.text('CONFIDENTIAL  ·  Status: SUBMITTED  ·  Exported: ' + exportedAt, mL, 21);
+      doc.text('CONFIDENTIAL  ·  Status: ' + metaStatusLine + '  ·  Exported: ' + exportedAt, mL, 21);
       if (sid) {
         doc.setFont('helvetica', 'bold');
         doc.text('ID: ' + sid, pageW - mR, 21, { align: 'right' });
@@ -7300,7 +7512,196 @@ function initDashboardApp() {
       gap(4);
 
       // ═══════════════════════════════════════════════════════════════════════
-      // 2. SCREENING SUMMARY
+      // 2. MILL / KCP INFORMATION
+      // ═══════════════════════════════════════════════════════════════════════
+      var isKcp = (supplierType === 'KCP');
+
+      // Determine if any mill/kcp info field has a value
+      var millInfoLabel = isKcp ? 'KCP Information' : (supplierType === 'TRADER' ? 'Trader Mill Information' : 'Mill Information');
+      var millName_       = String(p['Mill Name'] || '').trim();
+      var millAddr_       = String(p['Mill Address'] || '').trim();
+      var distRef_        = String(p['Distance to Refinery (km)'] || p['Distance to Refinery'] || '').trim();
+      var dist_           = String(p['Distance'] || p['Distance (km)'] || p['Distance KM'] || '').trim();
+      var millLat_        = String(p['Latitude'] || '').trim();
+      var millLng_        = String(p['Longitude'] || '').trim();
+      var millCat_        = String(p['Mill Category'] || '').trim();
+      var millCap_        = String(p['Mill Capacity (Ton/Hour)'] || p['KCP Capacity (Ton/Hour)'] || p['Capacity (Ton/Hour)'] || '').trim();
+      var sterType_       = String(p['Sterilizer Type'] || '').trim();
+      var storageTank_    = String(p['Storage Tank Capacity'] || '').trim();
+      var siloCap_        = String(p['Silo Capacity'] || '').trim();
+      var commDate_       = String(p['Commissioning Date'] || p['Commisioning Date'] || '').trim();
+      var hasMillInfo     = millName_ || millAddr_ || distRef_ || dist_ || millCat_ || millCap_ || sterType_ || storageTank_ || siloCap_ || commDate_;
+
+      if (hasMillInfo) {
+        S(millInfoLabel);
+        var nameLabel = isKcp ? 'KCP Name' : 'Mill Name';
+        var addrLabel = isKcp ? 'KCP Address' : 'Mill Address';
+        var catLabel  = isKcp ? 'KCP Category' : 'Mill Category';
+        var capLabel  = isKcp ? 'KCP Capacity (Ton/Hour)' : 'Mill Capacity (Ton/Hour)';
+        kv (nameLabel,           millName_  || '—');
+        kv (addrLabel,           millAddr_  || '—');
+        kv2('Distance to Refinery', distRef_ || '—', 'Distance', dist_ || '—');
+        kv2('Latitude',          millLat_   || '—',  'Longitude', millLng_ || '—');
+        kv2(catLabel,            millCat_   || '—',  capLabel,    millCap_ || '—');
+        if (!isKcp) kv('Sterilizer Type', sterType_ || '—');
+        kv2('Storage Tank Capacity', storageTank_ || '—', 'Silo Capacity', siloCap_ || '—');
+        kv ('Commissioning Date', commDate_ || '—');
+        gap(4);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // 3. PRODUCT TABLE + QUALITY
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // --- Determine supplier type for product layout (same heuristic as pseudo-sheet builder) ---
+      var _stypeRawPdf = String(p['supplier_type'] || p['Supplier Type'] || supplierType || '').trim().toUpperCase();
+      var _isKcpPdf    = (_stypeRawPdf === 'KCP');
+
+      // --- Parse product lines (JSON first, then individual columns) ---
+      var _productLinesPdf = null;
+      try {
+        var _plJson = String(p['SDD - Product Lines JSON'] || '').trim();
+        if (_plJson) {
+          var _plArr = JSON.parse(_plJson);
+          if (Array.isArray(_plArr) && _plArr.length) _productLinesPdf = _plArr;
+        }
+      } catch (e_pl) {}
+
+      // If type was not set, infer KCP from product line content (CPKO/PKE, no other col)
+      if (!_isKcpPdf && _productLinesPdf && _productLinesPdf.length) {
+        var _allNoOtherPdf = _productLinesPdf.every(function(pl) { return !String(pl.other || '').trim(); });
+        var _hasKcpProdPdf = _productLinesPdf.some(function(pl) {
+          var m = String(pl.main || '').trim().toUpperCase();
+          return m === 'CPKO' || m === 'PKE';
+        });
+        if (_allNoOtherPdf && _hasKcpProdPdf) _isKcpPdf = true;
+      }
+
+      // Fallback: build product lines from individual columns
+      if (!_productLinesPdf) {
+        _productLinesPdf = [];
+        // Main products 1-3
+        for (var _mi = 1; _mi <= 3; _mi++) {
+          var _mk = _mi === 1 ? 'Main Product' : ('Main Product ' + _mi);
+          var _mav = _mi === 1 ? 'Main Product Avg Production/Month (Ton)' : ('Main Product ' + _mi + ' Avg Production/Month (Ton)');
+          var _myl = _mi === 1 ? 'Main Product Yield' : ('Main Product ' + _mi + ' Yield');
+          var _ov  = _mi === 1 ? 'Other Product 1' : ('Other Product ' + _mi);
+          var _oav = _mi === 1 ? 'Other Product 1 Avg/Month (Ton)' : ('Other Product ' + _mi + ' Avg/Month (Ton)');
+          var _mv  = String(p[_mk]  || '').trim();
+          var _mav2 = String(p[_mav] || '').trim();
+          var _myl2 = String(p[_myl] || '').trim();
+          var _ov2  = String(p[_ov]  || '').trim();
+          var _oav2 = String(p[_oav] || '').trim();
+          if (_mv || _ov2) {
+            _productLinesPdf.push({ main: _mv, mainAvg: _mav2, yield: _myl2, other: _ov2, otherAvg: _oav2 });
+          }
+        }
+        // Other products 4-12 (other-only rows)
+        for (var _oi = 4; _oi <= 12; _oi++) {
+          var _ok  = 'Other Product ' + _oi;
+          var _oav3 = 'Other Product ' + _oi + ' Avg/Month (Ton)';
+          var _ov3  = String(p[_ok]   || '').trim();
+          var _oav3v = String(p[_oav3] || '').trim();
+          if (_ov3) _productLinesPdf.push({ main: '', mainAvg: '', yield: '', other: _ov3, otherAvg: _oav3v });
+        }
+      }
+
+      // Quality fields (shared between KCP and Mill, same canonical keys)
+      // fmtPct: normalise percentage-ish values stored as decimals.
+      // "0.05" -> "5%",  "5%" -> "5%",  "20%" -> "20%",  "0.2" -> "20%"
+      // Values >= 1 assumed already correct (plain number/string, not a fraction)
+      function fmtPct(v) {
+        var s = String(v === undefined || v === null ? '' : v).trim();
+        if (!s || s === '\u2014') return s;
+        if (s.charAt(s.length - 1) === '%') return s;
+        var n = parseFloat(s.replace(',', '.'));
+        if (isNaN(n)) return s;
+        if (n > 0 && n < 1) return (n * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+        return s;
+      }
+
+      var _cpoCpoFfa  = fmtPct(String(p['CPO Quality - FFA']   || '').trim());
+      var _cpoCpoMi   = fmtPct(String(p['CPO Quality - M&I']   || '').trim());
+      var _cpoCpoDobi = fmtPct(String(p['CPO Quality - DOBI']  || '').trim());
+      var _pkFfa      = fmtPct(String(p['PK Quality - FFA']    || '').trim());
+      var _pkMoist    = fmtPct(String(p['PK Quality - MOIST']  || '').trim());
+      var _pkDirt     = fmtPct(String(p['PK Quality - DIRT']   || '').trim());
+
+      var _hasProducts = _productLinesPdf && _productLinesPdf.length;
+      var _hasQuality  = _cpoCpoFfa || _cpoCpoMi || _cpoCpoDobi || _pkFfa || _pkMoist || _pkDirt;
+
+      if (_hasProducts || _hasQuality) {
+        var _prodSectionTitle = _isKcpPdf ? 'Product to be Produce' : 'Product to be Supply';
+        S(_prodSectionTitle);
+
+        if (_hasProducts) {
+          if (_isKcpPdf) {
+            // KCP: Product | Avg/Month | Yield (no "Other Product" column)
+            tbl(
+              [['Product', 'Avg Production/Month', 'Yield']],
+              _productLinesPdf
+                .filter(function(pl) { return String(pl.main || '').trim(); })
+                .map(function(pl) { return [
+                  String(pl.main    || ''),
+                  String(pl.mainAvg || ''),
+                  fmtPct(String(pl.yield || ''))
+                ]; }),
+              {
+                styles:    { fontSize: 7.5, cellPadding: 2.5 },
+                headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+                columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 60 } }
+              }
+            );
+          } else {
+            // Mill / Trader: Main Product | Avg | Yield | Other Product | Avg
+            var _prodBody = _productLinesPdf
+              .filter(function(pl) { return String(pl.main || pl.other || '').trim(); })
+              .map(function(pl) { return [
+                String(pl.main     || ''),
+                String(pl.mainAvg  || ''),
+                fmtPct(String(pl.yield || '')),
+                String(pl.other    || ''),
+                String(pl.otherAvg || '')
+              ]; });
+            if (_prodBody.length) {
+              tbl(
+                [['Main Product', 'Avg/Month (Ton)', 'Yield', 'Other Product', 'Avg/Month (Ton)']],
+                _prodBody,
+                {
+                  styles:    { fontSize: 7.5, cellPadding: 2.5 },
+                  headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+                  columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 30 }, 2: { cellWidth: 18 }, 3: { cellWidth: 35 } }
+                }
+              );
+            }
+          }
+        }
+
+        if (_hasQuality) {
+          gap(2);
+          var _q1Label = _isKcpPdf ? 'CPKO Quality' : 'CPO Quality';
+          var _q2Label = _isKcpPdf ? 'PKE Quality'  : 'PK Quality';
+          var _q1Mi    = _isKcpPdf ? 'M&I' : 'M&I';
+          var _q1DoLbl = _isKcpPdf ? 'DOBI' : 'DOBI';
+          tbl(
+            [['Quality', 'FFA', (_isKcpPdf ? 'M&I' : 'M&I'), (_isKcpPdf ? 'DOBI' : 'DOBI'), 'MOIST', 'DIRT']],
+            [
+              [ _q1Label, _cpoCpoFfa || '—', _cpoCpoMi || '—', _cpoCpoDobi || '—', '—', '—' ],
+              [ _q2Label, _pkFfa  || '—',  '—', '—', _pkMoist || '—', _pkDirt || '—' ]
+            ],
+            {
+              styles:    { fontSize: 7.5, cellPadding: 2.5 },
+              headStyles: { fillColor: RED_MD, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+              columnStyles: { 0: { cellWidth: 28 } }
+            }
+          );
+        }
+        gap(3);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // (old section 2 → now renumbered by the auto-counter `sec`)
+      // 4. SCREENING SUMMARY
       // ═══════════════════════════════════════════════════════════════════════
       S('Screening Summary');
       kv ('Group / Owners',  f.owners   || '—');

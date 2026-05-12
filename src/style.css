@@ -53,7 +53,12 @@
    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       3. DASHBOARD SHELL
       â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-   #dashboard {
+   /* Must not set display:flex on #dashboard alone: it beats .page { display:none } and the shell
+      stays in the layout under the login screen (scroll = “bypass” login). Only flex when active. */
+   #dashboard.page:not(.active) {
+     display: none;
+   }
+   #dashboard.page.active {
      display: flex;
      flex-direction: column;
      height: 100vh;
@@ -1570,6 +1575,48 @@
    }
    .cs-back-wrap {
      margin-top: 20px;
+   }
+
+   /* Module placeholders (Programs nav) — calm, typographic, no emoji */
+   .coming-soon--module {
+     min-height: 400px;
+     max-width: 520px;
+     margin: 0 auto;
+     padding: 40px 28px 48px;
+     gap: 14px;
+   }
+   .coming-soon--module .cs-title {
+     margin: 0;
+     max-width: 100%;
+   }
+   .coming-soon--module .cs-sub {
+     max-width: 400px;
+     margin: 0 auto;
+     font-size: 14px;
+     color: #6e5a5a;
+     line-height: 1.55;
+   }
+   .cs-soon-mark {
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     width: 52px;
+     height: 52px;
+     border-radius: 14px;
+     background: rgba(139, 26, 26, 0.07);
+     color: #8B1A1A;
+     margin-bottom: 2px;
+   }
+   .cs-soon-mark svg {
+     width: 24px;
+     height: 24px;
+   }
+
+   /* Second collapsible group — subtle separation from Compliance */
+   #mainSidebar .nav-group + .nav-group {
+     margin-top: 6px;
+     padding-top: 6px;
+     border-top: 1px solid rgba(74, 28, 28, 0.06);
    }
 
    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

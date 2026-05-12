@@ -126,12 +126,6 @@ window.openViewScreeningPopup = async function() {
 
 // ── TYPE SELECTOR ──────────────────────────────────────────────
 window.openTmlScreeningPicker = function() {
-  if (window._sddUserRole === 'APPROVER') {
-    if (typeof window.showSddToast === 'function') {
-      window.showSddToast('Start Screening tidak tersedia untuk akun approver.', 'info');
-    }
-    return;
-  }
   // Reset type selection
   window._tmlScreeningType = '';
   window._tmlSelectedMill = '';
@@ -332,10 +326,6 @@ window.tmlToggleHa = function(cb, haId) {
  * Save as Draft / Submit di main form (handleFinalSave → apiCreateSubmission/apiUpdateSubmission).
  */
 window.saveTmlScreening = function() {
-  if (window._sddUserRole === 'APPROVER') {
-    if (typeof window.showSddToast === 'function') window.showSddToast('Akun approver tidak dapat menyimpan screening TML.', 'info');
-    return;
-  }
   const mill = window._tmlSelectedMill;
   if (!mill) {
     alert('Pilih Mill terlebih dahulu.');
@@ -568,10 +558,6 @@ window.ffbToggleHa = function(cb, haId) {
  * Save as Draft / Submit di main form (handleFinalSave → apiCreateSubmission/apiUpdateSubmission).
  */
 window.saveFfbScreening = function() {
-  if (window._sddUserRole === 'APPROVER') {
-    if (typeof window.showSddToast === 'function') window.showSddToast('Akun approver tidak dapat menyimpan screening FFB.', 'info');
-    return;
-  }
   const supplier = window._ffbSelectedSupplier;
   if (!supplier) {
     alert('Pilih supplier terlebih dahulu.');

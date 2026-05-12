@@ -3,10 +3,14 @@ import './overview-landing.css';
 const BG_SVG = `<svg class="ov-ld__bg-svg" viewBox="0 0 300 420" fill="none" aria-hidden="true"><rect x="110" y="10" width="9" height="320" fill="#5a1515"/><rect x="88" y="76" width="52" height="7" fill="#5a1515"/><rect x="65" y="95" width="94" height="195" rx="2" fill="#5a1515"/><rect x="76" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="76" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="76" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="58" y="288" width="108" height="7" fill="#5a1515"/><rect x="180" y="155" width="7" height="140" fill="#5a1515"/><rect x="163" y="177" width="40" height="6" fill="#5a1515"/><rect x="155" y="182" width="56" height="113" rx="1" fill="#5a1515"/><rect x="164" y="198" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="186" y="198" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="164" y="224" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="186" y="224" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="148" y="293" width="68" height="7" fill="#5a1515"/><line x1="38" y1="300" x2="255" y2="300" stroke="#5a1515" stroke-width="3.5"/></svg>`;
 
 const ICONS = {
-  mill: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="1"/><path d="M7 10V7a2 2 0 014 0M13 10V7a2 2 0 014 0"/><line x1="12" y1="10" x2="12" y2="21"/></svg>`,
-  ttp: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
-  grievance: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  bl: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+  mill: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="1"/><path d="M7 10V7a2 2 0 014 0M13 10V7a2 2 0 014 0"/><line x1="12" y1="10" x2="12" y2="21"/></svg>`,
+  ttp: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+  grievance: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  bl: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+  facility: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`,
+  eudr: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a14 14 0 0 1 0 20 14 14 0 0 1 0-20"/></svg>`,
+  contacts: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  priority: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
 };
 
 const CARDS = [
@@ -33,6 +37,30 @@ const CARDS = [
     title: 'BL Monitoring',
     desc: 'Stay updated on the latest shipment and bill of lading activities.',
     icon: 'bl',
+  },
+  {
+    panel: 'performa-facility',
+    title: 'Performa Facility',
+    desc: 'KPI fasilitas, throughput, dan reliabilitas — rencana modul terpadu.',
+    icon: 'facility',
+  },
+  {
+    panel: 'eudr-potential',
+    title: 'EUDR Potential',
+    desc: 'Kesiapan dan paparan risiko terkait EU Deforestation Regulation.',
+    icon: 'eudr',
+  },
+  {
+    panel: 'contact-list-supplier',
+    title: 'Contact List Supplier',
+    desc: 'Direktori kontak supplier dan jalur eskalasi dalam satu tampilan.',
+    icon: 'contacts',
+  },
+  {
+    panel: 'priority-supplier-engagement',
+    title: 'Priority Supplier Engagement',
+    desc: 'Prioritas follow-up strategis dan status sentuhan dengan supplier kunci.',
+    icon: 'priority',
   },
 ];
 
@@ -71,9 +99,16 @@ export function mountOverviewLanding(container) {
   glow.className = 'ov-ld__glow';
   root.appendChild(glow);
 
-  const svgTpl = document.createElement('template');
-  svgTpl.innerHTML = BG_SVG.trim();
-  root.appendChild(svgTpl.content.firstElementChild);
+  const bgWrap = document.createElement('div');
+  bgWrap.className = 'ov-ld__bg-buildings';
+  bgWrap.setAttribute('aria-hidden', 'true');
+  for (let i = 1; i <= 4; i += 1) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = BG_SVG.replace('ov-ld__bg-svg"', `ov-ld__bg-svg ov-ld__bg-svg--${i}"`).trim();
+    const el = tpl.content.firstElementChild;
+    if (el) bgWrap.appendChild(el);
+  }
+  root.appendChild(bgWrap);
 
   const main = document.createElement('div');
   main.className = 'ov-ld__main';

@@ -1694,6 +1694,15 @@ function setSubmissionStatus(payload) {
     throw new Error('Cannot update status of a deleted submission: ' + sid);
   }
 
+  // Guard: cannot change statusSDD while SCR is still Submitted (unlock with scr_status → Draft first).
+  const currentScrStatus = String(mainHit.obj['SCR - Screening Status'] || '').trim().toLowerCase();
+  if (currentScrStatus === 'submitted' && payload.statusSDD !== undefined) {
+    throw new Error(
+      'Cannot change statusSDD for a Submitted screening (' + sid + '). ' +
+      'Set scr_status="Draft" first to unlock, then update statusSDD.'
+    );
+  }
+
   const patch = { updated_at: now, updated_by: user };
 
   if (payload.statusSDD          !== undefined) patch['statusSDD']                = payload.statusSDD;
