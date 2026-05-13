@@ -1168,12 +1168,19 @@ function mirrorMillQuarterYearOnRead_(obj) {
 
 function getData(sheetKey) {
   const sheet = getSheet(sheetKey);
-  const rows  = sheet.getDataRange().getValues();
+  const range = sheet.getDataRange();
+  const rows  = range.getValues();
   if (!rows.length) return [];
   const headers = rows[0];
+
+  // For Mill data we need display-preserved numerics (e.g. "66.000")
+  // so UI matches the exact visual formatting in Google Sheets.
+  const dispRows = sheetKey === 'mill' ? range.getDisplayValues() : null;
+
   return rows.slice(1).map(function(row, i) {
+    const sourceRow = dispRows ? dispRows[i + 1] : row;
     const obj = { _row: i + 2 };
-    headers.forEach(function(h, j) { obj[h] = rows[i + 1][j]; });
+    headers.forEach(function(h, j) { obj[h] = sourceRow[j]; });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     return obj;
   });

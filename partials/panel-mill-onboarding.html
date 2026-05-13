@@ -96,17 +96,17 @@
       <div class="ttp-dropdown-wrap" id="millPdfFilterWrap">
         <button type="button" class="ttp-btn-select" id="millPdfBtnFilterDims" aria-expanded="false" aria-controls="millPdfFilterDimsPanel">
           <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span>
-          Filter export
+          Filter registry
           <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
-        <div class="ttp-dropdown-panel mill-pdf-filter-panel" id="millPdfFilterDimsPanel" role="region" aria-label="Filter nilai untuk PDF">
+        <div class="ttp-dropdown-panel mill-pdf-filter-panel" id="millPdfFilterDimsPanel" role="region" aria-label="Filter nilai registry dan PDF">
           <div class="ttp-dropdown-head">
-            <span class="ttp-dropdown-title">Nilai yang diekspor</span>
+            <span class="ttp-dropdown-title">Nilai di tabel &amp; PDF</span>
             <div class="ttp-dropdown-actions">
               <button type="button" id="millPdfDimResetAll">Reset semua</button>
             </div>
           </div>
-          <p class="mill-pdf-toolbar-hint">Kosongkan semua centang pada satu dimensi = tidak membatasi dimensi itu. Kombinasi dengan chip NBL / Non-NBL dan kotak pencarian di atas.</p>
+          <p class="mill-pdf-toolbar-hint">Kosongkan semua centang pada satu dimensi = tidak membatasi dimensi itu. Mempengaruhi baris yang tampil di tabel registry dan baris yang diekspor ke PDF. Kombinasi dengan chip NBL / Non-NBL, filter kolom header, dan kotak pencarian di atas.</p>
           <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="quarter">
             <div class="mill-pdf-dim-head">
               <span>Quarter</span>
@@ -176,8 +176,7 @@
       <table id="millTable" style="display:none;">
         <thead>
           <tr>
-            <th class="mill-th-sort" data-mill-sort="QUARTER" scope="col"><span class="mill-th-head-wrap"><span class="mill-th-sort-lbl">Quarter</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="QUARTER" title="Filter Quarter">▾</button></span><span class="mill-th-sort-ind" aria-hidden="true"></span></th>
-            <th class="mill-th-sort" data-mill-sort="YEAR" scope="col"><span class="mill-th-head-wrap"><span class="mill-th-sort-lbl">Year</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="YEAR" title="Filter Year">▾</button></span><span class="mill-th-sort-ind" aria-hidden="true"></span></th>
+            <th><span class="mill-th-head-wrap"><span>Result Risk Level</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="RESULT RISK LEVEL" title="Filter Result Risk Level">▾</button></span></th>
             <th><span class="mill-th-head-wrap"><span>Group Name</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="GROUP NAME" title="Filter Group Name">▾</button></span></th>
             <th><span class="mill-th-head-wrap"><span>Company Name</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="COMPANY NAME" title="Filter Company Name">▾</button></span></th>
             <th><span class="mill-th-head-wrap"><span>Mill Name</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="MILL NAME" title="Filter Mill Name">▾</button></span></th>

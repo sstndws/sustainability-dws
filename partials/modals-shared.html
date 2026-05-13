@@ -32,11 +32,35 @@
 <div class="mill-profile-overlay" id="millProfileOverlay">
   <div class="mill-profile-box">
     <div class="mill-profile-head">
-      <div class="mill-profile-head-left">
-        <h2 id="mp-mill-name">Mill Name</h2>
-        <div class="mp-sub" id="mp-mill-sub">UML ID • Group Name</div>
+      <div class="mill-profile-head-inner">
+        <div class="mill-profile-head-main">
+          <div class="mill-profile-head-left">
+            <h2 id="mp-mill-name">Mill Name</h2>
+            <div class="mp-loc" id="mp-mill-loc">—</div>
+            <div class="mp-supplier-line" id="mp-mill-supplier">—</div>
+          </div>
+          <div class="mill-profile-head-right">
+            <div class="mp-head-stack">
+              <span class="mp-head-k">No buy list</span>
+              <div class="mp-head-val" id="mp-mill-nbl">—</div>
+            </div>
+            <div class="mp-head-stack">
+              <span class="mp-head-k">Result risk level</span>
+              <div class="mp-head-val" id="mp-mill-result-risk">—</div>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="mill-profile-close" id="millProfileClose" aria-label="Tutup">✕</button>
       </div>
-      <button class="mill-profile-close" id="millProfileClose">✕</button>
+    </div>
+    <div class="mill-profile-qy-bar" id="millProfileQyBar">
+      <div class="mill-profile-qy-inner">
+        <label class="mp-qy-label" for="millProfileYearSel">Year</label>
+        <select id="millProfileYearSel" class="mill-profile-qy-select" autocomplete="off"></select>
+        <label class="mp-qy-label" for="millProfileQuarterSel">Quarter</label>
+        <select id="millProfileQuarterSel" class="mill-profile-qy-select" autocomplete="off"></select>
+        <button id="millProfileExportPdfBtn" class="mill-profile-qy-export-btn" type="button">Export PDF</button>
+      </div>
     </div>
     <div class="mill-profile-body" id="millProfileBody"></div>
   </div>
