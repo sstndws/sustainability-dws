@@ -1,5 +1,6 @@
 import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
+import { getJsPDF } from './pdf-libs.js';
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -5736,7 +5737,7 @@ function initDashboardApp() {
     scheduleRenderMillTable();
   }
 
-  function millExportToPdf() {
+  async function millExportToPdf() {
     const toastErr = function(msg) {
       if (typeof window.showSddToast === 'function') window.showSddToast(msg, 'error');
     };
@@ -5750,28 +5751,13 @@ function initDashboardApp() {
       toastErr('Pilih minimal satu kolom di menu Kolom PDF.');
       return;
     }
-    const JsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
-    if (!JsPDFLib) {
-      toastErr('Library jsPDF belum dimuat. Refresh halaman.');
-      return;
-    }
-    let probe;
-    try {
-      probe = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-    } catch (e) {
-      toastErr('Gagal membuat PDF: ' + (e.message || e));
-      return;
-    }
-    if (typeof probe.autoTable !== 'function') {
-      toastErr('Plugin AutoTable belum dimuat. Refresh halaman.');
-      return;
-    }
 
     const btn = document.getElementById('btn-mill-export-pdf');
     const prevHtml = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Menghasilkan…'; }
 
     try {
+      const JsPDFLib = getJsPDF();
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
       const RED = [139, 26, 26];
       const WHITE = [255, 255, 255];
@@ -6381,85 +6367,6 @@ function initDashboardApp() {
     return row || siblings[0];
   }
 
-  function loadScriptOnce_(src, id, isReadyFn) {
-    return new Promise(function(resolve, reject) {
-      if (typeof isReadyFn === 'function' && isReadyFn()) {
-        resolve();
-        return;
-      }
-      let s = document.getElementById(id);
-      if (s) {
-        if (s.dataset.loaded === '1' || (typeof isReadyFn === 'function' && isReadyFn())) {
-          resolve();
-          return;
-        }
-        const timeoutId = window.setTimeout(function() {
-          if (typeof isReadyFn === 'function' && isReadyFn()) {
-            s.dataset.loaded = '1';
-            resolve();
-          } else {
-            reject(new Error('Timeout loading script: ' + src));
-          }
-        }, 8000);
-        s.addEventListener('load', function onLoad() {
-          window.clearTimeout(timeoutId);
-          s.dataset.loaded = '1';
-          resolve();
-        }, { once: true });
-        s.addEventListener('error', function onErr() {
-          window.clearTimeout(timeoutId);
-          reject(new Error('Gagal memuat script: ' + src));
-        }, { once: true });
-        return;
-      }
-      s = document.createElement('script');
-      s.id = id;
-      s.src = src;
-      s.async = true;
-      const timeoutId = window.setTimeout(function() {
-        if (typeof isReadyFn === 'function' && isReadyFn()) {
-          s.dataset.loaded = '1';
-          resolve();
-        } else {
-          reject(new Error('Timeout loading script: ' + src));
-        }
-      }, 8000);
-      s.onload = function() {
-        window.clearTimeout(timeoutId);
-        s.dataset.loaded = '1';
-        resolve();
-      };
-      s.onerror = function() {
-        window.clearTimeout(timeoutId);
-        reject(new Error('Gagal memuat script: ' + src));
-      };
-      document.head.appendChild(s);
-    });
-  }
-
-  async function ensureMillPdfDeps_() {
-    if (!(window.jspdf && window.jspdf.jsPDF) && !window.jsPDF) {
-      await loadScriptOnce_(
-        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-        'jspdf-core',
-        function() { return !!((window.jspdf && window.jspdf.jsPDF) || window.jsPDF); }
-      );
-    }
-    const JsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
-    const hasAutoTable = !!(JsPDFLib && JsPDFLib.API && typeof JsPDFLib.API.autoTable === 'function');
-    if (!hasAutoTable) {
-      await loadScriptOnce_(
-        'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
-        'jspdf-autotable',
-        function() {
-          const lib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
-          return !!(lib && lib.API && typeof lib.API.autoTable === 'function');
-        }
-      );
-    }
-    return (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
-  }
-
   async function millProfileExportPdf() {
     const row = millProfileCurrentRow_();
     const btn = document.getElementById('millProfileExportPdfBtn');
@@ -6474,14 +6381,7 @@ function initDashboardApp() {
     const prevTxt = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Exporting...'; }
     try {
-      const JsPDFLib = await ensureMillPdfDeps_();
-      if (!JsPDFLib) {
-        throw new Error('Library jsPDF belum dimuat.');
-      }
-      const probe = new JsPDFLib({ unit: 'mm', format: 'a4' });
-      if (typeof probe.autoTable !== 'function') {
-        throw new Error('Plugin AutoTable belum termuat.');
-      }
+      const JsPDFLib = getJsPDF();
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4' });
       const title = String(row['COMPANY NAME'] || row['MILL NAME'] || 'Mill Profile').trim() || 'Mill Profile';
       const group = String(row['GROUP NAME'] || '').trim();
@@ -8091,7 +7991,7 @@ function initDashboardApp() {
   }
 
   // ─── SDD PDF EXPORT ─────────────────────────────────────────────────────────
-  function sddExportPdf() {
+  async function sddExportPdf() {
     var status = String(
       (window._scrData && window._scrData.status) ||
       (window._loadedPrimarySddRow && window._loadedPrimarySddRow['SCR - Screening Status']) || ''
@@ -8102,16 +8002,12 @@ function initDashboardApp() {
       }
       return;
     }
-    if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
-      if (typeof window.showSddToast === 'function') window.showSddToast('Library jsPDF belum dimuat.', 'error');
-      return;
-    }
 
     var pdfBtn = document.getElementById('sdd-export-pdf-btn');
     if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.innerHTML = 'Generating…'; }
 
     try {
-      var jsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+      var jsPDFLib = getJsPDF();
       var doc = new jsPDFLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
       // ─── Data sources ────────────────────────────────────────────────────
