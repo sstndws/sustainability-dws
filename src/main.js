@@ -6505,12 +6505,22 @@ function initDashboardApp() {
     if (!row) return;
     millProfileUpdateHeaderFromRow_(row);
     millProfileRenderBody_(row);
+    millProfileResetScroll_();
+  }
+
+  function millProfileResetScroll_() {
+    const mpOverlay = document.getElementById('millProfileOverlay');
+    if (!mpOverlay) return;
+    const mpBox = mpOverlay.querySelector('.mill-profile-box');
+    const mpBody = document.getElementById('millProfileBody');
+    [mpOverlay, mpBox, mpBody].forEach(function(el) {
+      if (el) el.scrollTop = 0;
+    });
   }
 
   function openMillProfile(d) {
     millProfileVariantRows_ = millProfileSameEntityRows_(d).slice().sort(millProfileComparePeriodDesc_);
     const chosen = millProfileVariantRows_[0] || d;
-    const mpBody = document.getElementById('millProfileBody');
     const mpOverlay = document.getElementById('millProfileOverlay');
     const yBar = document.getElementById('millProfileQyBar');
     const ySel = document.getElementById('millProfileYearSel');
@@ -6541,9 +6551,9 @@ function initDashboardApp() {
     millProfileUpdateHeaderFromRow_(displayRow);
     millProfileRenderBody_(displayRow);
 
-    if (mpBody) mpBody.scrollTop = 0;
-    if (mpOverlay) mpOverlay.scrollTop = 0;
     mpOverlay?.classList.add('active');
+    millProfileResetScroll_();
+    requestAnimationFrame(function() { millProfileResetScroll_(); });
   }
 
   (function bindMillProfileOverlay() {
@@ -6553,11 +6563,13 @@ function initDashboardApp() {
       console.warn('[dashboard] Mill profile overlay nodes missing.');
       return;
     }
-    mpc.addEventListener('click', () => {
+    function closeMillProfileOverlay_() {
       mpo.classList.remove('active');
-    });
+      millProfileResetScroll_();
+    }
+    mpc.addEventListener('click', closeMillProfileOverlay_);
     mpo.addEventListener('click', function(e) {
-      if (e.target === this) this.classList.remove('active');
+      if (e.target === this) closeMillProfileOverlay_();
     });
     mpo.addEventListener('change', function(e) {
       const t = e.target;
