@@ -6,16 +6,55 @@
           <p>Trade partner and trade point monitoring data</p>
         </div>
 
-        <div class="stats-row">
-          <div class="stat-card">
-            <div class="stat-card-num" id="ttp-stat-total">—</div>
-            <div class="stat-card-label">Total Records</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-card-num" id="ttp-stat-loaded">—</div>
-            <div class="stat-card-label">Loaded</div>
+        <div class="ttp-top-metrics">
+          <section class="ttp-period-bar" aria-label="Filter by period">
+            <div class="ttp-period-bar-inner">
+              <div class="ttp-period-mode" role="tablist" aria-label="Period type">
+                <button type="button" class="ttp-period-mode-btn" data-ttp-period-mode="quarter" role="tab">Quarter</button>
+                <button type="button" class="ttp-period-mode-btn active" data-ttp-period-mode="overall" role="tab">Full year</button>
+              </div>
+              <div class="ttp-period-pickers" id="ttpPeriodPickers">
+                <label class="ttp-period-field" id="ttpPeriodYearWrap">
+                  <span class="ttp-period-field-label">Year</span>
+                  <select id="ttpPeriodYear" class="ttp-period-select" autocomplete="off"></select>
+                </label>
+                <label class="ttp-period-field" id="ttpPeriodQuarterWrap">
+                  <span class="ttp-period-field-label">Quarter</span>
+                  <select id="ttpPeriodQuarter" class="ttp-period-select" autocomplete="off">
+                    <option value="Q1">Q1</option>
+                    <option value="Q2">Q2</option>
+                    <option value="Q3">Q3</option>
+                    <option value="Q4">Q4</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <p class="ttp-period-meta" id="ttpPeriodMeta">—</p>
+          </section>
+
+          <div class="ttp-traceable-row">
+            <div class="stat-card ttp-traceable-card ttp-traceable-card--cpo">
+              <div class="stat-card-num" id="ttp-stat-cpo-traceable">—</div>
+              <div class="stat-card-label">Traceable CPO</div>
+            </div>
+            <div class="stat-card ttp-traceable-card ttp-traceable-card--pk">
+              <div class="stat-card-num" id="ttp-stat-pk-traceable">—</div>
+              <div class="stat-card-label">Traceable PK</div>
+            </div>
           </div>
         </div>
+
+        <!-- Category mix — % of all records (5 supplier types) -->
+        <section class="ttp-category-mix-card" id="ttpCategoryMixSection" hidden aria-label="Supplier category distribution">
+          <div class="ttp-category-mix-header">
+            <div>
+              <h2 class="ttp-category-mix-title">Category distribution</h2>
+              <p class="ttp-category-mix-desc">Share across the five supplier categories (rows outside these types are excluded)</p>
+            </div>
+          </div>
+          <div class="ttp-category-mix-bar" id="ttpCategoryMixBar" role="presentation" aria-hidden="true"></div>
+          <div class="ttp-category-mix-grid" id="ttpCategoryMixGrid"></div>
+        </section>
 
         <div class="table-card">
           <div class="table-header">
@@ -85,13 +124,13 @@
           <!-- View toggle: Grouped / Flat -->
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px 6px;border-bottom:1px solid rgba(74,28,28,0.06);">
             <div class="ttp-view-toggle">
-              <button class="ttp-view-btn active" id="ttpViewGrouped" title="Grouped by Mill Name">
+              <button class="ttp-view-btn active" id="ttpViewFlat" title="One row per record — click a row for supplier detail">
+                <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                Table view
+              </button>
+              <button class="ttp-view-btn" id="ttpViewGrouped" title="Summarize multiple records per mill">
                 <svg viewBox="0 0 24 24"><path d="M3 6h7v7H3z"/><path d="M14 6h7v7h-7z"/><path d="M3 17h7v4H3z"/><path d="M14 17h7v4h-7z"/></svg>
                 Grouped by Mill
-              </button>
-              <button class="ttp-view-btn" id="ttpViewFlat" title="Flat / original view">
-                <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-                Flat (All Rows)
               </button>
             </div>
             <div style="font-size:11px;color:#B09A9A;" id="ttpGroupInfo"></div>
@@ -104,8 +143,8 @@
             </button>
           </div>
           <div id="ttp-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
-          <div style="overflow-x:auto;">
-            <table id="ttpTable" style="display:none;">
+          <div class="table-scroll ttp-table-scroll">
+            <table id="ttpTable" class="ttp-registry-table" style="display:none;">
               <thead id="ttpTableHead"></thead>
               <tbody id="ttpTableBody"></tbody>
             </table>

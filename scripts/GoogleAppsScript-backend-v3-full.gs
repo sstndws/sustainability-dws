@@ -49,7 +49,42 @@ const SHEETS = {
   sddMain   : 'SDD_MAIN',
   sddMill   : 'SDD_MILL_LIST',
   sddFfb    : 'SDD_FFB_LIST',
+  contactSupplier : 'Contact List Supplier',
+  nbl             : 'NBL',
+  unileverNbl     : 'Unilever NBL',
 };
+
+const NBL_HEADERS = [
+  'Riser',
+  'Group Name NBL',
+  'Company Name NBL',
+  'SOURCE',
+];
+
+const UNILEVER_NBL_HEADERS = [
+  'NO.',
+  'UML ID',
+  'COMPANY NAME',
+  'MILL NAME',
+  'COUNTRY',
+  'PROVINCE',
+  'DISTRICT / REGENCY',
+  'LAT.',
+  'LONG.',
+];
+
+const CONTACT_SUPPLIER_HEADERS = [
+  'submission_id',
+  'Group Name',
+  'Company Name',
+  'Supplier Type',
+  'Sustainability PIC',
+  'Phone Number',
+  'statusSDD',
+  'approved_at',
+  'updated_at',
+  'updated_by',
+];
 
 // ═══════════════════════════════════════════════════════════
 //  COORDINATE COLUMN NAMES
@@ -216,6 +251,17 @@ const TTP_HEADERS = [
   '% PK TRACEABLE', '% CPO TRACEABLE',
   'Total PK % Traceable', 'Total CPO % Traceable',
   'MSD', 'PK Traceable Volume', 'CPO Traceable Volume',
+  'submission_id', 'ffb_line_id', 'supplier_type', 'synced_at', 'synced_by',
+];
+
+/** TTP columns filled by monitoring team — not overwritten on SDD re-sync when already set. */
+const TTP_MONITORING_PRESERVE_KEYS = [
+  'NO', 'COMPANY CODE', 'PROVINCE', 'VILLAGE ID',
+  '% PK TRACEABLE', '% CPO TRACEABLE',
+  'Total PK % Traceable', 'Total CPO % Traceable',
+  'MSD', 'PK Traceable Volume', 'CPO Traceable Volume',
+  'CONVERSION FFB to PK (5%)', 'PK SUPPLY to KCP',
+  'CONVERSION FFB to CPO (20%)', 'CPO SUPPLY to REFINERY',
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -229,6 +275,9 @@ function doGet(e) {
 
     if (action === 'getAll') {
       if (sheetKey === 'ttp') ensureTtpHeaders_();
+      if (sheetKey === 'contactSupplier') ensureContactSupplierHeaders_();
+      if (sheetKey === 'nbl') ensureNblHeaders_();
+      if (sheetKey === 'unileverNbl') ensureUnileverNblHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')       return respond(getByMillId(e.parameter.millId));
@@ -533,6 +582,348 @@ function ensureAllRelationalHeaders_() {
   ensureRelationalHeaders_('sddFfb');
 }
 
+function ensureSheetHeadersGeneric_(sheetKey, wantHeaders) {
+  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const name = SHEETS[sheetKey];
+  if (!name) throw new Error('Sheet key not found: ' + sheetKey);
+  let ws     = ss.getSheetByName(name);
+  if (!ws) ws = ss.insertSheet(name);
+
+  const lastCol = ws.getLastColumn();
+  if (lastCol === 0 || ws.getLastRow() === 0) {
+    ws.getRange(1, 1, 1, wantHeaders.length).setValues([wantHeaders]);
+    return ws;
+  }
+
+  const existing = ws.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  const existingSet = new Set(existing.filter(Boolean));
+  const missing = wantHeaders.filter(function(h) { return !existingSet.has(h); });
+  if (missing.length) {
+    const startCol = existing.filter(Boolean).length + 1;
+    ws.insertColumnsAfter(Math.max(startCol - 1, 0), missing.length);
+    ws.getRange(1, startCol, 1, missing.length).setValues([missing]);
+  }
+  return ws;
+}
+
+function ensureContactSupplierHeaders_() {
+  return ensureSheetHeadersGeneric_('contactSupplier', CONTACT_SUPPLIER_HEADERS);
+}
+
+function ensureNblHeaders_() {
+  return ensureSheetHeadersGeneric_('nbl', NBL_HEADERS);
+}
+
+function ensureUnileverNblHeaders_() {
+  return ensureSheetHeadersGeneric_('unileverNbl', UNILEVER_NBL_HEADERS);
+}
+
+function normalizeSddDecisionLabel_(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'approve' || s === 'approved') return 'APPROVED';
+  if (s === 'hold' || s === 'on hold') return 'ON HOLD';
+  if (s === 'reject' || s === 'rejected') return 'REJECTED';
+  return String(raw || '').trim().toUpperCase();
+}
+
+function readContactSupplierRows_() {
+  const ws = ensureContactSupplierHeaders_();
+  const range = ws.getDataRange();
+  const values = range.getValues();
+  if (!values.length) return { ws: ws, headers: CONTACT_SUPPLIER_HEADERS.slice(), rows: [] };
+
+  const headers = values[0].map(function(h) { return String(h || '').trim(); });
+  const rows = [];
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const empty = !row.some(function(c) { return String(c || '').trim() !== ''; });
+    if (empty) continue;
+    const obj = { _row: r + 1 };
+    headers.forEach(function(h, i) {
+      if (h) obj[h] = row[i];
+    });
+    rows.push(obj);
+  }
+  return { ws: ws, headers: headers, rows: rows };
+}
+
+function findContactRowBySubmissionId_(sid) {
+  const result = readContactSupplierRows_();
+  for (let i = 0; i < result.rows.length; i++) {
+    if (String(result.rows[i]['submission_id'] || '').trim() === sid) {
+      return { ws: result.ws, headers: result.headers, row: result.rows[i], _sheetRow: result.rows[i]._row };
+    }
+  }
+  return null;
+}
+
+function appendContactSupplierRow_(ws, headers, obj) {
+  const row = headers.map(function(h) {
+    return obj[h] !== undefined && obj[h] !== null ? obj[h] : '';
+  });
+  ws.appendRow(row);
+}
+
+function patchContactSupplierRow_(ws, headers, sheetRow, patch) {
+  const headerIndex = {};
+  headers.forEach(function(h, i) { if (h) headerIndex[h] = i; });
+  Object.keys(patch).forEach(function(key) {
+    const col = headerIndex[key];
+    if (col === undefined) return;
+    ws.getRange(sheetRow, col + 1).setValue(patch[key]);
+  });
+}
+
+/**
+ * When SDD decision is APPROVED, copy Sustainability PIC + Phone Number into Contact List Supplier.
+ * Upserts by submission_id (re-approve updates the same row).
+ */
+function syncContactFromApprovedSubmission_(sid, mainObj, user, now) {
+  sid = String(sid || '').trim();
+  if (!sid) return { synced: false, skipped: true, reason: 'missing_submission_id' };
+
+  const merged = mainObj || {};
+  const decision = normalizeSddDecisionLabel_(
+    merged['statusSDD'] || merged['statusBossDecision'] || ''
+  );
+  if (decision !== 'APPROVED') {
+    return { synced: false, skipped: true, reason: 'not_approved', decision: decision };
+  }
+
+  const pic = String(merged['Sustainability PIC'] || '').trim();
+  const phone = String(merged['Sustainability PIC Mobile'] || merged['Phone Number'] || '').trim();
+  if (!pic && !phone) {
+    return { synced: false, skipped: true, reason: 'empty_contact_fields' };
+  }
+
+  const wsResult = readContactSupplierRows_();
+  const ws = wsResult.ws;
+  const headers = wsResult.headers;
+  const patch = {
+    'submission_id': sid,
+    'Group Name': String(merged['Group Name'] || '').trim(),
+    'Company Name': String(merged['Company Name'] || '').trim(),
+    'Supplier Type': String(merged['supplier_type'] || merged['Supplier Type'] || '').trim(),
+    'Sustainability PIC': pic,
+    'Phone Number': phone,
+    'statusSDD': 'APPROVED',
+    'approved_at': now,
+    'updated_at': now,
+    'updated_by': user,
+  };
+
+  const hit = findContactRowBySubmissionId_(sid);
+  if (hit) {
+    patchContactSupplierRow_(ws, headers, hit._sheetRow, patch);
+    return { synced: true, updated: true, submission_id: sid };
+  }
+
+  appendContactSupplierRow_(ws, headers, patch);
+  return { synced: true, inserted: true, submission_id: sid };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TTP / TTM  ─ SYNC FROM APPROVED SDD (FFB rows)
+// ═══════════════════════════════════════════════════════════
+
+function isBlankTtpCell_(v) {
+  const s = String(v === undefined || v === null ? '' : v).trim();
+  if (!s || s === '—' || s === '-') return true;
+  if (/^please select$/i.test(s)) return true;
+  if (/^silahkan pilih$/i.test(s)) return true;
+  return false;
+}
+
+function isMeaningfulSddFfbRow_(ffb) {
+  if (!ffb || typeof ffb !== 'object') return false;
+  if (String(ffb['is_deleted'] || '') === '1') return false;
+  const name = String(ffb['FFB - Supplier Name'] || '').trim();
+  const grp  = String(ffb['FFB - Supplier Group Name'] || '').trim();
+  return !!(name || grp);
+}
+
+function readTtpRows_() {
+  ensureTtpHeaders_();
+  const ws = getSheet('ttp');
+  const range = ws.getDataRange();
+  const values = range.getValues();
+  if (!values.length) {
+    return { ws: ws, headers: TTP_HEADERS.slice(), rows: [] };
+  }
+
+  const headers = values[0].map(function(h) { return String(h || '').trim(); });
+  const rows = [];
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const empty = !row.some(function(c) { return String(c || '').trim() !== ''; });
+    if (empty) continue;
+    const obj = { _row: r + 1 };
+    headers.forEach(function(h, i) {
+      if (h) obj[h] = row[i];
+    });
+    rows.push(obj);
+  }
+  return { ws: ws, headers: headers, rows: rows };
+}
+
+function findTtpRowBySyncKeys_(rows, sid, lineId, patch) {
+  sid = String(sid || '').trim();
+  lineId = String(lineId || '').trim();
+  const supName = String((patch && patch['FFB SUPPLIER NAME']) || '').trim().toLowerCase();
+  const supGrp  = String((patch && patch['FFB SUPPLIER GROUP NAME']) || '').trim().toLowerCase();
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (String(row['submission_id'] || '').trim() !== sid) continue;
+    if (lineId && String(row['ffb_line_id'] || '').trim() === lineId) {
+      return { row: row, _sheetRow: row._row };
+    }
+  }
+  if (supName || supGrp) {
+    for (let j = 0; j < rows.length; j++) {
+      const row2 = rows[j];
+      if (String(row2['submission_id'] || '').trim() !== sid) continue;
+      const n = String(row2['FFB SUPPLIER NAME'] || '').trim().toLowerCase();
+      const g = String(row2['FFB SUPPLIER GROUP NAME'] || '').trim().toLowerCase();
+      if (supName && n === supName && (!supGrp || g === supGrp)) {
+        return { row: row2, _sheetRow: row2._row };
+      }
+    }
+  }
+  return null;
+}
+
+function appendTtpRow_(ws, headers, obj) {
+  const row = headers.map(function(h) {
+    return obj[h] !== undefined && obj[h] !== null ? obj[h] : '';
+  });
+  ws.appendRow(row);
+}
+
+function patchTtpRow_(ws, headers, sheetRow, patch) {
+  const headerIndex = {};
+  headers.forEach(function(h, i) { if (h) headerIndex[h] = i; });
+  Object.keys(patch).forEach(function(key) {
+    const col = headerIndex[key];
+    if (col === undefined) return;
+    ws.getRange(sheetRow, col + 1).setValue(patch[key]);
+  });
+}
+
+function mergeTtpPreserveMonitoring_(existingRow, patch) {
+  const out = Object.assign({}, patch);
+  TTP_MONITORING_PRESERVE_KEYS.forEach(function(key) {
+    if (existingRow && !isBlankTtpCell_(existingRow[key])) {
+      out[key] = existingRow[key];
+    }
+  });
+  return out;
+}
+
+function buildTtpPatchFromSddFfb_(main, ffb, sid, user, now) {
+  const supplierType = String(main['supplier_type'] || main['Supplier Type'] || '').trim();
+  let millName = String(main['Mill Name'] || '').trim();
+  if (!millName && /trader/i.test(supplierType)) {
+    millName = String(main['Company Name'] || '').trim();
+  }
+
+  let lat = String(ffb['FFB - Latitude'] || '').trim();
+  let lng = String(ffb['FFB - Longitude'] || '').trim();
+  if (isBlankTtpCell_(lat)) lat = String(main['Latitude'] || '').trim();
+  if (isBlankTtpCell_(lng)) lng = String(main['Longitude'] || '').trim();
+
+  return {
+    'GROUP NAME'              : String(main['Group Name'] || '').trim(),
+    'COMPANY NAME'            : String(main['Company Name'] || '').trim(),
+    'MILL NAME'               : millName,
+    'FFB SUPPLIER GROUP NAME' : String(ffb['FFB - Supplier Group Name'] || '').trim(),
+    'FFB SUPPLIER NAME'       : String(ffb['FFB - Supplier Name'] || '').trim(),
+    'CATEGORY'                : String(ffb['FFB - Supplier Category'] || '').trim(),
+    'LAT'                     : lat,
+    'LONG'                    : lng,
+    'VILLAGE'                 : String(ffb['FFB - Village'] || '').trim(),
+    'SUBDISTRICT'             : String(ffb['FFB - Sub District'] || '').trim(),
+    'DISTRICT'                : String(ffb['FFB - District'] || '').trim(),
+    'CONCESION AREA'          : String(ffb['FFB - Concession Area (Ha)'] || '').trim(),
+    'PLANTED AREA'            : String(ffb['FFB - Planted Area (Ha)'] || '').trim(),
+    'NUMBER OD SMALLHOLDERS'  : String(ffb['FFB - Number of Smallholders'] || '').trim(),
+    'TAHUN TANAM'             : String(ffb['FFB - Planted Year'] || '').trim(),
+    'LEGALITAS'               : String(ffb['FFB - Legality'] || '').trim(),
+    'ISPO (Y/N)'              : String(ffb['FFB - ISPO (Y/N)'] || '').trim(),
+    'RSPO (Y/N)'              : String(ffb['FFB - RSPO (Y/N)'] || '').trim(),
+    'ISCC (Y/N)'              : String(ffb['FFB - ISCC (Y/N)'] || '').trim(),
+    'FFB SUPPLY to MILL (TON)' : String(ffb['FFB - Total Supply FFB (Ton)'] || '').trim(),
+    'submission_id'           : sid,
+    'ffb_line_id'             : String(ffb['line_id'] || '').trim(),
+    'supplier_type'           : supplierType,
+    'synced_at'               : now,
+    'synced_by'               : user,
+  };
+}
+
+/**
+ * When SDD decision is APPROVED, upsert Monitoring TTP/TTM rows (one per FFB child row).
+ * Does not overwrite monitoring-only columns when already filled.
+ */
+function syncTtpFromApprovedSubmission_(sid, mainObj, user, now) {
+  sid = String(sid || '').trim();
+  if (!sid) return { synced: false, skipped: true, reason: 'missing_submission_id' };
+
+  const merged = mainObj || {};
+  const decision = normalizeSddDecisionLabel_(
+    merged['statusSDD'] || merged['statusBossDecision'] || ''
+  );
+  if (decision !== 'APPROVED') {
+    return { synced: false, skipped: true, reason: 'not_approved', decision: decision };
+  }
+
+  const ffbRows = findChildRows_('sddFfb', sid)
+    .map(function(r) { return r.obj; })
+    .filter(isMeaningfulSddFfbRow_);
+
+  if (!ffbRows.length) {
+    return { synced: false, skipped: true, reason: 'no_ffb_rows', submission_id: sid };
+  }
+
+  const ttpResult = readTtpRows_();
+  let inserted = 0;
+  let updated = 0;
+  const errors = [];
+
+  ffbRows.forEach(function(ffb) {
+    try {
+      const lineId = String(ffb['line_id'] || '').trim();
+      const patch = buildTtpPatchFromSddFfb_(merged, ffb, sid, user, now);
+      const hit = findTtpRowBySyncKeys_(ttpResult.rows, sid, lineId, patch);
+      if (hit) {
+        const mergedPatch = mergeTtpPreserveMonitoring_(hit.row, patch);
+        patchTtpRow_(ttpResult.ws, ttpResult.headers, hit._sheetRow, mergedPatch);
+        Object.assign(hit.row, mergedPatch);
+        updated++;
+      } else {
+        appendTtpRow_(ttpResult.ws, ttpResult.headers, patch);
+        ttpResult.rows.push(Object.assign({ _row: ttpResult.ws.getLastRow() }, patch));
+        inserted++;
+      }
+    } catch (err) {
+      errors.push({
+        line_id: String(ffb['line_id'] || ''),
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  return {
+    synced: true,
+    submission_id: sid,
+    inserted: inserted,
+    updated: updated,
+    total_ffb: ffbRows.length,
+    errors: errors.length ? errors : undefined,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════
 //  TTP / TTM  ─ AUTO-INIT HEADERS
 // ═══════════════════════════════════════════════════════════
@@ -543,7 +934,7 @@ function ensureTtpHeaders_() {
 
   if (lastCol === 0) {
     sheet.getRange(1, 1, 1, TTP_HEADERS.length).setValues([TTP_HEADERS]);
-    return;
+    return sheet;
   }
 
   const existing    = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
@@ -551,11 +942,12 @@ function ensureTtpHeaders_() {
   const existingSet = new Set(existing.filter(Boolean));
   const missing     = TTP_HEADERS.filter(function(h) { return !existingSet.has(h); });
 
-  if (!missing.length) return;
-
-  const start = existing.length + 1;
-  sheet.insertColumnsAfter(existing.length, missing.length);
-  sheet.getRange(1, start, 1, missing.length).setValues([missing]);
+  if (missing.length) {
+    const start = existing.length + 1;
+    sheet.insertColumnsAfter(existing.length, missing.length);
+    sheet.getRange(1, start, 1, missing.length).setValues([missing]);
+  }
+  return sheet;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1518,6 +1910,12 @@ function updateSubmission(payload) {
       patch['updated_at'] = now;
       patch['updated_by'] = user;
       patchRelRow_(mainHit.ws, mainHit.headers, mainHit._sheetRow, patch);
+
+      if (payload.main.statusSDD !== undefined || payload.main.statusBossDecision !== undefined) {
+        const mergedMain = Object.assign({}, mainHit.obj, patch);
+        syncContactFromApprovedSubmission_(sid, mergedMain, user, now);
+        syncTtpFromApprovedSubmission_(sid, mergedMain, user, now);
+      }
     }
 
     const supplierType = String(mainHit.obj['supplier_type'] || 'MILL');
@@ -1530,11 +1928,25 @@ function updateSubmission(payload) {
       ? upsertChildSheet_('sddFfb',  sid, payload.ffb_rows, supplierType, user, now)
       : { upserted: 0, inserted: 0, deleted: 0 };
 
+    let ttpSync = null;
+    if (payload.ffb_rows !== undefined) {
+      const mainHitAfter = findMainRow_('sddMain', sid);
+      if (mainHitAfter) {
+        const decisionAfter = normalizeSddDecisionLabel_(
+          mainHitAfter.obj['statusSDD'] || mainHitAfter.obj['statusBossDecision'] || ''
+        );
+        if (decisionAfter === 'APPROVED') {
+          ttpSync = syncTtpFromApprovedSubmission_(sid, mainHitAfter.obj, user, now);
+        }
+      }
+    }
+
     return {
       success       : true,
       submission_id : sid,
       mills         : millStats,
       ffb           : ffbStats,
+      ttp_sync      : ttpSync,
     };
   } finally {
     try { lock.releaseLock(); } catch (e) { /* ignore */ }
@@ -1701,15 +2113,6 @@ function setSubmissionStatus(payload) {
     throw new Error('Cannot update status of a deleted submission: ' + sid);
   }
 
-  // Guard: cannot change statusSDD while SCR is still Submitted (unlock with scr_status → Draft first).
-  const currentScrStatus = String(mainHit.obj['SCR - Screening Status'] || '').trim().toLowerCase();
-  if (currentScrStatus === 'submitted' && payload.statusSDD !== undefined) {
-    throw new Error(
-      'Cannot change statusSDD for a Submitted screening (' + sid + '). ' +
-      'Set scr_status="Draft" first to unlock, then update statusSDD.'
-    );
-  }
-
   const patch = { updated_at: now, updated_by: user };
 
   if (payload.statusSDD          !== undefined) patch['statusSDD']                = payload.statusSDD;
@@ -1726,10 +2129,20 @@ function setSubmissionStatus(payload) {
 
   patchRelRow_(mainHit.ws, mainHit.headers, mainHit._sheetRow, patch);
 
+  let contactSync = null;
+  let ttpSync = null;
+  if (payload.statusSDD !== undefined) {
+    const mergedMain = Object.assign({}, mainHit.obj, patch);
+    contactSync = syncContactFromApprovedSubmission_(sid, mergedMain, user, now);
+    ttpSync = syncTtpFromApprovedSubmission_(sid, mergedMain, user, now);
+  }
+
   return {
     success        : true,
     submission_id  : sid,
     patched_fields : Object.keys(patch),
+    contact_sync   : contactSync,
+    ttp_sync       : ttpSync,
   };
 }
 

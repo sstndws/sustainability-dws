@@ -11,6 +11,7 @@ const ICONS = {
   eudr: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a14 14 0 0 1 0 20 14 14 0 0 1 0-20"/></svg>`,
   contacts: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   priority: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  nbl: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,
 };
 
 const CARDS = [
@@ -39,6 +40,12 @@ const CARDS = [
     icon: 'bl',
   },
   {
+    panel: 'no-buy-list',
+    title: 'No Buy List',
+    desc: 'NBL supplier registry and Unilever mill locations from your spreadsheet.',
+    icon: 'nbl',
+  },
+  {
     panel: 'performa-facility',
     title: 'Performa Facility',
     desc: 'KPI fasilitas, throughput, dan reliabilitas — rencana modul terpadu.',
@@ -53,7 +60,7 @@ const CARDS = [
   {
     panel: 'contact-list-supplier',
     title: 'Contact List Supplier',
-    desc: 'Direktori kontak supplier dan jalur eskalasi dalam satu tampilan.',
+    desc: 'Sustainability PIC contacts synced automatically from approved SDD screenings.',
     icon: 'contacts',
   },
   {

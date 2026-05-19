@@ -1,6 +1,7 @@
 import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
+import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -981,6 +982,10 @@ import { getJsPDF } from './pdf-libs.js';
     window._sddImportFirstRow = null;
     window._sddImportedRows = buildImportedSddPayloadsFromWorkbook(supplierWorkbook);
     window._sddImportFirstRow = window._sddImportedRows[0] || null;
+    window._loadedPrimarySddRow = window._sddImportFirstRow
+      ? Object.assign({}, window._sddImportFirstRow)
+      : null;
+    window._nblCheckResult = null;
   }
 
   /**
@@ -1357,6 +1362,7 @@ import { getJsPDF } from './pdf-libs.js';
         return st === 'submitted';
       })();
       html += '<div id="sdd-trace-action-btn-wrap" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:16px;padding-right:4px;">'
+        + '<button type="button" id="sdd-check-nbl-btn-trace" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(139,26,26,0.35);background:#fff;color:#8B1A1A;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;">Check NBL</button>'
         + (_isSubmittedForBtn
           ? '<button onclick="window.openViewScreeningPopup()" style="background:#1e40af;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(30,64,175,0.25);" onmouseover="this.style.background=\'#1d4ed8\'" onmouseout="this.style.background=\'#1e40af\'">'
             + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
@@ -1754,6 +1760,17 @@ import { getJsPDF } from './pdf-libs.js';
       <div style="font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8B1A1A;margin-bottom:18px;display:flex;align-items:center;gap:8px;">
         <span style="display:inline-block;width:3px;height:16px;background:#8B1A1A;border-radius:2px;"></span>
         Supplier Screening
+      </div>
+
+      <div id="sdd-nbl-check-section" style="margin-bottom:18px;padding:14px 16px;border:1px solid rgba(139,26,26,0.12);border-radius:10px;background:#fff;">
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:space-between;">
+          <div style="flex:1;min-width:200px;">
+            <div style="font-size:12px;font-weight:700;color:#1A0A0A;">No Buy List check</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Flags <strong>Yes</strong> if any imported name matches NBL (Group or Company) or Unilever NBL (Company or Mill). One similar name is enough.</div>
+          </div>
+          <button type="button" id="sdd-check-nbl-btn" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="flex-shrink:0;padding:9px 18px;border-radius:8px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(139,26,26,0.2);">Check NBL</button>
+        </div>
+        <div id="sdd-nbl-check-result" class="sdd-nbl-check-result" style="display:none;" role="status" aria-live="polite"></div>
       </div>
 
       <div style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8B1A1A;margin-bottom:12px;padding:6px 12px;background:rgba(139,26,26,0.07);border-radius:6px;">A. Company Checking</div>
@@ -3359,6 +3376,9 @@ import { getJsPDF } from './pdf-libs.js';
         cert: row['SCR - Certification'] || '',
         ndpe: row['SCR - NDPE Policy'] || '',
         nbl: row['SCR - No Buy List'] || '',
+        nblCheckResult: row['SCR - NBL Check Result'] || '',
+        nblCheckDetail: row['SCR - NBL Match Detail'] || '',
+        nblCheckedAt: row['SCR - NBL Checked At'] || '',
         grvYN: row['SCR - Grievance (Y/N)'] || '',
         priYN: row['SCR - PRI (Y/N)'] || '',
         traceNote: row['SCR - Notes'] || '',
@@ -3449,6 +3469,9 @@ import { getJsPDF } from './pdf-libs.js';
       window._scrLoadedRowNum = rowNum || null;
       window._scrLoadedKey = key || '';
       window._scrData = s;
+      if (window._loadedPrimarySddRow && typeof window.restoreNblCheckResultFromRow_ === 'function') {
+        window.restoreNblCheckResultFromRow_(window._loadedPrimarySddRow);
+      }
       syncSddApproverDecisionUI(s, sourceLabel, rowNum, key);
       // Use submission_id (key) as the "fromSaved" signal; fall back to legacy rowNum
       syncSubmittedStaffLockUI(s, key || rowNum || null);
@@ -3603,6 +3626,9 @@ import { getJsPDF } from './pdf-libs.js';
         cert:     document.getElementById('scr-cert')?.value||'',
         ndpe:     document.getElementById('scr-ndpe')?.value||'',
         nbl:      document.getElementById('scr-nbl')?.value||'',
+        nblCheckResult: (window._scrData && window._scrData.nblCheckResult) || '',
+        nblCheckDetail: (window._scrData && window._scrData.nblCheckDetail) || '',
+        nblCheckedAt: (window._scrData && window._scrData.nblCheckedAt) || '',
         grvYN:    document.getElementById('scr-grv-yn')?.value||'',
         priYN:    document.getElementById('scr-pri-yn')?.value||'',
         traceNote: document.getElementById('traceRecInput')?.value||'',
@@ -3614,6 +3640,20 @@ import { getJsPDF } from './pdf-libs.js';
         attachments: window._traceAttachments || [],
         grvRows: [], priRows: [],
       };
+      if (scrData.nbl && !scrData.nblCheckResult) {
+        scrData.nblCheckResult = scrData.nbl === 'Yes'
+          ? 'YES — Supplier IS ON the No Buy List (NBL)'
+          : 'NO — Supplier is NOT on the No Buy List';
+      }
+      if (scrData.nbl && !scrData.nblCheckDetail && window._nblCheckResult) {
+        scrData.nblCheckDetail = window._scrData.nblCheckDetail
+          || (window._nblCheckResult.matches && window._nblCheckResult.matches.length
+            ? window._nblCheckResult.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
+            : (scrData.nbl === 'No'
+              ? 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.'
+              : 'Supplier matched a name on the NBL or Unilever NBL registry.'));
+        scrData.nblCheckedAt = scrData.nblCheckedAt || window._scrData.nblCheckedAt || window._nblCheckResult.checkedAt || '';
+      }
       document.querySelectorAll('#scr-grv-tbody tr').forEach(tr => {
         scrData.grvRows.push({
           source: tr.querySelector('.grv-source')?.value||'',
@@ -3771,7 +3811,7 @@ import { getJsPDF } from './pdf-libs.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL or localStorage SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxd2kpIXRc0s_jBKp41zdzLRJ9S-k3cM19L6dlwkW-qNIuA5ENYMGOGILy0-_86BG77rA/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwoxeox6zkB9_xSctjxqfFkNWEfSuKcSvISIeHKK6ToDsHPRtYgg3dRwbYUdVMvNRl_9w/exec';
 
 function getSddApiUrl() {
   var custom = (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) || '';
@@ -4142,7 +4182,8 @@ window._submitSddApproverDecision = function(statusSdd) {
   _refreshDecisionChromeForDraft();
   if (scrSt === 'submitted' && sid) {
     apiSetSubmissionStatus({ submission_id: sid, statusSDD: statusSdd })
-      .then(function() {
+      .then(function(statusResp) {
+        window._lastTtpSyncResult = statusResp && statusResp.ttp_sync ? statusResp.ttp_sync : null;
         return apiUpdateSubmission({
           submission_id: sid,
           main: {
@@ -4165,8 +4206,36 @@ window._submitSddApproverDecision = function(statusSdd) {
           saveOk.style.color = '#059669';
           saveOk.textContent = '✓ Decision saved: ' + statusSdd + ' · Submission ID: ' + sid;
         }
+        if (typeof window.__contactListInvalidate === 'function') window.__contactListInvalidate();
+        if (typeof window.__ttpInvalidate === 'function') window.__ttpInvalidate();
+        var normDecision = _normalizeDecisionLabel(statusSdd);
+        if (normDecision === 'APPROVED') {
+          var clsPanel = document.getElementById('panel-contact-list-supplier');
+          if (clsPanel && clsPanel.classList.contains('active') && typeof window.loadContactListData === 'function') {
+            return window.loadContactListData(true);
+          }
+          var ttpPanel = document.getElementById('panel-ttm-ttp');
+          if (ttpPanel && ttpPanel.classList.contains('active') && typeof loadTTPData === 'function') {
+            return loadTTPData();
+          }
+        }
+      })
+      .then(function() {
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Keputusan Submitted disimpan: ' + statusSdd + ' (SID: ' + sid + ').', 'success');
+          var normToast = _normalizeDecisionLabel(statusSdd);
+          var extraCls = normToast === 'APPROVED'
+            ? ' Kontak Sustainability PIC disimpan ke Contact List Supplier.'
+            : '';
+          var ttpSync = window._lastTtpSyncResult;
+          if (normToast === 'APPROVED' && ttpSync) {
+            if (ttpSync.synced) {
+              extraCls += ' Monitoring TTM/TTP: ' + String(ttpSync.inserted || 0) + ' baru, '
+                + String(ttpSync.updated || 0) + ' diperbarui.';
+            } else if (ttpSync.skipped && ttpSync.reason === 'no_ffb_rows') {
+              extraCls += ' Monitoring TTM/TTP: tidak ada baris FFB di traceability.';
+            }
+          }
+          window.showSddToast('Keputusan Submitted disimpan: ' + statusSdd + ' (SID: ' + sid + ').' + extraCls, 'success');
         }
       })
       .catch(function(e) {
@@ -4265,6 +4334,9 @@ function buildScrDataPayload(scrData) {
     'SCR - Certification': scrData.cert || '',
     'SCR - NDPE Policy': scrData.ndpe || '',
     'SCR - No Buy List': scrData.nbl || '',
+    'SCR - NBL Check Result': scrData.nblCheckResult || '',
+    'SCR - NBL Match Detail': scrData.nblCheckDetail || '',
+    'SCR - NBL Checked At': scrData.nblCheckedAt || '',
     'SCR - Grievance (Y/N)': scrData.grvYN || '',
     'SCR - PRI (Y/N)': scrData.priYN || '',
     'SCR - Notes': scrData.traceNote || '',
@@ -4936,7 +5008,11 @@ function initDashboardApp() {
   let allData = [];
   let currentFilter = 'All';
   let currentSearch = '';
-  let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpSearch = '';
+  let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpPkPctCol = '', ttpCategoryCol = '', ttpSearch = '';
+  let ttpPkTraceVolCol = '', ttpCpoTraceVolCol = '', ttpPkTraceDenomCol = '', ttpCpoTraceDenomCol = '';
+  let ttpPeriodMode = 'overall'; // 'overall' (full year) | 'quarter'
+  let ttpPeriodYear = '';
+  let ttpPeriodQuarter = 'Q1';
   let millLoadPromise = null;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -6229,6 +6305,53 @@ function initDashboardApp() {
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
   }
 
+  const MILL_PROFILE_FIELD_ALIASES_ = {
+    'MILL LOC': ['MILL LOC', 'MILL LOCATION', 'Mill Location', 'LOC'],
+    'DEFORESTATION SPATIAL': ['DEFORESTATION SPATIAL', 'Deforestation Spatial'],
+    'BURN AREA SPATIAL': ['BURN AREA SPATIAL', 'Burn Area Spatial'],
+    'PEAT': ['PEAT', 'Peat'],
+    'NDPE': ['NDPE'],
+    'HRDD': ['HRDD'],
+  };
+
+  const MILL_PROFILE_YESNO_KEYS_ = new Set([
+    'DEFORESTATION SPATIAL', 'BURN AREA SPATIAL', 'PEAT', 'NDPE', 'HRDD',
+  ]);
+
+  /** Sheet column LEGALITY SCORE (or SCORE): 1 → Complete, 0 → Not Complete. */
+  function millProfileLegalityFromScore_(d) {
+    const raw = pickSavedCol(d, ['LEGALITY SCORE', 'SCORE', 'Legality Score']);
+    if (raw === '' || raw === null || raw === undefined) return '';
+    if (typeof raw === 'number' && !isNaN(raw)) {
+      if (raw === 1) return 'Complete';
+      if (raw === 0) return 'Not Complete';
+    }
+    const s = String(raw).trim();
+    const t = s.toLowerCase();
+    if (t === '1' || t === 'complete') return 'Complete';
+    if (t === '0' || t === 'not complete' || t === 'non complete') return 'Not Complete';
+    return s;
+  }
+
+  function millProfileFormatYesNo_(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    const t = s.toLowerCase();
+    if (t === 'yes' || t === 'y' || t === '1' || t === 'true' || t === 'ada') return 'Yes';
+    if (t === 'no' || t === 'n' || t === '0' || t === 'false' || t === 'tidak') return 'No';
+    return s;
+  }
+
+  function millProfileResolveField_(d, key, opts) {
+    opts = opts || {};
+    const aliases = MILL_PROFILE_FIELD_ALIASES_[key] || [key];
+    const v = pickSavedCol(d, aliases);
+    if (!v) return '';
+    if (opts.raw) return v;
+    if (opts.yesNo || MILL_PROFILE_YESNO_KEYS_.has(key)) return millProfileFormatYesNo_(v) || v;
+    return v;
+  }
+
   function millProfileBuildSectionsHtml_(d) {
     function millProfileFormatSupplyValue_(raw) {
       if (raw == null) return '';
@@ -6263,8 +6386,9 @@ function initDashboardApp() {
       {
         title: 'Legality',
         fields: [
-          ['LEGALITY','Legality'], ['MILL LOC','Mill Location'],
-        ]
+          ['LEGALITY', 'Legality'],
+          ['MILL LOC', 'Mill Location'],
+        ],
       },
       {
         title: 'Certification',
@@ -6309,7 +6433,14 @@ function initDashboardApp() {
           ${sec.fields.map(function(fl) {
             const key = fl[0];
             const label = fl[1];
-            let val = d[key] != null ? d[key] : '';
+            let val = '';
+            if (key === 'LEGALITY') {
+              val = millProfileLegalityFromScore_(d);
+            } else {
+              val = millProfileResolveField_(d, key, {
+                yesNo: MILL_PROFILE_YESNO_KEYS_.has(key),
+              });
+            }
             if (key === 'FACILITY NAME') {
               const facCpo = String(d['FACILITY NAME CPO'] || '').trim();
               const facPk = String(d['FACILITY NAME PK'] || '').trim();
@@ -6389,9 +6520,8 @@ function initDashboardApp() {
       const year = String(millYearVal(row) || '').trim();
       const periodText = (year || quarter) ? ('Period: ' + [year, quarter ? ('Q' + quarter) : ''].filter(Boolean).join(' ')) : '';
       const sections = [
-        { title: 'Summary', fields: [['SUPPLIER STATUS','Status'], ['BUYER NO BUY LIST','No Buy List'], ['RESULT RISK LEVEL','Result Risk Level']] },
         { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
-        { title: 'Legality', fields: [['LEGALITY','Legality'], ['MILL LOC','Mill Location']] },
+        { title: 'Legality', fields: [['LEGALITY', 'Legality'], ['MILL LOC', 'Mill Location']] },
         { title: 'Certification', fields: [['CERTIFICATION','Certification']] },
         { title: 'Spatial', fields: [['DEFORESTATION SPATIAL','Deforestation Spatial'], ['BURN AREA SPATIAL','Burn Area Spatial'], ['PEAT','Peat']] },
         { title: 'Grievances', fields: [['TOTAL GRIEVANCES','Grievance']] },
@@ -6441,6 +6571,14 @@ function initDashboardApp() {
         if (key === 'SUPPLIER STATUS') {
           return millProfileTitleCaseWords_(row['SUPPLIER STATUS']);
         }
+        if (key === 'LEGALITY') {
+          return valOrDash(millProfileLegalityFromScore_(row));
+        }
+        if (MILL_PROFILE_YESNO_KEYS_.has(key)) {
+          return valOrDash(millProfileResolveField_(row, key, { yesNo: true }));
+        }
+        const resolved = millProfileResolveField_(row, key);
+        if (resolved) return resolved;
         return row[key];
       };
 
@@ -6455,6 +6593,8 @@ function initDashboardApp() {
       if (periodText) { doc.text(periodText, 14, y); y += 5; }
       doc.text('Exported: ' + new Date().toLocaleString('id-ID'), 14, y);
       y += 4;
+
+      y = renderMillProfileSummaryPdf(doc, row, y + 4, resolveExportVal);
 
       sections.forEach(function(sec) {
         const body = sec.fields.map(function(pair) {
@@ -6587,6 +6727,808 @@ function initDashboardApp() {
   })();
 
   // ─── TTP DATA ───────────────────────────────────────────
+  let ttpViewMode = 'flat'; // default: flat table (not grouped)
+  let ttpFlatFilteredRows = [];
+  let ttpDetailCurrentRow = null;
+  function normalizeTtpHeaderKey_(h) {
+    return String(h || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  }
+
+  function pickTtpCategoryCol_(fields) {
+    if (!fields || !fields.length) return 'CATEGORY';
+    const exact = fields.find(function(h) { return normalizeTtpHeaderKey_(h) === 'CATEGORY'; });
+    if (exact) return exact;
+    const fuzzy = fields.find(function(h) {
+      const u = normalizeTtpHeaderKey_(h);
+      return u.includes('CATEGORY') && u !== 'SUPPLIER CATEGORY' && !u.includes('MILL CATEGORY');
+    });
+    return fuzzy || 'CATEGORY';
+  }
+
+  function ttpRowCategoryValue_(row) {
+    if (!row || typeof row !== 'object') return '—';
+    const key = ttpCategoryCol || 'CATEGORY';
+    if (row[key] != null && String(row[key]).trim()) return ttpCategoryDisplay_(row[key]);
+    const alt = Object.keys(row).find(function(k) {
+      if (k === '_row' || k === '_sddSearchBlob') return false;
+      return normalizeTtpHeaderKey_(k) === 'CATEGORY';
+    });
+    return alt ? ttpCategoryDisplay_(row[alt]) : '—';
+  }
+
+  function ttpCategoryDisplay_(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    return s || '—';
+  }
+
+  function ttpCategoryGroupSummary_(rows) {
+    if (!rows || !rows.length) return '—';
+    const vals = rows.map(function(r) { return ttpRowCategoryValue_(r); }).filter(function(v) { return v && v !== '—'; });
+    if (!vals.length) return '—';
+    const uniq = [];
+    vals.forEach(function(v) { if (uniq.indexOf(v) === -1) uniq.push(v); });
+    if (uniq.length === 1) return uniq[0];
+    if (uniq.length <= 3) return uniq.join(', ');
+    return uniq.slice(0, 2).join(', ') + ' +' + (uniq.length - 2);
+  }
+
+  const TTP_CATEGORY_MIX_BUCKETS = [
+    { id: 'own_estate',      label: 'Own Estate',      color: '#2d5a3d' },
+    { id: 'external_estate', label: 'External Estate', color: '#1a6b5c' },
+    { id: 'dealer',          label: 'Dealer',          color: '#9a6b1a' },
+    { id: 'plasma',          label: 'Plasma',          color: '#2a5f8f' },
+    { id: 'cooperative',     label: 'Cooperative',     color: '#6b3f8f' },
+  ];
+
+  function ttpNormalizeCategoryBucket_(raw) {
+    const s = String(raw == null ? '' : raw).trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!s || s === '—' || s === '-') return '';
+    if (/^own\s*estate/.test(s) || s === 'own estate') return 'own_estate';
+    if (/^external\s*estate/.test(s) || s === 'external estate') return 'external_estate';
+    if (s === 'dealer' || /^dealer\b/.test(s)) return 'dealer';
+    if (/plasma/.test(s)) return 'plasma';
+    if (/cooperat|co-op|kooperasi|\bcoop\b/.test(s)) return 'cooperative';
+    return 'other';
+  }
+
+  /**
+   * Largest-remainder on tenths (×10) so displayed % labels always sum to 100.0%.
+   * Bar/track widths use the same adjusted values (sum = 100).
+   */
+  function ttpApplyMixPctLabels_(items, basis) {
+    if (!basis) {
+      items.forEach(function(it) {
+        it.pct = 0;
+        it.pctLabel = '0%';
+      });
+      return items;
+    }
+
+    const work = items.map(function(it) {
+      const exactTenths = (it.count / basis) * 1000;
+      const floorTenths = Math.floor(exactTenths);
+      return {
+        it: it,
+        floorTenths: floorTenths,
+        remainder: exactTenths - floorTenths,
+      };
+    });
+
+    let sumTenths = work.reduce(function(s, w) { return s + w.floorTenths; }, 0);
+    let need = 1000 - sumTenths;
+    work.sort(function(a, b) { return b.remainder - a.remainder; });
+    for (let i = 0; i < need && i < work.length; i++) {
+      work[i].floorTenths++;
+    }
+
+    work.forEach(function(w) {
+      const tenths = w.floorTenths;
+      const it = w.it;
+      it.pct = tenths / 10;
+      if (it.count > 0 && tenths === 0) {
+        it.pctLabel = '<0.1%';
+        it.pct = 0.05;
+      } else if (tenths % 10 === 0) {
+        it.pctLabel = String(tenths / 10) + '%';
+      } else {
+        it.pctLabel = (tenths / 10).toFixed(1) + '%';
+      }
+    });
+
+    return items;
+  }
+
+  function ttpComputeCategoryMix_(rows) {
+    const counts = Object.create(null);
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) { counts[b.id] = 0; });
+
+    (rows || []).forEach(function(row) {
+      const raw = ttpRowCategoryValue_(row);
+      const bucket = ttpNormalizeCategoryBucket_(raw);
+      if (!bucket || bucket === 'other') return;
+      if (counts[bucket] !== undefined) counts[bucket]++;
+    });
+
+    const basis = TTP_CATEGORY_MIX_BUCKETS.reduce(function(sum, b) {
+      return sum + (counts[b.id] || 0);
+    }, 0);
+
+    const items = TTP_CATEGORY_MIX_BUCKETS.map(function(b) {
+      return {
+        id: b.id,
+        label: b.label,
+        color: b.color,
+        count: counts[b.id] || 0,
+        pct: 0,
+        pctLabel: '0%',
+      };
+    });
+
+    ttpApplyMixPctLabels_(items, basis);
+    return { items: items, basis: basis };
+  }
+
+  function ttpQuarterToken_(row) {
+    const q = millQuarterVal(row);
+    if (!q) return '';
+    const n = parseMillQuarterSort(q);
+    if (n >= 1 && n <= 4) return 'Q' + n;
+    return String(q).trim().toUpperCase();
+  }
+
+  function ttpYearToken_(row) {
+    const y = millYearVal(row);
+    if (!y) return '';
+    const n = parseMillYearSort(y);
+    return n ? String(n) : String(y).trim();
+  }
+
+  function ttpFilterByPeriod_(rows) {
+    const list = rows || [];
+    if (ttpPeriodMode === 'quarter') {
+      const wantY = String(ttpPeriodYear || '');
+      const wantQ = String(ttpPeriodQuarter || '');
+      return list.filter(function(r) {
+        return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
+      });
+    }
+    if (ttpPeriodMode === 'overall') {
+      const wantY = String(ttpPeriodYear || '');
+      if (!wantY) return list.slice();
+      return list.filter(function(r) { return ttpYearToken_(r) === wantY; });
+    }
+    return list.slice();
+  }
+
+  function ttpGetPeriodRows_() {
+    return ttpFilterByPeriod_(ttpData);
+  }
+
+  function ttpApplyTableFilters_(rows) {
+    let filtered = ttpFilterByPeriod_(rows || []);
+    filtered = filtered.filter(function(d) {
+      return !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch);
+    });
+    if (ttpSelectedCompanies !== null) {
+      const filterCol = ttpActiveFilterCol || ttpCompanyCol;
+      if (filterCol) {
+        filtered = filtered.filter(function(d) {
+          return ttpSelectedCompanies.has((d[filterCol] || '').toString());
+        });
+      }
+    }
+    return filtered;
+  }
+
+  function ttpParsePctValue_(raw) {
+    if (raw === null || raw === undefined) return NaN;
+    let s = String(raw).trim();
+    if (!s || s === '—' || s === '-') return NaN;
+    s = s.replace(/%/g, '').trim().replace(/\s/g, '');
+    if (/,\d/.test(s) && !/\.\d{1,}/.test(s.replace(/,\d+$/, ''))) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+    const n = parseFloat(s);
+    return isNaN(n) ? NaN : n;
+  }
+
+  /** Sheets getValues() returns % cells as 0–1 fractions (0.7081 = 70.81%). */
+  function ttpNormalizePctNumber_(n) {
+    if (isNaN(n)) return NaN;
+    if (n >= 0 && n <= 1) return n * 100;
+    return n;
+  }
+
+  function ttpParseNumber_(raw) {
+    if (raw === null || raw === undefined) return NaN;
+    if (typeof raw === 'number' && !isNaN(raw)) return raw;
+    let s = String(raw).trim();
+    if (!s || s === '—' || s === '-') return NaN;
+    s = s.replace(/%/g, '').replace(/\s/g, '');
+    const dotCount = (s.match(/\./g) || []).length;
+    const commaCount = (s.match(/,/g) || []).length;
+    if (commaCount && /,\d{1,3}$/.test(s)) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (dotCount > 1) {
+      s = s.replace(/\./g, '');
+    } else if (dotCount === 1 && /^\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+    const n = parseFloat(s);
+    return isNaN(n) ? NaN : n;
+  }
+
+  function ttpIsDataRow_(row) {
+    if (!row || typeof row !== 'object') return false;
+    if (row._sddSearchBlob && /total traceable cpo|total traceable pk/.test(row._sddSearchBlob)) {
+      return false;
+    }
+    let hasMill = false;
+    let hasCompany = false;
+    let hasSupplier = false;
+    const keys = Object.keys(row);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      const v = String(row[k] || '').trim();
+      if (/^total traceable/i.test(v)) return false;
+      const u = normalizeTtpHeaderKey_(k);
+      if (u === 'MILL NAME' && v && v !== '—' && v !== '-') hasMill = true;
+      if ((u === 'COMPANY NAME' || u === 'COMPANY CODE') && v && v !== '—' && v !== '-') hasCompany = true;
+      if ((u === 'FFB SUPPLIER NAME' || u === 'FFB SUPPLIER GROUP NAME') && v && v !== '—' && v !== '-') {
+        hasSupplier = true;
+      }
+    }
+    return hasMill || hasCompany || hasSupplier;
+  }
+
+  /** Sheet footer: PK = SUM(PK Traceable) / SUM(PK SUPPLY to KCP); CPO = SUM(CPO Traceable) / SUM(CPO SUPPLY to REFINERY). */
+  var TTP_TRACEABLE_COL_CANDIDATES_ = {
+    pk: {
+      numerator: ['PK TRACEABLE VOLUME', 'PK TRACEABLE'],
+      denominator: ['PK SUPPLY TO KCP', 'PK SUPPLY TO KCP (TON)', 'PK SUPPLY']
+    },
+    cpo: {
+      numerator: ['CPO TRACEABLE', 'CPO TRACEABLE VOLUME'],
+      denominator: ['CPO SUPPLY TO REFINERY']
+    }
+  };
+
+  function ttpPickHeaderCol_(fields, candidates, opts) {
+    const list = fields || [];
+    const norms = (candidates || []).map(function(c) { return normalizeTtpHeaderKey_(c); });
+    let i;
+    for (i = 0; i < norms.length; i++) {
+      const exact = list.find(function(h) { return normalizeTtpHeaderKey_(h) === norms[i]; });
+      if (exact) return exact;
+    }
+    const excludePct = opts && opts.excludePct;
+    const excludeTotal = opts && opts.excludeTotal;
+    const tag = opts && opts.tag;
+    for (i = 0; i < norms.length; i++) {
+      const want = norms[i];
+      const hit = list.find(function(h) {
+        const u = normalizeTtpHeaderKey_(h);
+        if (excludePct && u.includes('%')) return false;
+        if (excludeTotal && u.includes('TOTAL')) return false;
+        if (tag && !u.includes(tag)) return false;
+        if (want.includes('SUPPLY') && u.includes('CONVERSION')) return false;
+        if (want.includes('CPO SUPPLY') && !u.includes('REFINERY')) return false;
+        if (want.includes('PK SUPPLY') && !u.includes('KCP')) return false;
+        if (u.includes('TRACEABLE') && u.includes('%')) return false;
+        return u.includes(want) || u === want;
+      });
+      if (hit) return hit;
+    }
+    return '';
+  }
+
+  function ttpFindTraceableVolCol_(fields, product) {
+    const cfg = TTP_TRACEABLE_COL_CANDIDATES_[product];
+    if (!cfg) return '';
+    return ttpPickHeaderCol_(fields, cfg.numerator, {
+      excludePct: true,
+      excludeTotal: true,
+      tag: product === 'pk' ? 'PK' : 'CPO'
+    });
+  }
+
+  function ttpFindTraceableDenomCol_(fields, product) {
+    const cfg = TTP_TRACEABLE_COL_CANDIDATES_[product];
+    if (!cfg) return '';
+    return ttpPickHeaderCol_(fields, cfg.denominator, {
+      excludePct: true,
+      tag: product === 'pk' ? 'PK' : 'CPO'
+    });
+  }
+
+  function ttpFormatCellPct_(raw) {
+    const n = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
+    if (isNaN(n)) {
+      if (raw === null || raw === undefined || String(raw).trim() === '') return '—';
+      return String(raw);
+    }
+    if (n > 0 && n < 0.05) return '<0.1%';
+    if (n >= 10) return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%';
+    return (Math.round(n * 10) / 10).toFixed(1) + '%';
+  }
+
+  function ttpFindSupplyCol_() {
+    if (!ttpFields || !ttpFields.length) return '';
+    return ttpFields.find(function(h) {
+      const u = normalizeTtpHeaderKey_(h);
+      return u.includes('FFB SUPPLY') && u.includes('MILL');
+    }) || ttpFields.find(function(h) {
+      return normalizeTtpHeaderKey_(h).includes('FFB SUPPLY');
+    }) || '';
+  }
+
+  /** Same as sheet footer: SUM(traceable volume) ÷ SUM(supply volume). */
+  function ttpAggregateTotalTraceablePct_(rows, product) {
+    const numCol = product === 'pk' ? ttpPkTraceVolCol : ttpCpoTraceVolCol;
+    const denCol = product === 'pk' ? ttpPkTraceDenomCol : ttpCpoTraceDenomCol;
+    const pctCol = product === 'pk' ? ttpPkPctCol : ttpPctCol;
+    const dataRows = (rows || []).filter(ttpIsDataRow_);
+
+    if (!numCol || !denCol) {
+      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
+      legacy.method = 'average';
+      return legacy;
+    }
+
+    let sumNum = 0;
+    let sumDen = 0;
+    let rowsWithNum = 0;
+    let rowsWithDen = 0;
+    dataRows.forEach(function(row) {
+      const n = ttpParseNumber_(row[numCol]);
+      const d = ttpParseNumber_(row[denCol]);
+      if (!isNaN(n)) {
+        sumNum += n;
+        rowsWithNum++;
+      }
+      if (!isNaN(d)) {
+        sumDen += d;
+        if (d > 0) rowsWithDen++;
+      }
+    });
+
+    if (!rowsWithNum || sumDen <= 0) {
+      return {
+        value: NaN,
+        rowsUsed: 0,
+        totalRows: dataRows.length,
+        method: 'sum',
+        numCol: numCol,
+        denCol: denCol,
+        sumNum: sumNum,
+        sumDen: sumDen
+      };
+    }
+
+    const ratio = sumNum / sumDen;
+    const value = ratio <= 1.5 ? ratio * 100 : ratio;
+
+    return {
+      value: value,
+      rowsUsed: dataRows.length,
+      rowsWithNum: rowsWithNum,
+      rowsWithDen: rowsWithDen,
+      totalRows: dataRows.length,
+      method: 'sum',
+      numCol: numCol,
+      denCol: denCol,
+      sumNum: sumNum,
+      sumDen: sumDen
+    };
+  }
+
+  function ttpAggregateTraceablePctFromCol_(rows, pctCol) {
+    if (!pctCol) return { value: NaN, rowsUsed: 0, totalRows: (rows || []).length };
+    let sumSimple = 0;
+    let rowsUsed = 0;
+    (rows || []).forEach(function(row) {
+      const pct = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
+      if (isNaN(pct)) return;
+      rowsUsed++;
+      sumSimple += pct;
+    });
+    if (!rowsUsed) return { value: NaN, rowsUsed: 0, totalRows: (rows || []).length };
+    return { value: sumSimple / rowsUsed, rowsUsed: rowsUsed, totalRows: (rows || []).length };
+  }
+
+  function ttpFormatTraceablePct_(n) {
+    if (isNaN(n)) return '—';
+    if (n > 0 && n < 0.05) return '<0.1%';
+    if (n >= 10) return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%';
+    return (Math.round(n * 10) / 10).toFixed(1) + '%';
+  }
+
+  function ttpPeriodScopeLabel_() {
+    const y = ttpPeriodYear || '—';
+    if (ttpPeriodMode === 'overall') return 'Full year ' + y;
+    return y + ' · ' + (ttpPeriodQuarter || '—');
+  }
+
+  function ttpFormatTtpTon_(n) {
+    if (n === null || n === undefined || isNaN(n)) return '—';
+    return Math.round(n).toLocaleString('en-US');
+  }
+
+  function ttpPeriodMetaText_(periodRows, cpoAgg, pkAgg) {
+    const dataRows = (periodRows || []).filter(ttpIsDataRow_);
+    const n = dataRows.length;
+    const total = ttpData.length;
+    const scope = ttpPeriodScopeLabel_();
+    if (!total) return 'No data loaded';
+    let line = scope + ' · ' + n.toLocaleString() + ' supplier rows';
+    if (ttpPeriodMode === 'quarter') {
+      line += ' (filtered)';
+    } else if (n < total) {
+      line += ' · ' + total.toLocaleString() + ' total in database';
+    }
+    if (cpoAgg && cpoAgg.method === 'sum' && cpoAgg.sumDen > 0) {
+      line += ' · CPO: ' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' / ' + ttpFormatTtpTon_(cpoAgg.sumDen) + ' ton';
+    }
+    return line;
+  }
+
+  function buildTtpPeriodDropdowns_() {
+    const yearSel = document.getElementById('ttpPeriodYear');
+    if (!yearSel) return;
+    const years = [];
+    const seenY = Object.create(null);
+    ttpData.forEach(function(row) {
+      const y = ttpYearToken_(row);
+      if (y && !seenY[y]) { seenY[y] = true; years.push(y); }
+    });
+    years.sort(function(a, b) { return parseInt(b, 10) - parseInt(a, 10); });
+    yearSel.innerHTML = years.length
+      ? years.map(function(y) { return '<option value="' + escHtml(y) + '">' + escHtml(y) + '</option>'; }).join('')
+      : '<option value="">—</option>';
+    if (years.length && (!ttpPeriodYear || years.indexOf(ttpPeriodYear) === -1)) {
+      ttpPeriodYear = years[0];
+    }
+    yearSel.value = ttpPeriodYear || '';
+  }
+
+  function syncTtpPeriodPickersUi_() {
+    const pickers = document.getElementById('ttpPeriodPickers');
+    const yearWrap = document.getElementById('ttpPeriodYearWrap');
+    const quarterWrap = document.getElementById('ttpPeriodQuarterWrap');
+    const modeBtns = document.querySelectorAll('[data-ttp-period-mode]');
+    modeBtns.forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-ttp-period-mode') === ttpPeriodMode);
+    });
+    const isQuarter = ttpPeriodMode === 'quarter';
+    if (pickers) pickers.hidden = false;
+    if (yearWrap) yearWrap.style.display = '';
+    if (quarterWrap) quarterWrap.style.display = isQuarter ? '' : 'none';
+    const qSel = document.getElementById('ttpPeriodQuarter');
+    if (qSel && ttpPeriodQuarter) qSel.value = ttpPeriodQuarter;
+    const ySel = document.getElementById('ttpPeriodYear');
+    if (ySel && ttpPeriodYear) ySel.value = ttpPeriodYear;
+  }
+
+  function renderTtpTraceableStats_() {
+    const cpoEl = document.getElementById('ttp-stat-cpo-traceable');
+    const pkEl = document.getElementById('ttp-stat-pk-traceable');
+    const metaEl = document.getElementById('ttpPeriodMeta');
+    const periodRows = ttpGetPeriodRows_();
+    const cpoAgg = ttpAggregateTotalTraceablePct_(periodRows, 'cpo');
+    const pkAgg = ttpAggregateTotalTraceablePct_(periodRows, 'pk');
+    if (metaEl) metaEl.textContent = ttpPeriodMetaText_(periodRows, cpoAgg, pkAgg);
+
+    if (cpoEl) {
+      cpoEl.textContent = ttpFormatTraceablePct_(cpoAgg.value);
+      cpoEl.title = cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
+        ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
+          + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
+          + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
+          + '\nBandingkan dengan total kolom CPO Traceable & CPO SUPPLY to REFINERY di sheet (periode sama).'
+        : 'Tidak ada data CPO traceable pada periode ini';
+    }
+    if (pkEl) {
+      pkEl.textContent = ttpFormatTraceablePct_(pkAgg.value);
+      pkEl.title = pkAgg.method === 'sum' && pkAgg.sumDen > 0
+        ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ')'
+          + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
+          + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
+        : 'Tidak ada data PK traceable pada periode ini';
+    }
+  }
+
+  function refreshTtpPeriodDashboard_() {
+    syncTtpPeriodPickersUi_();
+    renderTtpTraceableStats_();
+    renderTtpCategoryMix_();
+    scheduleRenderTTPTable();
+  }
+
+  let ttpPeriodBarBound = false;
+  function bindTtpPeriodBarOnce_() {
+    if (ttpPeriodBarBound) return;
+    const panel = document.getElementById('panel-ttm-ttp');
+    if (!panel) return;
+    ttpPeriodBarBound = true;
+    panel.addEventListener('click', function(e) {
+      const btn = e.target.closest('[data-ttp-period-mode]');
+      if (!btn || !panel.contains(btn)) return;
+      const mode = btn.getAttribute('data-ttp-period-mode');
+      if (!mode || mode === ttpPeriodMode) return;
+      ttpPeriodMode = mode;
+      refreshTtpPeriodDashboard_();
+    });
+    const yearSel = document.getElementById('ttpPeriodYear');
+    const qSel = document.getElementById('ttpPeriodQuarter');
+    if (yearSel) {
+      yearSel.addEventListener('change', function() {
+        ttpPeriodYear = this.value;
+        refreshTtpPeriodDashboard_();
+      });
+    }
+    if (qSel) {
+      qSel.addEventListener('change', function() {
+        ttpPeriodQuarter = this.value;
+        refreshTtpPeriodDashboard_();
+      });
+    }
+    syncTtpPeriodPickersUi_();
+  }
+
+  function renderTtpCategoryMix_() {
+    const section = document.getElementById('ttpCategoryMixSection');
+    const barEl = document.getElementById('ttpCategoryMixBar');
+    const gridEl = document.getElementById('ttpCategoryMixGrid');
+    const descEl = document.querySelector('.ttp-category-mix-desc');
+    if (!section || !barEl || !gridEl) return;
+
+    if (!ttpData.length) {
+      section.hidden = true;
+      return;
+    }
+
+    const periodRows = ttpGetPeriodRows_();
+    if (descEl) {
+      descEl.textContent = 'Share of five supplier categories for ' + ttpPeriodScopeLabel_().toLowerCase()
+        + ' (' + periodRows.length.toLocaleString() + ' records)';
+    }
+
+    const mix = ttpComputeCategoryMix_(periodRows);
+    section.hidden = false;
+
+    const barParts = mix.items.filter(function(it) { return it.pct > 0; });
+    barEl.innerHTML = barParts.map(function(it) {
+      return '<span class="ttp-category-mix-seg" style="flex:' + it.pct + ' 1 0;background:' + it.color + ';" title="'
+        + escHtml(it.label) + ': ' + escHtml(it.pctLabel) + '"></span>';
+    }).join('');
+
+    gridEl.innerHTML = mix.items.map(function(it) {
+      return ''
+        + '<div class="ttp-category-mix-item" data-cat="' + escHtml(it.id) + '">'
+        + '<div class="ttp-category-mix-pct" style="color:' + escHtml(it.color) + '">' + escHtml(it.pctLabel) + '</div>'
+        + '<div class="ttp-category-mix-label">' + escHtml(it.label) + '</div>'
+        + '<div class="ttp-category-mix-track" aria-hidden="true"><span class="ttp-category-mix-fill" style="width:'
+        + Math.min(100, Math.max(0, it.pct)) + '%;background:' + escHtml(it.color) + ';"></span></div>'
+        + '</div>';
+    }).join('');
+
+    section.setAttribute('aria-label', 'Supplier category distribution across five categories');
+  }
+
+  function ttpMainTableColspan_(grouped) {
+    return grouped ? 6 : 5;
+  }
+
+  function ttpMainTableHeadHtml_(grouped) {
+    const pctLabel = ttpPctCol || '% CPO Traceable';
+    const isGrouped = !!grouped;
+    let row = '<tr>'
+      + '<th class="ttp-th ttp-th-group">Group Name</th>'
+      + '<th class="ttp-th ttp-th-company">Company Name</th>'
+      + '<th class="ttp-th ttp-th-mill">Mill Name</th>'
+      + '<th class="ttp-th ttp-th-pct">' + pctLabel + '</th>'
+      + '<th class="ttp-th ttp-th-category">Category</th>';
+    if (isGrouped) row += '<th class="ttp-th ttp-th-actions"></th>';
+    return row + '</tr>';
+  }
+
+  function ttpSyncTableLayoutClass_() {
+    const table = document.getElementById('ttpTable');
+    if (!table) return;
+    table.classList.toggle('ttp-table-grouped', ttpViewMode === 'grouped');
+  }
+
+  function ttpPickField_(patterns) {
+    if (!ttpFields || !ttpFields.length) return '';
+    for (let pi = 0; pi < patterns.length; pi++) {
+      const p = patterns[pi];
+      const want = typeof p === 'string' ? normalizeTtpHeaderKey_(p) : null;
+      for (let i = 0; i < ttpFields.length; i++) {
+        const h = ttpFields[i];
+        const u = normalizeTtpHeaderKey_(h);
+        if (want && u === want) return h;
+        if (p instanceof RegExp && p.test(h)) return h;
+      }
+    }
+    return '';
+  }
+
+  function ttpRowField_(row, patterns) {
+    if (!row) return '—';
+    const col = ttpPickField_(patterns);
+    if (col) {
+      const v = row[col];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    for (const k of Object.keys(row)) {
+      if (k === '_row' || k === '_sddSearchBlob') continue;
+      const u = normalizeTtpHeaderKey_(k);
+      for (let pi = 0; pi < patterns.length; pi++) {
+        const p = patterns[pi];
+        if (typeof p === 'string' && u === normalizeTtpHeaderKey_(p)) {
+          const s = String(row[k]).trim();
+          if (s) return s;
+        }
+      }
+    }
+    return '—';
+  }
+
+  function ttpRowCertificationHtml_(row) {
+    const items = [
+      { label: 'ISPO', patterns: ['ISPO (Y/N)', 'ISPO'] },
+      { label: 'RSPO', patterns: ['RSPO (Y/N)', 'RSPO'] },
+      { label: 'ISCC', patterns: ['ISCC (Y/N)', 'ISCC'] },
+    ];
+    return items.map(function(it) {
+      const v = ttpRowField_(row, it.patterns);
+      const yn = v === '—' ? '—' : v;
+      let cls = 'na';
+      if (/^y(es)?$/i.test(yn) || yn === '1') cls = 'yes';
+      else if (/^n(o)?$/i.test(yn) || yn === '0') cls = 'no';
+      return '<span class="ttp-cert-badge ttp-cert-' + cls + '">' + escHtml(it.label) + ': ' + escHtml(yn) + '</span>';
+    }).join('');
+  }
+
+  function ttpDetailItemHtml_(label, value) {
+    const v = value === undefined || value === null || String(value).trim() === '' ? '—' : String(value).trim();
+    return '<div class="ttp-detail-item">'
+      + '<div class="ttp-detail-label">' + escHtml(label) + '</div>'
+      + '<div class="ttp-detail-val">' + escHtml(v) + '</div>'
+      + '</div>';
+  }
+
+  function buildTtpDetailBodyHtml_(row) {
+    const certHtml = '<div class="ttp-detail-item ttp-detail-item--wide">'
+      + '<div class="ttp-detail-label">Certification</div>'
+      + '<div class="ttp-detail-val"><div class="ttp-cert-badges">' + ttpRowCertificationHtml_(row) + '</div></div>'
+      + '</div>';
+    return ''
+      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Supplier</div><div class="ttp-detail-grid">'
+      + ttpDetailItemHtml_('FFB Supplier Group Name', ttpRowField_(row, ['FFB SUPPLIER GROUP NAME']))
+      + ttpDetailItemHtml_('FFB Supplier Name', ttpRowField_(row, ['FFB SUPPLIER NAME']))
+      + ttpDetailItemHtml_('Category', ttpRowCategoryValue_(row))
+      + '</div></div>'
+      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Location</div><div class="ttp-detail-grid">'
+      + ttpDetailItemHtml_('Latitude', ttpRowField_(row, ['LAT', 'LATITUDE']))
+      + ttpDetailItemHtml_('Longitude', ttpRowField_(row, ['LONG', 'LONGITUDE']))
+      + ttpDetailItemHtml_('Village', ttpRowField_(row, ['VILLAGE']))
+      + ttpDetailItemHtml_('Sub district', ttpRowField_(row, ['SUBDISTRICT', 'SUB DISTRICT']))
+      + ttpDetailItemHtml_('District', ttpRowField_(row, ['DISTRICT']))
+      + ttpDetailItemHtml_('Province', ttpRowField_(row, ['PROVINCE']))
+      + '</div></div>'
+      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Supply</div><div class="ttp-detail-grid">'
+      + ttpDetailItemHtml_('Planted Area', ttpRowField_(row, ['PLANTED AREA', 'PLANTED AREA (HA)']))
+      + ttpDetailItemHtml_('FFB Supply', ttpRowField_(row, ['FFB SUPPLY TO MILL (TON)', 'FFB SUPPLY']))
+      + certHtml
+      + '</div></div>';
+  }
+
+  function mountTtpDetailOverlayOnce_() {
+    const overlay = document.getElementById('ttpDetailOverlay');
+    if (!overlay) {
+      console.warn('[TTP] #ttpDetailOverlay tidak ditemukan — cek partials/modals-shared.html di index.html.');
+      return null;
+    }
+    if (overlay.parentElement !== document.body) {
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  function syncTtpViewUi_() {
+    const flatBtn = document.getElementById('ttpViewFlat');
+    const groupedBtn = document.getElementById('ttpViewGrouped');
+    if (!flatBtn || !groupedBtn) return;
+    flatBtn.classList.toggle('active', ttpViewMode === 'flat');
+    groupedBtn.classList.toggle('active', ttpViewMode === 'grouped');
+  }
+
+  function closeTtpDetailModal_() {
+    const overlay = mountTtpDetailOverlayOnce_();
+    if (overlay) overlay.classList.remove('active');
+    document.body.classList.remove('ttp-detail-open');
+    ttpDetailCurrentRow = null;
+    const body = document.getElementById('ttpDetailBody');
+    if (body) body.innerHTML = '';
+  }
+
+  function openTtpDetailModal_(row) {
+    if (!row) return;
+    const overlay = mountTtpDetailOverlayOnce_();
+    const titleEl = document.getElementById('ttpDetailTitle');
+    const subEl = document.getElementById('ttpDetailSubtitle');
+    const bodyEl = document.getElementById('ttpDetailBody');
+    if (!overlay || !titleEl || !subEl || !bodyEl) return;
+
+    ttpDetailCurrentRow = row;
+
+    const supplier = ttpRowField_(row, ['FFB SUPPLIER NAME']);
+    const mill = ttpRowField_(row, ['MILL NAME']);
+    const company = ttpRowField_(row, ['COMPANY NAME']);
+    const group = ttpRowField_(row, ['GROUP NAME']);
+
+    titleEl.textContent = supplier !== '—' ? supplier : 'Supplier detail';
+    const subParts = [group, company, mill].filter(function(p) { return p && p !== '—'; });
+    subEl.textContent = subParts.length ? subParts.join(' · ') : 'Monitoring TTM/TTP';
+
+    try {
+      bodyEl.innerHTML = buildTtpDetailBodyHtml_(row);
+    } catch (err) {
+      console.error('[TTP] Gagal render detail supplier', err, row);
+      bodyEl.innerHTML = '<p class="ttp-detail-error">Gagal memuat detail. Muat ulang halaman (Ctrl+Shift+R).</p>';
+    }
+
+    document.body.classList.add('ttp-detail-open');
+    overlay.classList.add('active');
+    bodyEl.scrollTop = 0;
+    overlay.scrollTop = 0;
+  }
+
+  (function bindTtpDetailOverlay() {
+    const overlay = mountTtpDetailOverlayOnce_();
+    if (!overlay) return;
+    const closeBtn = document.getElementById('ttpDetailClose');
+    const closeBtn2 = document.getElementById('ttpDetailCloseBtn');
+    const editBtn = document.getElementById('ttpDetailEditBtn');
+    const delBtn = document.getElementById('ttpDetailDeleteBtn');
+
+    function onOverlayClick_(e) {
+      if (e.target === overlay) closeTtpDetailModal_();
+    }
+    if (closeBtn) closeBtn.addEventListener('click', closeTtpDetailModal_);
+    if (closeBtn2) closeBtn2.addEventListener('click', closeTtpDetailModal_);
+    overlay.addEventListener('click', onOverlayClick_);
+    if (editBtn) {
+      editBtn.addEventListener('click', function() {
+        const row = ttpDetailCurrentRow;
+        if (!row) return;
+        closeTtpDetailModal_();
+        openModal('ttp', ttpFields, 'edit', row);
+      });
+    }
+    if (delBtn) {
+      delBtn.addEventListener('click', function() {
+        const row = ttpDetailCurrentRow;
+        if (!row || !row._row) return;
+        closeTtpDetailModal_();
+        openConfirm('ttp', parseInt(row._row, 10));
+      });
+    }
+    if (!window.__sddTtpDetailEscBound) {
+      window.__sddTtpDetailEscBound = true;
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        if (overlay.classList.contains('active')) closeTtpDetailModal_();
+      });
+    }
+  })();
+
   async function loadTTPDataImpl() {
     const loading = document.getElementById('ttp-loading');
     const errorEl = document.getElementById('ttp-error');
@@ -6605,28 +7547,32 @@ function initDashboardApp() {
       ttpData = ttpData.map(function(row) {
         return prepareTtpRowPerfCache(row, ttpFields);
       });
+      ttpPkTraceVolCol = ttpFindTraceableVolCol_(ttpFields, 'pk');
+      ttpCpoTraceVolCol = ttpFindTraceableVolCol_(ttpFields, 'cpo');
+      ttpPkTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'pk');
+      ttpCpoTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'cpo');
+      ttpData = ttpData.filter(ttpIsDataRow_);
       ttpUniqueValuesCache = Object.create(null);
-      document.getElementById('ttp-stat-total').textContent = ttpData.length;
-      document.getElementById('ttp-stat-loaded').textContent = ttpData.length;
-      // Traceability % column: legacy "PERCENTAGE TRACEABILITY" or new "% CPO / % PK TRACEABLE" headers
+      // Traceability % columns
       ttpPctCol = (function pickTtpPctCol(fields) {
         if (!fields || !fields.length) return '% CPO TRACEABLE';
         const U = function (h) { return String(h || '').toUpperCase(); };
         const cpo = fields.find(function (h) { return U(h).includes('% CPO TRACEABLE'); });
         if (cpo) return cpo;
-        const pk = fields.find(function (h) { return U(h).includes('% PK TRACEABLE'); });
-        if (pk) return pk;
         const legacy = fields.find(function (h) {
           return U(h).includes('PERCENTAGE TRACEABILITY') ||
             U(h) === 'PERCENTAGE TRACEABILITY' ||
             h.toLowerCase().includes('percentage');
         });
         if (legacy) return legacy;
-        // Header label fallback (values resolve only if sheet uses this exact column name)
         return '% CPO TRACEABLE';
       })(ttpFields);
-      document.getElementById('ttpTableHead').innerHTML =
-        '<tr><th>Group Name</th><th>Company Name</th><th>Mill Name</th><th>' + (ttpPctCol || 'Traceability %') + '</th><th></th></tr>';
+      ttpPkPctCol = ttpFields.find(function (h) {
+        return normalizeTtpHeaderKey_(h).includes('% PK TRACEABLE');
+      }) || '';
+      ttpCategoryCol = pickTtpCategoryCol_(ttpFields);
+      document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(false);
+      ttpSyncTableLayoutClass_();
       loading.style.display = 'none';
       table.style.display = 'table';
       // reset selection state on fresh load
@@ -6635,13 +7581,23 @@ function initDashboardApp() {
       buildCompanyDropdown();
       buildColumnDropdown();
       document.getElementById('btn-export-ttp-xlsx').disabled = false;
-      scheduleRenderTTPTable();
+      ttpViewMode = 'flat';
+      syncTtpViewUi_();
+      buildTtpPeriodDropdowns_();
+      bindTtpPeriodBarOnce_();
+      refreshTtpPeriodDashboard_();
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
       errorEl.textContent = 'Gagal memuat data: ' + err.message;
+      const mixSection = document.getElementById('ttpCategoryMixSection');
+      if (mixSection) mixSection.hidden = true;
     }
   }
+
+  window.__ttpInvalidate = function() {
+    ttpLoaded = false;
+  };
 
   async function loadTTPData() {
     if (ttpLoadPromise) return ttpLoadPromise;
@@ -6654,7 +7610,6 @@ function initDashboardApp() {
   }
 
   // ─── TTP VIEW MODE (grouped / flat) ────────────────────
-  let ttpViewMode = 'grouped'; // 'grouped' | 'flat'
   let ttpTableDelegationBound = false;
 
   function bindTtpTableDelegationOnce() {
@@ -6677,18 +7632,25 @@ function initDashboardApp() {
         return;
       }
 
-      const expandBtn = e.target.closest('.ttp-expand');
-      if (expandBtn && body.contains(expandBtn)) {
-        e.stopPropagation();
-        const idx = expandBtn.dataset.idx;
-        const detail = document.getElementById('ttp-detail-' + idx);
-        if (!detail) return;
-        const isOpen = detail.classList.contains('open');
-        document.querySelectorAll('.grv-detail').forEach(d => d.classList.remove('open'));
-        document.querySelectorAll('.btn-expand').forEach(b => b.classList.remove('open'));
-        if (!isOpen) {
-          detail.classList.add('open');
-          expandBtn.classList.add('open');
+      const flatRow = e.target.closest('.ttp-flat-row');
+      if (flatRow && body.contains(flatRow) && ttpViewMode === 'flat') {
+        const idx = parseInt(flatRow.dataset.flatIdx, 10);
+        const row = ttpFlatFilteredRows[idx];
+        if (row) openTtpDetailModal_(row);
+        return;
+      }
+
+      const childRow = e.target.closest('.ttp-child-row');
+      if (childRow && body.contains(childRow) && ttpViewMode === 'grouped') {
+        if (e.target.closest('.row-actions')) return;
+        const childEdit = childRow.querySelector('.btn-edit');
+        if (childEdit && childEdit.dataset.row) {
+          try {
+            const parsed = JSON.parse(childEdit.dataset.row.replace(/&#39;/g, "'"));
+            openTtpDetailModal_(parsed);
+          } catch (err) {
+            console.warn('[TTP] Could not parse row for detail popup', err);
+          }
         }
         return;
       }
@@ -6712,6 +7674,8 @@ function initDashboardApp() {
   }
 
   function renderTTPTable() {
+    syncTtpViewUi_();
+    ttpSyncTableLayoutClass_();
     if (ttpViewMode === 'grouped') {
       renderTTPGrouped();
     } else {
@@ -6725,36 +7689,30 @@ function initDashboardApp() {
     if (!body) return;
     bindTtpTableDelegationOnce();
 
-    const groupCol   = ttpFields.find(h => h.toLowerCase().includes('group')) || '';
-    const companyCol = ttpFields.find(h => h.toUpperCase() === 'COMPANY NAME') || ttpFields.find(h => h.toLowerCase().includes('company name')) || '';
-    const millCol    = ttpFields.find(h => h.toUpperCase().includes('MILL NAME') || h.toLowerCase() === 'mill name') || ttpFields.find(h => h.toLowerCase().includes('mill')) || '';
+    const groupCol   = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'GROUP NAME')
+      || ttpFields.find(h => { const u = normalizeTtpHeaderKey_(h); return u.includes('GROUP') && u.includes('NAME') && !u.includes('FFB'); })
+      || '';
+    const companyCol = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'COMPANY NAME') || '';
+    const millCol    = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'MILL NAME') || '';
     const villageCol = ttpFields.find(h => /village|desa|kebun|estate|location|lokasi/i.test(h)) || '';
 
-    // Columns to show inline in child row (exclude the 4 main cols already shown)
-    const mainCols = new Set([groupCol, companyCol, millCol, ttpPctCol].filter(Boolean));
+    // Columns already in the table header — keep them out of the child-row meta block
+    const mainCols = new Set([groupCol, companyCol, millCol, ttpPctCol, ttpCategoryCol].filter(Boolean));
+    function isTtpCategoryField_(f) {
+      const u = normalizeTtpHeaderKey_(f);
+      return u === 'CATEGORY' || (u.includes('CATEGORY') && u !== 'SUPPLIER CATEGORY' && !u.includes('MILL CATEGORY'));
+    }
     const extraCols = (ttpVisibleCols && ttpVisibleCols.size > 0)
-      ? ttpFields.filter(f => ttpVisibleCols.has(f) && !mainCols.has(f))
-      : ttpFields.filter(f => !mainCols.has(f));
+      ? ttpFields.filter(function(f) { return ttpVisibleCols.has(f) && !mainCols.has(f) && !isTtpCategoryField_(f); })
+      : ttpFields.filter(function(f) { return !mainCols.has(f) && !isTtpCategoryField_(f); });
 
     // Fixed header — no "Detail" column, fixed widths that don't depend on content
-    document.getElementById('ttpTableHead').innerHTML = `<tr>
-      <th style="width:160px;min-width:130px">Group Name</th>
-      <th style="width:200px;min-width:160px">Company Name</th>
-      <th style="min-width:200px">Mill Name</th>
-      <th style="width:160px;min-width:120px">${ttpPctCol || 'Traceability %'}</th>
-      <th style="width:90px;min-width:80px"></th>
-    </tr>`;
+    document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
 
-    // Apply filters
-    let filtered = ttpData.filter(d =>
-      !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
-    );
-    if (ttpSelectedCompanies !== null) {
-      filtered = filtered.filter(d => ttpSelectedCompanies.has((d[ttpCompanyCol] || '').toString()));
-    }
+    let filtered = ttpApplyTableFilters_(ttpData);
 
     if (filtered.length === 0) {
-      body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
+      body.innerHTML = '<tr><td colspan="' + ttpMainTableColspan_(true) + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
       document.getElementById('ttpGroupInfo').textContent = '';
       return;
     }
@@ -6779,13 +7737,11 @@ function initDashboardApp() {
       const subCount  = rows.length;
       const groupId   = 'ttpg-' + gIdx;
 
-      const avgPct = ttpPctCol ? (() => {
-        const nums = rows.map(r => parseFloat(r[ttpPctCol])).filter(n => !isNaN(n));
-        if (!nums.length) return '—';
-        const avg = nums.reduce((a,b) => a+b, 0) / nums.length;
-        const hasPct = (rows[0][ttpPctCol]||'').toString().includes('%');
-        return (Number.isInteger(avg) ? avg : avg.toFixed(1)) + (hasPct ? '%' : '');
+      const avgPct = ttpPctCol ? (function() {
+        const agg = ttpAggregateTotalTraceablePct_(rows, 'cpo');
+        return isNaN(agg.value) ? '—' : ttpFormatTraceablePct_(agg.value);
       })() : '—';
+      const groupCategory = ttpCategoryGroupSummary_(rows);
 
       // ── Parent row ──
       html += `<tr class="ttp-group-row" data-group="${groupId}" data-expanded="0">
@@ -6799,12 +7755,14 @@ function initDashboardApp() {
           </div>
         </td>
         <td><span style="font-weight:600;color:var(--forest)">${avgPct}</span>${subCount > 1 ? '<span class="ttp-group-meta"> avg</span>' : ''}</td>
+        <td><span class="ttp-category-val">${groupCategory}</span></td>
         <td></td>
       </tr>`;
 
       // ── Child rows — clean horizontal layout ──
       rows.forEach((d, ri) => {
-        const pct        = ttpPctCol ? (d[ttpPctCol] !== undefined && d[ttpPctCol] !== '' ? d[ttpPctCol] : '—') : '—';
+        const pct        = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
+        const category   = ttpRowCategoryValue_(d);
         const childLabel = villageCol && d[villageCol] ? d[villageCol] : ('Record #' + (ri + 1));
 
         // Pick up to 2 most informative extra fields to show as subtle text in each cell
@@ -6823,6 +7781,7 @@ function initDashboardApp() {
             ${extraInfo ? `<div class="ttp-child-extra">${extraInfo}</div>` : ''}
           </td>
           <td style="font-weight:500;color:var(--text-light);font-size:12px;">${pct}</td>
+          <td><span class="ttp-category-val">${category}</span></td>
           <td>
             <div class="row-actions">
               <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="ttp">Edit</button>
@@ -6839,62 +7798,48 @@ function initDashboardApp() {
 
   }
 
-  // ── FLAT VIEW (original behaviour) ────────────────────
+  // ── FLAT VIEW (default) — one row per record; click row for detail popup ──
   function renderTTPFlat() {
     const body = document.getElementById('ttpTableBody');
     if (!body) return;
     bindTtpTableDelegationOnce();
 
-    let filtered = ttpData.filter(d =>
-      !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
-    );
-    if (ttpSelectedCompanies !== null) {
-      filtered = filtered.filter(d => ttpSelectedCompanies.has((d[ttpCompanyCol] || '').toString()));
-    }
+    let filtered = ttpApplyTableFilters_(ttpData);
+    ttpFlatFilteredRows = filtered;
 
-    const colsForDetail = (ttpVisibleCols && ttpVisibleCols.size > 0) ? ttpFields.filter(f => ttpVisibleCols.has(f)) : ttpFields;
-    const groupCol   = ttpFields.find(h => h.toLowerCase().includes('group')) || '';
-    const companyCol = ttpFields.find(h => h.toUpperCase() === 'COMPANY NAME') || ttpFields.find(h => h.toLowerCase().includes('company name')) || '';
-    const millCol    = ttpFields.find(h => h.toUpperCase().includes('MILL NAME') || h.toLowerCase() === 'mill name') || ttpFields.find(h => h.toLowerCase().includes('mill')) || '';
+    const groupCol   = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'GROUP NAME')
+      || ttpFields.find(h => { const u = normalizeTtpHeaderKey_(h); return u.includes('GROUP') && u.includes('NAME') && !u.includes('FFB'); })
+      || '';
+    const companyCol = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'COMPANY NAME') || '';
+    const millCol    = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'MILL NAME') || '';
 
-    document.getElementById('ttpTableHead').innerHTML =
-      '<tr><th>Group Name</th><th>Company Name</th><th>Mill Name</th><th>' + (ttpPctCol || 'Traceability %') + '</th><th></th></tr>';
-    document.getElementById('ttpGroupInfo').textContent = filtered.length + ' records';
+    document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(false);
+    document.getElementById('ttpGroupInfo').textContent =
+      filtered.length + ' records · click a row for supplier detail';
 
     if (filtered.length === 0) {
-      body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
+      body.innerHTML = '<tr><td colspan="' + ttpMainTableColspan_(false) + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
       return;
     }
 
     body.innerHTML = filtered.map((d, i) => {
-      const detailHTML = colsForDetail.map(f => `
-        <div class="grv-detail-item">
-          <div class="grv-detail-label">${f}</div>
-          <div class="grv-detail-val">${d[f] !== undefined && d[f] !== '' ? d[f] : '—'}</div>
-        </div>`).join('');
-      const pct = ttpPctCol ? (d[ttpPctCol] !== undefined && d[ttpPctCol] !== '' ? d[ttpPctCol] : '—') : '—';
-      return `
-        <tr class="mill-row-clickable ttp-main-row" data-idx="${i}">
-          <td>${d[groupCol] || '—'}</td>
-          <td>${d[companyCol] || '—'}</td>
-          <td><span class="mill-name">${d[millCol] || '—'}</span></td>
-          <td>${pct}</td>
-          <td>
-            <div class="row-actions">
-              <button class="btn-expand ttp-expand" data-idx="${i}" title="View detail">▾</button>
-              <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="ttp">Edit</button>
-              <button class="btn-row btn-delete" data-rownum="${d._row}" data-sheet="ttp">Del</button>
-            </div>
-          </td>
-        </tr>
-        <tr class="grv-expand-row">
-          <td colspan="5">
-            <div class="grv-detail" id="ttp-detail-${i}" style="grid-template-columns:1fr 1fr 1fr;">${detailHTML}</div>
-          </td>
-        </tr>`;
+      const pct = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
+      const category = ttpRowCategoryValue_(d);
+      const supplierHint = ttpRowField_(d, ['FFB SUPPLIER NAME']);
+      const titleAttr = supplierHint !== '—'
+        ? ' title="View: ' + supplierHint.replace(/"/g, '&quot;') + '"'
+        : ' title="View supplier detail"';
+      return ''
+        + '<tr class="mill-row-clickable ttp-flat-row" data-flat-idx="' + i + '"' + titleAttr + '>'
+        + '<td>' + escHtml(d[groupCol] || '—') + '</td>'
+        + '<td>' + escHtml(d[companyCol] || '—') + '</td>'
+        + '<td><span class="mill-name">' + escHtml(d[millCol] || '—') + '</span></td>'
+        + '<td><span class="ttp-pct-val">' + escHtml(String(pct)) + '</span></td>'
+        + '<td><span class="ttp-category-val">' + escHtml(category) + '</span></td>'
+        + '</tr>';
     }).join('');
-
   }
+
 
   (function bindTtpToolbarIfPresent() {
     const btnAddTtp = document.getElementById('btn-add-ttp');
@@ -6936,16 +7881,15 @@ function initDashboardApp() {
 
     ttpViewGrouped.addEventListener('click', function() {
       ttpViewMode = 'grouped';
-      this.classList.add('active');
-      document.getElementById('ttpViewFlat')?.classList.remove('active');
+      syncTtpViewUi_();
       scheduleRenderTTPTable();
     });
     ttpViewFlat.addEventListener('click', function() {
       ttpViewMode = 'flat';
-      this.classList.add('active');
-      document.getElementById('ttpViewGrouped')?.classList.remove('active');
+      syncTtpViewUi_();
       scheduleRenderTTPTable();
     });
+    syncTtpViewUi_();
 
     ttpBtnSelect.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -6980,13 +7924,7 @@ function initDashboardApp() {
         ? ttpFields.filter(f => ttpVisibleCols.has(f))
         : ttpFields;
 
-      const rowsToExport = ttpData.filter(d => {
-        if (ttpSelectedCompanies === null) return true;
-        const co = (d[ttpCompanyCol] || '').toString();
-        return ttpSelectedCompanies.has(co);
-      }).filter(d =>
-        !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
-      );
+      const rowsToExport = ttpApplyTableFilters_(ttpData);
 
       if (!rowsToExport.length) { alert('Tidak ada data untuk di-export.'); return; }
 
@@ -7470,6 +8408,748 @@ function initDashboardApp() {
     });
   })();
 
+  // ─── CONTACT LIST SUPPLIER ───────────────────────────────
+  const CLS_EXPORT_FIELDS = [
+    'Group Name', 'Company Name', 'Supplier Type',
+    'Sustainability PIC', 'Phone Number', 'approved_at', 'submission_id',
+  ];
+  let contactListData = [];
+  let contactListLoaded = false;
+  let contactListSearch = '';
+  let contactLoadPromise = null;
+  let clsRenderScheduled = false;
+
+  function formatClsApprovedAt_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '—';
+    if (s.length >= 10 && s.indexOf('T') !== -1) return s.slice(0, 10);
+    return s.length > 16 ? s.slice(0, 16) : s;
+  }
+
+  function prepareContactListRow_(d) {
+    const parts = [
+      d['Group Name'], d['Company Name'], d['Supplier Type'],
+      d['Sustainability PIC'], d['Phone Number'], d['submission_id'],
+    ].map(function(x) { return String(x || '').toLowerCase(); });
+    d._clsSearchBlob = parts.join(' ');
+    return d;
+  }
+
+  function updateContactListStats_() {
+    const totalEl = document.getElementById('cls-stat-total');
+    if (!totalEl) return;
+    const rows = contactListData;
+    totalEl.textContent = String(rows.length);
+    const countType = function(t) {
+      return rows.filter(function(d) {
+        return String(d['Supplier Type'] || '').toUpperCase() === t;
+      }).length;
+    };
+    const millEl = document.getElementById('cls-stat-mill');
+    const kcpEl = document.getElementById('cls-stat-kcp');
+    const traderEl = document.getElementById('cls-stat-trader');
+    if (millEl) millEl.textContent = String(countType('MILL'));
+    if (kcpEl) kcpEl.textContent = String(countType('KCP'));
+    if (traderEl) traderEl.textContent = String(countType('TRADER'));
+  }
+
+  function renderContactListTable_() {
+    const body = document.getElementById('clsTableBody');
+    if (!body) return;
+    const q = contactListSearch;
+    const filtered = contactListData.filter(function(d) {
+      return !q || (d._clsSearchBlob || '').includes(q);
+    });
+    filtered.sort(function(a, b) {
+      const ta = String(a['approved_at'] || a['updated_at'] || '');
+      const tb = String(b['approved_at'] || b['updated_at'] || '');
+      return tb.localeCompare(ta);
+    });
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (q ? 'No results match your search.' : 'No contacts yet. PIC details appear here after an SDD screening is approved.')
+        + '</td></tr>';
+      return;
+    }
+    body.innerHTML = filtered.map(function(d) {
+      const pic = d['Sustainability PIC'] || '—';
+      const phone = d['Phone Number'] || '—';
+      const phoneCell = phone !== '—'
+        ? '<a class="cls-phone-link" href="tel:' + escHtml(String(phone).replace(/\s/g, '')) + '">' + escHtml(phone) + '</a>'
+        : '—';
+      return '<tr>'
+        + '<td><span class="mill-name">' + escHtml(d['Group Name'] || '—') + '</span></td>'
+        + '<td>' + escHtml(d['Company Name'] || '—') + '</td>'
+        + '<td><span class="status-badge risk-low"><span class="s-dot"></span>' + escHtml(d['Supplier Type'] || '—') + '</span></td>'
+        + '<td><strong>' + escHtml(pic) + '</strong></td>'
+        + '<td>' + phoneCell + '</td>'
+        + '<td>' + escHtml(formatClsApprovedAt_(d['approved_at'])) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function scheduleRenderContactListTable_() {
+    if (clsRenderScheduled) return;
+    clsRenderScheduled = true;
+    requestAnimationFrame(function() {
+      clsRenderScheduled = false;
+      renderContactListTable_();
+    });
+  }
+
+  async function loadContactListDataImpl_(force) {
+    const loading = document.getElementById('cls-loading');
+    const errorEl = document.getElementById('cls-error');
+    const table = document.getElementById('clsTable');
+    if (!loading || !errorEl || !table) return;
+    try {
+      loading.style.display = 'block';
+      errorEl.style.display = 'none';
+      table.style.display = 'none';
+      const raw = await apiGet('contactSupplier');
+      contactListData = (Array.isArray(raw) ? raw : []).map(prepareContactListRow_);
+      contactListLoaded = true;
+      updateContactListStats_();
+      loading.style.display = 'none';
+      table.style.display = 'table';
+      scheduleRenderContactListTable_();
+    } catch (err) {
+      loading.style.display = 'none';
+      errorEl.style.display = 'block';
+      errorEl.textContent = 'Failed to load Contact List Supplier: ' + ((err && err.message) ? err.message : String(err));
+      if (force) throw err;
+    }
+  }
+
+  async function loadContactListData(force) {
+    if (contactListLoaded && !force) {
+      scheduleRenderContactListTable_();
+      return;
+    }
+    if (contactLoadPromise) return contactLoadPromise;
+    contactLoadPromise = loadContactListDataImpl_(!!force);
+    try {
+      await contactLoadPromise;
+    } finally {
+      contactLoadPromise = null;
+    }
+  }
+
+  window.__contactListInvalidate = function() {
+    contactListLoaded = false;
+  };
+  window.loadContactListData = loadContactListData;
+
+  (function bindContactListToolbarIfPresent_() {
+    const searchEl = document.getElementById('clsSearch');
+    const clearEl = document.getElementById('clsSearchClear');
+    const btnRefresh = document.getElementById('btn-refresh-cls');
+    const btnExport = document.getElementById('btn-export-cls');
+    if (!searchEl || !clearEl || !btnRefresh || !btnExport) return;
+
+    const debouncedRender = debounce(function() {
+      scheduleRenderContactListTable_();
+    }, 120);
+
+    searchEl.addEventListener('input', function() {
+      contactListSearch = this.value.toLowerCase().trim();
+      if (this.value) clearEl.classList.add('show');
+      else clearEl.classList.remove('show');
+      debouncedRender();
+    });
+
+    clearEl.addEventListener('click', function() {
+      searchEl.value = '';
+      contactListSearch = '';
+      this.classList.remove('show');
+      if (debouncedRender.cancel) debouncedRender.cancel();
+      if (debouncedRender.flush) debouncedRender.flush();
+      else scheduleRenderContactListTable_();
+      searchEl.focus();
+    });
+
+    btnRefresh.addEventListener('click', function() {
+      contactListLoaded = false;
+      loadContactListData(true);
+    });
+
+    btnExport.addEventListener('click', function() {
+      if (!contactListData.length) return;
+      const csv = '\uFEFF' + [CLS_EXPORT_FIELDS].concat(
+        contactListData.map(function(d) {
+          return CLS_EXPORT_FIELDS.map(function(f) {
+            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
+          });
+        })
+      ).map(function(r) { return r.join(','); }).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = 'contact_list_supplier.csv';
+      a.click();
+    });
+  })();
+
+  // ─── NO BUY LIST (NBL + Unilever NBL) ────────────────────
+  const NBL_REGISTRY_FIELDS = ['Riser', 'Group Name NBL', 'Company Name NBL', 'SOURCE'];
+  const UNILEVER_NBL_FIELDS = [
+    'NO.', 'UML ID', 'COMPANY NAME', 'MILL NAME', 'COUNTRY', 'PROVINCE',
+    'DISTRICT / REGENCY', 'LAT.', 'LONG.',
+  ];
+  let nblRegistryData = [];
+  let nblUnileverData = [];
+  let nblRegistryLoaded = false;
+  let nblUnileverLoaded = false;
+  let nblLoadPromise = null;
+  let nblActiveSource = 'nbl';
+  let nblSearchRegistry = '';
+  let nblSearchUnilever = '';
+  let nblRenderScheduled = false;
+
+  function nblPickField_(row, keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var v = row[keys[i]];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    var norm = {};
+    Object.keys(row || {}).forEach(function(k) {
+      if (k === '_row') return;
+      norm[String(k).trim().toLowerCase()] = row[k];
+    });
+    for (var j = 0; j < keys.length; j++) {
+      var lk = String(keys[j]).trim().toLowerCase();
+      if (norm[lk] !== undefined && norm[lk] !== null && String(norm[lk]).trim() !== '') {
+        return String(norm[lk]).trim();
+      }
+    }
+    return '';
+  }
+
+  function prepareNblRegistryRow_(d) {
+    d._nblRiser = nblPickField_(d, ['Riser']);
+    d._nblGroup = nblPickField_(d, ['Group Name NBL', 'Group Name']);
+    d._nblCompany = nblPickField_(d, ['Company Name NBL', 'Company Name']);
+    d._nblSource = nblPickField_(d, ['SOURCE', 'Source']);
+    d._nblSearchBlob = [d._nblRiser, d._nblGroup, d._nblCompany, d._nblSource]
+      .join(' ').toLowerCase();
+    return d;
+  }
+
+  function prepareNblUnileverRow_(d) {
+    d._nblNo = nblPickField_(d, ['NO.', 'NO', 'No.']);
+    d._nblUml = nblPickField_(d, ['UML ID']);
+    d._nblCompany = nblPickField_(d, ['COMPANY NAME', 'Company Name']);
+    d._nblMill = nblPickField_(d, ['MILL NAME', 'Mill Name']);
+    d._nblCountry = nblPickField_(d, ['COUNTRY', 'Country']);
+    d._nblProvince = nblPickField_(d, ['PROVINCE', 'Province']);
+    d._nblDistrict = nblPickField_(d, ['DISTRICT / REGENCY', 'DISTRICT/REGENCY', 'District / Regency']);
+    d._nblLat = nblPickField_(d, ['LAT.', 'LAT', 'Latitude', 'Lat']);
+    d._nblLong = nblPickField_(d, ['LONG.', 'LONG', 'Longitude', 'Long']);
+    d._nblSearchBlob = [
+      d._nblNo, d._nblUml, d._nblCompany, d._nblMill, d._nblCountry,
+      d._nblProvince, d._nblDistrict, d._nblLat, d._nblLong,
+    ].join(' ').toLowerCase();
+    return d;
+  }
+
+  function updateNblStats_() {
+    var regEl = document.getElementById('nbl-stat-registry');
+    var uniEl = document.getElementById('nbl-stat-unilever');
+    var grpEl = document.getElementById('nbl-stat-groups');
+    var ctyEl = document.getElementById('nbl-stat-countries');
+    if (regEl) regEl.textContent = String(nblRegistryData.length);
+    if (uniEl) uniEl.textContent = String(nblUnileverData.length);
+    if (grpEl) {
+      var groups = {};
+      nblRegistryData.forEach(function(d) {
+        var g = d._nblGroup;
+        if (g) groups[g.toLowerCase()] = true;
+      });
+      grpEl.textContent = String(Object.keys(groups).length);
+    }
+    if (ctyEl) {
+      var countries = {};
+      nblUnileverData.forEach(function(d) {
+        var c = d._nblCountry;
+        if (c) countries[c.toLowerCase()] = true;
+      });
+      ctyEl.textContent = String(Object.keys(countries).length);
+    }
+  }
+
+  function setNblActiveSource_(source) {
+    nblActiveSource = source === 'unilever' ? 'unilever' : 'nbl';
+    document.querySelectorAll('#panel-no-buy-list .nbl-source-tab').forEach(function(btn) {
+      var on = btn.getAttribute('data-nbl-source') === nblActiveSource;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    var paneReg = document.getElementById('nbl-pane-registry');
+    var paneUni = document.getElementById('nbl-pane-unilever');
+    if (paneReg) {
+      paneReg.classList.toggle('active', nblActiveSource === 'nbl');
+      paneReg.hidden = nblActiveSource !== 'nbl';
+    }
+    if (paneUni) {
+      paneUni.classList.toggle('active', nblActiveSource === 'unilever');
+      paneUni.hidden = nblActiveSource !== 'unilever';
+    }
+    var titleEl = document.getElementById('nbl-table-title');
+    if (titleEl) {
+      titleEl.textContent = nblActiveSource === 'unilever' ? 'Unilever NBL' : 'NBL registry';
+    }
+    var searchEl = document.getElementById('nblSearch');
+    if (searchEl) {
+      searchEl.value = nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
+      searchEl.placeholder = nblActiveSource === 'unilever'
+        ? 'Search UML ID, company, mill, location...'
+        : 'Search riser, group, company, source...';
+    }
+    scheduleRenderNblTable_();
+  }
+
+  function renderNblRegistryTable_() {
+    var body = document.getElementById('nblTableRegistryBody');
+    var table = document.getElementById('nblTableRegistry');
+    if (!body || !table) return;
+    var q = nblSearchRegistry;
+    var filtered = nblRegistryData.filter(function(d) {
+      return !q || (d._nblSearchBlob || '').includes(q);
+    });
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (q ? 'No results match your search.' : 'No NBL registry rows in the sheet yet.')
+        + '</td></tr>';
+      table.style.display = 'table';
+      return;
+    }
+    body.innerHTML = filtered.map(function(d) {
+      return '<tr>'
+        + '<td>' + escHtml(d._nblRiser || '—') + '</td>'
+        + '<td><span class="mill-name">' + escHtml(d._nblGroup || '—') + '</span></td>'
+        + '<td>' + escHtml(d._nblCompany || '—') + '</td>'
+        + '<td>' + escHtml(d._nblSource || '—') + '</td>'
+        + '</tr>';
+    }).join('');
+    table.style.display = 'table';
+  }
+
+  function renderNblUnileverTable_() {
+    var body = document.getElementById('nblTableUnileverBody');
+    var table = document.getElementById('nblTableUnilever');
+    if (!body || !table) return;
+    var q = nblSearchUnilever;
+    var filtered = nblUnileverData.filter(function(d) {
+      return !q || (d._nblSearchBlob || '').includes(q);
+    });
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (q ? 'No results match your search.' : 'No Unilever NBL rows in the sheet yet.')
+        + '</td></tr>';
+      table.style.display = 'table';
+      return;
+    }
+    body.innerHTML = filtered.map(function(d) {
+      return '<tr>'
+        + '<td>' + escHtml(d._nblNo || '—') + '</td>'
+        + '<td><span class="mill-id">' + escHtml(d._nblUml || '—') + '</span></td>'
+        + '<td>' + escHtml(d._nblCompany || '—') + '</td>'
+        + '<td><span class="mill-name">' + escHtml(d._nblMill || '—') + '</span></td>'
+        + '<td>' + escHtml(d._nblCountry || '—') + '</td>'
+        + '<td>' + escHtml(d._nblProvince || '—') + '</td>'
+        + '<td>' + escHtml(d._nblDistrict || '—') + '</td>'
+        + '<td class="nbl-coord">' + escHtml(d._nblLat || '—') + '</td>'
+        + '<td class="nbl-coord">' + escHtml(d._nblLong || '—') + '</td>'
+        + '</tr>';
+    }).join('');
+    table.style.display = 'table';
+  }
+
+  function scheduleRenderNblTable_() {
+    if (nblRenderScheduled) return;
+    nblRenderScheduled = true;
+    requestAnimationFrame(function() {
+      nblRenderScheduled = false;
+      if (nblActiveSource === 'unilever') renderNblUnileverTable_();
+      else renderNblRegistryTable_();
+    });
+  }
+
+  function showNblTablesAfterLoad_() {
+    var loading = document.getElementById('nbl-loading');
+    if (loading) loading.style.display = 'none';
+    var tblReg = document.getElementById('nblTableRegistry');
+    var tblUni = document.getElementById('nblTableUnilever');
+    if (nblActiveSource === 'unilever') {
+      if (tblReg) tblReg.style.display = 'none';
+      if (tblUni) tblUni.style.display = 'table';
+    } else {
+      if (tblUni) tblUni.style.display = 'none';
+      if (tblReg) tblReg.style.display = 'table';
+    }
+    scheduleRenderNblTable_();
+  }
+
+  async function loadNoBuyListDataImpl_(force) {
+    var loading = document.getElementById('nbl-loading');
+    var errorEl = document.getElementById('nbl-error');
+    if (!loading) return;
+    try {
+      loading.style.display = 'block';
+      if (errorEl) errorEl.style.display = 'none';
+      var tblReg = document.getElementById('nblTableRegistry');
+      var tblUni = document.getElementById('nblTableUnilever');
+      if (tblReg) tblReg.style.display = 'none';
+      if (tblUni) tblUni.style.display = 'none';
+
+      var results = await Promise.all([
+        apiGet('nbl'),
+        apiGet('unileverNbl'),
+      ]);
+      nblRegistryData = (Array.isArray(results[0]) ? results[0] : []).map(prepareNblRegistryRow_);
+      nblUnileverData = (Array.isArray(results[1]) ? results[1] : []).map(prepareNblUnileverRow_);
+      nblRegistryLoaded = true;
+      nblUnileverLoaded = true;
+      updateNblStats_();
+      showNblTablesAfterLoad_();
+    } catch (err) {
+      loading.style.display = 'none';
+      if (errorEl) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Failed to load No Buy List: ' + ((err && err.message) ? err.message : String(err));
+      }
+      if (force) throw err;
+    }
+  }
+
+  async function loadNoBuyListData(force) {
+    if (nblRegistryLoaded && nblUnileverLoaded && !force) {
+      showNblTablesAfterLoad_();
+      return;
+    }
+    if (nblLoadPromise) return nblLoadPromise;
+    nblLoadPromise = loadNoBuyListDataImpl_(!!force);
+    try {
+      await nblLoadPromise;
+    } finally {
+      nblLoadPromise = null;
+    }
+  }
+
+  (function bindNoBuyListToolbarIfPresent_() {
+    var panel = document.getElementById('panel-no-buy-list');
+    if (!panel) return;
+
+    panel.querySelectorAll('.nbl-source-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setNblActiveSource_(btn.getAttribute('data-nbl-source') || 'nbl');
+      });
+    });
+
+    var searchEl = document.getElementById('nblSearch');
+    var clearEl = document.getElementById('nblSearchClear');
+    var btnRefresh = document.getElementById('btn-refresh-nbl');
+    var btnExport = document.getElementById('btn-export-nbl');
+    if (!searchEl || !clearEl || !btnRefresh || !btnExport) return;
+
+    var debouncedRender = debounce(function() {
+      scheduleRenderNblTable_();
+    }, 120);
+
+    searchEl.addEventListener('input', function() {
+      var q = this.value.toLowerCase().trim();
+      if (nblActiveSource === 'unilever') nblSearchUnilever = q;
+      else nblSearchRegistry = q;
+      if (this.value) clearEl.classList.add('show');
+      else clearEl.classList.remove('show');
+      debouncedRender();
+    });
+
+    clearEl.addEventListener('click', function() {
+      searchEl.value = '';
+      if (nblActiveSource === 'unilever') nblSearchUnilever = '';
+      else nblSearchRegistry = '';
+      this.classList.remove('show');
+      if (debouncedRender.cancel) debouncedRender.cancel();
+      if (debouncedRender.flush) debouncedRender.flush();
+      else scheduleRenderNblTable_();
+      searchEl.focus();
+    });
+
+    btnRefresh.addEventListener('click', function() {
+      nblRegistryLoaded = false;
+      nblUnileverLoaded = false;
+      loadNoBuyListData(true);
+    });
+
+    btnExport.addEventListener('click', function() {
+      var fields = nblActiveSource === 'unilever' ? UNILEVER_NBL_FIELDS : NBL_REGISTRY_FIELDS;
+      var rows = nblActiveSource === 'unilever' ? nblUnileverData : nblRegistryData;
+      if (!rows.length) return;
+      var csv = '\uFEFF' + [fields].concat(
+        rows.map(function(d) {
+          return fields.map(function(f) {
+            if (nblActiveSource === 'unilever') {
+              if (f === 'NO.') return '"' + String(d._nblNo || '').replace(/"/g, '""') + '"';
+              if (f === 'UML ID') return '"' + String(d._nblUml || '').replace(/"/g, '""') + '"';
+              if (f === 'COMPANY NAME') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
+              if (f === 'MILL NAME') return '"' + String(d._nblMill || '').replace(/"/g, '""') + '"';
+              if (f === 'COUNTRY') return '"' + String(d._nblCountry || '').replace(/"/g, '""') + '"';
+              if (f === 'PROVINCE') return '"' + String(d._nblProvince || '').replace(/"/g, '""') + '"';
+              if (f === 'DISTRICT / REGENCY') return '"' + String(d._nblDistrict || '').replace(/"/g, '""') + '"';
+              if (f === 'LAT.') return '"' + String(d._nblLat || '').replace(/"/g, '""') + '"';
+              if (f === 'LONG.') return '"' + String(d._nblLong || '').replace(/"/g, '""') + '"';
+            }
+            if (f === 'Riser') return '"' + String(d._nblRiser || '').replace(/"/g, '""') + '"';
+            if (f === 'Group Name NBL') return '"' + String(d._nblGroup || '').replace(/"/g, '""') + '"';
+            if (f === 'Company Name NBL') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
+            if (f === 'SOURCE') return '"' + String(d._nblSource || '').replace(/"/g, '""') + '"';
+            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
+          });
+        })
+      ).map(function(r) { return r.join(','); }).join('\n');
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = nblActiveSource === 'unilever' ? 'unilever_nbl.csv' : 'nbl_registry.csv';
+      a.click();
+    });
+  })();
+
+  // ─── SDD: CHECK NBL (import vs NBL + Unilever NBL sheets) ───
+  let _nblListsCache = null;
+  let _nblListsCacheAt = 0;
+  const NBL_LISTS_CACHE_MS = 120000;
+
+  function nblNamesEqual_(a, b) {
+    var na = normalizeLooseKey(a);
+    var nb = normalizeLooseKey(b);
+    return !!(na && nb && na === nb);
+  }
+
+  function getSddPrimaryForNblCheck_() {
+    var p = window._loadedPrimarySddRow || window._sddImportFirstRow || {};
+    return {
+      group: normalizeCellText(p['Group Name'] || p['Grup Name'] || ''),
+      company: normalizeCellText(p['Company Name'] || ''),
+      mill: normalizeCellText(p['Mill Name'] || ''),
+    };
+  }
+
+  async function ensureNblListsForCheck_() {
+    var now = Date.now();
+    if (_nblListsCache && (now - _nblListsCacheAt) < NBL_LISTS_CACHE_MS) {
+      return _nblListsCache;
+    }
+    var results = await Promise.all([apiGet('nbl'), apiGet('unileverNbl')]);
+    _nblListsCache = {
+      registry: (Array.isArray(results[0]) ? results[0] : []).map(prepareNblRegistryRow_),
+      unilever: (Array.isArray(results[1]) ? results[1] : []).map(prepareNblUnileverRow_),
+    };
+    _nblListsCacheAt = now;
+    return _nblListsCache;
+  }
+
+  function runNblMatchCheck_(primary, lists) {
+    var matches = [];
+    var seen = {};
+    var group = primary.group;
+    var company = primary.company;
+    var mill = primary.mill;
+
+    function pushMatch_(key, entry) {
+      if (seen[key]) return;
+      seen[key] = true;
+      matches.push(entry);
+    }
+
+    // NBL: any single field match counts (Group OR Company)
+    if (group || company) {
+      lists.registry.forEach(function(r, i) {
+        var groupMatch = !!(group && nblNamesEqual_(r._nblGroup, group));
+        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
+        if (!groupMatch && !companyMatch) return;
+        var hit = [];
+        if (groupMatch) hit.push('Group Name');
+        if (companyMatch) hit.push('Company Name');
+        pushMatch_('nbl-' + i, {
+          source: 'NBL',
+          detail: 'Matched (' + hit.join(' or ') + '): Group ' + (r._nblGroup || '—')
+            + ' · Company ' + (r._nblCompany || '—')
+            + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
+        });
+      });
+    }
+
+    // Unilever NBL: any single field match counts (Company OR Mill)
+    if (company || mill) {
+      lists.unilever.forEach(function(r, i) {
+        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
+        var millMatch = !!(mill && nblNamesEqual_(r._nblMill, mill));
+        if (!companyMatch && !millMatch) return;
+        var hit = [];
+        if (companyMatch) hit.push('Company Name');
+        if (millMatch) hit.push('Mill Name');
+        pushMatch_('uni-' + i, {
+          source: 'Unilever NBL',
+          detail: 'Matched (' + hit.join(' or ') + '): Company ' + (r._nblCompany || '—')
+            + ' · Mill ' + (r._nblMill || '—')
+            + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
+        });
+      });
+    }
+
+    var status = matches.length ? 'Yes' : 'No';
+    return { status: status, matches: matches, checkedAt: new Date().toISOString(), primary: primary };
+  }
+
+  function renderSddNblCheckBanner_(result) {
+    var boxes = document.querySelectorAll('#sdd-nbl-check-result');
+    if (!boxes.length) return;
+    var isYes = result.status === 'Yes';
+    var bg = isYes ? 'rgba(185,28,28,0.08)' : 'rgba(30,107,58,0.08)';
+    var border = isYes ? 'rgba(185,28,28,0.35)' : 'rgba(30,107,58,0.35)';
+    var title = isYes ? 'Yes — on No Buy List' : 'No — not on No Buy List';
+    var html = '<strong style="color:#1A0A0A;">' + title + '</strong>';
+    html += '<div style="margin-top:6px;color:#5F4A48;">Compared: Group <em>' + escHtml(result.primary.group || '—')
+      + '</em> · Company <em>' + escHtml(result.primary.company || '—')
+      + '</em> · Mill <em>' + escHtml(result.primary.mill || '—') + '</em></div>';
+    if (result.matches.length) {
+      html += '<ul style="margin:8px 0 0;padding-left:18px;color:#4a1c1c;">';
+      result.matches.forEach(function(m) {
+        html += '<li style="margin-bottom:4px;"><span style="font-weight:600;">' + escHtml(m.source) + ':</span> '
+          + escHtml(m.detail) + '</li>';
+      });
+      html += '</ul>';
+    } else {
+      html += '<div style="margin-top:6px;">No similar Group Name, Company Name, or Mill Name found in NBL or Unilever NBL sheets.</div>';
+    }
+    html += '<div style="margin-top:8px;font-size:11px;color:#9C8080;">Screening field <strong>No Buy List</strong> set to '
+      + escHtml(result.status) + '. Included in PDF export.</div>';
+    boxes.forEach(function(box) {
+      box.style.display = 'block';
+      box.style.background = bg;
+      box.style.border = '1px solid ' + border;
+      box.style.borderRadius = '8px';
+      box.style.padding = '10px 12px';
+      box.innerHTML = html;
+    });
+  }
+
+  function persistNblCheckToSdd_(result) {
+    var isYes = result.status === 'Yes';
+    var statusLabel = isYes
+      ? 'YES — Supplier IS ON the No Buy List (NBL)'
+      : 'NO — Supplier is NOT on the No Buy List';
+    var detail = result.matches.length
+      ? result.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
+      : 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
+    window._scrData = window._scrData || {};
+    window._scrData.nblCheckResult = statusLabel;
+    window._scrData.nblCheckDetail = detail;
+    window._scrData.nblCheckedAt = result.checkedAt || new Date().toISOString();
+    if (window._loadedPrimarySddRow) {
+      window._loadedPrimarySddRow['SCR - NBL Check Result'] = statusLabel;
+      window._loadedPrimarySddRow['SCR - NBL Match Detail'] = detail;
+      window._loadedPrimarySddRow['SCR - NBL Checked At'] = window._scrData.nblCheckedAt;
+    }
+  }
+
+  function applyNblCheckToScrForm_(status) {
+    var val = status === 'Yes' ? 'Yes' : 'No';
+    var el = document.getElementById('scr-nbl');
+    if (el) {
+      el.value = val;
+      el.classList.remove('scr-sel-yes', 'scr-sel-no');
+      if (val === 'Yes') el.classList.add('scr-sel-yes');
+      else if (val === 'No') el.classList.add('scr-sel-no');
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    window._scrData = window._scrData || {};
+    window._scrData.nbl = val;
+    if (window._loadedPrimarySddRow) {
+      window._loadedPrimarySddRow['SCR - No Buy List'] = val;
+    }
+  }
+
+  function restoreNblCheckResultFromRow_(row) {
+    if (!row || typeof row !== 'object') return;
+    var stored = String(row['SCR - NBL Check Result'] || '').trim();
+    var detail = String(row['SCR - NBL Match Detail'] || '').trim();
+    var checkedAt = String(row['SCR - NBL Checked At'] || '').trim();
+    var nbl = String(row['SCR - No Buy List'] || '').trim();
+    if (!stored && !detail && !nbl) return;
+    var status = /^yes/i.test(nbl) || /on the no buy list/i.test(stored) ? 'Yes' : 'No';
+    if (stored && /not on the no buy list/i.test(stored)) status = 'No';
+    var matches = [];
+    if (detail && !/^no matching/i.test(detail)) {
+      detail.split(/\s*\|\s*/).forEach(function(part) {
+        var idx = part.indexOf(':');
+        if (idx > -1) {
+          matches.push({ source: part.slice(0, idx).trim(), detail: part.slice(idx + 1).trim() });
+        }
+      });
+    }
+    window._nblCheckResult = {
+      status: status,
+      matches: matches,
+      checkedAt: checkedAt || '',
+      primary: getSddPrimaryForNblCheck_(),
+    };
+    window._scrData = window._scrData || {};
+    window._scrData.nblCheckResult = stored;
+    window._scrData.nblCheckDetail = detail;
+    window._scrData.nblCheckedAt = checkedAt;
+  }
+  window.restoreNblCheckResultFromRow_ = restoreNblCheckResultFromRow_;
+
+  window.runSddNblCheck = async function() {
+    var primary = getSddPrimaryForNblCheck_();
+    if (!primary.company && !primary.group && !primary.mill) {
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Import Excel dulu — Group Name, Company Name, dan Mill Name diperlukan untuk Check NBL.', 'error');
+      }
+      return;
+    }
+
+    var btns = document.querySelectorAll('#sdd-check-nbl-btn, #sdd-check-nbl-btn-trace');
+    btns.forEach(function(b) { b.disabled = true; });
+    var boxes = document.querySelectorAll('#sdd-nbl-check-result');
+    boxes.forEach(function(box) {
+      box.style.display = 'block';
+      box.style.background = 'rgba(249,250,251,0.9)';
+      box.style.border = '1px solid rgba(74,28,28,0.12)';
+      box.style.borderRadius = '8px';
+      box.style.padding = '10px 12px';
+      box.textContent = 'Checking against NBL sheets…';
+    });
+
+    try {
+      var lists = await ensureNblListsForCheck_();
+      var result = runNblMatchCheck_(primary, lists);
+      window._nblCheckResult = result;
+      applyNblCheckToScrForm_(result.status);
+      persistNblCheckToSdd_(result);
+      renderSddNblCheckBanner_(result);
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('NBL check: ' + result.status + (result.matches.length
+          ? ' (' + result.matches.length + ' match' + (result.matches.length > 1 ? 'es' : '') + ')'
+          : ''), result.status === 'Yes' ? 'warning' : 'success');
+      }
+    } catch (err) {
+      var msg = (err && err.message) ? err.message : String(err);
+      boxes.forEach(function(box) {
+        box.style.display = 'block';
+        box.style.background = 'rgba(185,28,28,0.06)';
+        box.style.border = '1px solid rgba(185,28,28,0.25)';
+        box.textContent = 'Check NBL failed: ' + msg;
+      });
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Check NBL failed: ' + msg, 'error');
+      }
+    } finally {
+      btns.forEach(function(b) { b.disabled = false; });
+    }
+  };
+
   // ─── NAVIGATION ─────────────────────────────────────────
   const pageEls = Array.from(document.querySelectorAll('.page'));
   pageEls.forEach(function(p) {
@@ -7542,7 +9222,7 @@ function initDashboardApp() {
     const grp = document.getElementById('navGroupTrace');
     if (grp && !grp.classList.contains('open')) grp.classList.add('open');
     const grpPrograms = document.getElementById('navGroupPrograms');
-    if (grpPrograms && ['performa-facility', 'eudr-potential', 'contact-list-supplier', 'priority-supplier-engagement'].indexOf(name) !== -1) {
+    if (grpPrograms && ['no-buy-list', 'performa-facility', 'eudr-potential', 'contact-list-supplier', 'priority-supplier-engagement'].indexOf(name) !== -1) {
       if (!grpPrograms.classList.contains('open')) grpPrograms.classList.add('open');
     }
     if (name === 'mill-onboarding' && allData.length) {
@@ -7558,6 +9238,8 @@ function initDashboardApp() {
     }
     if (name === 'ttm-ttp' && !ttpLoaded) loadTTPData();
     if (name === 'grievance' && !grvLoaded) loadGrvData();
+    if (name === 'contact-list-supplier') loadContactListData();
+    if (name === 'no-buy-list') loadNoBuyListData();
     resetScrollToTopEverywhere();
   }
   // expose globally for onclick handlers
@@ -8019,6 +9701,10 @@ function initDashboardApp() {
     if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.innerHTML = 'Generating…'; }
 
     try {
+      if (window._loadedPrimarySddRow && typeof window.restoreNblCheckResultFromRow_ === 'function') {
+        window.restoreNblCheckResultFromRow_(window._loadedPrimarySddRow);
+      }
+
       var jsPDFLib = getJsPDF();
       var doc = new jsPDFLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
@@ -8059,6 +9745,9 @@ function initDashboardApp() {
         cert        : val('scr-cert',      'cert',     'SCR - Certification'),
         ndpe        : val('scr-ndpe',      'ndpe',     'SCR - NDPE Policy'),
         nbl         : val('scr-nbl',       'nbl',      'SCR - No Buy List'),
+        nblCheckResult: val(null, 'nblCheckResult', 'SCR - NBL Check Result'),
+        nblCheckDetail: val(null, 'nblCheckDetail', 'SCR - NBL Match Detail'),
+        nblCheckedAt  : val(null, 'nblCheckedAt',   'SCR - NBL Checked At'),
         grvYN       : val('scr-grv-yn',    'grvYN',    'SCR - Grievance (Y/N)'),
         priYN       : val('scr-pri-yn',    'priYN',    'SCR - PRI (Y/N)'),
         note        : val('traceRecInput', 'traceNote','SCR - Notes'),
@@ -8432,11 +10121,89 @@ function initDashboardApp() {
       // 4. SCREENING SUMMARY
       // ═══════════════════════════════════════════════════════════════════════
       S('Screening Summary');
+
+      // ── No Buy List (NBL) — prominent summary for PDF readers ──
+      (function renderNblPdfBlock_() {
+        var nblRaw = String(f.nbl || '').trim();
+        var nblYes = nblRaw.toLowerCase() === 'yes';
+        var nblNo = nblRaw.toLowerCase() === 'no';
+        var resultLine = String(f.nblCheckResult || pick('SCR - NBL Check Result') || '').trim();
+        if (!resultLine) {
+          if (nblYes) resultLine = 'YES — Supplier IS ON the No Buy List (NBL)';
+          else if (nblNo) resultLine = 'NO — Supplier is NOT on the No Buy List';
+          else resultLine = 'Not checked — run Check NBL before export for a definitive result';
+        }
+        var detailLine = String(f.nblCheckDetail || pick('SCR - NBL Match Detail') || '').trim();
+        if (!detailLine && window._nblCheckResult) {
+          if (window._nblCheckResult.matches && window._nblCheckResult.matches.length) {
+            detailLine = window._nblCheckResult.matches.map(function(m) {
+              return m.source + ': ' + m.detail;
+            }).join(' | ');
+          } else if (window._nblCheckResult.status === 'No') {
+            detailLine = 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
+          }
+        }
+        if (!detailLine && nblNo) {
+          detailLine = 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
+        }
+        if (!detailLine && nblYes) {
+          detailLine = 'Supplier matched a name on the NBL or Unilever NBL registry (screening: Yes).';
+        }
+        var checkedLine = String(f.nblCheckedAt || pick('SCR - NBL Checked At') || '').trim();
+        if (!checkedLine && window._nblCheckResult && window._nblCheckResult.checkedAt) {
+          checkedLine = window._nblCheckResult.checkedAt;
+        }
+        if (checkedLine) {
+          try {
+            var dChk = new Date(checkedLine);
+            if (!isNaN(dChk.getTime())) {
+              checkedLine = dChk.toLocaleString('id-ID', {
+                day: '2-digit', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              });
+            }
+          } catch (eChk) {}
+        }
+
+        var detailPdfLines = detailLine ? doc.splitTextToSize(detailLine, cW - 8) : [];
+        var resultPdfLines = doc.splitTextToSize(resultLine, cW - 8);
+        var boxH = 7 + resultPdfLines.length * KV_LH
+          + (detailPdfLines.length ? detailPdfLines.length * KV_LH + 2 : 0)
+          + (checkedLine ? KV_LH + 2 : 0);
+        checkPage(boxH + 4);
+        doc.setFillColor.apply(doc, nblYes ? [255, 235, 235] : (nblNo ? [235, 245, 238] : [249, 250, 251]));
+        doc.setDrawColor.apply(doc, nblYes ? RED : (nblNo ? [30, 107, 58] : [200, 185, 185]));
+        doc.setLineWidth(0.35);
+        doc.rect(mL, y, cW, boxH, 'FD');
+        var ty = y + 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor.apply(doc, nblYes ? RED : (nblNo ? [30, 107, 58] : GRY_DRK));
+        doc.text(resultPdfLines, mL + 4, ty);
+        ty += resultPdfLines.length * KV_LH + 1;
+        if (detailPdfLines.length) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor.apply(doc, BLACK);
+          doc.text(detailPdfLines, mL + 4, ty);
+          ty += detailPdfLines.length * KV_LH + 1;
+        }
+        if (checkedLine) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7);
+          doc.setTextColor.apply(doc, GRY_LBL);
+          doc.text('NBL checked: ' + checkedLine, mL + 4, ty);
+        }
+        doc.setTextColor.apply(doc, BLACK);
+        doc.setFont('helvetica', 'normal');
+        y += boxH + 4;
+      })();
+
       kv ('Group / Owners',  f.owners   || '—');
       kv ('Previous News',   f.news     || '—');
       kv ('Supply To',       f.supplyto || '—');
       kv2('Legality Status', f.legality || '—',  'Certification', f.cert  || '—');
-      kv2('NDPE Policy',     f.ndpe     || '—',  'No Buy List',   f.nbl   || '—');
+      kv2('NDPE Policy',     f.ndpe     || '—',  'No Buy List (Y/N)', f.nbl || '—');
       kv2('Grievance (Y/N)', f.grvYN    || '—',  'PRI (Y/N)',     f.priYN || '—');
       kv ('Screening Notes', f.note     || '—');
       kv ('Requested Data',  f.reqData  || '—');

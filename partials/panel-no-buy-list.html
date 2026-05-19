@@ -1,0 +1,78 @@
+      <div class="panel" id="panel-no-buy-list">
+        <div class="breadcrumb">Dashboard <span>/ No Buy List</span></div>
+        <div class="page-header">
+          <h1>No Buy List</h1>
+          <p>Registry of suppliers and mills on the No Buy List — NBL supplier registry and Unilever mill locations.</p>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="nbl-stat-registry">—</div><div class="stat-card-label">NBL entries</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="nbl-stat-unilever">—</div><div class="stat-card-label">Unilever NBL</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="nbl-stat-groups">—</div><div class="stat-card-label">NBL groups</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="nbl-stat-countries">—</div><div class="stat-card-label">Countries (Unilever)</div></div>
+        </div>
+
+        <div class="table-card nbl-list-card">
+          <div class="table-header nbl-table-header">
+            <div class="nbl-table-header-left">
+              <h3 id="nbl-table-title">NBL registry</h3>
+              <div class="nbl-source-tabs" role="tablist" aria-label="No Buy List source">
+                <button type="button" class="nbl-source-tab active" data-nbl-source="nbl" role="tab" aria-selected="true">NBL</button>
+                <button type="button" class="nbl-source-tab" data-nbl-source="unilever" role="tab" aria-selected="false">Unilever NBL</button>
+              </div>
+            </div>
+            <div class="table-actions">
+              <button type="button" class="btn-sm btn-outline" id="btn-export-nbl">Export CSV</button>
+              <button type="button" class="btn-sm btn-outline" id="btn-refresh-nbl" title="Reload from sheet">Refresh</button>
+            </div>
+          </div>
+
+          <div class="search-bar">
+            <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
+            <input type="text" id="nblSearch" placeholder="Search NBL registry..." autocomplete="off" />
+            <button type="button" class="search-clear" id="nblSearchClear" aria-label="Clear search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div id="nbl-loading" class="nbl-loading">Loading...</div>
+          <div id="nbl-error" class="nbl-error" style="display:none;"></div>
+
+          <div class="nbl-table-pane active" id="nbl-pane-registry" data-nbl-pane="nbl">
+            <div class="nbl-table-scroll">
+              <table id="nblTableRegistry" class="nbl-data-table" style="display:none;">
+                <thead>
+                  <tr>
+                    <th>Riser</th>
+                    <th>Group name</th>
+                    <th>Company name</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody id="nblTableRegistryBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="nbl-table-pane" id="nbl-pane-unilever" data-nbl-pane="unilever" hidden>
+            <div class="nbl-table-scroll">
+              <table id="nblTableUnilever" class="nbl-data-table" style="display:none;">
+                <thead>
+                  <tr>
+                    <th>No.</th>
+                    <th>UML ID</th>
+                    <th>Company</th>
+                    <th>Mill</th>
+                    <th>Country</th>
+                    <th>Province</th>
+                    <th>District / Regency</th>
+                    <th>Lat</th>
+                    <th>Long</th>
+                  </tr>
+                </thead>
+                <tbody id="nblTableUnileverBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
