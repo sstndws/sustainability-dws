@@ -5516,12 +5516,13 @@ function initDashboardApp() {
     { key: 'RISK LEVEL', label: 'Risk Level' },
     { key: 'RESULT RISK LEVEL', label: 'Result Risk Level' },
     { key: 'BUYER NO BUY LIST', label: 'No Buy List' },
+    { key: '__NBL_BY__', label: 'NBL by (riser)' },
     { key: 'CERTIFICATION', label: 'Certification' },
     { key: 'FACILITY NAME CPO', label: 'Facility CPO' },
     { key: 'FACILITY NAME PK', label: 'Facility PK' },
     { key: 'PRODUCT SUPPLY', label: 'Product Supply' },
   ];
-  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', 'CERTIFICATION'];
+  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
   let millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
   let millPdfDimFilters = {
     quarter: new Set(),
@@ -5854,6 +5855,7 @@ function initDashboardApp() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Menghasilkan…'; }
 
     try {
+      const nblLists = await ensureNblListsForCheck_();
       const JsPDFLib = getJsPDF();
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
       const RED = [139, 26, 26];
@@ -5871,10 +5873,20 @@ function initDashboardApp() {
 
       const body = rows.map(function(row) {
         return cols.map(function(c) {
+          if (c.key === '__NBL_BY__') {
+            if (!millIsNblYes_(row['BUYER NO BUY LIST'])) return '';
+            var info = millNblByInfoFromMatches_(millNblSourceMatchesForRow_(row, nblLists));
+            return String(info && info.label ? info.label : '').replace(/\r?\n/g, ' ');
+          }
           const v = row[c.key];
           return String(v !== undefined && v !== null ? v : '').replace(/\r?\n/g, ' ');
         });
       });
+      const nblByColIdx = cols.findIndex(function(c) { return c.key === '__NBL_BY__'; });
+      const columnStyles = {};
+      if (nblByColIdx !== -1) {
+        columnStyles[nblByColIdx] = { cellWidth: 42, overflow: 'linebreak' };
+      }
       doc.autoTable({
         head: [cols.map(function(c) { return c.label; })],
         body: body,
@@ -5884,6 +5896,7 @@ function initDashboardApp() {
         headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 7 },
         alternateRowStyles: { fillColor: [253, 250, 250] },
         theme: 'striped',
+        columnStyles: columnStyles,
       });
 
       const fname = 'Mill-Registry-' + new Date().toISOString().slice(0, 10) + '.pdf';
