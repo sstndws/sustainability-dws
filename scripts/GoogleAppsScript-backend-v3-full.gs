@@ -52,7 +52,31 @@ const SHEETS = {
   contactSupplier : 'Contact List Supplier',
   nbl             : 'NBL',
   unileverNbl     : 'Unilever NBL',
+  supplyDraft     : 'Supply Import Draft',
 };
+
+// ── Supply Import Draft headers ──────────────────────────────
+const SUPPLY_DRAFT_HEADERS = [
+  'draft_id', 'batch_id', 'status',        // 'draft' | 'submitted'
+  'quarter', 'year',
+  'created_at', 'updated_at', 'created_by',
+  'match_status',                           // 'matched' | 'new'
+  // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
+  'QUARTER', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
+  'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
+  'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
+  'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'SCORE',
+  'MILL LOC', 'COMPLIMENT/NOT COMPLIMENT',
+  'DEFORESTATION SPATIAL', 'BURN AREA SPATIAL', 'PEAT', 'LEGALITY',
+  'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
+  'HUMAN RIGHT', 'SAFETY', 'SOCIAL', 'ENVIRONMENT', 'TOTAL GRIEVANCES',
+  'NDPE', 'HRDD', 'TOTAL POLICY',
+  'CERTIFICATION', 'TOTAL CERTIFICATION', 'TOTAL SCORE',
+  'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
+  'RECOMMENDATION LEVEL', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
+  'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK',
+  'PRODUCT SUPPLY', 'SUPPLY CPO',
+];
 
 const NBL_HEADERS = [
   'Riser',
@@ -278,6 +302,7 @@ function doGet(e) {
       if (sheetKey === 'contactSupplier') ensureContactSupplierHeaders_();
       if (sheetKey === 'nbl') ensureNblHeaders_();
       if (sheetKey === 'unileverNbl') ensureUnileverNblHeaders_();
+      if (sheetKey === 'supplyDraft') ensureSupplyDraftHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')       return respond(getByMillId(e.parameter.millId));
@@ -313,6 +338,9 @@ function doPost(e) {
     if (action === 'updateSubmission')    return respond(updateSubmission(body.payload    || {}));
     if (action === 'setSubmissionStatus') return respond(setSubmissionStatus(body.payload || {}));
     if (action === 'deleteSubmission')    return respond(deleteSubmission(body.payload    || {}));
+    if (action === 'saveSupplyDraft')   return respond(saveSupplyDraft_(body.rows || [], body.batch_id || '', body.meta || {}));
+    if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || []));
+    if (action === 'deleteSupplyDraft') return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || ''));
 
     return respond({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -2309,4 +2337,132 @@ function legacyAdapterUpsert_(data) {
     legacyResult['relational_error'] = err.message;
   }
   return legacyResult;
+}
+// ═══════════════════════════════════════════════════════════
+//  SUPPLY IMPORT DRAFT
+// ═══════════════════════════════════════════════════════════
+
+function ensureSupplyDraftHeaders_() {
+  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var name = SHEETS.supplyDraft;
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, SUPPLY_DRAFT_HEADERS.length).setValues([SUPPLY_DRAFT_HEADERS]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  var existing    = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+                         .map(function(h) { return String(h || '').trim(); });
+  var existingSet = new Set(existing.filter(Boolean));
+  var missing     = SUPPLY_DRAFT_HEADERS.filter(function(h) { return !existingSet.has(h); });
+  if (missing.length) {
+    var start = existing.filter(Boolean).length + 1;
+    sheet.getRange(1, start, 1, missing.length).setValues([missing]);
+  }
+  return sheet;
+}
+
+function saveSupplyDraft_(rows, batchId, meta) {
+  ensureSupplyDraftHeaders_();
+  var sheet   = getSheet('supplyDraft');
+  var data    = sheet.getDataRange().getValues();
+  var headers = data[0].map(function(h) { return String(h || '').trim(); });
+  var draftIdCol = headers.indexOf('draft_id');
+  var now  = nowIso_();
+  var user = callerEmail_();
+  var saved = 0;
+
+  rows.forEach(function(row) {
+    var draftId = String(row.draft_id || '').trim();
+    if (!draftId) return;
+    var existingSheetRow = -1;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][draftIdCol] || '').trim() === draftId) {
+        existingSheetRow = r + 1;
+        break;
+      }
+    }
+    var rowArr = headers.map(function(h) {
+      if (h === 'updated_at') return now;
+      if (h === 'batch_id' && !row[h]) return batchId;
+      if (h === 'created_at' && existingSheetRow < 0) return now;
+      if (h === 'created_by' && existingSheetRow < 0) return user;
+      if (h === 'status' && !row[h]) return 'draft';
+      var v = row[h];
+      return (v !== undefined && v !== null) ? v : '';
+    });
+    if (existingSheetRow > 0) {
+      sheet.getRange(existingSheetRow, 1, 1, rowArr.length).setValues([rowArr]);
+    } else {
+      sheet.appendRow(rowArr);
+    }
+    saved++;
+  });
+  return { success: true, saved: saved, batch_id: batchId };
+}
+
+function submitSupplyDraft_(batchId, rows) {
+  if (!batchId) throw new Error('batch_id required');
+  ensureSupplyDraftHeaders_();
+
+  // Ensure all Mill Onboarding headers exist in target sheet
+  ensureRelationalHeaders_('mill');
+
+  var millSheet   = getSheet('mill');
+  // Re-read headers AFTER ensureRelationalHeaders_ so we have all columns
+  var millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
+
+  var draftSheet   = getSheet('supplyDraft');
+  var draftData    = draftSheet.getDataRange().getValues();
+  var draftHeaders = draftData[0].map(function(h) { return String(h || '').trim(); });
+  var draftIdColD  = draftHeaders.indexOf('draft_id');
+  var statusColD   = draftHeaders.indexOf('status');
+  var now          = nowIso_();
+  var submitted    = 0;
+
+  rows.forEach(function(row) {
+    var millRow = millHeaders.map(function(h) {
+      // Handle Quarter/Year case variants
+      if (h === 'Quarter' || h === 'QUARTER') return row['QUARTER'] || row['quarter'] || '';
+      if (h === 'Year'    || h === 'YEAR')    return row['YEAR']    || row['year']    || '';
+      var v = row[h];
+      return (v !== undefined && v !== null) ? v : '';
+    });
+    millSheet.appendRow(millRow);
+
+    // Mark draft row as submitted
+    var draftId = String(row.draft_id || '').trim();
+    if (draftId) {
+      for (var r = 1; r < draftData.length; r++) {
+        if (String(draftData[r][draftIdColD] || '').trim() === draftId) {
+          draftSheet.getRange(r + 1, statusColD + 1).setValue('submitted');
+          var updIdx = draftHeaders.indexOf('updated_at');
+          if (updIdx >= 0) draftSheet.getRange(r + 1, updIdx + 1).setValue(now);
+          break;
+        }
+      }
+    }
+    submitted++;
+  });
+  return { success: true, submitted: submitted, batch_id: batchId };
+}
+
+function deleteSupplyDraft_(draftId, batchId) {
+  ensureSupplyDraftHeaders_();
+  var sheet   = getSheet('supplyDraft');
+  var data    = sheet.getDataRange().getValues();
+  var headers = data[0].map(function(h) { return String(h || '').trim(); });
+  var draftIdCol = headers.indexOf('draft_id');
+  var batchIdCol = headers.indexOf('batch_id');
+  var toDelete = [];
+  for (var r = data.length - 1; r >= 1; r--) {
+    var rowDId = String(data[r][draftIdCol] || '').trim();
+    var rowBId = String(data[r][batchIdCol] || '').trim();
+    if ((draftId && rowDId === draftId) || (batchId && !draftId && rowBId === batchId)) {
+      toDelete.push(r + 1);
+    }
+  }
+  toDelete.forEach(function(sheetRow) { sheet.deleteRow(sheetRow); });
+  return { success: true, deleted: toDelete.length };
 }

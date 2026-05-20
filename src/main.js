@@ -3811,7 +3811,7 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL or localStorage SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwoxeox6zkB9_xSctjxqfFkNWEfSuKcSvISIeHKK6ToDsHPRtYgg3dRwbYUdVMvNRl_9w/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxuyCl33MGhKgnFp2z3KTsvF1knVBgESzE2jfkiX6DyGRahM2o4j4jQoxvxNifOrGcDDw/exec';
 
 function getSddApiUrl() {
   var custom = (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) || '';
@@ -5297,6 +5297,25 @@ function initDashboardApp() {
           }
           if (currentFilter === 'Task List') renderMillTaskList();
         }
+        // Mark supply draft row as submitted if opened from supply import context
+        if (window._supplyModalContext) {
+          const ctx = window._supplyModalContext;
+          window._supplyModalContext = null;
+          try {
+            const ctxBatch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
+            if (ctxBatch && ctxBatch.rows[ctx.rowIdx]) {
+              ctxBatch.rows[ctx.rowIdx]._submitted = true;
+              const allDone = ctxBatch.rows.every(function(r) { return r._submitted; });
+              if (allDone) ctxBatch.status = 'submitted';
+              // Mark on server
+              apiPost({ action: 'submitSupplyDraft', batch_id: ctx.batchId, rows: [ctxBatch.rows[ctx.rowIdx]] })
+                .catch(function(err) { console.warn('[supplyDraft] Mark submitted failed:', err.message); });
+              if (typeof renderSupplyDraftList_ === 'function') renderSupplyDraftList_();
+            }
+          } catch(e) {
+            console.warn('[supplyDraft] Failed to mark row submitted after modal save:', e);
+          }
+        }
         await loadMillData();
       } else if (modalSheet === 'ttp') {
         ttpLoaded = false; await loadTTPData();
@@ -6273,6 +6292,144 @@ function initDashboardApp() {
     }).filter(Boolean).join(' ');
   }
 
+  function millIsNblYes_(raw) {
+    var v = String(raw == null ? '' : raw).trim().toLowerCase();
+    return v === 'yes' || v.includes('nbl') || v.includes('no buy');
+  }
+
+  function millNameSimilarLoose_(a, b) {
+    var na = normalizeLooseKey(a);
+    var nb = normalizeLooseKey(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    // "mirip" match: one contained in another, but avoid very short false positives
+    if (na.length >= 4 && nb.includes(na)) return true;
+    if (nb.length >= 4 && na.includes(nb)) return true;
+    return false;
+  }
+
+  function millNblSourceMatchesForRow_(row, lists) {
+    var group = String(row && row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
+    var company = String(row && row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
+    var out = [];
+    var seen = {};
+
+    function pushOnce_(key, item) {
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(item);
+    }
+
+    // Source: NBL registry (Group/Company)
+    (lists.registry || []).forEach(function(r, i) {
+      var groupHit = !!(group && (millNameSimilarLoose_(group, r._nblGroup) || millNameSimilarLoose_(group, r._nblCompany)));
+      var companyHit = !!(company && (millNameSimilarLoose_(company, r._nblGroup) || millNameSimilarLoose_(company, r._nblCompany)));
+      if (!groupHit && !companyHit) return;
+      var hitBy = [];
+      if (groupHit) hitBy.push('GROUP NAME');
+      if (companyHit) hitBy.push('COMPANY NAME');
+      pushOnce_('nbl-' + i, {
+        source: 'NBL',
+        by: hitBy.join(' / '),
+        target: (r._nblGroup || r._nblCompany || '—'),
+        riser: (r._nblRiser || '').trim(),
+      });
+    });
+
+    // Source: Unilever NBL (match by GROUP/COMPANY vs Unilever COMPANY)
+    (lists.unilever || []).forEach(function(r, i) {
+      var groupHit = !!(group && millNameSimilarLoose_(group, r._nblCompany));
+      var companyHit = !!(company && millNameSimilarLoose_(company, r._nblCompany));
+      if (!groupHit && !companyHit) return;
+      var hitBy = [];
+      if (groupHit) hitBy.push('GROUP NAME');
+      if (companyHit) hitBy.push('COMPANY NAME');
+      pushOnce_('uni-' + i, {
+        source: 'Unilever NBL',
+        by: hitBy.join(' / '),
+        target: (r._nblCompany || '—'),
+        riser: (String(r._nblRiser || '').trim() || 'Unilever'),
+      });
+    });
+
+    return out;
+  }
+
+  function millNblByInfoFromMatches_(matches) {
+    var risers = [];
+    var seen = {};
+    var hasUnilever = false;
+    (matches || []).forEach(function(m) {
+      var src = String(m && m.source ? m.source : '').trim();
+      var riser = String(m && m.riser ? m.riser : '').trim();
+      if (src === 'Unilever NBL') hasUnilever = true;
+      if (!riser) return;
+      var key = riser.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      risers.push(riser);
+    });
+
+    function formatRisersLabel_(vals) {
+      var clean = (vals || []).map(function(v) {
+        return millProfileTitleCaseWords_(String(v || '').trim());
+      }).filter(Boolean);
+      if (!clean.length) return '';
+      clean.sort(function(a, b) { return a.localeCompare(b, 'id', { sensitivity: 'base' }); });
+      return clean.join(', ');
+    }
+
+    if (risers.length) {
+      return {
+        label: 'NBL by ' + formatRisersLabel_(risers),
+        risers: risers,
+        hasUnilever: hasUnilever
+      };
+    }
+    if (hasUnilever) {
+      return { label: 'NBL by Unilever NBL', risers: [], hasUnilever: true };
+    }
+    return { label: 'NBL by manual/legacy flag', risers: [], hasUnilever: false };
+  }
+
+  async function millResolveNblByInfo_(row) {
+    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
+      return { label: '', risers: [], hasUnilever: false, matches: [] };
+    }
+    var lists = await ensureNblListsForCheck_();
+    var matches = millNblSourceMatchesForRow_(row || {}, lists);
+    var info = millNblByInfoFromMatches_(matches);
+    info.matches = matches;
+    return info;
+  }
+
+  let millProfileNblInfoReqSeq_ = 0;
+  async function millProfileUpdateNblSourceInfo_(row) {
+    var infoEl = document.getElementById('mp-mill-nbl-source');
+    if (!infoEl) return;
+    var reqId = ++millProfileNblInfoReqSeq_;
+
+    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
+      infoEl.innerHTML = '';
+      return;
+    }
+
+    infoEl.innerHTML = 'Checking NBL source…';
+    try {
+      if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
+      var info = await millResolveNblByInfo_(row || {});
+      if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
+      if (!info.label) {
+        infoEl.innerHTML = '';
+        return;
+      }
+      infoEl.innerHTML = '<strong>' + escHtml(info.label) + '</strong>';
+    } catch (err) {
+      if (reqId !== millProfileNblInfoReqSeq_) return;
+      infoEl.innerHTML = '<strong>NBL by:</strong> Unable to validate from No Buy List.';
+    }
+  }
+
   function millProfileFormatHeaderLoc_(row) {
     const g = String(row && row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
     const p = String(row && row['PROVINCE'] != null ? row['PROVINCE'] : '').trim();
@@ -6288,6 +6445,7 @@ function initDashboardApp() {
     const locEl = document.getElementById('mp-mill-loc');
     const supEl = document.getElementById('mp-mill-supplier');
     const nblEl = document.getElementById('mp-mill-nbl');
+    const nblSourceEl = document.getElementById('mp-mill-nbl-source');
     const rrEl = document.getElementById('mp-mill-result-risk');
     if (!nameEl || !locEl || !supEl || !nblEl || !rrEl) return;
     const companyName = String(row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
@@ -6302,7 +6460,9 @@ function initDashboardApp() {
     const sup = String(row['SUPPLIER STATUS'] != null ? row['SUPPLIER STATUS'] : '').trim();
     supEl.textContent = sup ? millProfileTitleCaseWords_(sup) : '—';
     nblEl.innerHTML = nblBadge(row['BUYER NO BUY LIST']);
+    if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
+    millProfileUpdateNblSourceInfo_(row);
   }
 
   const MILL_PROFILE_FIELD_ALIASES_ = {
@@ -6512,6 +6672,7 @@ function initDashboardApp() {
     const prevTxt = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Exporting...'; }
     try {
+      const nblByInfo = await millResolveNblByInfo_(row);
       const JsPDFLib = getJsPDF();
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4' });
       const title = String(row['COMPANY NAME'] || row['MILL NAME'] || 'Mill Profile').trim() || 'Mill Profile';
@@ -6591,6 +6752,7 @@ function initDashboardApp() {
       let y = 20;
       if (group) { doc.text(group, 14, y); y += 5; }
       if (periodText) { doc.text(periodText, 14, y); y += 5; }
+      if (nblByInfo && nblByInfo.label) { doc.text(nblByInfo.label, 14, y); y += 5; }
       doc.text('Exported: ' + new Date().toLocaleString('id-ID'), 14, y);
       y += 4;
 
@@ -7321,17 +7483,60 @@ function initDashboardApp() {
   }
 
   function ttpMainTableColspan_(grouped) {
-    return grouped ? 6 : 5;
+    return grouped ? 7 : 6;
+  }
+
+  function ttpGroupAvgPctHtml_(rows, product, subCount) {
+    const col = product === 'pk' ? ttpPkPctCol : ttpPctCol;
+    if (!col) return '—';
+    const agg = ttpAggregateTotalTraceablePct_(rows, product);
+    const val = isNaN(agg.value) ? '—' : ttpFormatTraceablePct_(agg.value);
+    const avgSuffix = subCount > 1 ? '<span class="ttp-group-meta"> avg</span>' : '';
+    return '<span style="font-weight:600;color:var(--forest)">' + val + '</span>' + avgSuffix;
+  }
+
+  /** Nested supplier grid when a mill group row is expanded (grouped view only). */
+  function ttpGroupedNestedTableHtml_(rows) {
+    const cols = [
+      { label: 'FFB Supplier Group Name', get: function(d) { return ttpRowField_(d, ['FFB SUPPLIER GROUP NAME']); } },
+      { label: 'FFB Supplier Name', get: function(d) { return ttpRowField_(d, ['FFB SUPPLIER NAME']); } },
+      { label: 'Category', get: function(d) { return ttpRowCategoryValue_(d); } },
+      { label: 'Lat', get: function(d) { return ttpRowField_(d, ['LAT', 'LATITUDE']); } },
+      { label: 'Long', get: function(d) { return ttpRowField_(d, ['LONG', 'LONGITUDE']); } },
+      { label: 'Village', get: function(d) { return ttpRowField_(d, ['VILLAGE']); } },
+      { label: 'Sub District', get: function(d) { return ttpRowField_(d, ['SUBDISTRICT', 'SUB DISTRICT']); } },
+    ];
+    const gridCols = 'minmax(120px, 1.4fr) minmax(120px, 1.4fr) minmax(88px, 0.9fr) minmax(72px, 0.7fr) minmax(72px, 0.7fr) minmax(88px, 0.9fr) minmax(88px, 0.9fr)';
+    let html = '<div class="ttp-group-nested-wrap" role="region" aria-label="FFB suppliers for this mill">'
+      + '<div class="ttp-group-nested-grid">';
+    html += '<div class="ttp-group-nested-head" style="grid-template-columns:' + gridCols + '">';
+    cols.forEach(function(c) {
+      html += '<div class="ttp-group-nested-cell ttp-group-nested-th">' + escHtml(c.label) + '</div>';
+    });
+    html += '</div>';
+    rows.forEach(function(d) {
+      const rowJson = JSON.stringify(d).replace(/'/g, '&#39;');
+      html += '<div class="ttp-group-nested-row" style="grid-template-columns:' + gridCols + '" tabindex="0" role="button" data-row=\'' + rowJson
+        + '\' title="Click for full supplier detail">';
+      cols.forEach(function(c) {
+        html += '<div class="ttp-group-nested-cell">' + escHtml(c.get(d)) + '</div>';
+      });
+      html += '</div>';
+    });
+    html += '<p class="ttp-group-nested-hint">Click a row to open supplier detail.</p></div></div>';
+    return html;
   }
 
   function ttpMainTableHeadHtml_(grouped) {
-    const pctLabel = ttpPctCol || '% CPO Traceable';
+    const cpoLabel = ttpPctCol || '% CPO TRACEABLE';
+    const pkLabel = ttpPkPctCol || '% PK TRACEABLE';
     const isGrouped = !!grouped;
     let row = '<tr>'
       + '<th class="ttp-th ttp-th-group">Group Name</th>'
       + '<th class="ttp-th ttp-th-company">Company Name</th>'
       + '<th class="ttp-th ttp-th-mill">Mill Name</th>'
-      + '<th class="ttp-th ttp-th-pct">' + pctLabel + '</th>'
+      + '<th class="ttp-th ttp-th-pct ttp-th-pct-cpo">' + cpoLabel + '</th>'
+      + '<th class="ttp-th ttp-th-pct ttp-th-pct-pk">' + pkLabel + '</th>'
       + '<th class="ttp-th ttp-th-category">Category</th>';
     if (isGrouped) row += '<th class="ttp-th ttp-th-actions"></th>';
     return row + '</tr>';
@@ -7567,9 +7772,15 @@ function initDashboardApp() {
         if (legacy) return legacy;
         return '% CPO TRACEABLE';
       })(ttpFields);
-      ttpPkPctCol = ttpFields.find(function (h) {
-        return normalizeTtpHeaderKey_(h).includes('% PK TRACEABLE');
-      }) || '';
+      ttpPkPctCol = (function pickTtpPkPctCol(fields) {
+        if (!fields || !fields.length) return '% PK TRACEABLE';
+        const U = function (h) { return String(h || '').toUpperCase(); };
+        const pk = fields.find(function (h) { return U(h).includes('% PK TRACEABLE'); });
+        if (pk) return pk;
+        return fields.find(function (h) {
+          return normalizeTtpHeaderKey_(h).includes('% PK TRACEABLE');
+        }) || '% PK TRACEABLE';
+      })(ttpFields);
       ttpCategoryCol = pickTtpCategoryCol_(ttpFields);
       document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(false);
       ttpSyncTableLayoutClass_();
@@ -7577,9 +7788,10 @@ function initDashboardApp() {
       table.style.display = 'table';
       // reset selection state on fresh load
       ttpSelectedCompanies = null;
-      ttpVisibleCols = null;
+      ttpColFilterMode = 'ttm';
+      ttpFieldSectionsCache = null;
       buildCompanyDropdown();
-      buildColumnDropdown();
+      buildColumnModePanel();
       document.getElementById('btn-export-ttp-xlsx').disabled = false;
       ttpViewMode = 'flat';
       syncTtpViewUi_();
@@ -7640,13 +7852,11 @@ function initDashboardApp() {
         return;
       }
 
-      const childRow = e.target.closest('.ttp-child-row');
-      if (childRow && body.contains(childRow) && ttpViewMode === 'grouped') {
-        if (e.target.closest('.row-actions')) return;
-        const childEdit = childRow.querySelector('.btn-edit');
-        if (childEdit && childEdit.dataset.row) {
+      const nestedRow = e.target.closest('.ttp-group-nested-row');
+      if (nestedRow && body.contains(nestedRow) && ttpViewMode === 'grouped') {
+        if (nestedRow.dataset.row) {
           try {
-            const parsed = JSON.parse(childEdit.dataset.row.replace(/&#39;/g, "'"));
+            const parsed = JSON.parse(nestedRow.dataset.row.replace(/&#39;/g, "'"));
             openTtpDetailModal_(parsed);
           } catch (err) {
             console.warn('[TTP] Could not parse row for detail popup', err);
@@ -7656,7 +7866,7 @@ function initDashboardApp() {
       }
 
       const groupRow = e.target.closest('.ttp-group-row');
-      if (groupRow && body.contains(groupRow)) {
+      if (groupRow && body.contains(groupRow) && !e.target.closest('.ttp-group-detail-row')) {
         const groupId = groupRow.dataset.group;
         const expanded = groupRow.dataset.expanded === '1';
         const children = body.querySelectorAll(`[data-parent="${groupId}"]`);
@@ -7671,6 +7881,19 @@ function initDashboardApp() {
         }
       }
     });
+    body.addEventListener('keydown', function(e) {
+      if (ttpViewMode !== 'grouped') return;
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const nestedRow = e.target.closest('.ttp-group-nested-row');
+      if (!nestedRow || !body.contains(nestedRow) || !nestedRow.dataset.row) return;
+      e.preventDefault();
+      try {
+        const parsed = JSON.parse(nestedRow.dataset.row.replace(/&#39;/g, "'"));
+        openTtpDetailModal_(parsed);
+      } catch (err) {
+        console.warn('[TTP] Could not parse row for detail popup', err);
+      }
+    });
   }
 
   function renderTTPTable() {
@@ -7681,6 +7904,7 @@ function initDashboardApp() {
     } else {
       renderTTPFlat();
     }
+    updateTTPSelectionInfo();
   }
 
   // ── GROUPED VIEW ─────────────────────────────────────────
@@ -7694,18 +7918,6 @@ function initDashboardApp() {
       || '';
     const companyCol = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'COMPANY NAME') || '';
     const millCol    = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'MILL NAME') || '';
-    const villageCol = ttpFields.find(h => /village|desa|kebun|estate|location|lokasi/i.test(h)) || '';
-
-    // Columns already in the table header — keep them out of the child-row meta block
-    const mainCols = new Set([groupCol, companyCol, millCol, ttpPctCol, ttpCategoryCol].filter(Boolean));
-    function isTtpCategoryField_(f) {
-      const u = normalizeTtpHeaderKey_(f);
-      return u === 'CATEGORY' || (u.includes('CATEGORY') && u !== 'SUPPLIER CATEGORY' && !u.includes('MILL CATEGORY'));
-    }
-    const extraCols = (ttpVisibleCols && ttpVisibleCols.size > 0)
-      ? ttpFields.filter(function(f) { return ttpVisibleCols.has(f) && !mainCols.has(f) && !isTtpCategoryField_(f); })
-      : ttpFields.filter(function(f) { return !mainCols.has(f) && !isTtpCategoryField_(f); });
-
     // Fixed header — no "Detail" column, fixed widths that don't depend on content
     document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
 
@@ -7737,11 +7949,9 @@ function initDashboardApp() {
       const subCount  = rows.length;
       const groupId   = 'ttpg-' + gIdx;
 
-      const avgPct = ttpPctCol ? (function() {
-        const agg = ttpAggregateTotalTraceablePct_(rows, 'cpo');
-        return isNaN(agg.value) ? '—' : ttpFormatTraceablePct_(agg.value);
-      })() : '—';
       const groupCategory = ttpCategoryGroupSummary_(rows);
+      const avgCpoHtml = ttpGroupAvgPctHtml_(rows, 'cpo', subCount);
+      const avgPkHtml = ttpGroupAvgPctHtml_(rows, 'pk', subCount);
 
       // ── Parent row ──
       html += `<tr class="ttp-group-row" data-group="${groupId}" data-expanded="0">
@@ -7754,42 +7964,16 @@ function initDashboardApp() {
             ${subCount > 1 ? `<span class="ttp-sub-badge">${subCount}</span>` : ''}
           </div>
         </td>
-        <td><span style="font-weight:600;color:var(--forest)">${avgPct}</span>${subCount > 1 ? '<span class="ttp-group-meta"> avg</span>' : ''}</td>
+        <td>${avgCpoHtml}</td>
+        <td>${avgPkHtml}</td>
         <td><span class="ttp-category-val">${groupCategory}</span></td>
         <td></td>
       </tr>`;
 
-      // ── Child rows — clean horizontal layout ──
-      rows.forEach((d, ri) => {
-        const pct        = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
-        const category   = ttpRowCategoryValue_(d);
-        const childLabel = villageCol && d[villageCol] ? d[villageCol] : ('Record #' + (ri + 1));
-
-        // Pick up to 2 most informative extra fields to show as subtle text in each cell
-        const extraInfo = extraCols.slice(0, 6).filter(f => {
-          const v = (d[f] || '').toString().trim();
-          return v && v !== '—' && v !== '-';
-        }).map(f => `<span class="ttp-child-meta">${f}: <strong>${d[f]}</strong></span>`).join('');
-
-        html += `<tr class="ttp-child-row hidden" data-parent="${groupId}">
-          <td style="padding-left:12px;">
-            <span style="color:#D0B8B8;font-size:13px;line-height:1;">└</span>
-          </td>
-          <td style="color:var(--muted);font-size:11px;">${ri + 1} / ${rows.length}</td>
-          <td class="ttp-child-indent">
-            <div class="ttp-child-village">${childLabel}</div>
-            ${extraInfo ? `<div class="ttp-child-extra">${extraInfo}</div>` : ''}
-          </td>
-          <td style="font-weight:500;color:var(--text-light);font-size:12px;">${pct}</td>
-          <td><span class="ttp-category-val">${category}</span></td>
-          <td>
-            <div class="row-actions">
-              <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="ttp">Edit</button>
-              <button class="btn-row btn-delete" data-rownum="${d._row}" data-sheet="ttp">Del</button>
-            </div>
-          </td>
-        </tr>`;
-      });
+      html += '<tr class="ttp-group-detail-row hidden" data-parent="' + groupId + '">'
+        + '<td colspan="' + ttpMainTableColspan_(true) + '" class="ttp-group-detail-cell">'
+        + ttpGroupedNestedTableHtml_(rows)
+        + '</td></tr>';
 
       gIdx++;
     });
@@ -7823,7 +8007,8 @@ function initDashboardApp() {
     }
 
     body.innerHTML = filtered.map((d, i) => {
-      const pct = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
+      const cpoPct = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
+      const pkPct = ttpPkPctCol ? ttpFormatCellPct_(d[ttpPkPctCol]) : '—';
       const category = ttpRowCategoryValue_(d);
       const supplierHint = ttpRowField_(d, ['FFB SUPPLIER NAME']);
       const titleAttr = supplierHint !== '—'
@@ -7834,7 +8019,8 @@ function initDashboardApp() {
         + '<td>' + escHtml(d[groupCol] || '—') + '</td>'
         + '<td>' + escHtml(d[companyCol] || '—') + '</td>'
         + '<td><span class="mill-name">' + escHtml(d[millCol] || '—') + '</span></td>'
-        + '<td><span class="ttp-pct-val">' + escHtml(String(pct)) + '</span></td>'
+        + '<td><span class="ttp-pct-val">' + escHtml(String(cpoPct)) + '</span></td>'
+        + '<td><span class="ttp-pct-val">' + escHtml(String(pkPct)) + '</span></td>'
         + '<td><span class="ttp-category-val">' + escHtml(category) + '</span></td>'
         + '</tr>';
     }).join('');
@@ -7899,6 +8085,12 @@ function initDashboardApp() {
       e.stopPropagation();
       openTTPDropdown('ttpBtnFilter', 'ttpFilterPanel', 'ttpSelectPanel', 'ttpBtnSelect');
     });
+    const ttpBtnReset = document.getElementById('ttpBtnResetFilters');
+    if (ttpBtnReset) {
+      ttpBtnReset.addEventListener('click', function() {
+        resetTtpTableFilters_();
+      });
+    }
     if (!window.__sddTtpDropdownOutsideClickBound) {
       window.__sddTtpDropdownOutsideClickBound = true;
       document.addEventListener('click', function(e) {
@@ -7920,9 +8112,7 @@ function initDashboardApp() {
     ttpExportBtn.addEventListener('click', function() {
       if (!ttpData.length) return;
 
-      const colsToExport = ttpVisibleCols && ttpVisibleCols.size > 0
-        ? ttpFields.filter(f => ttpVisibleCols.has(f))
-        : ttpFields;
+      const colsToExport = ttpFieldsForColMode_(ttpColFilterMode);
 
       const rowsToExport = ttpApplyTableFilters_(ttpData);
 
@@ -7931,17 +8121,18 @@ function initDashboardApp() {
       if (typeof XLSX === 'undefined') {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-        script.onload = () => doExportXLSX(rowsToExport, colsToExport);
+        script.onload = () => doExportXLSX(rowsToExport, colsToExport, ttpColFilterMode);
         document.head.appendChild(script);
       } else {
-        doExportXLSX(rowsToExport, colsToExport);
+        doExportXLSX(rowsToExport, colsToExport, ttpColFilterMode);
       }
     });
   })();
 
   // ─── TTP SELECT (dynamic column-based filter) ─────────────
   let ttpSelectedCompanies = null; // null = all selected (values of the active filter col)
-  let ttpVisibleCols = null;       // null = all columns
+  let ttpColFilterMode = 'ttm';    // 'ttm' | 'ttp'
+  let ttpFieldSectionsCache = null;
   let ttpCompanyCol = '';          // currently active filter column (legacy name kept for compat)
   let ttpActiveFilterCol = '';     // which column is currently being used for row-filter
   let ttpCompanyDropdownListenersBound = false;
@@ -8050,7 +8241,60 @@ function initDashboardApp() {
 
   function updateTTPSelection() {
     scheduleRenderTTPTable();
-    updateTTPSelectionInfo();
+  }
+
+  function getTtpDefaultFilterCol_() {
+    return ttpFields.find(function(h) { return h.toUpperCase() === 'COMPANY NAME'; }) ||
+      ttpFields.find(function(h) { return h.toLowerCase().includes('company name'); }) ||
+      ttpFields[1] || ttpFields[0] || '';
+  }
+
+  function closeTtpDropdownPanels_() {
+    const selectPanel = document.getElementById('ttpSelectPanel');
+    const filterPanel = document.getElementById('ttpFilterPanel');
+    const selBtn = document.getElementById('ttpBtnSelect');
+    const filBtn = document.getElementById('ttpBtnFilter');
+    if (selectPanel) selectPanel.classList.remove('open');
+    if (filterPanel) filterPanel.classList.remove('open');
+    if (selBtn) selBtn.classList.remove('active');
+    if (filBtn) filBtn.classList.remove('active');
+  }
+
+  function ttpHasActiveTableFilters_() {
+    if (ttpSearch) return true;
+    if (!ttpData.length) return false;
+    const allValues = getUniqueValuesForCol(ttpActiveFilterCol);
+    if (ttpSelectedCompanies && ttpSelectedCompanies.size < allValues.length) return true;
+    if (ttpColFilterMode !== 'ttm') return true;
+    const defCol = getTtpDefaultFilterCol_();
+    if (defCol && ttpActiveFilterCol && ttpActiveFilterCol !== defCol) return true;
+    return false;
+  }
+
+  function resetTtpTableFilters_() {
+    if (!ttpLoaded || !ttpData.length) return;
+    ttpSearch = '';
+    const searchInp = document.getElementById('ttpSearch');
+    const searchClear = document.getElementById('ttpSearchClear');
+    if (searchInp) searchInp.value = '';
+    if (searchClear) searchClear.classList.remove('show');
+    ttpSelectedCompanies = null;
+    ttpColFilterMode = 'ttm';
+    ttpFieldSectionsCache = null;
+    const defCol = getTtpDefaultFilterCol_();
+    ttpActiveFilterCol = defCol;
+    ttpCompanyCol = defCol;
+    const btnLabel = document.getElementById('ttpBtnSelectLabel');
+    if (btnLabel) {
+      btnLabel.textContent = defCol && defCol.length > 18 ? defCol.substring(0, 17) + '…' : (defCol || 'Select');
+    }
+    const coSearch = document.getElementById('ttpCompanySearch');
+    if (coSearch) coSearch.value = '';
+    closeTtpDropdownPanels_();
+    buildColPickerChips();
+    buildCompanyDropdown();
+    buildColumnModePanel();
+    scheduleRenderTTPTable();
   }
 
   function updateTTPSelectionInfo() {
@@ -8060,12 +8304,15 @@ function initDashboardApp() {
     if (!info || !txt || !exportBtn) return;
     const allValues = ttpData.length ? getUniqueValuesForCol(ttpActiveFilterCol) : [];
     const selCount = ttpSelectedCompanies ? ttpSelectedCompanies.size : allValues.length;
-    const colCount = ttpVisibleCols ? ttpVisibleCols.size : ttpFields.length;
-    const isDefault = selCount === allValues.length && colCount === ttpFields.length;
+    const colModeLabel = ttpColFilterMode === 'ttp' ? 'TTP Only' : 'TTM Only';
+    const isDefault = selCount === allValues.length && ttpColFilterMode === 'ttm';
     const colLabel = ttpActiveFilterCol || 'nilai';
-    if (!isDefault || selCount < allValues.length || colCount < ttpFields.length) {
+    if (!isDefault || selCount < allValues.length || ttpColFilterMode !== 'ttm') {
       info.style.display = 'flex';
-      txt.innerHTML = `<span class="ttp-badge">${selCount} ${colLabel.toLowerCase()}</span> · <span class="ttp-badge">${colCount} kolom</span>`;
+      const parts = [];
+      if (selCount < allValues.length) parts.push('<span class="ttp-badge">' + selCount + ' ' + colLabel.toLowerCase() + '</span>');
+      if (ttpColFilterMode !== 'ttm') parts.push('<span class="ttp-badge">' + colModeLabel + '</span>');
+      txt.innerHTML = parts.join(' · ');
     } else {
       info.style.display = 'none';
     }
@@ -8073,52 +8320,74 @@ function initDashboardApp() {
     const selBtn = document.getElementById('ttpBtnSelect');
     const filBtn = document.getElementById('ttpBtnFilter');
     if (selBtn) selBtn.classList.toggle('active', ttpSelectedCompanies !== null && ttpSelectedCompanies.size < allValues.length);
-    if (filBtn) filBtn.classList.toggle('active', ttpVisibleCols !== null && ttpVisibleCols.size < ttpFields.length);
+    if (filBtn) filBtn.classList.toggle('active', ttpColFilterMode !== 'ttm');
+    const resetBtn = document.getElementById('ttpBtnResetFilters');
+    if (resetBtn) resetBtn.disabled = !ttpHasActiveTableFilters_();
   }
 
-  // ─── TTP FILTER COLUMNS ───────────────────────────────────
-  function buildColumnDropdown() {
-    if (!ttpFields.length) return;
-    if (ttpVisibleCols === null) ttpVisibleCols = new Set(ttpFields);
+  // ─── TTP FILTER COLUMNS (TTM Only / TTP Only) ─────────────
+  function resolveTtpFieldSections_() {
+    if (ttpFieldSectionsCache) return ttpFieldSectionsCache;
+    const ttm = [];
+    const ttp = [];
+    let inTtp = false;
+    let closedTtp = false;
+    ttpFields.forEach(function(f) {
+      if (closedTtp) return;
+      const key = normalizeTtpHeaderKey_(f);
+      if (!inTtp) {
+        if (key.includes('FFB SUPPLIER')) {
+          inTtp = true;
+          ttp.push(f);
+        } else {
+          ttm.push(f);
+        }
+      } else {
+        ttp.push(f);
+        if (key.includes('ISCC')) closedTtp = true;
+      }
+    });
+    ttpFieldSectionsCache = { ttm: ttm, ttp: ttp };
+    return ttpFieldSectionsCache;
+  }
 
-    const list = document.getElementById('ttpColumnList');
+  function ttpFieldsForColMode_(mode) {
+    const sections = resolveTtpFieldSections_();
+    if (mode === 'ttp') return sections.ttp.slice();
+    return sections.ttm.slice();
+  }
+
+  function buildColumnModePanel() {
+    if (!ttpFields.length) return;
+    const list = document.getElementById('ttpColumnModeList');
     if (!list) return;
-    list.innerHTML = ttpFields.map(f => {
-      const checked = ttpVisibleCols.has(f) ? 'checked' : '';
-      const id = 'ttp-col-' + f.replace(/[^a-zA-Z0-9]/g,'_').substring(0,20);
-      return `<div class="ttp-dropdown-item">
-        <input type="checkbox" id="${id}" value="${f.replace(/"/g,'&quot;')}" ${checked} onchange="ttpToggleCol(this)">
-        <label for="${id}">${f}</label>
-      </div>`;
+    const sections = resolveTtpFieldSections_();
+    const modes = [
+      { id: 'ttm', label: 'TTM Only', desc: 'No – UML ID', cols: sections.ttm },
+      { id: 'ttp', label: 'TTP Only', desc: 'FFB Supplier – ISCC (Y/N)', cols: sections.ttp },
+    ];
+    list.innerHTML = modes.map(function(m) {
+      const checked = ttpColFilterMode === m.id ? ' checked' : '';
+      return ''
+        + '<label class="ttp-col-mode-opt">'
+        + '<input type="radio" name="ttpColMode" value="' + m.id + '"' + checked + '>'
+        + '<span class="ttp-col-mode-opt-body">'
+        + '<span class="ttp-col-mode-opt-title">' + escHtml(m.label) + '</span>'
+        + '<span class="ttp-col-mode-opt-desc">' + escHtml(m.desc) + ' · ' + m.cols.length + ' kolom</span>'
+        + '</span>'
+        + '</label>';
     }).join('');
 
     if (!ttpColumnDropdownListenersBound) {
-      const ttpColAll = document.getElementById('ttpColAll');
-      const ttpColNone = document.getElementById('ttpColNone');
-      if (!ttpColAll || !ttpColNone) return;
       ttpColumnDropdownListenersBound = true;
-      ttpColAll.addEventListener('click', () => {
-        ttpVisibleCols = new Set(ttpFields);
-        buildColumnDropdown();
-        scheduleRenderTTPTable();
-        updateTTPSelectionInfo();
-      });
-      ttpColNone.addEventListener('click', () => {
-        ttpVisibleCols = new Set();
-        buildColumnDropdown();
-        scheduleRenderTTPTable();
+      list.addEventListener('change', function(e) {
+        const inp = e.target;
+        if (!inp || inp.name !== 'ttpColMode') return;
+        ttpColFilterMode = inp.value === 'ttp' ? 'ttp' : 'ttm';
         updateTTPSelectionInfo();
       });
     }
   }
-
-  window.ttpToggleCol = function(cb) {
-    if (!ttpVisibleCols) ttpVisibleCols = new Set(ttpFields);
-    if (cb.checked) ttpVisibleCols.add(cb.value);
-    else ttpVisibleCols.delete(cb.value);
-    scheduleRenderTTPTable();
-    updateTTPSelectionInfo();
-  };
 
   // ─── TTP DROPDOWN TOGGLE (absolute under .ttp-dropdown-wrap — avoid position:fixed + ancestor transform mismatch) ──
   function openTTPDropdown(btnId, panelId, otherPanelId, otherBtnId) {
@@ -8157,7 +8426,10 @@ function initDashboardApp() {
     btn.classList.add('active');
   }
 
-  function doExportXLSX(rows, cols) {
+  function doExportXLSX(rows, cols, colMode) {
+    const mode = colMode === 'ttp' ? 'ttp' : 'ttm';
+    const sheetName = mode === 'ttp' ? 'TTP' : 'TTM';
+    const filePrefix = mode === 'ttp' ? 'monitoring_ttp' : 'monitoring_ttm';
     const wsData = [cols, ...rows.map(d => cols.map(f => d[f] !== undefined ? d[f] : ''))];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -8209,11 +8481,11 @@ function initDashboardApp() {
     })};
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'TTP-TTM');
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-    XLSX.writeFile(wb, `monitoring_ttp_ttm_${stamp}.xlsx`, { cellStyles: true });
+    XLSX.writeFile(wb, `${filePrefix}_${stamp}.xlsx`, { cellStyles: true });
   }
 
   // ─── GRIEVANCE DATA ─────────────────────────────────────
@@ -8592,7 +8864,7 @@ function initDashboardApp() {
   // ─── NO BUY LIST (NBL + Unilever NBL) ────────────────────
   const NBL_REGISTRY_FIELDS = ['Riser', 'Group Name NBL', 'Company Name NBL', 'SOURCE'];
   const UNILEVER_NBL_FIELDS = [
-    'NO.', 'UML ID', 'COMPANY NAME', 'MILL NAME', 'COUNTRY', 'PROVINCE',
+    'Riser', 'UML ID', 'COMPANY NAME', 'MILL NAME', 'COUNTRY', 'PROVINCE',
     'DISTRICT / REGENCY', 'LAT.', 'LONG.',
   ];
   let nblRegistryData = [];
@@ -8635,7 +8907,8 @@ function initDashboardApp() {
   }
 
   function prepareNblUnileverRow_(d) {
-    d._nblNo = nblPickField_(d, ['NO.', 'NO', 'No.']);
+    d._nblRiser = nblPickField_(d, ['Riser', 'RISER', 'NO.', 'NO', 'No.']);
+    d._nblNo = d._nblRiser;
     d._nblUml = nblPickField_(d, ['UML ID']);
     d._nblCompany = nblPickField_(d, ['COMPANY NAME', 'Company Name']);
     d._nblMill = nblPickField_(d, ['MILL NAME', 'Mill Name']);
@@ -8645,7 +8918,7 @@ function initDashboardApp() {
     d._nblLat = nblPickField_(d, ['LAT.', 'LAT', 'Latitude', 'Lat']);
     d._nblLong = nblPickField_(d, ['LONG.', 'LONG', 'Longitude', 'Long']);
     d._nblSearchBlob = [
-      d._nblNo, d._nblUml, d._nblCompany, d._nblMill, d._nblCountry,
+      d._nblRiser, d._nblNo, d._nblUml, d._nblCompany, d._nblMill, d._nblCountry,
       d._nblProvince, d._nblDistrict, d._nblLat, d._nblLong,
     ].join(' ').toLowerCase();
     return d;
@@ -8701,7 +8974,7 @@ function initDashboardApp() {
     if (searchEl) {
       searchEl.value = nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
       searchEl.placeholder = nblActiveSource === 'unilever'
-        ? 'Search UML ID, company, mill, location...'
+        ? 'Search riser, UML ID, company, mill, location...'
         : 'Search riser, group, company, source...';
     }
     scheduleRenderNblTable_();
@@ -8750,7 +9023,7 @@ function initDashboardApp() {
     }
     body.innerHTML = filtered.map(function(d) {
       return '<tr>'
-        + '<td>' + escHtml(d._nblNo || '—') + '</td>'
+        + '<td>' + escHtml(d._nblRiser || d._nblNo || '—') + '</td>'
         + '<td><span class="mill-id">' + escHtml(d._nblUml || '—') + '</span></td>'
         + '<td>' + escHtml(d._nblCompany || '—') + '</td>'
         + '<td><span class="mill-name">' + escHtml(d._nblMill || '—') + '</span></td>'
@@ -8889,7 +9162,7 @@ function initDashboardApp() {
         rows.map(function(d) {
           return fields.map(function(f) {
             if (nblActiveSource === 'unilever') {
-              if (f === 'NO.') return '"' + String(d._nblNo || '').replace(/"/g, '""') + '"';
+              if (f === 'Riser') return '"' + String(d._nblRiser || d._nblNo || '').replace(/"/g, '""') + '"';
               if (f === 'UML ID') return '"' + String(d._nblUml || '').replace(/"/g, '""') + '"';
               if (f === 'COMPANY NAME') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
               if (f === 'MILL NAME') return '"' + String(d._nblMill || '').replace(/"/g, '""') + '"';
@@ -10480,6 +10753,589 @@ function initDashboardApp() {
       }
     }
   }
+  window.sddExportPdf = sddExportPdf;
+  // ─── END SDD PDF EXPORT ──────────────────────────────────────────────────
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  SUPPLY IMPORT — Task List (Excel → Draft → Submit to Mill)
+  // ═══════════════════════════════════════════════════════════════════════════
+  (function initSupplyImport() {
+    // ── Year options ─────────────────────────────────────────────────────────
+    const yearSel = document.getElementById('supply-import-year');
+    if (yearSel) {
+      const curYear = new Date().getFullYear();
+      for (let y = curYear + 1; y >= curYear - 4; y--) {
+        const opt = document.createElement('option');
+        opt.value = String(y); opt.textContent = String(y);
+        yearSel.appendChild(opt);
+      }
+      yearSel.value = String(curYear);
+    }
+
+    // ── Modal open/close ──────────────────────────────────────────────────────
+    const overlay   = document.getElementById('supply-import-modal-overlay');
+    const openBtn   = document.getElementById('btn-supply-import-open');
+    const closeBtn  = document.getElementById('btn-supply-import-close');
+    const cancelBtn = document.getElementById('btn-supply-import-cancel');
+    function closeModal() {
+      if (overlay) overlay.style.display = 'none';
+      resetImportModal_();
+    }
+    if (openBtn)   openBtn.addEventListener('click', function() { if (overlay) overlay.style.display = 'block'; });
+    if (closeBtn)  closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+    if (overlay)   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+
+    // ── Drag & drop ───────────────────────────────────────────────────────────
+    const dropZone  = document.getElementById('supply-import-drop-zone');
+    const fileInput = document.getElementById('supply-import-file-input');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.style.background = 'rgba(139,26,26,0.04)'; });
+      dropZone.addEventListener('dragleave', function() { dropZone.style.background = ''; });
+      dropZone.addEventListener('drop', function(e) { e.preventDefault(); dropZone.style.background = ''; if (e.dataTransfer.files[0]) handleSupplyFile_(e.dataTransfer.files[0]); });
+    }
+    if (fileInput) fileInput.addEventListener('change', function() { if (this.files[0]) handleSupplyFile_(this.files[0]); });
+
+    // ── Quarter/Year validation → enable proceed btn ──────────────────────────
+    const quarterSel = document.getElementById('supply-import-quarter');
+    function checkProceedReady_() {
+      const q = quarterSel ? quarterSel.value : '';
+      const y = yearSel ? yearSel.value : '';
+      const hasData = window._supplyImportParsedRows && window._supplyImportParsedRows.length > 0;
+      const proceedBtn = document.getElementById('btn-supply-import-proceed');
+      if (proceedBtn) {
+        const ready = !!(q && y && hasData);
+        proceedBtn.disabled = !ready;
+        proceedBtn.style.opacity = ready ? '1' : '0.45';
+        proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
+      }
+    }
+    if (quarterSel) quarterSel.addEventListener('change', checkProceedReady_);
+    if (yearSel)    yearSel.addEventListener('change', checkProceedReady_);
+
+    // ── Proceed → build task list ─────────────────────────────────────────────
+    const proceedBtn = document.getElementById('btn-supply-import-proceed');
+    if (proceedBtn) proceedBtn.addEventListener('click', function() {
+      const q = quarterSel ? quarterSel.value : '';
+      const y = yearSel ? yearSel.value : '';
+      if (!q || !y || !window._supplyImportParsedRows) return;
+      buildSupplyTaskList_(window._supplyImportParsedRows, q, y);
+      closeModal();
+    });
+
+    // ── Load existing drafts on panel open ────────────────────────────────────
+    loadSupplyDraftsFromServer_();
+  })();
+
+  function resetImportModal_() {
+    window._supplyImportParsedRows = null;
+    const fileInput  = document.getElementById('supply-import-file-input');
+    const fileInfo   = document.getElementById('supply-import-file-info');
+    const fileError  = document.getElementById('supply-import-file-error');
+    const preview    = document.getElementById('supply-import-preview-wrap');
+    const proceedBtn = document.getElementById('btn-supply-import-proceed');
+    if (fileInput)   { fileInput.value = ''; }
+    if (fileInfo)    { fileInfo.style.display = 'none'; }
+    if (fileError)   { fileError.style.display = 'none'; fileError.textContent = ''; }
+    if (preview)     { preview.style.display = 'none'; }
+    if (proceedBtn)  { proceedBtn.disabled = true; proceedBtn.style.opacity = '0.45'; }
+  }
+
+  function handleSupplyFile_(file) {
+    const fileInfo  = document.getElementById('supply-import-file-info');
+    const fileError = document.getElementById('supply-import-file-error');
+    const fileName  = document.getElementById('supply-import-file-name');
+    const rowCount  = document.getElementById('supply-import-row-count');
+
+    function showErr(msg) {
+      if (fileError) { fileError.textContent = msg; fileError.style.display = 'block'; }
+      if (fileInfo)  fileInfo.style.display = 'none';
+    }
+    if (fileError) fileError.style.display = 'none';
+
+    if (typeof XLSX === 'undefined') {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+      script.onload = function() { parseSupplyFile_(file, showErr); };
+      document.head.appendChild(script);
+    } else {
+      parseSupplyFile_(file, showErr);
+    }
+
+    function parseSupplyFile_(f, errCb) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const wb = XLSX.read(evt.target.result, { type: 'array' });
+          const sheetName = wb.SheetNames.find(function(n) {
+            return n.toLowerCase().trim().includes('contoh pengisian');
+          });
+          if (!sheetName) {
+            errCb('Sheet "Contoh Pengisian" tidak ditemukan. Pastikan file sudah sesuai template.');
+            return;
+          }
+          const ws   = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          if (rows.length < 2) { errCb('Sheet "Contoh Pengisian" kosong.'); return; }
+
+          const headers = rows[0].map(function(h) { return String(h || '').trim().toUpperCase(); });
+          const dataRows = rows.slice(1).filter(function(r) {
+            return r.some(function(c) { return String(c || '').trim() !== ''; });
+          });
+          if (!dataRows.length) { errCb('Tidak ada data di sheet "Contoh Pengisian".'); return; }
+
+          // Map columns
+          const colPlant    = headers.indexOf('PLANT');
+          const colCategory = headers.indexOf('CATEGORY');
+          const colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
+          const colCoName   = headers.indexOf('COMPANY NAME');
+          const colMillName = headers.indexOf('MILL NAME');
+          const colSumQty   = headers.indexOf('SUM OF QTY KG');
+
+          if (colCoName < 0 || colMillName < 0) {
+            errCb('Kolom COMPANY NAME atau MILL NAME tidak ditemukan di sheet "Contoh Pengisian".');
+            return;
+          }
+
+          window._supplyImportParsedRows = dataRows.map(function(r) {
+            return {
+              PLANT:              String(r[colPlant]    != null ? r[colPlant]    : '').trim(),
+              CATEGORY:           String(r[colCategory] != null ? r[colCategory] : '').trim(),
+              COMPANY_GROUP_NAME: String(r[colCoGroup]  != null ? r[colCoGroup]  : '').trim(),
+              COMPANY_NAME:       String(r[colCoName]   != null ? r[colCoName]   : '').trim(),
+              MILL_NAME:          String(r[colMillName] != null ? r[colMillName] : '').trim(),
+              SUM_QTY_KG:         r[colSumQty] != null ? r[colSumQty] : '',
+            };
+          }).filter(function(r) { return r.COMPANY_NAME || r.MILL_NAME; });
+
+          // Show file info
+          if (fileName) fileName.textContent = f.name;
+          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' baris';
+          if (fileInfo) fileInfo.style.display = 'flex';
+
+          // Build preview table
+          buildImportPreview_(window._supplyImportParsedRows);
+
+          // Re-check proceed readiness
+          const quarterSel = document.getElementById('supply-import-quarter');
+          const yearSel    = document.getElementById('supply-import-year');
+          const q = quarterSel ? quarterSel.value : '';
+          const y = yearSel ? yearSel.value : '';
+          const proceedBtn = document.getElementById('btn-supply-import-proceed');
+          if (proceedBtn) {
+            const ready = !!(q && y);
+            proceedBtn.disabled = !ready;
+            proceedBtn.style.opacity = ready ? '1' : '0.45';
+            proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
+          }
+        } catch (ex) {
+          errCb('Gagal membaca file: ' + ex.message);
+        }
+      };
+      reader.readAsArrayBuffer(f);
+    }
+  }
+
+  function buildImportPreview_(parsedRows) {
+    const wrap   = document.getElementById('supply-import-preview-wrap');
+    const tHead  = document.getElementById('supply-import-preview-head');
+    const tBody  = document.getElementById('supply-import-preview-body');
+    if (!wrap || !tHead || !tBody) return;
+
+    tHead.innerHTML = '<tr>'
+      + ['Company Name','Mill Name','Plant','Category','Supply (Kg)'].map(function(h) {
+          return '<th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(h) + '</th>';
+        }).join('') + '</tr>';
+
+    const preview = parsedRows.slice(0, 8);
+    tBody.innerHTML = preview.map(function(r, i) {
+      const bg = i % 2 === 0 ? '#fff' : '#fdf9f9';
+      return '<tr style="background:' + bg + ';">'
+        + [r.COMPANY_NAME, r.MILL_NAME, r.PLANT, r.CATEGORY, r.SUM_QTY_KG].map(function(v) {
+            return '<td style="padding:6px 10px;font-size:11.5px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+              + escHtml(String(v || '—')) + '</td>';
+          }).join('') + '</tr>';
+    }).join('');
+    if (parsedRows.length > 8) {
+      tBody.innerHTML += '<tr><td colspan="5" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… dan ' + (parsedRows.length - 8) + ' baris lagi</td></tr>';
+    }
+    wrap.style.display = 'block';
+  }
+
+  // ── Build task list in panel ──────────────────────────────────────────────
+  // State: current open/editing draft batches
+  window._supplyDraftBatches = window._supplyDraftBatches || [];
+
+  function buildSupplyTaskList_(parsedRows, quarter, year) {
+    const batchId = 'batch-' + Date.now();
+    const now     = new Date().toISOString();
+    const rows    = parsedRows.map(function(r, idx) {
+      // Try to find matching mill in allData
+      const match = allData.find(function(d) {
+        const cn = String(d['COMPANY NAME'] || '').trim().toLowerCase();
+        const mn = String(d['MILL NAME']    || '').trim().toLowerCase();
+        return cn === r.COMPANY_NAME.toLowerCase() && mn === r.MILL_NAME.toLowerCase();
+      });
+
+      const draft = {
+        draft_id:    batchId + '_' + idx,
+        batch_id:    batchId,
+        status:      'draft',
+        quarter:     quarter,
+        year:        year,
+        match_status: match ? 'matched' : 'new',
+        QUARTER:     quarter,
+        YEAR:        year,
+      };
+
+      // Mapping: Excel → Mill columns
+      draft['FACILITY NAME CPO'] = r.PLANT;
+      draft['TRADER NAME']       = r.CATEGORY;
+      draft['GROUP NAME']        = r.COMPANY_GROUP_NAME || (match ? (match['GROUP NAME'] || '') : '');
+      draft['COMPANY NAME']      = r.COMPANY_NAME;
+      draft['MILL NAME']         = r.MILL_NAME;
+      draft['SUPPLY CPO']        = r.SUM_QTY_KG;
+
+      // Prefill all other mill fields from matched record (EXCEPT SUPPLY CPO)
+      if (match) {
+        const PREFILL_SKIP = new Set(['SUPPLY CPO', 'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME', 'FACILITY NAME CPO', 'TRADER NAME']);
+        (window.MILL_FIELDS_LIST || [
+          'COMPANY CODE','UML ID','ADDRESS','PROVINCE','COORDINATES',
+          'MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI',
+          'IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT',
+          'DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY',
+          'DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT',
+          'SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD',
+          'TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE',
+          'SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS',
+          'RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL',
+          'RESULT RISK LEVEL','FACILITY NAME PK','PRODUCT SUPPLY',
+        ]).forEach(function(f) {
+          if (PREFILL_SKIP.has(f)) return;
+          if (match[f] !== undefined && match[f] !== null && String(match[f]).trim() !== '') {
+            draft[f] = match[f];
+          }
+        });
+      }
+
+      return draft;
+    });
+
+    const batch = { batch_id: batchId, quarter: quarter, year: year, rows: rows, status: 'draft', created_at: now };
+    window._supplyDraftBatches.push(batch);
+    renderSupplyDraftList_();
+
+    // Auto-save draft to server
+    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: rows, meta: { quarter, year } })
+      .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
+  }
+
+  function renderSupplyDraftList_() {
+    const container = document.getElementById('supply-draft-list');
+    const empty     = document.getElementById('supply-draft-empty');
+    if (!container) return;
+
+    const batches = window._supplyDraftBatches || [];
+    if (!batches.length) {
+      container.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    container.innerHTML = batches.map(function(b) {
+      const rowCount    = b.rows ? b.rows.length : 0;
+      const matched     = b.rows ? b.rows.filter(function(r) { return r.match_status === 'matched'; }).length : 0;
+      const newCount    = b.rows ? b.rows.filter(function(r) { return r.match_status !== 'matched'; }).length : 0;
+      const doneCount   = b.rows ? b.rows.filter(function(r) { return r._submitted; }).length : 0;
+      const isSubmitted = b.status === 'submitted';
+      const statusBadge = isSubmitted
+        ? '<span class="supply-badge supply-badge--submitted">Submitted</span>'
+        : '<span class="supply-badge supply-badge--draft">Draft</span>';
+      const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+
+      return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
+        + '<div class="supply-batch-card-head">'
+        + '<div class="supply-batch-card-meta">'
+        + '<span class="supply-batch-period">' + escHtml(b.quarter) + ' · ' + escHtml(b.year) + '</span>'
+        + statusBadge
+        + '<span class="supply-batch-info">' + rowCount + ' rows · ' + matched + ' matched · ' + newCount + ' new'
+        + (doneCount > 0 ? ' · ' + doneCount + ' done' : '') + '</span>'
+        + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
+        + '</div>'
+        + '<div class="supply-batch-actions">'
+        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--expand" data-batch="' + escHtml(b.batch_id) + '">Lihat / Edit</button>' : '')
+        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Hapus</button>'
+        + '</div>'
+        + '</div>'
+        + '<div class="supply-batch-table-wrap" id="supply-batch-table-' + escHtml(b.batch_id) + '" style="display:none;">'
+        + renderSupplyBatchTable_(b)
+        + '</div>'
+        + '</div>';
+    }).join('');
+
+    // Bind events
+    container.querySelectorAll('[data-action]').forEach(function(btn) {
+      btn.addEventListener('click', handleSupplyBatchAction_);
+    });
+    container.querySelectorAll('.supply-btn--expand').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const batchId = btn.dataset.batch;
+        const wrap    = document.getElementById('supply-batch-table-' + batchId);
+        if (!wrap) return;
+        const isOpen = wrap.style.display !== 'none';
+        wrap.style.display = isOpen ? 'none' : 'block';
+        btn.textContent    = isOpen ? 'Lihat / Edit' : 'Tutup';
+      });
+    });
+  }
+
+  function renderSupplyBatchTable_(batch) {
+    if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">Tidak ada baris.</p>';
+    const isSubmitted = batch.status === 'submitted';
+    const SHOW_COLS = [
+      ['COMPANY NAME',    'Company Name'],
+      ['MILL NAME',       'Mill Name'],
+      ['GROUP NAME',      'Group Name'],
+      ['TRADER NAME',     'Trader Name (Category)'],
+      ['FACILITY NAME CPO','Facility CPO (Plant)'],
+      ['SUPPLY CPO',      'Supply CPO (Kg)'],
+      ['PROVINCE',        'Province'],
+    ];
+
+    const head = '<tr>'
+      + (isSubmitted ? '' : '<th style="width:24px;"></th>')
+      + SHOW_COLS.map(function(c) {
+          return '<th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(c[1]) + '</th>';
+        }).join('')
+      + '<th style="width:80px;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);"></th>'
+      + '</tr>';
+
+    const body = batch.rows.map(function(row, i) {
+      const isMatched  = row.match_status === 'matched';
+      const isRowDone  = row._submitted === true;
+      const matchBadge = isMatched
+        ? '<span style="font-size:9.5px;font-weight:700;background:rgba(46,125,50,0.12);color:#2e7d32;border-radius:4px;padding:1px 5px;margin-left:4px;">✓ Match</span>'
+        : '<span style="font-size:9.5px;font-weight:700;background:rgba(139,26,26,0.1);color:#8B1A1A;border-radius:4px;padding:1px 5px;margin-left:4px;">New</span>';
+      const cells = SHOW_COLS.map(function(c) {
+        const key = c[0];
+        const val = row[key] != null ? row[key] : '';
+        if (key === 'COMPANY NAME') {
+          return '<td style="padding:7px 10px;font-size:12px;color:#1A0A0A;border-bottom:1px solid rgba(139,26,26,0.05);">'
+            + escHtml(String(val || '—')) + matchBadge + '</td>';
+        }
+        if (!isSubmitted && !isRowDone && (key === 'SUPPLY CPO' || key === 'FACILITY NAME CPO' || key === 'TRADER NAME' || key === 'GROUP NAME')) {
+          return '<td style="padding:4px 6px;border-bottom:1px solid rgba(139,26,26,0.05);">'
+            + '<input class="supply-inline-input" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '" data-field="' + escHtml(key) + '"'
+            + ' value="' + escHtml(String(val || '')) + '"'
+            + ' style="width:100%;height:28px;border:1px solid rgba(139,26,26,0.18);border-radius:5px;padding:0 7px;font-size:11.5px;color:#1A0A0A;background:#fff;">'
+            + '</td>';
+        }
+        return '<td style="padding:7px 10px;font-size:12px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);">' + escHtml(String(val || '—')) + '</td>';
+      }).join('');
+
+      // Per-row action button — all rows open modal for review/edit before save
+      let rowAction = '';
+      if (!isSubmitted) {
+        if (isRowDone) {
+          rowAction = '<span style="font-size:10px;font-weight:700;color:#2e7d32;">✓ Submitted</span>';
+        } else {
+          const btnLabel = isMatched ? 'Edit / Submit →' : 'Lengkapi →';
+          const btnStyle = isMatched ? 'supply-btn--primary' : 'supply-btn--ghost';
+          rowAction = '<button type="button" class="supply-btn ' + btnStyle + '" style="padding:4px 10px;font-size:11px;white-space:nowrap;"'
+            + ' data-action="open-modal-row" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '">' + btnLabel + '</button>';
+        }
+      }
+
+      return '<tr' + (isRowDone ? ' style="opacity:0.5;"' : '') + '>'
+        + (isSubmitted ? '' : '<td style="padding:7px 6px;border-bottom:1px solid rgba(139,26,26,0.05);vertical-align:middle;"><input type="checkbox" class="supply-row-check" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '"' + (isRowDone ? ' disabled' : ' checked') + '></td>')
+        + cells
+        + '<td style="padding:4px 8px;border-bottom:1px solid rgba(139,26,26,0.05);text-align:right;white-space:nowrap;">' + rowAction + '</td>'
+        + '</tr>';
+    }).join('');
+
+    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+      + '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+      + (!isSubmitted ? supplyBatchFooterHtml_(batch.batch_id) : '');
+  }
+
+  function supplyBatchFooterHtml_(batchId) {
+    const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+    const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 10px 4px;border-top:1px solid rgba(139,26,26,0.07);flex-wrap:wrap;">'
+      + '<span style="font-size:11px;color:#9C8080;">Klik <strong>Edit / Submit →</strong> atau <strong>Lengkapi →</strong> untuk review/isi data lalu Save. Atau bulk-submit semua Matched langsung.</span>'
+      + '<div style="display:flex;gap:8px;">'
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">💾 Save as Draft</button>'
+      + (matched > 0 ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-matched" data-batch="' + escHtml(batchId) + '">✓ Submit Matched (' + matched + ')</button>' : '')
+      + '</div>'
+      + '</div>';
+  }
+
+  function handleSupplyBatchAction_(e) {
+    const btn    = e.currentTarget;
+    const action = btn.dataset.action;
+    const bId    = btn.dataset.batch;
+    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === bId; });
+    if (!batch) return;
+
+    if (action === 'delete-batch') {
+      if (!confirm('Hapus draft batch ' + batch.quarter + ' ' + batch.year + '? Tidak bisa dibatalkan.')) return;
+      window._supplyDraftBatches = window._supplyDraftBatches.filter(function(b) { return b.batch_id !== bId; });
+      renderSupplyDraftList_();
+      apiPost({ action: 'deleteSupplyDraft', batch_id: bId })
+        .catch(function(err) { console.warn('[supplyDraft] Delete failed:', err.message); });
+      return;
+    }
+
+    if (action === 'save-draft') {
+      // Collect inline edits
+      collectInlineEdits_(bId);
+      btn.textContent = 'Menyimpan…'; btn.disabled = true;
+      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: {} })
+        .then(function() {
+          btn.textContent = '✓ Tersimpan';
+          setTimeout(function() { btn.textContent = '💾 Save as Draft'; btn.disabled = false; }, 2000);
+        })
+        .catch(function(err) {
+          btn.textContent = '💾 Save as Draft'; btn.disabled = false;
+          alert('Gagal menyimpan: ' + err.message);
+        });
+      return;
+    }
+
+    // Submit all matched rows directly (data already complete from prefill)
+    if (action === 'submit-matched') {
+      collectInlineEdits_(bId);
+      const matchedRows = (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; });
+      if (!matchedRows.length) { alert('Tidak ada baris matched yang belum disubmit.'); return; }
+      if (!confirm('Submit ' + matchedRows.length + ' baris Matched ke Mill Onboarding Profile?')) return;
+      btn.textContent = 'Submitting…'; btn.disabled = true;
+      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
+        .then(function(res) {
+          matchedRows.forEach(function(r) { r._submitted = true; });
+          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
+          if (allDone) batch.status = 'submitted';
+          renderSupplyDraftList_();
+          millLoadPromise = null;
+          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris Matched berhasil di-submit.');
+        })
+        .catch(function(err) {
+          btn.textContent = '✓ Submit Matched'; btn.disabled = false;
+          alert('Gagal submit: ' + err.message);
+        });
+      return;
+    }
+
+    // Submit a single matched row directly
+    if (action === 'submit-row') {
+      collectInlineEdits_(bId);
+      const rowIdx = parseInt(btn.dataset.row, 10);
+      const row    = batch.rows && batch.rows[rowIdx];
+      if (!row) return;
+      btn.textContent = '…'; btn.disabled = true;
+      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] })
+        .then(function() {
+          row._submitted = true;
+          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
+          if (allDone) batch.status = 'submitted';
+          millLoadPromise = null;
+          renderSupplyDraftList_();
+        })
+        .catch(function(err) {
+          btn.textContent = 'Submit'; btn.disabled = false;
+          alert('Gagal submit: ' + err.message);
+        });
+      return;
+    }
+
+    // Open full Add New Record modal for a New (unmatched) row
+    if (action === 'open-modal-row') {
+      collectInlineEdits_(bId);
+      const rowIdx  = parseInt(btn.dataset.row, 10);
+      const draftRow = batch.rows && batch.rows[rowIdx];
+      if (!draftRow) return;
+
+      // Build prefill object for the mill modal (uppercase MILL_FIELDS keys)
+      const prefill = {};
+      Object.keys(draftRow).forEach(function(k) {
+        if (k === 'draft_id' || k === 'batch_id' || k === 'status' || k === 'match_status' || k === '_submitted'
+            || k === 'created_at' || k === 'updated_at' || k === 'created_by') return;
+        if (draftRow[k] !== undefined && draftRow[k] !== null && String(draftRow[k]).trim() !== '') {
+          prefill[k] = draftRow[k];
+        }
+      });
+      // Ensure QUARTER and YEAR are set from batch meta if missing in row
+      if (!prefill['QUARTER'] && batch.quarter) prefill['QUARTER'] = batch.quarter;
+      if (!prefill['YEAR']    && batch.year)    prefill['YEAR']    = String(batch.year);
+
+      // Store context so after save we can mark draft row as submitted
+      window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
+      openModal('mill', MILL_FIELDS, 'add', prefill);
+      return;
+    }
+  }
+
+  function collectInlineEdits_(batchId) {
+    const container = document.getElementById('supply-draft-list');
+    if (!container) return;
+    const inputs = container.querySelectorAll('.supply-inline-input[data-batch="' + batchId + '"]');
+    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+    if (!batch) return;
+    inputs.forEach(function(inp) {
+      const rowIdx = parseInt(inp.dataset.row, 10);
+      const field  = inp.dataset.field;
+      if (batch.rows[rowIdx] !== undefined) batch.rows[rowIdx][field] = inp.value;
+    });
+  }
+
+  function getSelectedRows_(batchId, allRows) {
+    const container = document.getElementById('supply-draft-list');
+    if (!container) return allRows;
+    const checks = container.querySelectorAll('.supply-row-check[data-batch="' + batchId + '"]');
+    if (!checks.length) return allRows;
+    const selected = [];
+    checks.forEach(function(cb) {
+      if (cb.checked) {
+        const idx = parseInt(cb.dataset.row, 10);
+        if (allRows[idx]) selected.push(allRows[idx]);
+      }
+    });
+    return selected.length ? selected : allRows;
+  }
+
+  function loadSupplyDraftsFromServer_() {
+    apiGet('supplyDraft')
+      .then(function(data) {
+        if (!Array.isArray(data) || !data.length) {
+          renderSupplyDraftList_();
+          return;
+        }
+        // Group by batch_id
+        const batches = {};
+        data.forEach(function(row) {
+          const bid = row.batch_id || row.draft_id || 'unknown';
+          if (!batches[bid]) {
+            batches[bid] = {
+              batch_id:   bid,
+              quarter:    row.quarter || '',
+              year:       row.year    || '',
+              status:     row.status  || 'draft',
+              created_at: row.created_at || '',
+              rows:       [],
+            };
+          }
+          batches[bid].rows.push(row);
+        });
+        window._supplyDraftBatches = Object.values(batches);
+        renderSupplyDraftList_();
+      })
+      .catch(function(err) {
+        console.warn('[supplyDraft] Load drafts failed:', err.message);
+        renderSupplyDraftList_();
+      });
+  }
+  // ─── END SUPPLY IMPORT ────────────────────────────────────────────────────
+
   window.sddExportPdf = sddExportPdf;
   // ─── END SDD PDF EXPORT ──────────────────────────────────────────────────
 

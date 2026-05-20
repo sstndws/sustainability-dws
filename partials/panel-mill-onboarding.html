@@ -50,6 +50,7 @@
 
   <!-- Task List Panel (shown when filter=Task List) -->
   <div id="mill-task-list-panel" style="display:none;">
+    <!-- ── SDD Screenings (existing) ── -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
       <div>
         <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Submitted Supplier Screenings</div>
@@ -61,6 +62,104 @@
     <div id="mill-task-empty" style="display:none;padding:40px;text-align:center;color:#9C8080;font-size:14px;">
       Belum ada submitted screening yang tersedia.<br>
       <span style="font-size:12px;">Submit screening di Supplier Due Diligence terlebih dahulu.</span>
+    </div>
+
+    <!-- ── Supply Import (new) ── -->
+    <div style="margin-top:28px;border-top:1px solid rgba(139,26,26,0.1);padding-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Import Supply Data</div>
+          <div style="font-size:12px;color:#9C8080;margin-top:2px;">Import Excel supply data — prefill dari Mill Registry, lalu Save as Draft atau Submit</div>
+        </div>
+        <button type="button" class="btn-sm btn-filled" id="btn-supply-import-open">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import Supply Excel
+        </button>
+      </div>
+      <div id="supply-draft-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="supply-draft-empty" style="display:none;padding:32px;text-align:center;color:#9C8080;font-size:13px;">
+        Belum ada draft import. Klik <strong>Import Supply Excel</strong> untuk mulai.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUPPLY IMPORT MODAL ── -->
+  <div id="supply-import-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1200;overflow-y:auto;">
+    <div style="min-height:100%;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;">
+      <div style="background:#fff;border-radius:18px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,0.2);overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:22px 26px 16px;border-bottom:1px solid rgba(139,26,26,0.08);display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#1A0A0A;">Import Supply Data</div>
+            <div style="font-size:12px;color:#9C8080;margin-top:3px;">Pilih periode &amp; upload file Excel (sheet "Contoh Pengisian")</div>
+          </div>
+          <button type="button" id="btn-supply-import-close" style="width:30px;height:30px;border-radius:8px;border:none;background:rgba(139,26,26,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:24px 26px;">
+          <!-- Step 1: Period -->
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">1. Pilih Periode</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:130px;">
+                <label style="display:block;font-size:11px;font-weight:600;color:#5A4040;margin-bottom:5px;">Quarter</label>
+                <select id="supply-import-quarter" style="width:100%;height:36px;border:1.5px solid rgba(139,26,26,0.2);border-radius:8px;padding:0 10px;font-size:13px;font-weight:600;color:#1A0A0A;background:#fff;">
+                  <option value="">— Pilih Quarter —</option>
+                  <option value="Q1">Q1 (Jan–Mar)</option>
+                  <option value="Q2">Q2 (Apr–Jun)</option>
+                  <option value="Q3">Q3 (Jul–Sep)</option>
+                  <option value="Q4">Q4 (Okt–Des)</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:130px;">
+                <label style="display:block;font-size:11px;font-weight:600;color:#5A4040;margin-bottom:5px;">Year</label>
+                <select id="supply-import-year" style="width:100%;height:36px;border:1.5px solid rgba(139,26,26,0.2);border-radius:8px;padding:0 10px;font-size:13px;font-weight:600;color:#1A0A0A;background:#fff;" id="supply-import-year">
+                  <option value="">— Pilih Year —</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Upload -->
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">2. Upload File Excel</div>
+            <label id="supply-import-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed rgba(139,26,26,0.25);border-radius:12px;padding:30px 20px;cursor:pointer;transition:background 150ms;background:#fdfafa;" for="supply-import-file-input">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C05050" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
+              <span style="font-size:13px;font-weight:600;color:#5A3030;">Drag &amp; drop atau klik untuk pilih file</span>
+              <span style="font-size:11px;color:#9C8080;">.xlsx · sheet "Contoh Pengisian" diperlukan</span>
+              <input type="file" id="supply-import-file-input" accept=".xlsx,.xls" style="display:none;">
+            </label>
+            <div id="supply-import-file-info" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(46,125,50,0.07);border:1px solid rgba(46,125,50,0.2);font-size:12px;color:#2e5d32;display:flex;align-items:center;gap:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span id="supply-import-file-name">file.xlsx</span>
+              <span id="supply-import-row-count" style="margin-left:auto;font-weight:700;"></span>
+            </div>
+            <div id="supply-import-file-error" style="display:none;margin-top:8px;padding:8px 14px;border-radius:8px;background:rgba(200,50,50,0.07);border:1px solid rgba(200,50,50,0.2);font-size:12px;color:#8B1A1A;"></div>
+          </div>
+
+          <!-- Preview (rows parsed from Excel) -->
+          <div id="supply-import-preview-wrap" style="display:none;margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:8px;">Preview</div>
+            <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(139,26,26,0.1);">
+              <table id="supply-import-preview-table" style="width:100%;border-collapse:collapse;font-size:11.5px;">
+                <thead id="supply-import-preview-head" style="background:#f9f3f3;"></thead>
+                <tbody id="supply-import-preview-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 26px 22px;display:flex;align-items:center;justify-content:flex-end;gap:10px;border-top:1px solid rgba(139,26,26,0.07);">
+          <button type="button" id="btn-supply-import-cancel" style="padding:9px 18px;border-radius:9px;border:1.5px solid rgba(139,26,26,0.2);background:#fff;font-size:13px;font-weight:600;color:#5A4040;cursor:pointer;">Batal</button>
+          <button type="button" id="btn-supply-import-proceed" disabled style="padding:9px 20px;border-radius:9px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:0.45;">
+            Lanjut ke Task List →
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
