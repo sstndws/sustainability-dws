@@ -104,6 +104,7 @@ const CONTACT_SUPPLIER_HEADERS = [
   'Supplier Type',
   'Sustainability PIC',
   'Phone Number',
+  'Email',
   'statusSDD',
   'approved_at',
   'updated_at',
@@ -1661,6 +1662,14 @@ function addRow(sheetKey, data) {
     const hdr = detectTtpHeaderRow_(sheet);
     if (hdr && hdr.headers && hdr.headers.length) headers = hdr.headers;
   }
+  if (sheetKey === 'contactSupplier') {
+    const now = nowIso_();
+    const user = callerEmail_();
+    if (!data.updated_at) data.updated_at = now;
+    if (!data.updated_by) data.updated_by = user;
+    if (!data.approved_at) data.approved_at = now.slice(0, 10);
+    if (!data.statusSDD) data.statusSDD = 'Manual';
+  }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const newRow  = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
   sheet.appendRow(newRow);
@@ -1675,6 +1684,10 @@ function updateRow(sheetKey, rowNum, data) {
   if (sheetKey === 'ttp') {
     const hdr = detectTtpHeaderRow_(sheet);
     if (hdr && hdr.headers && hdr.headers.length) headers = hdr.headers;
+  }
+  if (sheetKey === 'contactSupplier') {
+    data.updated_at = nowIso_();
+    data.updated_by = callerEmail_();
   }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
