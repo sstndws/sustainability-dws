@@ -7,27 +7,37 @@
 
         <!-- Filters (optional) -->
         <div class="pf-period-bar">
-          <span class="pf-filter-label">Filter</span>
-          <div class="pf-period-group">
-            <label class="pf-period-label" for="pfQuarterSel">Quarter</label>
-            <select id="pfQuarterSel" class="pf-period-select">
-              <option value="">All</option>
-              <option value="1">Q1</option>
-              <option value="2">Q2</option>
-              <option value="3">Q3</option>
-              <option value="4">Q4</option>
-            </select>
+          <div class="pf-period-toolbar">
+            <span class="pf-filter-label">Filter</span>
+            <div class="pf-period-fields">
+              <div class="pf-period-group">
+                <label class="pf-period-label" for="pfQuarterSel">Quarter</label>
+                <select id="pfQuarterSel" class="pf-period-select">
+                  <option value="">All</option>
+                  <option value="1">Q1</option>
+                  <option value="2">Q2</option>
+                  <option value="3">Q3</option>
+                  <option value="4">Q4</option>
+                </select>
+              </div>
+              <div class="pf-period-group">
+                <label class="pf-period-label" for="pfYearSel">Year</label>
+                <select id="pfYearSel" class="pf-period-select">
+                  <option value="">All</option>
+                </select>
+              </div>
+            </div>
+            <div class="pf-period-actions">
+              <button type="button" id="pfResetFilter" class="pf-reset-btn" title="Reset filters">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+                Reset
+              </button>
+              <button type="button" id="pfExportPdfBtn" class="pf-export-btn" title="Export selected facilities to PDF">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Export PDF
+              </button>
+            </div>
           </div>
-          <div class="pf-period-group">
-            <label class="pf-period-label" for="pfYearSel">Year</label>
-            <select id="pfYearSel" class="pf-period-select">
-              <option value="">All</option>
-            </select>
-          </div>
-          <button id="pfResetFilter" class="pf-reset-btn" title="Reset filters">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-            Reset
-          </button>
           <span class="pf-scope-text" id="pfScopeText"></span>
         </div>
 
@@ -46,7 +56,7 @@
               <span class="pf-section-badge pf-section-badge--cpo">CPO</span>
               <h3>CPO Facility Performance</h3>
             </div>
-            <div class="table-actions">
+            <div class="table-actions pf-table-actions">
               <input type="text" id="pfSearch" class="pf-search" placeholder="Search facility or company…" autocomplete="off" />
             </div>
           </div>
@@ -113,6 +123,36 @@
               </thead>
               <tbody id="pfPkTableBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Export PDF modal -->
+        <div id="pf-export-modal" class="pf-export-modal" style="display:none;" aria-hidden="true">
+          <div class="pf-export-modal-backdrop" id="pfExportModalBackdrop"></div>
+          <div class="pf-export-modal-dialog" role="dialog" aria-labelledby="pfExportModalTitle">
+            <div class="pf-export-modal-head">
+              <h3 id="pfExportModalTitle">Export Facility Performance</h3>
+              <button type="button" class="pf-export-modal-close" id="pfExportModalClose" aria-label="Close">✕</button>
+            </div>
+            <div class="pf-export-modal-body">
+              <p class="pf-export-hint">Choose product type and facilities to include. Company breakdown matches the on-screen table.</p>
+              <div class="pf-export-type-row">
+                <span class="pf-export-label">Product</span>
+                <label class="pf-export-radio"><input type="radio" name="pfExportType" value="cpo" checked /> CPO (Refinery)</label>
+                <label class="pf-export-radio"><input type="radio" name="pfExportType" value="pk" /> PK (KCP)</label>
+                <label class="pf-export-radio"><input type="radio" name="pfExportType" value="both" /> Both</label>
+              </div>
+              <div class="pf-export-facility-toolbar">
+                <span class="pf-export-label">Facilities</span>
+                <button type="button" class="pf-export-link-btn" id="pfExportSelectAll">Select all</button>
+                <button type="button" class="pf-export-link-btn" id="pfExportSelectNone">Clear</button>
+              </div>
+              <div id="pfExportFacilityList" class="pf-export-facility-list"></div>
+            </div>
+            <div class="pf-export-modal-foot">
+              <button type="button" class="pf-btn pf-btn--ghost" id="pfExportCancel">Cancel</button>
+              <button type="button" class="pf-btn pf-btn--primary" id="pfExportConfirm">Generate PDF</button>
+            </div>
           </div>
         </div>
       </div>

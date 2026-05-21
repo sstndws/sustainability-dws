@@ -3811,7 +3811,7 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL or localStorage SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxlVvx7Ek8rZiEfyHs3E9-aE33erTCDd-xzALoL1g0Kj1sfiGV7T8f172mC9StuJdle/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyhatchpz2uXspS0UAegwBfyJhAJchDG4C3DOHG28Ao_T5fU5XLWjCAfueb_Ax_dDE5ug/exec';
 
 function getSddApiUrl() {
   var custom = (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) || '';
@@ -10094,6 +10094,7 @@ function initDashboardApp() {
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
 
 
+
       const byFacility = new Map();
       millRows.forEach(function(r) {
         const pkRaw = String(r['FACILITY NAME PK'] || '').trim();
@@ -10255,26 +10256,7 @@ function initDashboardApp() {
         });
       }
 
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-      const qFilter  = qSel ? qSel.value : '';
-      const yFilter  = ySel ? ySel.value : '';
-      const searchQ  = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
-
-      const filtered = pkGroups.map(function(g) {
-        let companies = g.companies.filter(function(c) {
-          if (!pfQuarterMatchesFilter_(c.quarterRaw, qFilter)) return false;
-          if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
-          return true;
-        });
-        if (searchQ) {
-          if (g.facility.toLowerCase().includes(searchQ)) return { facility: g.facility, facilityKey: g.facilityKey, companies: companies, traceCalc: g.traceCalc, traceSource: g.traceSource };
-          companies = companies.filter(function(c) {
-            return [c.company, c.group, c.quarter, c.year].some(function(v) { return String(v).toLowerCase().includes(searchQ); });
-          });
-        }
-        return { facility: g.facility, facilityKey: g.facilityKey, companies: companies, traceCalc: g.traceCalc, traceSource: g.traceSource };
-      }).filter(function(g) { return g.companies.length > 0; });
+      const filtered = pfApplyFilters_(pkGroups);
 
       const pkCountEl = document.getElementById('pf-pk-count');
       if (pkCountEl) pkCountEl.textContent = filtered.length + ' KCP facility · ' + filtered.reduce(function(s,g){return s+g.companies.length;}, 0) + ' company';
@@ -10450,6 +10432,16 @@ function initDashboardApp() {
       const yFilter = ySel ? ySel.value : '';
       const searchQ = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
 
+      function mapGroup_(g, companies) {
+        return {
+          facility: g.facility,
+          facilityKey: g.facilityKey,
+          companies: companies,
+          traceCalc: g.traceCalc,
+          traceSource: g.traceSource,
+        };
+      }
+
       return groups.map(function(g) {
         let companies = g.companies.filter(function(c) {
           if (!pfQuarterMatchesFilter_(c.quarterRaw, qFilter)) return false;
@@ -10457,14 +10449,14 @@ function initDashboardApp() {
           return true;
         });
         if (searchQ) {
-          if (g.facility.toLowerCase().includes(searchQ)) return { facility: g.facility, companies: companies };
+          if (g.facility.toLowerCase().includes(searchQ)) return mapGroup_(g, companies);
           companies = companies.filter(function(c) {
             return [c.company, c.group, c.quarter, c.year].some(function(v) {
               return String(v).toLowerCase().includes(searchQ);
             });
           });
         }
-        return { facility: g.facility, companies: companies };
+        return mapGroup_(g, companies);
       }).filter(function(g) { return g.companies.length > 0; });
     }
 
@@ -10646,8 +10638,351 @@ function initDashboardApp() {
         });
       }
 
+      // PDF export
+      pfBindExportModalOnce_();
+
       pfLoadAndRender_();
     };
+
+    function pfPeriodLabel_() {
+      const qSel = document.getElementById('pfQuarterSel');
+      const ySel = document.getElementById('pfYearSel');
+      const q = qSel ? qSel.value : '';
+      const y = ySel ? ySel.value : '';
+      if (q && y) return 'Q' + q + ' ' + y;
+      if (y) return 'Year ' + y;
+      return 'All Periods';
+    }
+
+    function pfExportProductType_() {
+      const r = document.querySelector('input[name="pfExportType"]:checked');
+      return r ? r.value : 'cpo';
+    }
+
+    /** Facilities available for export (respects Q/Y + search filters). */
+    function pfExportFacilityOptions_(productType) {
+      const out = [];
+      const type = productType || 'cpo';
+      if (type === 'cpo' || type === 'both') {
+        pfApplyFilters_(_pfAllGroups || []).forEach(function(g) {
+          out.push({ type: 'cpo', key: 'cpo::' + (g.facilityKey || g.facility.toUpperCase()), facility: g.facility, group: g });
+        });
+      }
+      if (type === 'pk' || type === 'both') {
+        pfApplyFilters_(_pfAllPkGroups || []).forEach(function(g) {
+          out.push({ type: 'pk', key: 'pk::' + (g.facilityKey || g.facility.toUpperCase()), facility: g.facility, group: g });
+        });
+      }
+      return out.sort(function(a, b) {
+        if (a.type !== b.type) return a.type === 'cpo' ? -1 : 1;
+        return a.facility.localeCompare(b.facility, undefined, { sensitivity: 'base' });
+      });
+    }
+
+    function pfRefreshExportFacilityList_() {
+      const listEl = document.getElementById('pfExportFacilityList');
+      if (!listEl) return;
+      const options = pfExportFacilityOptions_(pfExportProductType_());
+      if (!options.length) {
+        listEl.innerHTML = '<p class="pf-export-empty">No facilities match the current filters.</p>';
+        return;
+      }
+      listEl.innerHTML = options.map(function(opt) {
+        const badge = opt.type === 'cpo' ? 'CPO' : 'PK';
+        const badgeCls = opt.type === 'cpo' ? 'pf-export-facility-badge--cpo' : 'pf-export-facility-badge--pk';
+        return '<label class="pf-export-facility-item">'
+          + '<input type="checkbox" name="pfExportFacility" value="' + escHtml(opt.key) + '" checked />'
+          + '<span class="pf-export-facility-badge ' + badgeCls + '">' + badge + '</span>'
+          + '<span>' + escHtml(opt.facility) + '</span>'
+          + '</label>';
+      }).join('');
+    }
+
+    function pfOpenExportModal_() {
+      if (!_pfAllGroups.length && !_pfAllPkGroups.length) {
+        alert('Facility data is still loading. Please wait and try again.');
+        return;
+      }
+      const modal = document.getElementById('pf-export-modal');
+      if (!modal) return;
+      pfRefreshExportFacilityList_();
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function pfCloseExportModal_() {
+      const modal = document.getElementById('pf-export-modal');
+      if (!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function pfBindExportModalOnce_() {
+      const exportBtn = document.getElementById('pfExportPdfBtn');
+      if (exportBtn && !exportBtn._pfBound) {
+        exportBtn._pfBound = true;
+        exportBtn.addEventListener('click', pfOpenExportModal_);
+      }
+
+      const closeIds = ['pfExportModalClose', 'pfExportCancel', 'pfExportModalBackdrop'];
+      closeIds.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el && !el._pfBound) {
+          el._pfBound = true;
+          el.addEventListener('click', pfCloseExportModal_);
+        }
+      });
+
+      document.querySelectorAll('input[name="pfExportType"]').forEach(function(radio) {
+        if (!radio._pfBound) {
+          radio._pfBound = true;
+          radio.addEventListener('change', pfRefreshExportFacilityList_);
+        }
+      });
+
+      const selAll = document.getElementById('pfExportSelectAll');
+      const selNone = document.getElementById('pfExportSelectNone');
+      if (selAll && !selAll._pfBound) {
+        selAll._pfBound = true;
+        selAll.addEventListener('click', function() {
+          document.querySelectorAll('#pfExportFacilityList input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+        });
+      }
+      if (selNone && !selNone._pfBound) {
+        selNone._pfBound = true;
+        selNone.addEventListener('click', function() {
+          document.querySelectorAll('#pfExportFacilityList input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+        });
+      }
+
+      const confirmBtn = document.getElementById('pfExportConfirm');
+      if (confirmBtn && !confirmBtn._pfBound) {
+        confirmBtn._pfBound = true;
+        confirmBtn.addEventListener('click', pfConfirmExportPdf_);
+      }
+    }
+
+    function pfConfirmExportPdf_() {
+      const checked = Array.from(document.querySelectorAll('#pfExportFacilityList input[type="checkbox"]:checked'));
+      if (!checked.length) {
+        alert('Select at least one facility to export.');
+        return;
+      }
+      const selections = checked.map(function(cb) {
+        const parts = String(cb.value).split('::');
+        return { type: parts[0], facilityKey: parts.slice(1).join('::') };
+      });
+      pfCloseExportModal_();
+      pfGeneratePdf_(selections);
+    }
+
+    // ── PDF Export (selected facilities + company breakdown) ───────────────
+    function pfGeneratePdf_(selections) {
+      const jsPDFLib = getJsPDF();
+      if (!jsPDFLib) { alert('PDF library not available.'); return; }
+
+      const btn = document.getElementById('pfExportConfirm');
+      const exportBtn = document.getElementById('pfExportPdfBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+      if (exportBtn) exportBtn.disabled = true;
+
+      try {
+        const doc = new jsPDFLib({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const mL = 12, mR = 12, cW = pageW - mL - mR;
+        const bottomMargin = 14;
+
+        const RED     = [139, 26, 26];
+        const RED_LT  = [253, 245, 245];
+        const GREEN   = [13, 110, 70];
+        const GRN_LT  = [245, 251, 247];
+        const GRY_H   = [90, 64, 64];
+        const GRY_LBL = [140, 120, 120];
+        const BLACK   = [30, 30, 30];
+        const WHITE   = [255, 255, 255];
+
+        const exportedAt = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const periodLabel = pfPeriodLabel_();
+        let y = 30;
+
+        function ensureSpace(need) {
+          if (y + need > pageH - bottomMargin) {
+            doc.addPage();
+            y = 14;
+          }
+        }
+
+        function findGroup(type, facilityKey) {
+          const groups = type === 'pk' ? (_pfAllPkGroups || []) : (_pfAllGroups || []);
+          const full = groups.find(function(g) {
+            return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
+          });
+          if (!full) return null;
+          const filtered = pfApplyFilters_(groups).find(function(g) {
+            return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
+          });
+          if (!filtered) return null;
+          // Facility % from supply-weighted traceCalc (same as web); companies = filtered list
+          return {
+            facility: full.facility,
+            facilityKey: full.facilityKey,
+            companies: filtered.companies,
+            traceCalc: full.traceCalc,
+            traceSource: full.traceSource,
+          };
+        }
+
+        function companyPctStr(c) {
+          return !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
+        }
+
+        function drawFacilityBlock(opt) {
+          const isPk = opt.type === 'pk';
+          const accent = isPk ? GREEN : RED;
+          const accentLt = isPk ? GRN_LT : RED_LT;
+          const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
+          const pctLabel = isPk ? '% PK TRACEABLE' : '% TRACEABLE';
+          const badge = isPk ? 'PK' : 'CPO';
+
+          const g = findGroup(opt.type, opt.facilityKey);
+          if (!g) return;
+
+          const sum = sumFn(g);
+          const facilityPct = isPk ? sum.avgPk : sum.avgCpo;
+          const companies = g.companies.slice().sort(function(a, b) {
+            return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
+          });
+
+          ensureSpace(28);
+          doc.setFillColor.apply(doc, accent);
+          doc.rect(mL, y, cW, 9, 'F');
+          doc.setTextColor.apply(doc, WHITE);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text(badge + '  ' + g.facility, mL + 4, y + 6);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.text(pctLabel + ': ' + (facilityPct || '—') + '  |  ' + companies.length + ' companies', pageW - mR, y + 6, { align: 'right' });
+          y += 11;
+
+          // Summary metrics row
+          doc.setFillColor.apply(doc, accentLt);
+          doc.rect(mL, y, cW, 7, 'F');
+          doc.setTextColor.apply(doc, GRY_H);
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'bold');
+          const metrics = [
+            'No Buy List: ' + (sum.nblYes > 0 ? sum.nblYes + ' Yes' : '0'),
+            'High Risk: ' + (sum.highRisk || 0),
+            'Total Grievance: ' + (sum.grievanceSum || 0),
+            pctLabel + ': ' + (facilityPct || '—'),
+          ];
+          doc.text(metrics.join('   ·   '), mL + 3, y + 4.8);
+          y += 9;
+
+          // Company table header
+          const cols = [
+            { label: 'Company Name', w: cW * 0.26, align: 'left' },
+            { label: 'Group', w: cW * 0.16, align: 'left' },
+            { label: 'Q', w: cW * 0.06, align: 'center' },
+            { label: 'Year', w: cW * 0.07, align: 'center' },
+            { label: 'NBL', w: cW * 0.08, align: 'center' },
+            { label: 'Risk', w: cW * 0.12, align: 'center' },
+            { label: 'Grievance', w: cW * 0.09, align: 'right' },
+            { label: pctLabel, w: cW * 0.12, align: 'right' },
+          ];
+          ensureSpace(8);
+          doc.setFillColor(250, 248, 248);
+          doc.rect(mL, y, cW, 5.5, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.5);
+          let cx = mL;
+          cols.forEach(function(col) {
+            const tx = col.align === 'right' ? cx + col.w - 1.5 : col.align === 'center' ? cx + col.w / 2 : cx + 1.5;
+            doc.text(col.label.toUpperCase(), tx, y + 3.8, { align: col.align });
+            cx += col.w;
+          });
+          y += 6;
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          companies.forEach(function(c, idx) {
+            const rowH = 5.5;
+            ensureSpace(rowH + 2);
+            if (idx % 2 === 1) {
+              doc.setFillColor(252, 250, 250);
+              doc.rect(mL, y, cW, rowH, 'F');
+            }
+            doc.setTextColor.apply(doc, BLACK);
+            const vals = [
+              c.company,
+              c.group,
+              c.quarter,
+              c.year,
+              c.nbl,
+              c.riskLevel,
+              String(c.grievance),
+              companyPctStr(c),
+            ];
+            cx = mL;
+            cols.forEach(function(col, ci) {
+              const raw = String(vals[ci] || '—');
+              const tx = col.align === 'right' ? cx + col.w - 1.5 : col.align === 'center' ? cx + col.w / 2 : cx + 1.5;
+              const lines = doc.splitTextToSize(raw, col.w - 2);
+              doc.text(lines[0] || '—', tx, y + 3.8, { align: col.align });
+              cx += col.w;
+            });
+            y += rowH;
+          });
+          y += 8;
+        }
+
+        // Cover header
+        doc.setFillColor.apply(doc, RED);
+        doc.rect(0, 0, pageW, 24, 'F');
+        doc.setTextColor.apply(doc, WHITE);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('Facility Performance Report', mL, 11);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text('Exported: ' + exportedAt + '  ·  Period: ' + periodLabel + '  ·  ' + selections.length + ' facility selected', mL, 18);
+
+        selections.forEach(function(sel) {
+          drawFacilityBlock(sel);
+        });
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= pageCount; p++) {
+          doc.setPage(p);
+          doc.setFillColor(245, 240, 240);
+          doc.rect(0, pageH - 8, pageW, 8, 'F');
+          doc.setTextColor.apply(doc, GRY_LBL);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.text('Sustainability Dashboard — Confidential', mL, pageH - 3);
+          doc.text('Page ' + p + ' of ' + pageCount, pageW - mR, pageH - 3, { align: 'right' });
+        }
+
+        const names = selections.map(function(s) {
+          const g = findGroup(s.type, s.facilityKey);
+          return g ? g.facility.replace(/[^\w\-]+/g, '-').slice(0, 24) : s.facilityKey;
+        });
+        const namePart = selections.length === 1
+          ? names[0]
+          : (selections.length + '-facilities');
+        const fname = 'Facility-Performance-' + namePart + '-' + periodLabel.replace(/\s/g, '-') + '.pdf';
+        doc.save(fname);
+      } catch (err) {
+        console.error('[PF PDF]', err);
+        alert('Export failed: ' + (err && err.message ? err.message : err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate PDF'; }
+        if (exportBtn) exportBtn.disabled = false;
+      }
+    }
+
   })();
   // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 

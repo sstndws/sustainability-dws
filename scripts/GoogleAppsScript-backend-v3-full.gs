@@ -2587,9 +2587,10 @@ function parseSuppliedCpoValues_(values, sheetLabel, out) {
   var sellerCol = -1;
   var qtyCol = -1;
   headers.forEach(function(h, j) {
-    if (/^plant$/i.test(h)) plantCol = j;
-    if (/^seller$/i.test(h)) sellerCol = j;
-    if (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h))) qtyCol = j;
+    // Use FIRST PLANT column only (column A). Sheet also has a summary PLANT in col F.
+    if (plantCol < 0 && /^plant$/i.test(h)) plantCol = j;
+    if (sellerCol < 0 && /^seller$/i.test(h)) sellerCol = j;
+    if (qtyCol < 0 && (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h)))) qtyCol = j;
   });
 
   var lastPlant = '';
@@ -2619,8 +2620,38 @@ function parseSuppliedCpoValues_(values, sheetLabel, out) {
 }
 
 /**
+ * Pre-fill merged cells in a mutable 2D values array.
+ * Google Sheets getValues() returns the cell value only for the first cell
+ * of a merged range; all subsequent merged cells return ''. This function
+ * propagates the first-cell value to every cell in the same merge, so
+ * downstream parsers don't need to guess the PLANT for blank continuation rows.
+ */
+function fillMergedCells_(sheet, values) {
+  try {
+    var mergedRanges = sheet.getMergedRanges();
+    mergedRanges.forEach(function(range) {
+      var rStart = range.getRow() - 1;      // 0-indexed
+      var rEnd   = range.getLastRow() - 1;
+      var cStart = range.getColumn() - 1;
+      var cEnd   = range.getLastColumn() - 1;
+      // Only handle single-column merges spanning multiple rows
+      if (cStart === cEnd && rEnd > rStart && rStart < values.length) {
+        var fillVal = values[rStart][cStart];
+        for (var r = rStart + 1; r <= rEnd && r < values.length; r++) {
+          values[r][cStart] = fillVal;
+        }
+      }
+    });
+  } catch (e) {
+    // getMergedRanges can fail on some sheet types — safe to ignore
+  }
+  return values;
+}
+
+/**
  * Returns all data rows from the requested SUPPLIED CPO sheet(s).
- * If the tab contains a Pivot Table, reads source data (all sellers per plant).
+ * Uses getDisplayValues() so merged PLANT cells are read correctly —
+ * every cell in a merged range returns the displayed value, not just the first.
  */
 function getSuppliedCpoData_(sheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2637,18 +2668,9 @@ function getSuppliedCpoData_(sheetName) {
 
   var allRows = [];
   sheets.forEach(function(sheet) {
-    var sName = sheet.getName();
-    var pivots = sheet.getPivotTables ? sheet.getPivotTables() : [];
-    if (pivots && pivots.length) {
-      pivots.forEach(function(pt) {
-        var src = pt.getSourceDataRange();
-        if (src) parseSuppliedCpoValues_(src.getValues(), sName, allRows);
-      });
-    }
-    // Always also read flat display range (fallback if no pivot or empty source)
-    if (!allRows.length) {
-      parseSuppliedCpoValues_(sheet.getDataRange().getValues(), sName, allRows);
-    }
+    var sName  = sheet.getName();
+    var values = readSuppliedSheetValues_(sheet);
+    parseSuppliedCpoValues_(values, sName, allRows);
   });
   return allRows;
 }
@@ -2695,9 +2717,10 @@ function parseSuppliedPkValues_(values, sheetLabel, out) {
 
   var plantCol = -1, sellerCol = -1, qtyCol = -1;
   headers.forEach(function(h, j) {
-    if (/^plant$/i.test(h))                               plantCol  = j;
-    if (/^seller$/i.test(h))                              sellerCol = j;
-    if (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h))) qtyCol = j;
+    // Use FIRST PLANT column only (column A). Summary table repeats PLANT in col F.
+    if (plantCol < 0 && /^plant$/i.test(h)) plantCol = j;
+    if (sellerCol < 0 && /^seller$/i.test(h)) sellerCol = j;
+    if (qtyCol < 0 && (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h)))) qtyCol = j;
   });
 
   var lastPlant = '';
@@ -2722,8 +2745,25 @@ function parseSuppliedPkValues_(values, sheetLabel, out) {
 }
 
 /**
+ * Read columns A–D only (PLANT, GROUP, SELLER, Qty) — ignores summary block in F+.
+ */
+function readSuppliedSheetValues_(sheet) {
+  var numRows = sheet.getLastRow();
+  var numCols = Math.min(4, sheet.getLastColumn());
+  if (numRows < 2 || numCols < 2) return [];
+  var display = sheet.getRange(1, 1, numRows, numCols).getDisplayValues();
+  var numeric = sheet.getRange(1, 1, numRows, numCols).getValues();
+  return display.map(function(dRow, r) {
+    return dRow.map(function(cell, c) {
+      var num = numeric[r][c];
+      return (typeof num === 'number') ? num : cell;
+    });
+  });
+}
+
+/**
  * Returns all data rows from the requested SUPPLIED PK sheet(s).
- * Handles pivot-table source ranges the same way as CPO.
+ * Uses getDisplayValues() so merged PLANT cells are read correctly.
  */
 function getSuppliedPkData_(sheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2741,16 +2781,8 @@ function getSuppliedPkData_(sheetName) {
   var allRows = [];
   sheets.forEach(function(sheet) {
     var sName  = sheet.getName();
-    var pivots = sheet.getPivotTables ? sheet.getPivotTables() : [];
-    if (pivots && pivots.length) {
-      pivots.forEach(function(pt) {
-        var src = pt.getSourceDataRange();
-        if (src) parseSuppliedPkValues_(src.getValues(), sName, allRows);
-      });
-    }
-    if (!allRows.length) {
-      parseSuppliedPkValues_(sheet.getDataRange().getValues(), sName, allRows);
-    }
+    var values = readSuppliedSheetValues_(sheet);
+    parseSuppliedPkValues_(values, sName, allRows);
   });
   return allRows;
 }
