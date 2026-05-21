@@ -9779,7 +9779,10 @@ function initDashboardApp() {
       (ttpData || []).forEach(function(r) {
         const co = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
         if (!co) return;
-        const raw = r[colKey] || r['% CPO TRACEABLE'] || '';
+        // Explicit null/undefined check so 0% is preserved (not falsy-skipped by ||)
+        let raw = r[colKey];
+        if (raw == null || raw === '') raw = r['% CPO TRACEABLE'];
+        if (raw == null || raw === '') return;
         const num = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
         if (!isNaN(num)) {
           if (!lk[co]) lk[co] = { sum: 0, count: 0 };
@@ -9915,8 +9918,10 @@ function initDashboardApp() {
       (ttpData || []).forEach(function(r) {
         const co  = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
         if (!co) return;
-        const raw = r['% PK TRACEABLE'] || r['% pk traceable'] || '';
-        if (raw === '' || raw == null) return;
+        // Use explicit null/undefined check (NOT ||) so 0% is preserved correctly
+        let raw = r['% PK TRACEABLE'];
+        if (raw == null || raw === '') raw = r['% pk traceable'];
+        if (raw == null || raw === '') return;
         const num = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
         if (!isNaN(num)) {
           if (!lk[co]) lk[co] = { sum: 0, count: 0 };
@@ -10174,14 +10179,19 @@ function initDashboardApp() {
       if (g.traceCalc) {
         avgPk = g.traceCalc.formatted;
         if (src === 'supply-partial') {
-          traceNote = 'Some sellers not matched in TTM/TTP (counted as 0%)';
+          traceNote = g.traceCalc.sellersWithTtp + ' of ' + g.traceCalc.sellerCount
+            + ' PK suppliers matched in TTM/TTP; unmatched counted as 0%';
+        } else {
+          traceNote = 'Weighted avg from Supplied PK — '
+            + g.traceCalc.sellerCount + ' PK supplier(s), all matched in TTM/TTP';
         }
       } else {
-        let pkSum = 0;
-        const n   = companies.length || 1;
-        companies.forEach(function(c) { pkSum += !isNaN(c.ttpPctNum) ? c.ttpPctNum : 0; });
-        avgPk     = ttpFormatCellPct_(pkSum / n);
-        traceNote = 'No Supplied PK data — estimated from TTM/TTP';
+        let pkSum = 0, validN = 0;
+        companies.forEach(function(c) {
+          if (!isNaN(c.ttpPctNum)) { pkSum += c.ttpPctNum; validN++; }
+        });
+        avgPk     = validN > 0 ? ttpFormatCellPct_(pkSum / validN) : '—';
+        traceNote = 'No Supplied PK data — avg of ' + validN + ' company TTM/TTP value(s)';
       }
       return { nblYes, highRisk, grievanceSum, avgPk, traceSource: src, traceNote };
     }
@@ -10347,17 +10357,19 @@ function initDashboardApp() {
           supQtyFmt = (g.traceCalc.totalQty / 1000).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' ton';
         }
         if (src === 'supply-partial') {
-          traceNote = 'Some sellers not matched in TTM/TTP (counted as 0%)';
+          traceNote = g.traceCalc.sellersWithTtp + ' of ' + g.traceCalc.sellerCount
+            + ' suppliers matched in TTM/TTP; unmatched counted as 0%';
+        } else {
+          traceNote = 'Weighted avg from Supplied CPO — '
+            + g.traceCalc.sellerCount + ' supplier(s), all matched in TTM/TTP';
         }
       } else {
-        // Fallback: rata-rata TTP per company di mill (tanpa data supply) — seller tanpa data = 0%
-        let cpoSum = 0;
-        const n = companies.length || 1;
+        let cpoSum = 0, validN = 0;
         companies.forEach(function(c) {
-          cpoSum += !isNaN(c.ttpPctNum) ? c.ttpPctNum : 0;
+          if (!isNaN(c.ttpPctNum)) { cpoSum += c.ttpPctNum; validN++; }
         });
-        avgCpo = ttpFormatCellPct_(cpoSum / n);
-        traceNote = 'No Supplied CPO data — estimated from TTM/TTP';
+        avgCpo = validN > 0 ? ttpFormatCellPct_(cpoSum / validN) : '—';
+        traceNote = 'No Supplied CPO data — avg of ' + validN + ' company TTM/TTP value(s)';
       }
 
       return { nblYes, highRisk, grievanceSum, avgCpo, supQtyFmt, traceSource: src, traceNote: traceNote };
