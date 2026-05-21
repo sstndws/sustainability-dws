@@ -1,14 +1,68 @@
       <div class="panel" id="panel-performa-facility">
         <div class="breadcrumb">Dashboard <span>/ Performa Facility</span></div>
-        <div class="coming-soon coming-soon--module">
-          <div class="cs-soon-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M6 20V10"/><path d="M18 20V4"/></svg>
+        <div class="page-header">
+          <h1>Performa Facility</h1>
+          <p>Gabungan data Mill Onboarding Profile dan Monitoring TTM/TTP per Company Name.</p>
+        </div>
+
+        <!-- Period selector -->
+        <div class="pf-period-bar">
+          <div class="pf-period-group">
+            <label class="pf-period-label" for="pfQuarterSel">Quarter</label>
+            <select id="pfQuarterSel" class="pf-period-select">
+              <option value="">All</option>
+              <option value="1">Q1</option>
+              <option value="2">Q2</option>
+              <option value="3">Q3</option>
+              <option value="4">Q4</option>
+            </select>
           </div>
-          <div class="cs-badge">Coming Soon</div>
-          <div class="cs-title">Performa Facility</div>
-          <p class="cs-sub">KPI throughput, utilisasi, dan reliabilitas fasilitas — satu ringkasan untuk tim operasional.</p>
-          <div class="cs-back-wrap">
-            <button type="button" class="btn-sm btn-outline nav-soon-back">Kembali ke Overview</button>
+          <div class="pf-period-group">
+            <label class="pf-period-label" for="pfYearSel">Year</label>
+            <select id="pfYearSel" class="pf-period-select">
+              <option value="">All</option>
+            </select>
+          </div>
+          <button type="button" class="btn-sm btn-filled" id="pfApplyBtn">Terapkan</button>
+          <span class="pf-scope-text" id="pfScopeText"></span>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="stats-row pf-stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="pf-stat-total">—</div><div class="stat-card-label">Total Facility</div></div>
+          <div class="stat-card pf-stat-high"><div class="stat-card-num" id="pf-stat-high">—</div><div class="stat-card-label">High Risk</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="pf-stat-nbl">—</div><div class="stat-card-label">No Buy List</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="pf-stat-grievance">—</div><div class="stat-card-label">Total Grievance &gt; 0</div></div>
+        </div>
+
+        <!-- Search + table card -->
+        <div class="table-card pf-table-card">
+          <div class="table-header">
+            <h3>Performa Facility</h3>
+            <div class="table-actions">
+              <input type="text" id="pfSearch" class="pf-search" placeholder="Cari company / facility / province…" autocomplete="off" />
+            </div>
+          </div>
+
+          <div id="pf-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Pilih Quarter dan Year, lalu klik Terapkan.</div>
+          <div id="pf-error"  style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
+
+          <div style="overflow-x:auto;">
+            <table id="pfTable" style="display:none;">
+              <thead>
+                <tr>
+                  <th>Company Name</th>
+                  <th>Group Name</th>
+                  <th>Facility CPO</th>
+                  <th>Province</th>
+                  <th>No Buy List</th>
+                  <th>Result Risk Level</th>
+                  <th>Total Grievance</th>
+                  <th>% CPO Traceable</th>
+                </tr>
+              </thead>
+              <tbody id="pfTableBody"></tbody>
+            </table>
           </div>
         </div>
       </div>

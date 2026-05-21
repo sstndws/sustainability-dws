@@ -9599,10 +9599,211 @@ function initDashboardApp() {
     if (name === 'grievance' && !grvLoaded) loadGrvData();
     if (name === 'contact-list-supplier') loadContactListData();
     if (name === 'no-buy-list') loadNoBuyListData();
+    if (name === 'performa-facility') initPerformaFacility_();
     resetScrollToTopEverywhere();
   }
   // expose globally for onclick handlers
   window.switchPanel = switchPanel;
+
+  // ─── PERFORMA FACILITY ────────────────────────────────────────────────────────
+  (function setupPerformaFacility_() {
+    function pfPopulateYears_() {
+      const sel = document.getElementById('pfYearSel');
+      if (!sel) return;
+      const existing = Array.from(sel.options).map(function(o) { return o.value; });
+      const years = new Set();
+      (allData || []).forEach(function(r) {
+        const y = String(millYearVal(r) || '').trim();
+        if (y) years.add(y);
+      });
+      Array.from(years).sort(function(a, b) { return Number(b) - Number(a); }).forEach(function(y) {
+        if (existing.indexOf(y) === -1) {
+          const opt = document.createElement('option');
+          opt.value = y;
+          opt.textContent = y;
+          sel.appendChild(opt);
+        }
+      });
+    }
+
+    function pfSplitFacility_(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return ['—'];
+      return s.split(/[,;/]+/).map(function(f) { return f.trim(); }).filter(Boolean);
+    }
+
+    function pfBuildRows_() {
+      const qSel = document.getElementById('pfQuarterSel');
+      const ySel = document.getElementById('pfYearSel');
+      const q = qSel ? qSel.value : '';
+      const y = ySel ? ySel.value : '';
+
+      // Filter mill data by Quarter/Year
+      const millRows = (allData || []).filter(function(r) {
+        if (q && String(millQuarterVal(r) || '').trim() !== q) return false;
+        if (y && String(millYearVal(r) || '').trim() !== y) return false;
+        return true;
+      });
+
+      // Build TTP lookup: company name (lowercase) → avg % CPO TRACEABLE
+      const ttpLookup = {};
+      const ttpColKey = ttpPctCol || '% CPO TRACEABLE';
+      (ttpData || []).forEach(function(r) {
+        const co = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toLowerCase();
+        if (!co) return;
+        const raw = r[ttpColKey] || r['% CPO TRACEABLE'] || r['% Cpo Traceable'] || '';
+        const num = parseFloat(String(raw).replace(',', '.').replace('%', ''));
+        if (!isNaN(num)) {
+          if (!ttpLookup[co]) ttpLookup[co] = { sum: 0, count: 0 };
+          ttpLookup[co].sum += num;
+          ttpLookup[co].count += 1;
+        }
+      });
+
+      // Expand mill rows by facility
+      const pfRows = [];
+      millRows.forEach(function(r) {
+        const facilities = pfSplitFacility_(r['FACILITY NAME CPO']);
+        const coLower = String(r['COMPANY NAME'] || '').trim().toLowerCase();
+        const ttpEntry = ttpLookup[coLower];
+        const cpoPct = ttpEntry
+          ? (ttpEntry.sum / ttpEntry.count).toFixed(1) + '%'
+          : '—';
+
+        facilities.forEach(function(fac) {
+          pfRows.push({
+            company:   String(r['COMPANY NAME']   || '').trim() || '—',
+            group:     String(r['GROUP NAME']     || '').trim() || '—',
+            facility:  fac,
+            province:  String(r['PROVINCE']       || '').trim() || '—',
+            nbl:       String(r['BUYER NO BUY LIST'] || '').trim() || '—',
+            riskLevel: String(r['RESULT RISK LEVEL'] || '').trim() || '—',
+            grievance: r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
+            cpoPct:    cpoPct,
+          });
+        });
+      });
+
+      return pfRows;
+    }
+
+    function pfRiskBadge_(v) {
+      const s = String(v || '').toLowerCase();
+      if (s.includes('high'))   return '<span class="status-badge risk-high"><span class="s-dot"></span>' + escHtml(v) + '</span>';
+      if (s.includes('med'))    return '<span class="status-badge risk-med"><span class="s-dot"></span>'  + escHtml(v) + '</span>';
+      if (s.includes('low'))    return '<span class="status-badge risk-low"><span class="s-dot"></span>'  + escHtml(v) + '</span>';
+      return '<span>' + escHtml(v) + '</span>';
+    }
+
+    function pfNblBadge_(v) {
+      const s = String(v || '').toLowerCase();
+      const isYes = s === 'yes' || s.includes('nbl') || s.includes('no buy');
+      if (isYes) return '<span class="status-badge risk-high"><span class="s-dot"></span>Yes</span>';
+      if (s === 'no') return '<span class="status-badge risk-low"><span class="s-dot"></span>No</span>';
+      return '<span>' + escHtml(v) + '</span>';
+    }
+
+    function pfRenderTable_(rows) {
+      const tbl   = document.getElementById('pfTable');
+      const tbody = document.getElementById('pfTableBody');
+      const loading = document.getElementById('pf-loading');
+      const scope = document.getElementById('pfScopeText');
+      if (!tbl || !tbody) return;
+
+      const q = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
+      const filtered = q
+        ? rows.filter(function(r) {
+            return [r.company, r.group, r.facility, r.province].some(function(v) {
+              return v.toLowerCase().includes(q);
+            });
+          })
+        : rows;
+
+      // Stats
+      const totalEl   = document.getElementById('pf-stat-total');
+      const highEl    = document.getElementById('pf-stat-high');
+      const nblEl     = document.getElementById('pf-stat-nbl');
+      const grvEl     = document.getElementById('pf-stat-grievance');
+      if (totalEl) totalEl.textContent = String(filtered.length);
+      if (highEl)  highEl.textContent  = String(filtered.filter(function(r) { return r.riskLevel.toLowerCase().includes('high'); }).length);
+      if (nblEl)   nblEl.textContent   = String(filtered.filter(function(r) { const s = r.nbl.toLowerCase(); return s === 'yes' || s.includes('nbl'); }).length);
+      if (grvEl)   grvEl.textContent   = String(filtered.filter(function(r) { const g = parseFloat(String(r.grievance)); return !isNaN(g) && g > 0; }).length);
+      if (scope)   scope.textContent   = filtered.length + ' rows';
+
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
+          + (q ? 'Tidak ada hasil pencarian.' : 'Tidak ada data. Coba ubah filter Quarter / Year.')
+          + '</td></tr>';
+        if (loading) loading.style.display = 'none';
+        tbl.style.display = 'table';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function(r) {
+        return '<tr>'
+          + '<td><span class="mill-name">' + escHtml(r.company) + '</span></td>'
+          + '<td>' + escHtml(r.group) + '</td>'
+          + '<td><strong>' + escHtml(r.facility) + '</strong></td>'
+          + '<td>' + escHtml(r.province) + '</td>'
+          + '<td>' + pfNblBadge_(r.nbl) + '</td>'
+          + '<td>' + pfRiskBadge_(r.riskLevel) + '</td>'
+          + '<td style="text-align:right;">' + escHtml(String(r.grievance)) + '</td>'
+          + '<td style="text-align:right;">' + escHtml(r.cpoPct) + '</td>'
+          + '</tr>';
+      }).join('');
+
+      if (loading) loading.style.display = 'none';
+      tbl.style.display = 'table';
+    }
+
+    let _pfCurrentRows = [];
+
+    window.initPerformaFacility_ = function initPerformaFacility_() {
+      pfPopulateYears_();
+
+      const applyBtn = document.getElementById('pfApplyBtn');
+      const searchEl = document.getElementById('pfSearch');
+
+      if (applyBtn && !applyBtn._pfBound) {
+        applyBtn._pfBound = true;
+        applyBtn.addEventListener('click', function() {
+          const loading = document.getElementById('pf-loading');
+          const tbl     = document.getElementById('pfTable');
+          if (loading) { loading.style.display = 'block'; loading.textContent = 'Memuat…'; }
+          if (tbl)     tbl.style.display = 'none';
+
+          // Ensure both data sources are loaded first
+          Promise.all([
+            allData && allData.length ? Promise.resolve() : loadMillData(),
+            ttpLoaded ? Promise.resolve() : loadTTPData(),
+          ]).then(function() {
+            pfPopulateYears_();
+            _pfCurrentRows = pfBuildRows_();
+            pfRenderTable_(_pfCurrentRows);
+          }).catch(function(err) {
+            const errEl = document.getElementById('pf-error');
+            if (loading) loading.style.display = 'none';
+            if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Gagal memuat data: ' + (err && err.message ? err.message : err); }
+          });
+        });
+      }
+
+      if (searchEl && !searchEl._pfBound) {
+        searchEl._pfBound = true;
+        searchEl.addEventListener('input', function() {
+          pfRenderTable_(_pfCurrentRows);
+        });
+      }
+
+      // If data already loaded, auto-apply
+      if (allData && allData.length) {
+        pfPopulateYears_();
+        _pfCurrentRows = pfBuildRows_();
+        pfRenderTable_(_pfCurrentRows);
+      }
+    };
+  })();
+  // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 
   // ─── LOGIN (simple page, no modal needed) ─────────────────────────────────────────
   // focus email on load
