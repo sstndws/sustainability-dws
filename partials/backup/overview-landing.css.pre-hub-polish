@@ -1,0 +1,239 @@
+/* Overview landing — adapted from index (4).html; scoped under .ov-ld */
+#panel-overview {
+  padding: 0 !important;
+  margin: calc(-1 * var(--main-pad-y)) calc(-1 * var(--main-pad-x));
+  position: relative;
+  overflow: hidden;
+}
+
+/* Fill the entire main column (flex parent: .main-content) */
+#panel-overview.panel.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#overview-root {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ov-ld {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  overflow: hidden auto;
+  background: #e8ddd8;
+}
+
+/* Bottom wash so empty space below cards feels intentional */
+.ov-ld::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: min(52vh, 520px);
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to top,
+    rgba(72, 38, 32, 0.07) 0%,
+    rgba(72, 38, 32, 0.02) 45%,
+    transparent 100%
+  );
+}
+
+.ov-ld__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 65% 55% at 78% 38%, rgba(130, 55, 30, 0.08) 0%, transparent 65%),
+    radial-gradient(ellipse 45% 65% at 12% 80%, rgba(80, 20, 10, 0.05) 0%, transparent 60%);
+}
+
+.ov-ld__bg-svg {
+  position: absolute;
+  right: 0;
+  top: 0;
+  opacity: 0.05;
+  width: min(400px, 55vw);
+  pointer-events: none;
+}
+
+.ov-ld__main {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: clamp(1.75rem, 4vw, 3.25rem) clamp(1.25rem, 4vw, 4rem);
+}
+
+.ov-ld__header {
+  margin-bottom: clamp(1.5rem, 3vw, 2.75rem);
+  opacity: 0;
+  animation: ovLdFadeUp 0.55s 0.08s ease forwards;
+}
+
+.ov-ld__welcome {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8b2020;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+
+.ov-ld__title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(30px, 4.2vw, 42px);
+  font-weight: 700;
+  color: #2a0e0e;
+  line-height: 1.12;
+  margin-bottom: 8px;
+}
+
+.ov-ld__subtitle {
+  font-size: 14px;
+  font-weight: 300;
+  color: #7a5a5a;
+  line-height: 1.45;
+}
+
+.ov-ld__cards {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  /* Calm rhythm: up to 4 columns on wide viewports (two rows of four for 8 modules). */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 232px), 1fr));
+  gap: clamp(16px, 2.2vw, 22px);
+  max-width: 1120px;
+}
+
+.ov-ld__card {
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 18px;
+  padding: 22px 20px 26px;
+  position: relative;
+  cursor: pointer;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+  opacity: 0;
+  transform: translateY(18px);
+  animation: ovLdRiseCard 0.55s ease forwards;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease, background 0.28s ease, border-color 0.28s ease;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.ov-ld__card:nth-child(1) {
+  animation-delay: 0.14s;
+}
+.ov-ld__card:nth-child(2) {
+  animation-delay: 0.22s;
+}
+.ov-ld__card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.ov-ld__card:nth-child(4) {
+  animation-delay: 0.38s;
+}
+.ov-ld__card:nth-child(5) {
+  animation-delay: 0.46s;
+}
+.ov-ld__card:nth-child(6) {
+  animation-delay: 0.54s;
+}
+.ov-ld__card:nth-child(7) {
+  animation-delay: 0.62s;
+}
+.ov-ld__card:nth-child(8) {
+  animation-delay: 0.7s;
+}
+
+.ov-ld__card:hover,
+.ov-ld__card:focus-visible {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 40px rgba(80, 20, 10, 0.09), 0 4px 12px rgba(80, 20, 10, 0.05);
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(255, 255, 255, 1);
+  outline: none;
+}
+
+.ov-ld__card-icon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: #d1b8b8;
+  transition: color 0.28s ease;
+}
+
+.ov-ld__card:hover .ov-ld__card-icon,
+.ov-ld__card:focus-visible .ov-ld__card-icon {
+  color: #8b2020;
+}
+
+.ov-ld__card-body {
+  margin-top: 44px;
+}
+
+.ov-ld__card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2a0e0e;
+  margin-bottom: 8px;
+  line-height: 1.35;
+}
+
+.ov-ld__card-desc {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #806060;
+  line-height: 1.55;
+}
+
+@keyframes ovLdFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ovLdRiseCard {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .ov-ld__main {
+    padding: 1.25rem 1rem 2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-ld__header,
+  .ov-ld__card {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .ov-ld__card {
+    transition: none;
+  }
+}

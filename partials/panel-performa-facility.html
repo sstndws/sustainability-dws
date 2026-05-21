@@ -1,12 +1,13 @@
       <div class="panel" id="panel-performa-facility">
-        <div class="breadcrumb">Dashboard <span>/ Performa Facility</span></div>
+        <div class="breadcrumb">Dashboard <span>/ Facility Performance</span></div>
         <div class="page-header">
-          <h1>Performa Facility</h1>
-          <p>Gabungan data Mill Onboarding Profile dan Monitoring TTM/TTP per Company Name.</p>
+          <h1>Facility Performance</h1>
+          <p>Merged view of Mill Onboarding Profile and Monitoring TTM/TTP by company.</p>
         </div>
 
-        <!-- Period selector -->
+        <!-- Filters (optional) -->
         <div class="pf-period-bar">
+          <span class="pf-filter-label">Filter</span>
           <div class="pf-period-group">
             <label class="pf-period-label" for="pfQuarterSel">Quarter</label>
             <select id="pfQuarterSel" class="pf-period-select">
@@ -23,45 +24,94 @@
               <option value="">All</option>
             </select>
           </div>
-          <button type="button" class="btn-sm btn-filled" id="pfApplyBtn">Terapkan</button>
+          <button id="pfResetFilter" class="pf-reset-btn" title="Reset filters">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+            Reset
+          </button>
           <span class="pf-scope-text" id="pfScopeText"></span>
         </div>
 
         <!-- Summary cards -->
         <div class="stats-row pf-stats-row">
-          <div class="stat-card"><div class="stat-card-num" id="pf-stat-total">—</div><div class="stat-card-label">Total Facility</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="pf-stat-total">—</div><div class="stat-card-label">Total CPO Facility</div></div>
           <div class="stat-card pf-stat-high"><div class="stat-card-num" id="pf-stat-high">—</div><div class="stat-card-label">High Risk</div></div>
           <div class="stat-card"><div class="stat-card-num" id="pf-stat-nbl">—</div><div class="stat-card-label">No Buy List</div></div>
           <div class="stat-card"><div class="stat-card-num" id="pf-stat-grievance">—</div><div class="stat-card-label">Total Grievance &gt; 0</div></div>
         </div>
 
-        <!-- Search + table card -->
+        <!-- ── CPO Facility Table ── -->
         <div class="table-card pf-table-card">
-          <div class="table-header">
-            <h3>Performa Facility</h3>
+          <div class="table-header pf-section-header">
+            <div class="pf-section-title">
+              <span class="pf-section-badge pf-section-badge--cpo">CPO</span>
+              <h3>CPO Facility Performance</h3>
+            </div>
             <div class="table-actions">
-              <input type="text" id="pfSearch" class="pf-search" placeholder="Cari company / facility / province…" autocomplete="off" />
+              <input type="text" id="pfSearch" class="pf-search" placeholder="Search facility or company…" autocomplete="off" />
             </div>
           </div>
 
-          <div id="pf-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Pilih Quarter dan Year, lalu klik Terapkan.</div>
+          <div id="pf-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data…</div>
           <div id="pf-error"  style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
 
-          <div style="overflow-x:auto;">
+          <div class="pf-table-scroll">
             <table id="pfTable" style="display:none;">
+              <colgroup>
+                <col class="pf-col-facility" />
+                <col class="pf-col-count" />
+                <col class="pf-col-status" />
+                <col class="pf-col-status" />
+                <col class="pf-col-num" />
+                <col class="pf-col-pct" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Company Name</th>
-                  <th>Group Name</th>
-                  <th>Facility CPO</th>
-                  <th>Province</th>
-                  <th>No Buy List</th>
-                  <th>Result Risk Level</th>
-                  <th>Total Grievance</th>
-                  <th>% CPO Traceable</th>
+                  <th class="pf-th-left">Facility</th>
+                  <th class="pf-th-center">Companies</th>
+                  <th class="pf-th-center">No Buy List</th>
+                  <th class="pf-th-center">High Risk</th>
+                  <th class="pf-th-right">Total Grievance</th>
+                  <th class="pf-th-right">% TRACEABLE</th>
                 </tr>
               </thead>
               <tbody id="pfTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── PK Facility Table ── -->
+        <div class="table-card pf-table-card pf-pk-card" style="margin-top:24px;">
+          <div class="table-header pf-section-header">
+            <div class="pf-section-title">
+              <span class="pf-section-badge pf-section-badge--pk">PK</span>
+              <h3>PK Facility Performance</h3>
+            </div>
+            <span class="pf-scope-text" id="pf-pk-count"></span>
+          </div>
+
+          <div id="pf-pk-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading PK data…</div>
+
+          <div class="pf-table-scroll">
+            <table id="pfPkTable" style="display:none;">
+              <colgroup>
+                <col class="pf-col-facility" />
+                <col class="pf-col-count" />
+                <col class="pf-col-status" />
+                <col class="pf-col-status" />
+                <col class="pf-col-num" />
+                <col class="pf-col-pct" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="pf-th-left">KCP Facility</th>
+                  <th class="pf-th-center">Companies</th>
+                  <th class="pf-th-center">No Buy List</th>
+                  <th class="pf-th-center">High Risk</th>
+                  <th class="pf-th-right">Total Grievance</th>
+                  <th class="pf-th-right">% PK TRACEABLE</th>
+                </tr>
+              </thead>
+              <tbody id="pfPkTableBody"></tbody>
             </table>
           </div>
         </div>

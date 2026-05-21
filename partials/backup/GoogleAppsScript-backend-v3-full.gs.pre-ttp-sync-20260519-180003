@@ -52,31 +52,7 @@ const SHEETS = {
   contactSupplier : 'Contact List Supplier',
   nbl             : 'NBL',
   unileverNbl     : 'Unilever NBL',
-  supplyDraft     : 'Supply Import Draft',
 };
-
-// ── Supply Import Draft headers ──────────────────────────────
-const SUPPLY_DRAFT_HEADERS = [
-  'draft_id', 'batch_id', 'status',        // 'draft' | 'submitted'
-  'quarter', 'year',
-  'created_at', 'updated_at', 'created_by',
-  'match_status',                           // 'matched' | 'new'
-  // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
-  'QUARTER', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
-  'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
-  'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
-  'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'SCORE',
-  'MILL LOC', 'COMPLIMENT/NOT COMPLIMENT',
-  'DEFORESTATION SPATIAL', 'BURN AREA SPATIAL', 'PEAT', 'LEGALITY',
-  'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
-  'HUMAN RIGHT', 'SAFETY', 'SOCIAL', 'ENVIRONMENT', 'TOTAL GRIEVANCES',
-  'NDPE', 'HRDD', 'TOTAL POLICY',
-  'CERTIFICATION', 'TOTAL CERTIFICATION', 'TOTAL SCORE',
-  'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
-  'RECOMMENDATION LEVEL', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
-  'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK',
-  'PRODUCT SUPPLY', 'SUPPLY CPO',
-];
 
 const NBL_HEADERS = [
   'Riser',
@@ -104,7 +80,6 @@ const CONTACT_SUPPLIER_HEADERS = [
   'Supplier Type',
   'Sustainability PIC',
   'Phone Number',
-  'Email',
   'statusSDD',
   'approved_at',
   'updated_at',
@@ -276,17 +251,6 @@ const TTP_HEADERS = [
   '% PK TRACEABLE', '% CPO TRACEABLE',
   'Total PK % Traceable', 'Total CPO % Traceable',
   'MSD', 'PK Traceable Volume', 'CPO Traceable Volume',
-  'submission_id', 'ffb_line_id', 'supplier_type', 'synced_at', 'synced_by',
-];
-
-/** TTP columns filled by monitoring team — not overwritten on SDD re-sync when already set. */
-const TTP_MONITORING_PRESERVE_KEYS = [
-  'NO', 'COMPANY CODE', 'PROVINCE', 'VILLAGE ID',
-  '% PK TRACEABLE', '% CPO TRACEABLE',
-  'Total PK % Traceable', 'Total CPO % Traceable',
-  'MSD', 'PK Traceable Volume', 'CPO Traceable Volume',
-  'CONVERSION FFB to PK (5%)', 'PK SUPPLY to KCP',
-  'CONVERSION FFB to CPO (20%)', 'CPO SUPPLY to REFINERY',
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -303,17 +267,12 @@ function doGet(e) {
       if (sheetKey === 'contactSupplier') ensureContactSupplierHeaders_();
       if (sheetKey === 'nbl') ensureNblHeaders_();
       if (sheetKey === 'unileverNbl') ensureUnileverNblHeaders_();
-      if (sheetKey === 'supplyDraft') ensureSupplyDraftHeaders_();
       return respond(getData(sheetKey));
     }
-    if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
-    if (action === 'ping')                 return respond({ success: true, message: 'Apps Script is alive' });
-    if (action === 'getSubmissionById')    return respond(getSubmissionById(e.parameter.submission_id));
-    if (action === 'listSubmissions')      return respond(listSubmissions(e.parameter));
-    if (action === 'listSuppliedCpoSheets') return respond(listSuppliedCpoSheets_());
-    if (action === 'getSuppliedCpo')       return respond(getSuppliedCpoData_(e.parameter.sheet || ''));
-    if (action === 'listSuppliedPkSheets') return respond(listSuppliedPkSheets_());
-    if (action === 'getSuppliedPk')        return respond(getSuppliedPkData_(e.parameter.sheet || ''));
+    if (action === 'getByMillId')       return respond(getByMillId(e.parameter.millId));
+    if (action === 'ping')              return respond({ success: true, message: 'Apps Script is alive' });
+    if (action === 'getSubmissionById') return respond(getSubmissionById(e.parameter.submission_id));
+    if (action === 'listSubmissions')   return respond(listSubmissions(e.parameter));
 
     return respond({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -343,9 +302,6 @@ function doPost(e) {
     if (action === 'updateSubmission')    return respond(updateSubmission(body.payload    || {}));
     if (action === 'setSubmissionStatus') return respond(setSubmissionStatus(body.payload || {}));
     if (action === 'deleteSubmission')    return respond(deleteSubmission(body.payload    || {}));
-    if (action === 'saveSupplyDraft')   return respond(saveSupplyDraft_(body.rows || [], body.batch_id || '', body.meta || {}));
-    if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || []));
-    if (action === 'deleteSupplyDraft') return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || ''));
 
     return respond({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -757,211 +713,6 @@ function syncContactFromApprovedSubmission_(sid, mainObj, user, now) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  TTP / TTM  ─ SYNC FROM APPROVED SDD (FFB rows)
-// ═══════════════════════════════════════════════════════════
-
-function isBlankTtpCell_(v) {
-  const s = String(v === undefined || v === null ? '' : v).trim();
-  if (!s || s === '—' || s === '-') return true;
-  if (/^please select$/i.test(s)) return true;
-  if (/^silahkan pilih$/i.test(s)) return true;
-  return false;
-}
-
-function isMeaningfulSddFfbRow_(ffb) {
-  if (!ffb || typeof ffb !== 'object') return false;
-  if (String(ffb['is_deleted'] || '') === '1') return false;
-  const name = String(ffb['FFB - Supplier Name'] || '').trim();
-  const grp  = String(ffb['FFB - Supplier Group Name'] || '').trim();
-  return !!(name || grp);
-}
-
-function readTtpRows_() {
-  ensureTtpHeaders_();
-  const ws = getSheet('ttp');
-  const range = ws.getDataRange();
-  const values = range.getValues();
-  if (!values.length) {
-    return { ws: ws, headers: TTP_HEADERS.slice(), rows: [] };
-  }
-
-  const hdr = detectTtpHeaderRow_(ws);
-  const headerRowNum = hdr ? hdr.headerRow : 1;
-  const headers = (hdr && hdr.headers && hdr.headers.length)
-    ? hdr.headers
-    : values[0].map(function(h) { return String(h || '').trim(); });
-  const rows = [];
-  for (let r = headerRowNum; r < values.length; r++) {
-    const row = values[r];
-    const empty = !row.some(function(c) { return String(c || '').trim() !== ''; });
-    if (empty) continue;
-    const obj = { _row: r + 1 };
-    headers.forEach(function(h, i) {
-      if (h) obj[h] = row[i];
-    });
-    rows.push(obj);
-  }
-  return { ws: ws, headers: headers, rows: rows };
-}
-
-function findTtpRowBySyncKeys_(rows, sid, lineId, patch) {
-  sid = String(sid || '').trim();
-  lineId = String(lineId || '').trim();
-  const supName = String((patch && patch['FFB SUPPLIER NAME']) || '').trim().toLowerCase();
-  const supGrp  = String((patch && patch['FFB SUPPLIER GROUP NAME']) || '').trim().toLowerCase();
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (String(row['submission_id'] || '').trim() !== sid) continue;
-    if (lineId && String(row['ffb_line_id'] || '').trim() === lineId) {
-      return { row: row, _sheetRow: row._row };
-    }
-  }
-  if (supName || supGrp) {
-    for (let j = 0; j < rows.length; j++) {
-      const row2 = rows[j];
-      if (String(row2['submission_id'] || '').trim() !== sid) continue;
-      const n = String(row2['FFB SUPPLIER NAME'] || '').trim().toLowerCase();
-      const g = String(row2['FFB SUPPLIER GROUP NAME'] || '').trim().toLowerCase();
-      if (supName && n === supName && (!supGrp || g === supGrp)) {
-        return { row: row2, _sheetRow: row2._row };
-      }
-    }
-  }
-  return null;
-}
-
-function appendTtpRow_(ws, headers, obj) {
-  const row = headers.map(function(h) {
-    return obj[h] !== undefined && obj[h] !== null ? obj[h] : '';
-  });
-  ws.appendRow(row);
-}
-
-function patchTtpRow_(ws, headers, sheetRow, patch) {
-  const headerIndex = {};
-  headers.forEach(function(h, i) { if (h) headerIndex[h] = i; });
-  Object.keys(patch).forEach(function(key) {
-    const col = headerIndex[key];
-    if (col === undefined) return;
-    ws.getRange(sheetRow, col + 1).setValue(patch[key]);
-  });
-}
-
-function mergeTtpPreserveMonitoring_(existingRow, patch) {
-  const out = Object.assign({}, patch);
-  TTP_MONITORING_PRESERVE_KEYS.forEach(function(key) {
-    if (existingRow && !isBlankTtpCell_(existingRow[key])) {
-      out[key] = existingRow[key];
-    }
-  });
-  return out;
-}
-
-function buildTtpPatchFromSddFfb_(main, ffb, sid, user, now) {
-  const supplierType = String(main['supplier_type'] || main['Supplier Type'] || '').trim();
-  let millName = String(main['Mill Name'] || '').trim();
-  if (!millName && /trader/i.test(supplierType)) {
-    millName = String(main['Company Name'] || '').trim();
-  }
-
-  let lat = String(ffb['FFB - Latitude'] || '').trim();
-  let lng = String(ffb['FFB - Longitude'] || '').trim();
-  if (isBlankTtpCell_(lat)) lat = String(main['Latitude'] || '').trim();
-  if (isBlankTtpCell_(lng)) lng = String(main['Longitude'] || '').trim();
-
-  return {
-    'GROUP NAME'              : String(main['Group Name'] || '').trim(),
-    'COMPANY NAME'            : String(main['Company Name'] || '').trim(),
-    'MILL NAME'               : millName,
-    'FFB SUPPLIER GROUP NAME' : String(ffb['FFB - Supplier Group Name'] || '').trim(),
-    'FFB SUPPLIER NAME'       : String(ffb['FFB - Supplier Name'] || '').trim(),
-    'CATEGORY'                : String(ffb['FFB - Supplier Category'] || '').trim(),
-    'LAT'                     : lat,
-    'LONG'                    : lng,
-    'VILLAGE'                 : String(ffb['FFB - Village'] || '').trim(),
-    'SUBDISTRICT'             : String(ffb['FFB - Sub District'] || '').trim(),
-    'DISTRICT'                : String(ffb['FFB - District'] || '').trim(),
-    'CONCESION AREA'          : String(ffb['FFB - Concession Area (Ha)'] || '').trim(),
-    'PLANTED AREA'            : String(ffb['FFB - Planted Area (Ha)'] || '').trim(),
-    'NUMBER OD SMALLHOLDERS'  : String(ffb['FFB - Number of Smallholders'] || '').trim(),
-    'TAHUN TANAM'             : String(ffb['FFB - Planted Year'] || '').trim(),
-    'LEGALITAS'               : String(ffb['FFB - Legality'] || '').trim(),
-    'ISPO (Y/N)'              : String(ffb['FFB - ISPO (Y/N)'] || '').trim(),
-    'RSPO (Y/N)'              : String(ffb['FFB - RSPO (Y/N)'] || '').trim(),
-    'ISCC (Y/N)'              : String(ffb['FFB - ISCC (Y/N)'] || '').trim(),
-    'FFB SUPPLY to MILL (TON)' : String(ffb['FFB - Total Supply FFB (Ton)'] || '').trim(),
-    'submission_id'           : sid,
-    'ffb_line_id'             : String(ffb['line_id'] || '').trim(),
-    'supplier_type'           : supplierType,
-    'synced_at'               : now,
-    'synced_by'               : user,
-  };
-}
-
-/**
- * When SDD decision is APPROVED, upsert Monitoring TTP/TTM rows (one per FFB child row).
- * Does not overwrite monitoring-only columns when already filled.
- */
-function syncTtpFromApprovedSubmission_(sid, mainObj, user, now) {
-  sid = String(sid || '').trim();
-  if (!sid) return { synced: false, skipped: true, reason: 'missing_submission_id' };
-
-  const merged = mainObj || {};
-  const decision = normalizeSddDecisionLabel_(
-    merged['statusSDD'] || merged['statusBossDecision'] || ''
-  );
-  if (decision !== 'APPROVED') {
-    return { synced: false, skipped: true, reason: 'not_approved', decision: decision };
-  }
-
-  const ffbRows = findChildRows_('sddFfb', sid)
-    .map(function(r) { return r.obj; })
-    .filter(isMeaningfulSddFfbRow_);
-
-  if (!ffbRows.length) {
-    return { synced: false, skipped: true, reason: 'no_ffb_rows', submission_id: sid };
-  }
-
-  const ttpResult = readTtpRows_();
-  let inserted = 0;
-  let updated = 0;
-  const errors = [];
-
-  ffbRows.forEach(function(ffb) {
-    try {
-      const lineId = String(ffb['line_id'] || '').trim();
-      const patch = buildTtpPatchFromSddFfb_(merged, ffb, sid, user, now);
-      const hit = findTtpRowBySyncKeys_(ttpResult.rows, sid, lineId, patch);
-      if (hit) {
-        const mergedPatch = mergeTtpPreserveMonitoring_(hit.row, patch);
-        patchTtpRow_(ttpResult.ws, ttpResult.headers, hit._sheetRow, mergedPatch);
-        Object.assign(hit.row, mergedPatch);
-        updated++;
-      } else {
-        appendTtpRow_(ttpResult.ws, ttpResult.headers, patch);
-        ttpResult.rows.push(Object.assign({ _row: ttpResult.ws.getLastRow() }, patch));
-        inserted++;
-      }
-    } catch (err) {
-      errors.push({
-        line_id: String(ffb['line_id'] || ''),
-        error: String(err && err.message ? err.message : err),
-      });
-    }
-  });
-
-  return {
-    synced: true,
-    submission_id: sid,
-    inserted: inserted,
-    updated: updated,
-    total_ffb: ffbRows.length,
-    errors: errors.length ? errors : undefined,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════
 //  TTP / TTM  ─ AUTO-INIT HEADERS
 // ═══════════════════════════════════════════════════════════
 
@@ -971,51 +722,19 @@ function ensureTtpHeaders_() {
 
   if (lastCol === 0) {
     sheet.getRange(1, 1, 1, TTP_HEADERS.length).setValues([TTP_HEADERS]);
-    return sheet;
+    return;
   }
 
-  const hdrRowInfo = detectTtpHeaderRow_(sheet);
-  const headerRow  = hdrRowInfo ? hdrRowInfo.headerRow : 1;
-  const existing    = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0]
+  const existing    = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
                            .map(function(h) { return String(h || '').trim(); });
   const existingSet = new Set(existing.filter(Boolean));
   const missing     = TTP_HEADERS.filter(function(h) { return !existingSet.has(h); });
 
-  if (missing.length) {
-    const start = existing.length + 1;
-    sheet.insertColumnsAfter(existing.length, missing.length);
-    sheet.getRange(headerRow, start, 1, missing.length).setValues([missing]);
-  }
-  return sheet;
-}
+  if (!missing.length) return;
 
-function detectHeaderRowByKeys_(sheet, requiredKeys, scanMaxRows) {
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-  if (!lastRow || !lastCol) return null;
-  const scanRows = Math.min(Math.max(scanMaxRows || 10, 1), lastRow);
-  const data = sheet.getRange(1, 1, scanRows, lastCol).getValues();
-  const wanted = requiredKeys.map(function(k) { return String(k || '').trim().toLowerCase(); });
-  for (var r = 0; r < data.length; r++) {
-    const row = data[r].map(function(c) { return String(c || '').trim().toLowerCase(); });
-    var hit = 0;
-    for (var i = 0; i < wanted.length; i++) {
-      if (row.indexOf(wanted[i]) !== -1) hit++;
-    }
-    // Consider this row as header if enough key columns are present.
-    if (hit >= Math.min(4, wanted.length)) {
-      return { headerRow: r + 1, headers: data[r].map(function(h) { return String(h || '').trim(); }) };
-    }
-  }
-  return null;
-}
-
-function detectTtpHeaderRow_(sheet) {
-  return detectHeaderRowByKeys_(
-    sheet,
-    ['Quarter', 'Year', 'UML ID', 'FFB SUPPLIER NAME', 'CATEGORY'],
-    15
-  );
+  const start = existing.length + 1;
+  sheet.insertColumnsAfter(existing.length, missing.length);
+  sheet.getRange(1, start, 1, missing.length).setValues([missing]);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1631,28 +1350,15 @@ function getData(sheetKey) {
   const range = sheet.getDataRange();
   const rows  = range.getValues();
   if (!rows.length) return [];
-  let headerRowNum = 1;
-  let headers = rows[0];
-  let dataRows = rows.slice(1);
-
-  // Monitoring TTP/TTM may keep title/meta rows above headers.
-  if (sheetKey === 'ttp') {
-    const hdr = detectTtpHeaderRow_(sheet);
-    if (hdr && hdr.headers && hdr.headers.length) {
-      headerRowNum = hdr.headerRow;
-      headers = hdr.headers;
-      dataRows = rows.slice(headerRowNum);
-    }
-  }
+  const headers = rows[0];
 
   // For Mill data we need display-preserved numerics (e.g. "66.000")
   // so UI matches the exact visual formatting in Google Sheets.
   const dispRows = sheetKey === 'mill' ? range.getDisplayValues() : null;
-  const dispDataRows = dispRows ? dispRows.slice(headerRowNum) : null;
 
-  return dataRows.map(function(row, i) {
-    const sourceRow = dispDataRows ? dispDataRows[i] : row;
-    const obj = { _row: headerRowNum + i + 1 };
+  return rows.slice(1).map(function(row, i) {
+    const sourceRow = dispRows ? dispRows[i + 1] : row;
+    const obj = { _row: i + 2 };
     headers.forEach(function(h, j) { obj[h] = sourceRow[j]; });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     return obj;
@@ -1661,19 +1367,7 @@ function getData(sheetKey) {
 
 function addRow(sheetKey, data) {
   const sheet   = getSheet(sheetKey);
-  let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (sheetKey === 'ttp') {
-    const hdr = detectTtpHeaderRow_(sheet);
-    if (hdr && hdr.headers && hdr.headers.length) headers = hdr.headers;
-  }
-  if (sheetKey === 'contactSupplier') {
-    const now = nowIso_();
-    const user = callerEmail_();
-    if (!data.updated_at) data.updated_at = now;
-    if (!data.updated_by) data.updated_by = user;
-    if (!data.approved_at) data.approved_at = now.slice(0, 10);
-    if (!data.statusSDD) data.statusSDD = 'Manual';
-  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const newRow  = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
   sheet.appendRow(newRow);
@@ -1684,15 +1378,7 @@ function updateRow(sheetKey, rowNum, data) {
   const sheet = getSheet(sheetKey);
   const r     = Number(rowNum);
   if (!r || r < 2) throw new Error('Invalid row number for update: ' + rowNum);
-  let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (sheetKey === 'ttp') {
-    const hdr = detectTtpHeaderRow_(sheet);
-    if (hdr && hdr.headers && hdr.headers.length) headers = hdr.headers;
-  }
-  if (sheetKey === 'contactSupplier') {
-    data.updated_at = nowIso_();
-    data.updated_by = callerEmail_();
-  }
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
   const updated = headers.map(function(h, j) {
@@ -2015,7 +1701,6 @@ function updateSubmission(payload) {
       if (payload.main.statusSDD !== undefined || payload.main.statusBossDecision !== undefined) {
         const mergedMain = Object.assign({}, mainHit.obj, patch);
         syncContactFromApprovedSubmission_(sid, mergedMain, user, now);
-        syncTtpFromApprovedSubmission_(sid, mergedMain, user, now);
       }
     }
 
@@ -2029,25 +1714,11 @@ function updateSubmission(payload) {
       ? upsertChildSheet_('sddFfb',  sid, payload.ffb_rows, supplierType, user, now)
       : { upserted: 0, inserted: 0, deleted: 0 };
 
-    let ttpSync = null;
-    if (payload.ffb_rows !== undefined) {
-      const mainHitAfter = findMainRow_('sddMain', sid);
-      if (mainHitAfter) {
-        const decisionAfter = normalizeSddDecisionLabel_(
-          mainHitAfter.obj['statusSDD'] || mainHitAfter.obj['statusBossDecision'] || ''
-        );
-        if (decisionAfter === 'APPROVED') {
-          ttpSync = syncTtpFromApprovedSubmission_(sid, mainHitAfter.obj, user, now);
-        }
-      }
-    }
-
     return {
       success       : true,
       submission_id : sid,
       mills         : millStats,
       ffb           : ffbStats,
-      ttp_sync      : ttpSync,
     };
   } finally {
     try { lock.releaseLock(); } catch (e) { /* ignore */ }
@@ -2231,11 +1902,9 @@ function setSubmissionStatus(payload) {
   patchRelRow_(mainHit.ws, mainHit.headers, mainHit._sheetRow, patch);
 
   let contactSync = null;
-  let ttpSync = null;
   if (payload.statusSDD !== undefined) {
     const mergedMain = Object.assign({}, mainHit.obj, patch);
     contactSync = syncContactFromApprovedSubmission_(sid, mergedMain, user, now);
-    ttpSync = syncTtpFromApprovedSubmission_(sid, mergedMain, user, now);
   }
 
   return {
@@ -2243,7 +1912,6 @@ function setSubmissionStatus(payload) {
     submission_id  : sid,
     patched_fields : Object.keys(patch),
     contact_sync   : contactSync,
-    ttp_sync       : ttpSync,
   };
 }
 
@@ -2410,325 +2078,4 @@ function legacyAdapterUpsert_(data) {
     legacyResult['relational_error'] = err.message;
   }
   return legacyResult;
-}
-// ═══════════════════════════════════════════════════════════
-//  SUPPLY IMPORT DRAFT
-// ═══════════════════════════════════════════════════════════
-
-function ensureSupplyDraftHeaders_() {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
-  var name = SHEETS.supplyDraft;
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-    sheet.getRange(1, 1, 1, SUPPLY_DRAFT_HEADERS.length).setValues([SUPPLY_DRAFT_HEADERS]);
-    sheet.setFrozenRows(1);
-    return sheet;
-  }
-  var existing    = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
-                         .map(function(h) { return String(h || '').trim(); });
-  var existingSet = new Set(existing.filter(Boolean));
-  var missing     = SUPPLY_DRAFT_HEADERS.filter(function(h) { return !existingSet.has(h); });
-  if (missing.length) {
-    var start = existing.filter(Boolean).length + 1;
-    sheet.getRange(1, start, 1, missing.length).setValues([missing]);
-  }
-  return sheet;
-}
-
-function saveSupplyDraft_(rows, batchId, meta) {
-  ensureSupplyDraftHeaders_();
-  var sheet   = getSheet('supplyDraft');
-  var data    = sheet.getDataRange().getValues();
-  var headers = data[0].map(function(h) { return String(h || '').trim(); });
-  var draftIdCol = headers.indexOf('draft_id');
-  var now  = nowIso_();
-  var user = callerEmail_();
-  var saved = 0;
-
-  rows.forEach(function(row) {
-    var draftId = String(row.draft_id || '').trim();
-    if (!draftId) return;
-    var existingSheetRow = -1;
-    for (var r = 1; r < data.length; r++) {
-      if (String(data[r][draftIdCol] || '').trim() === draftId) {
-        existingSheetRow = r + 1;
-        break;
-      }
-    }
-    var rowArr = headers.map(function(h) {
-      if (h === 'updated_at') return now;
-      if (h === 'batch_id' && !row[h]) return batchId;
-      if (h === 'created_at' && existingSheetRow < 0) return now;
-      if (h === 'created_by' && existingSheetRow < 0) return user;
-      if (h === 'status' && !row[h]) return 'draft';
-      var v = row[h];
-      return (v !== undefined && v !== null) ? v : '';
-    });
-    if (existingSheetRow > 0) {
-      sheet.getRange(existingSheetRow, 1, 1, rowArr.length).setValues([rowArr]);
-    } else {
-      sheet.appendRow(rowArr);
-    }
-    saved++;
-  });
-  return { success: true, saved: saved, batch_id: batchId };
-}
-
-function submitSupplyDraft_(batchId, rows) {
-  if (!batchId) throw new Error('batch_id required');
-  ensureSupplyDraftHeaders_();
-
-  // Ensure all Mill Onboarding headers exist in target sheet
-  ensureRelationalHeaders_('mill');
-
-  var millSheet   = getSheet('mill');
-  // Re-read headers AFTER ensureRelationalHeaders_ so we have all columns
-  var millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
-
-  var draftSheet   = getSheet('supplyDraft');
-  var draftData    = draftSheet.getDataRange().getValues();
-  var draftHeaders = draftData[0].map(function(h) { return String(h || '').trim(); });
-  var draftIdColD  = draftHeaders.indexOf('draft_id');
-  var statusColD   = draftHeaders.indexOf('status');
-  var now          = nowIso_();
-  var submitted    = 0;
-
-  rows.forEach(function(row) {
-    var millRow = millHeaders.map(function(h) {
-      // Handle Quarter/Year case variants
-      if (h === 'Quarter' || h === 'QUARTER') return row['QUARTER'] || row['quarter'] || '';
-      if (h === 'Year'    || h === 'YEAR')    return row['YEAR']    || row['year']    || '';
-      var v = row[h];
-      return (v !== undefined && v !== null) ? v : '';
-    });
-    millSheet.appendRow(millRow);
-
-    // Mark draft row as submitted
-    var draftId = String(row.draft_id || '').trim();
-    if (draftId) {
-      for (var r = 1; r < draftData.length; r++) {
-        if (String(draftData[r][draftIdColD] || '').trim() === draftId) {
-          draftSheet.getRange(r + 1, statusColD + 1).setValue('submitted');
-          var updIdx = draftHeaders.indexOf('updated_at');
-          if (updIdx >= 0) draftSheet.getRange(r + 1, updIdx + 1).setValue(now);
-          break;
-        }
-      }
-    }
-    submitted++;
-  });
-  return { success: true, submitted: submitted, batch_id: batchId };
-}
-
-function deleteSupplyDraft_(draftId, batchId) {
-  ensureSupplyDraftHeaders_();
-  var sheet   = getSheet('supplyDraft');
-  var data    = sheet.getDataRange().getValues();
-  var headers = data[0].map(function(h) { return String(h || '').trim(); });
-  var draftIdCol = headers.indexOf('draft_id');
-  var batchIdCol = headers.indexOf('batch_id');
-  var toDelete = [];
-  for (var r = data.length - 1; r >= 1; r--) {
-    var rowDId = String(data[r][draftIdCol] || '').trim();
-    var rowBId = String(data[r][batchIdCol] || '').trim();
-    if ((draftId && rowDId === draftId) || (batchId && !draftId && rowBId === batchId)) {
-      toDelete.push(r + 1);
-    }
-  }
-  toDelete.forEach(function(sheetRow) { sheet.deleteRow(sheetRow); });
-  return { success: true, deleted: toDelete.length };
-}
-
-// ═══════════════════════════════════════════════════════════
-//  SUPPLIED CPO — dynamic sheet detection
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Returns names of all sheets whose name starts with "SUPPLIED CPO"
- * (case-insensitive), sorted alphabetically.
- * Example returns: ["SUPPLIED CPO 2025", "SUPPLIED CPO Q1 2026", "SUPPLIED CPO Q2 2026"]
- */
-function listSuppliedCpoSheets_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss.getSheets()
-    .map(function(s) { return s.getName(); })
-    .filter(function(n) { return n.trim().toUpperCase().startsWith('SUPPLIED CPO'); })
-    .sort();
-}
-
-/**
- * Parse a 2D values array looking for PLANT / SELLER / SUM of Qty Kg columns.
- * Skips subtotal rows (PLANT or SELLER contains "total").
- */
-function parseSuppliedCpoValues_(values, sheetLabel, out) {
-  if (!values || !values.length) return;
-
-  var headerRow = 0;
-  var headers = [];
-  var scanMax = Math.min(15, values.length);
-  for (var r = 0; r < scanMax; r++) {
-    var row = values[r].map(function(c) { return String(c).trim(); });
-    var hasPlant = row.some(function(h) { return /^plant$/i.test(h); });
-    var hasSeller = row.some(function(h) { return /^seller$/i.test(h); });
-    if (hasPlant && hasSeller) {
-      headerRow = r;
-      headers = row;
-      break;
-    }
-  }
-  if (!headers.length) {
-    headers = values[0].map(function(h) { return String(h).trim(); });
-  }
-
-  var plantCol = -1;
-  var sellerCol = -1;
-  var qtyCol = -1;
-  headers.forEach(function(h, j) {
-    if (/^plant$/i.test(h)) plantCol = j;
-    if (/^seller$/i.test(h)) sellerCol = j;
-    if (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h))) qtyCol = j;
-  });
-
-  for (var i = headerRow + 1; i < values.length; i++) {
-    var row = values[i];
-    var plant = plantCol >= 0 ? String(row[plantCol] || '').trim() : '';
-    var seller = sellerCol >= 0 ? String(row[sellerCol] || '').trim() : '';
-    if (!plant || !seller) continue;
-    if (/total/i.test(plant) || /total/i.test(seller)) continue;
-
-    var qty = qtyCol >= 0 ? row[qtyCol] : '';
-    out.push({
-      PLANT: plant,
-      SELLER: seller,
-      'SUM of Qty Kg': qty,
-      _sheet: sheetLabel
-    });
-  }
-}
-
-/**
- * Returns all data rows from the requested SUPPLIED CPO sheet(s).
- * If the tab contains a Pivot Table, reads source data (all sellers per plant).
- */
-function getSuppliedCpoData_(sheetName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheets;
-  if (sheetName && sheetName !== '*') {
-    var s = ss.getSheetByName(sheetName);
-    if (!s) return { error: 'Sheet not found: ' + sheetName };
-    sheets = [s];
-  } else {
-    sheets = ss.getSheets().filter(function(s) {
-      return s.getName().trim().toUpperCase().startsWith('SUPPLIED CPO');
-    });
-  }
-
-  var allRows = [];
-  sheets.forEach(function(sheet) {
-    var sName = sheet.getName();
-    var pivots = sheet.getPivotTables ? sheet.getPivotTables() : [];
-    if (pivots && pivots.length) {
-      pivots.forEach(function(pt) {
-        var src = pt.getSourceDataRange();
-        if (src) parseSuppliedCpoValues_(src.getValues(), sName, allRows);
-      });
-    }
-    // Always also read flat display range (fallback if no pivot or empty source)
-    if (!allRows.length) {
-      parseSuppliedCpoValues_(sheet.getDataRange().getValues(), sName, allRows);
-    }
-  });
-  return allRows;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  SUPPLIED PK — dynamic sheet detection (mirrors CPO logic)
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Returns names of all sheets whose name starts with "SUPPLIED PK"
- * (case-insensitive), sorted alphabetically.
- * Example: ["Supplied PK 2025", "Supplied PK Q1 2026"]
- */
-function listSuppliedPkSheets_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss.getSheets()
-    .map(function(s) { return s.getName(); })
-    .filter(function(n) { return n.trim().toUpperCase().startsWith('SUPPLIED PK'); })
-    .sort();
-}
-
-/**
- * Parse a 2D values array for PK sheets: same columns as CPO
- * (PLANT / SELLER / SUM of Qty Kg). Skips subtotal / empty rows.
- * The GROUP column is intentionally ignored.
- */
-function parseSuppliedPkValues_(values, sheetLabel, out) {
-  if (!values || !values.length) return;
-
-  var headerRow = 0;
-  var headers = [];
-  var scanMax = Math.min(15, values.length);
-  for (var r = 0; r < scanMax; r++) {
-    var row = values[r].map(function(c) { return String(c).trim(); });
-    var hasPlant  = row.some(function(h) { return /^plant$/i.test(h); });
-    var hasSeller = row.some(function(h) { return /^seller$/i.test(h); });
-    if (hasPlant && hasSeller) { headerRow = r; headers = row; break; }
-  }
-  if (!headers.length) {
-    headers = values[0].map(function(h) { return String(h).trim(); });
-  }
-
-  var plantCol = -1, sellerCol = -1, qtyCol = -1;
-  headers.forEach(function(h, j) {
-    if (/^plant$/i.test(h))                               plantCol  = j;
-    if (/^seller$/i.test(h))                              sellerCol = j;
-    if (/sum.*qty.*kg/i.test(h) || (/qty/i.test(h) && /kg/i.test(h))) qtyCol = j;
-  });
-
-  for (var i = headerRow + 1; i < values.length; i++) {
-    var row = values[i];
-    var plant  = plantCol  >= 0 ? String(row[plantCol]  || '').trim() : '';
-    var seller = sellerCol >= 0 ? String(row[sellerCol] || '').trim() : '';
-    if (!plant || !seller) continue;
-    if (/total/i.test(plant) || /total/i.test(seller)) continue;
-
-    var qty = qtyCol >= 0 ? row[qtyCol] : '';
-    out.push({ PLANT: plant, SELLER: seller, 'SUM of Qty Kg': qty, _sheet: sheetLabel });
-  }
-}
-
-/**
- * Returns all data rows from the requested SUPPLIED PK sheet(s).
- * Handles pivot-table source ranges the same way as CPO.
- */
-function getSuppliedPkData_(sheetName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheets;
-  if (sheetName && sheetName !== '*') {
-    var s = ss.getSheetByName(sheetName);
-    if (!s) return { error: 'Sheet not found: ' + sheetName };
-    sheets = [s];
-  } else {
-    sheets = ss.getSheets().filter(function(s) {
-      return s.getName().trim().toUpperCase().startsWith('SUPPLIED PK');
-    });
-  }
-
-  var allRows = [];
-  sheets.forEach(function(sheet) {
-    var sName  = sheet.getName();
-    var pivots = sheet.getPivotTables ? sheet.getPivotTables() : [];
-    if (pivots && pivots.length) {
-      pivots.forEach(function(pt) {
-        var src = pt.getSourceDataRange();
-        if (src) parseSuppliedPkValues_(src.getValues(), sName, allRows);
-      });
-    }
-    if (!allRows.length) {
-      parseSuppliedPkValues_(sheet.getDataRange().getValues(), sName, allRows);
-    }
-  });
-  return allRows;
 }

@@ -1,7 +1,5 @@
 import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
-import { getJsPDF } from './pdf-libs.js';
-import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -29,8 +27,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
     window._sddIsLoadedSaved = false;
     window._sddLastInsertedRow = null;
     window._scrLoadedRowNum = null;
-    window._scrLoadedKey = '';
-    window._sddSubmissionId = null;
     window._loadedPrimarySddRow = null;
     // Anti-leak: import baru tidak boleh membawa data screening dari supplier sebelumnya.
     window._tmlScreeningData = {};
@@ -982,10 +978,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
     window._sddImportFirstRow = null;
     window._sddImportedRows = buildImportedSddPayloadsFromWorkbook(supplierWorkbook);
     window._sddImportFirstRow = window._sddImportedRows[0] || null;
-    window._loadedPrimarySddRow = window._sddImportFirstRow
-      ? Object.assign({}, window._sddImportFirstRow)
-      : null;
-    window._nblCheckResult = null;
   }
 
   /**
@@ -1030,12 +1022,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
     const container = document.getElementById('supplierExcelData');
     container.innerHTML = '';
     window._scrData = {};
-    // Fresh workbook view must not reuse relational keys from a previous load/session;
-    // otherwise Approve calls setSubmissionStatus on the wrong row and UI can desync.
-    window._sddSubmissionId = null;
-    window._scrLoadedKey = '';
-    window._scrLoadedRowNum = null;
-    window._sddIsLoadedSaved = false;
     const fileName = document.getElementById('supplierExcelFile')?.files[0]?.name || '';
     const tp = getCurrentSddSupplierType();
     window._scrKey = ((tp ? tp + '_' : '') + fileName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()) || 'default';
@@ -1362,7 +1348,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         return st === 'submitted';
       })();
       html += '<div id="sdd-trace-action-btn-wrap" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:16px;padding-right:4px;">'
-        + '<button type="button" id="sdd-check-nbl-btn-trace" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(139,26,26,0.35);background:#fff;color:#8B1A1A;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;">Check NBL</button>'
         + (_isSubmittedForBtn
           ? '<button onclick="window.openViewScreeningPopup()" style="background:#1e40af;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(30,64,175,0.25);" onmouseover="this.style.background=\'#1d4ed8\'" onmouseout="this.style.background=\'#1e40af\'">'
             + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
@@ -1389,10 +1374,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         + '<input id="traceAttachmentInput" type="url" placeholder="Paste Drive / image / PDF link here" style="flex:1;min-width:0;border:1px solid rgba(74,28,28,0.15);border-radius:12px;padding:12px 14px;background:#f9fafb;color:#111;font-size:13px;outline:none;">'
         + '<button type="button" onclick="window._addTraceAttachmentLink && window._addTraceAttachmentLink()" style="padding:9px 20px;border-radius:8px;border:none;background:#1F2937;color:white;cursor:pointer;font-size:13px;font-weight:600;font-family:Inter,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.15);">Add link</button>'
         + '</div>'
-        + '<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">'
-        + '<button type="button" data-sdd-save="draft" onclick="window._saveScrScreening(\'draft\')" style="padding:9px 20px;border-radius:8px;border:none;background:#F59E0B;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.3);">Save as Draft</button>'
-        + '<button type="button" data-sdd-save="submit" onclick="window._saveScrScreening(\'submit\')" style="padding:9px 20px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.3);">Submit</button>'
-        + '</div>'
         + '<div style="font-size:12px;color:#6b7280;">Use Google Drive share link or direct image/PDF URL.</div>'
         + '<div id="traceAttachmentPreview" style="display:grid;gap:12px;color:#6b7280;font-size:13px;">No attachment yet.</div>'
         + '</div>'
@@ -1410,9 +1391,11 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         + '<button type="button" id="sdd-approver-hold" disabled style="padding:8px 16px;border-radius:8px;border:none;background:#D97706;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">On Hold</button>'
         + '<button type="button" id="sdd-approver-reject" disabled style="padding:8px 16px;border-radius:8px;border:1.5px solid #B91C1C;background:#fff;color:#B91C1C;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">Reject</button>'
         + '</div></div>'
-        + '<div id="sdd-bottom-actions-row" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center;">'
+        + '<div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center;">'
         + '<button type="button" data-sdd-save="delete" onclick="window._saveScrScreening(\'delete\')" style="padding:9px 20px;border-radius:8px;border:1.5px solid rgba(239,68,68,0.4);background:#fff;color:#EF4444;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(239,68,68,0.08);margin-right:auto;">Delete</button>'
         + '<button type="button" id="sdd-cancel-to-draft-btn" data-sdd-save="cancel" style="display:none;padding:9px 20px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.4);background:#fff7ed;color:#9a3412;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(217,119,6,0.12);">Cancel</button>'
+        + '<button type="button" data-sdd-save="draft" onclick="window._saveScrScreening(\'draft\')" style="padding:9px 20px;border-radius:8px;border:none;background:#F59E0B;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.3);">Save as Draft</button>'
+        + '<button type="button" data-sdd-save="submit" onclick="window._saveScrScreening(\'submit\')" style="padding:9px 20px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.3);">Submit</button>'
         + '</div>'
         + '</div>'
         + '<p id="scr-save-ok" style="display:none;margin-top:12px;text-align:right;font-size:13px;color:#059669;font-weight:600;"></p>'
@@ -1701,13 +1684,31 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
     container.innerHTML = html || '<p style="color:#9C8080;font-size:13px;padding:16px;">No data found.</p>';
     if (opts.appendScrForm !== false) {
       initScrForm();
-      // Fresh Excel import is Draft: decision buttons must stay hidden
-      // until SCR is Submitted.
+      // Fresh Excel import: no submission_id yet, status = Draft.
+      // syncSddApproverDecisionUI never fires on this path, so manually show
+      // the decision buttons so the user can pick Approve/Hold/Reject before saving.
       // Use setTimeout(0) so all synchronous initScrForm internal calls finish first,
       // and the DOM is fully flushed before we try to show sdd-staff-decision-wrap.
       setTimeout(function() {
+        var fn = (typeof _refreshDecisionChromeForDraft === 'function')
+          ? _refreshDecisionChromeForDraft
+          : window._refreshDecisionChromeForDraft;
+        if (typeof fn === 'function') fn();
+        // Belt-and-suspenders: directly show the wrap in case fn is not accessible
         var wrap = document.getElementById('sdd-staff-decision-wrap');
-        if (wrap) wrap.style.display = 'none';
+        if (wrap) {
+          wrap.style.display = 'block';
+          // Enable all three decision buttons (they start as disabled in buildScrForm HTML)
+          ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
+            var b = document.getElementById(id);
+            if (!b) return;
+            b.disabled = false;
+            b.style.opacity = '1';
+            b.style.cursor = 'pointer';
+            b.style.filter = '';
+            b.title = '';
+          });
+        }
       }, 0);
     }
   }
@@ -1760,17 +1761,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
       <div style="font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8B1A1A;margin-bottom:18px;display:flex;align-items:center;gap:8px;">
         <span style="display:inline-block;width:3px;height:16px;background:#8B1A1A;border-radius:2px;"></span>
         Supplier Screening
-      </div>
-
-      <div id="sdd-nbl-check-section" style="margin-bottom:18px;padding:14px 16px;border:1px solid rgba(139,26,26,0.12);border-radius:10px;background:#fff;">
-        <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:space-between;">
-          <div style="flex:1;min-width:200px;">
-            <div style="font-size:12px;font-weight:700;color:#1A0A0A;">No Buy List check</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Flags <strong>Yes</strong> if any imported name matches NBL (Group or Company) or Unilever NBL (Company or Mill). One similar name is enough.</div>
-          </div>
-          <button type="button" id="sdd-check-nbl-btn" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="flex-shrink:0;padding:9px 18px;border-radius:8px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(139,26,26,0.2);">Check NBL</button>
-        </div>
-        <div id="sdd-nbl-check-result" class="sdd-nbl-check-result" style="display:none;" role="status" aria-live="polite"></div>
       </div>
 
       <div style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8B1A1A;margin-bottom:12px;padding:6px 12px;background:rgba(139,26,26,0.07);border-radius:6px;">A. Company Checking</div>
@@ -1894,26 +1884,25 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
     if (bossViewer) bossViewer.style.display = 'none';
   };
 
-  /** Submitted mode: keep form locked, but allow decision action for tasklist gating. */
+  /** Submitted lock: show decision badge, keep note read-only, disable decision buttons. */
   window.refreshSddPostSubmitDecisionChrome = function() {
     var nb = document.getElementById('noteBossDecision');
     if (nb) {
-      nb.readOnly = false;
+      nb.readOnly = true;
       nb.disabled = false;
-      nb.style.background = '#fff';
-      nb.style.color = '#1A0A0A';
-      nb.style.cursor = 'text';
+      nb.style.background = '#f5f1f1';
+      nb.style.color = '#5F4A48';
+      nb.style.cursor = 'default';
     }
     var wrap = document.getElementById('sdd-staff-decision-wrap');
     if (wrap) wrap.style.display = 'block';
     ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
       var b = document.getElementById(id);
       if (!b) return;
-      b.disabled = false;
-      b.style.opacity = '1';
-      b.style.cursor = 'pointer';
-      b.style.filter = '';
-      b.title = 'Keputusan ini menentukan masuk/tidaknya ke Task List Mill Onboarding.';
+      b.disabled = true;
+      b.style.opacity = '0.38';
+      b.style.cursor = 'not-allowed';
+      b.title = 'Screening sudah Submitted — keputusan terkunci. Gunakan Cancel to Draft untuk mengubah.';
     });
     _syncDecisionBadge();
   };
@@ -2438,241 +2427,61 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
       return;
     }
 
-    function fmtDate(raw) {
-      const s = String(raw || '').trim();
-      if (!s) return '—';
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return s.slice(0, 10) || '—';
+    function fmtDate(r) {
+      const upd = String(r['updated_at'] || r['SCR - Last Updated'] || '').trim();
+      if (!upd) return '';
+      const d = new Date(upd);
+      if (isNaN(d.getTime())) return upd.slice(0,10);
       return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
     }
 
-    function fmtStatus(r) {
-      const scrStatus = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
-      if (scrStatus !== 'submitted') return 'Draft';
-      const decRaw = String(
-        r['statusSDD'] || r['statusSdd'] || r['Status SDD'] ||
-        r['statusBossDecision'] || r['Status Boss Decision'] || ''
-      ).trim();
-      if (!decRaw) return 'Submitted';
-      return 'Submitted · ' + _normalizeDecisionLabel(decRaw);
-    }
-
-    function parseDateTs(raw) {
-      const s = String(raw || '').trim();
-      if (!s) return 0;
-      const t = new Date(s).getTime();
-      return isNaN(t) ? 0 : t;
-    }
-
-    if (!window._scrSavedListSort || typeof window._scrSavedListSort !== 'object') {
-      window._scrSavedListSort = { col: 'lastUpdate', dir: 'desc' };
-    }
-    if (!window._scrSavedColumnFilters || typeof window._scrSavedColumnFilters !== 'object') {
-      window._scrSavedColumnFilters = {};
-    }
-    var sortState = window._scrSavedListSort;
-    var sortCol = sortState.col || 'lastUpdate';
-    var sortDir = (sortState.dir === 'asc' || sortState.dir === 'desc') ? sortState.dir : 'desc';
-    var sortMul = sortDir === 'asc' ? 1 : -1;
-    var colFilters = window._scrSavedColumnFilters;
-
-    function compareText(a, b) {
-      return String(a || '').localeCompare(String(b || ''), 'id', { sensitivity: 'base' });
-    }
-
-    var cols = [
-      { key: 'dateImport',  label: 'Date Import' },
-      { key: 'companyName', label: 'Company Name' },
-      { key: 'category',    label: 'Category' },
-      { key: 'status',      label: 'Status' },
-      { key: 'lastUpdate',  label: 'Last Update' },
-    ];
-
-    function toRowItem(entry) {
-      const r = entry.primary || {};
-      return {
-        entry: entry,
-        key: entry.key,
-        row: r,
-        dateImport: fmtDate(r['Date Imported']),
-        companyName: String(r['Company Name'] || r['Group Name'] || r['Grup Name'] || r['Mill Name'] || '—').trim() || '—',
-        category: normalizeSddSupplierType(r['Supplier Type'] || r['SUPPLIER_TYPE'] || r['SupplierType'] || r['supplier_type']) || '—',
-        status: fmtStatus(r),
-        lastUpdate: fmtDate(r['updated_at'] || r['SCR - Last Updated']),
-        dateImportTs: parseDateTs(r['Date Imported']),
-        lastUpdateTs: parseDateTs(r['updated_at'] || r['SCR - Last Updated']),
-      };
-    }
-
-    var rowItems = entries.map(toRowItem);
-    var uniqueByCol = {};
-    cols.forEach(function(c) {
-      uniqueByCol[c.key] = Array.from(new Set(rowItems.map(function(it) { return String(it[c.key] || '—'); })))
-        .sort(function(a, b) { return compareText(a, b); });
-      if (!Array.isArray(colFilters[c.key])) colFilters[c.key] = [];
+    // Sort by updated_at descending (newest first), then render all — container scrolls
+    const sorted = entries.slice().sort(function(a, b) {
+      const ta = new Date(String((a.primary||{})['updated_at'] || (a.primary||{})['SCR - Last Updated'] || 0)).getTime() || 0;
+      const tb = new Date(String((b.primary||{})['updated_at'] || (b.primary||{})['SCR - Last Updated'] || 0)).getTime() || 0;
+      return tb - ta;
     });
 
-    const filtered = rowItems.filter(function(it) {
-      return cols.every(function(c) {
-        var active = colFilters[c.key];
-        if (!Array.isArray(active) || !active.length) return true;
-        return active.indexOf(String(it[c.key] || '—')) !== -1;
-      });
-    });
+    holder.innerHTML = sorted.map(function(entry) {
+      const active  = selectedKey && selectedKey === entry.key;
+      const r       = entry.primary || {};
+      const st      = String(r['SCR - Screening Status'] || '').trim();
+      const tp      = normalizeSddSupplierType(r['Supplier Type'] || r['SUPPLIER_TYPE'] || r['SupplierType'] || r['supplier_type']);
+      const grp     = String(r['Group Name'] || r['Grup Name'] || '').trim();
+      const mill    = String(r['Mill Name'] || '').trim();
+      const dateStr = fmtDate(r);
 
-    const sorted = filtered.slice().sort(function(a, b) {
-      var cmp = 0;
-      if (sortCol === 'dateImport') {
-        cmp = a.dateImportTs - b.dateImportTs;
-      } else if (sortCol === 'companyName') {
-        cmp = compareText(a.companyName, b.companyName);
-      } else if (sortCol === 'category') {
-        cmp = compareText(a.category, b.category);
-      } else if (sortCol === 'status') {
-        cmp = compareText(a.status, b.status);
-      } else {
-        cmp = a.lastUpdateTs - b.lastUpdateTs;
-      }
-      if (cmp === 0) {
-        cmp = a.lastUpdateTs - b.lastUpdateTs;
-      }
-      return cmp * sortMul;
-    });
+      const isDraft     = st.toLowerCase() === 'draft';
+      const statusClass = isDraft ? 'scr-status-draft' : 'scr-status-submitted';
+      const statusLabel = isDraft ? 'Draft' : 'Submitted';
 
-    function headLabel(colKey, text) {
-      if (sortCol !== colKey) return text;
-      return text + (sortDir === 'asc' ? ' ▲' : ' ▼');
-    }
+      return '<button type="button" data-scr-key="' + escHtml(entry.key) + '" class="scr-saved-item' + (active ? ' selected' : '') + '">'
 
-    function hasActiveFilter(colKey) {
-      var vals = colFilters[colKey];
-      return Array.isArray(vals) && vals.length > 0;
-    }
+        // Row 1: status badge + type chip + date
+        + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+        + '<span class="scr-saved-status ' + statusClass + '"><span class="scr-status-dot"></span>' + statusLabel + '</span>'
+        + (tp ? '<span style="font-size:10.5px;font-weight:700;color:#9C8A8A;letter-spacing:0.07em;text-transform:uppercase;">' + escHtml(tp) + '</span>' : '')
+        + '<span style="margin-left:auto;font-size:11px;color:#B09090;white-space:nowrap;">' + (dateStr ? escHtml(dateStr) : '') + '</span>'
+        + '</div>'
 
-    holder.innerHTML =
-      '<div class="scr-saved-search-wrap"><span class="scr-saved-search-count">' + sorted.length + ' result(s)</span></div>'
-      + '<div class="scr-saved-table-wrap"><table class="scr-saved-table">'
-      + '<thead><tr>'
-      + cols.map(function(c) {
-        return '<th>'
-          + '<div class="scr-th-wrap">'
-          + '<span class="scr-th-sort" data-sort-col="' + escHtml(c.key) + '">' + escHtml(headLabel(c.key, c.label)) + '</span>'
-          + '<button type="button" class="scr-th-filter-btn' + (hasActiveFilter(c.key) ? ' is-active' : '') + '" data-filter-col="' + escHtml(c.key) + '" title="Filter ' + escHtml(c.label) + '">▾</button>'
-          + '</div>'
-          + '</th>';
-      }).join('')
-      + '</tr></thead><tbody>'
-      + sorted.map(function(entry) {
-        const active = selectedKey && selectedKey === entry.key;
-        return '<tr data-scr-key="' + escHtml(entry.key) + '" class="' + (active ? 'is-active' : '') + '">'
-          + '<td>' + escHtml(entry.dateImport) + '</td>'
-          + '<td>' + escHtml(entry.companyName) + '</td>'
-          + '<td>' + escHtml(entry.category) + '</td>'
-          + '<td>' + escHtml(entry.status) + '</td>'
-          + '<td>' + escHtml(entry.lastUpdate) + '</td>'
-          + '</tr>';
-      }).join('')
-      + '</tbody></table></div>';
+        // Row 2: group name (bold)
+        + '<div style="font-size:13px;font-weight:' + (active ? '700' : '600') + ';color:#1A0A0A;line-height:1.35;' + (mill ? 'margin-bottom:2px;' : '') + '">'
+        + (grp ? escHtml(grp) : '<span style="color:#C4BAB4;font-weight:400;">—</span>')
+        + '</div>'
 
-    holder.querySelectorAll('tr[data-scr-key]').forEach(function(row) {
-      row.addEventListener('click', function() {
-        const key = row.getAttribute('data-scr-key') || '';
+        // Row 3: mill name (muted)
+        + (mill ? '<div style="font-size:11.5px;color:#9C8A8A;">' + escHtml(mill) + '</div>' : '')
+
+        + '</button>';
+    }).join('');
+
+    // hover handled by CSS .scr-saved-item:hover — no inline override needed
+    holder.querySelectorAll('button[data-scr-key]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const key = btn.getAttribute('data-scr-key') || '';
         const sel = document.getElementById('scr-saved-select');
         if (sel) sel.value = key;
         if (typeof window.loadSavedScrByKeyGlobal === 'function') window.loadSavedScrByKeyGlobal(key);
-      });
-    });
-    holder.querySelectorAll('.scr-th-sort[data-sort-col]').forEach(function(th) {
-      th.addEventListener('click', function() {
-        var col = th.getAttribute('data-sort-col') || '';
-        if (!col) return;
-        if (window._scrSavedListSort && window._scrSavedListSort.col === col) {
-          window._scrSavedListSort.dir = window._scrSavedListSort.dir === 'asc' ? 'desc' : 'asc';
-        } else {
-          window._scrSavedListSort = { col: col, dir: 'asc' };
-        }
-        renderSavedScreeningListView(entries, selectedKey);
-      });
-    });
-    holder.querySelectorAll('.scr-th-filter-btn[data-filter-col]').forEach(function(btn) {
-      btn.addEventListener('click', function(ev) {
-        ev.stopPropagation();
-        var col = btn.getAttribute('data-filter-col') || '';
-        if (!col) return;
-        holder.querySelectorAll('.scr-filter-menu').forEach(function(m) { m.remove(); });
-        var options = uniqueByCol[col] || [];
-        var current = Array.isArray(colFilters[col]) ? colFilters[col].slice() : [];
-        var selectedVals = current.length ? current : options.slice();
-        var menu = document.createElement('div');
-        menu.className = 'scr-filter-menu';
-        menu.innerHTML =
-          '<div class="scr-filter-menu-head">' + escHtml((cols.find(function(c) { return c.key === col; }) || {}).label || col) + '</div>'
-          + '<input type="text" class="scr-filter-menu-search" placeholder="Search value...">'
-          + '<div class="scr-filter-menu-actions">'
-          + '<button type="button" data-filter-action="all">Select all</button>'
-          + '<button type="button" data-filter-action="none">Clear all</button>'
-          + '</div>'
-          + '<div class="scr-filter-menu-list"></div>'
-          + '<div class="scr-filter-menu-foot">'
-          + '<button type="button" data-filter-action="cancel">Cancel</button>'
-          + '<button type="button" data-filter-action="ok" class="is-primary">OK</button>'
-          + '</div>';
-        holder.appendChild(menu);
-        var rectBtn = btn.getBoundingClientRect();
-        var rectHolder = holder.getBoundingClientRect();
-        menu.style.top = Math.max(0, rectBtn.bottom - rectHolder.top + 4) + 'px';
-        menu.style.left = Math.max(0, rectBtn.right - rectHolder.left - 250) + 'px';
-        var listEl = menu.querySelector('.scr-filter-menu-list');
-        var searchEl = menu.querySelector('.scr-filter-menu-search');
-
-        function renderChecks() {
-          if (!listEl) return;
-          var kw = String((searchEl && searchEl.value) || '').trim().toLowerCase();
-          listEl.innerHTML = options.filter(function(v) {
-            return !kw || String(v || '').toLowerCase().indexOf(kw) !== -1;
-          }).map(function(v) {
-            var checked = selectedVals.indexOf(v) !== -1;
-            return '<label class="scr-filter-menu-item"><input type="checkbox" value="' + escHtml(v) + '"' + (checked ? ' checked' : '') + '> <span>' + escHtml(v) + '</span></label>';
-          }).join('') || '<div class="scr-filter-menu-empty">No values</div>';
-          listEl.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-            cb.addEventListener('change', function() {
-              var val = cb.value;
-              if (cb.checked) {
-                if (selectedVals.indexOf(val) === -1) selectedVals.push(val);
-              } else {
-                selectedVals = selectedVals.filter(function(x) { return x !== val; });
-              }
-            });
-          });
-        }
-        renderChecks();
-        if (searchEl) searchEl.addEventListener('input', renderChecks);
-        menu.querySelectorAll('[data-filter-action]').forEach(function(actBtn) {
-          actBtn.addEventListener('click', function() {
-            var action = actBtn.getAttribute('data-filter-action');
-            if (action === 'all') { selectedVals = options.slice(); renderChecks(); return; }
-            if (action === 'none') { selectedVals = []; renderChecks(); return; }
-            if (action === 'cancel') { menu.remove(); return; }
-            if (action === 'ok') {
-              if (selectedVals.length === 0 || selectedVals.length === options.length) {
-                colFilters[col] = [];
-              } else {
-                colFilters[col] = selectedVals.slice();
-              }
-              menu.remove();
-              renderSavedScreeningListView(entries, selectedKey);
-            }
-          });
-        });
-        setTimeout(function() {
-          function closeMenuOutside(e) {
-            if (!menu.contains(e.target) && e.target !== btn) {
-              menu.remove();
-              document.removeEventListener('click', closeMenuOutside, true);
-            }
-          }
-          document.addEventListener('click', closeMenuOutside, true);
-        }, 0);
       });
     });
   }
@@ -3349,7 +3158,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
             pdfBtnD.onmouseenter = function() { this.style.background = '#6e1414'; };
             pdfBtnD.onmouseleave = function() { this.style.background = '#8B1A1A'; };
             pdfBtnD.onclick = function() { sddExportPdf(); };
-            var actionRowD = document.getElementById('sdd-bottom-actions-row');
+            var actionRowD = document.querySelector('[data-sdd-save="draft"]');
+            actionRowD = actionRowD ? actionRowD.parentNode : null;
             if (actionRowD) actionRowD.appendChild(pdfBtnD);
             else {
               var panelBoxD = document.querySelector('#panel-supplier-dd .panel-box');
@@ -3376,9 +3186,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         cert: row['SCR - Certification'] || '',
         ndpe: row['SCR - NDPE Policy'] || '',
         nbl: row['SCR - No Buy List'] || '',
-        nblCheckResult: row['SCR - NBL Check Result'] || '',
-        nblCheckDetail: row['SCR - NBL Match Detail'] || '',
-        nblCheckedAt: row['SCR - NBL Checked At'] || '',
         grvYN: row['SCR - Grievance (Y/N)'] || '',
         priYN: row['SCR - PRI (Y/N)'] || '',
         traceNote: row['SCR - Notes'] || '',
@@ -3469,9 +3276,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
       window._scrLoadedRowNum = rowNum || null;
       window._scrLoadedKey = key || '';
       window._scrData = s;
-      if (window._loadedPrimarySddRow && typeof window.restoreNblCheckResultFromRow_ === 'function') {
-        window.restoreNblCheckResultFromRow_(window._loadedPrimarySddRow);
-      }
       syncSddApproverDecisionUI(s, sourceLabel, rowNum, key);
       // Use submission_id (key) as the "fromSaved" signal; fall back to legacy rowNum
       syncSubmittedStaffLockUI(s, key || rowNum || null);
@@ -3626,9 +3430,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         cert:     document.getElementById('scr-cert')?.value||'',
         ndpe:     document.getElementById('scr-ndpe')?.value||'',
         nbl:      document.getElementById('scr-nbl')?.value||'',
-        nblCheckResult: (window._scrData && window._scrData.nblCheckResult) || '',
-        nblCheckDetail: (window._scrData && window._scrData.nblCheckDetail) || '',
-        nblCheckedAt: (window._scrData && window._scrData.nblCheckedAt) || '',
         grvYN:    document.getElementById('scr-grv-yn')?.value||'',
         priYN:    document.getElementById('scr-pri-yn')?.value||'',
         traceNote: document.getElementById('traceRecInput')?.value||'',
@@ -3640,20 +3441,6 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
         attachments: window._traceAttachments || [],
         grvRows: [], priRows: [],
       };
-      if (scrData.nbl && !scrData.nblCheckResult) {
-        scrData.nblCheckResult = scrData.nbl === 'Yes'
-          ? 'YES — Supplier IS ON the No Buy List (NBL)'
-          : 'NO — Supplier is NOT on the No Buy List';
-      }
-      if (scrData.nbl && !scrData.nblCheckDetail && window._nblCheckResult) {
-        scrData.nblCheckDetail = window._scrData.nblCheckDetail
-          || (window._nblCheckResult.matches && window._nblCheckResult.matches.length
-            ? window._nblCheckResult.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
-            : (scrData.nbl === 'No'
-              ? 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.'
-              : 'Supplier matched a name on the NBL or Unilever NBL registry.'));
-        scrData.nblCheckedAt = scrData.nblCheckedAt || window._scrData.nblCheckedAt || window._nblCheckResult.checkedAt || '';
-      }
       document.querySelectorAll('#scr-grv-tbody tr').forEach(tr => {
         scrData.grvRows.push({
           source: tr.querySelector('.grv-source')?.value||'',
@@ -3811,7 +3598,7 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL or localStorage SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxoyBfUwBA6eluoQ2nYeLfg8TbipOB9N-gSRxQeUCvr08CFdfA4imH6neew-JaKAyfd4A/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzRVFziViQwwL7N_3yRSplKfCyS6N9gW4rYqZGSxLYPmiCcKJ84yIbPRpzf9fKhoeI3iA/exec';
 
 function getSddApiUrl() {
   var custom = (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) || '';
@@ -4041,27 +3828,6 @@ async function apiDeleteSubmission(payload) {
  * Returns { success, main, mills, ffb_rows }
  * UI MUST use this response shape; never reconstruct from mixed row heuristics.
  */
-/**
- * Generic GET helper for custom actions (non-getAll endpoints).
- * @param {string} action  e.g. 'listSuppliedCpoSheets', 'getSuppliedCpo'
- * @param {Object} params  additional URL params, e.g. { sheet: 'SUPPLIED CPO Q1 2026' }
- */
-async function apiGetAction_(action, params) {
-  var url = getSddApiUrl();
-  var qp = new URLSearchParams(Object.assign({ action: action }, params || {}));
-  qp.set('_ts', String(Date.now()));
-  var res = await fetch(url + '?' + qp.toString(), {
-    method: 'GET', mode: 'cors', credentials: 'omit', redirect: 'follow',
-  });
-  var text = await res.text();
-  var data;
-  try { data = text ? JSON.parse(text) : {}; } catch (e) {
-    throw new Error('API ' + action + ': server did not return JSON. ' + text.slice(0, 160));
-  }
-  if (data && typeof data === 'object' && data.error && !Array.isArray(data)) throw new Error(data.error);
-  return data;
-}
-
 async function apiGetSubmissionById(submissionId) {
   var url = getSddApiUrl();
   var params = new URLSearchParams({
@@ -4139,15 +3905,15 @@ function _syncDecisionBadge() {
 
 function _refreshDecisionChromeForDraft() {
   var wrap = document.getElementById('sdd-staff-decision-wrap');
-  if (wrap) wrap.style.display = 'none';
+  if (wrap) wrap.style.display = 'block';
   ['sdd-approver-approve', 'sdd-approver-hold', 'sdd-approver-reject'].forEach(function(id) {
     var b = document.getElementById(id);
     if (!b) return;
-    b.disabled = true;
-    b.style.opacity = '0.5';
-    b.style.cursor = 'not-allowed';
+    b.disabled = false;
+    b.style.opacity = '1';
+    b.style.cursor = 'pointer';
     b.style.filter = '';
-    b.title = 'Tombol keputusan aktif setelah status Submitted.';
+    b.title = '';
   });
   var nb = document.getElementById('noteBossDecision');
   if (nb) {
@@ -4167,117 +3933,87 @@ window._syncDecisionBadge = _syncDecisionBadge;
 
 /**
  * Screening decision (Approve / Hold / Reject) — only while SCR status is Draft.
- * Same mental model as screening fields: only updates in-memory state here; the server
- * gets statusSDD / noteBossDecision when the user clicks Save Draft or Submit (create/update).
+ * statusSDD via setSubmissionStatus; note + statusBossDecision via updateSubmission main.
  */
-window._submitSddApproverDecision = function(statusSdd) {
+window._submitSddApproverDecision = async function(statusSdd) {
   var sid = window._sddSubmissionId || window._scrLoadedKey || null;
   var scrSt = String(
     (window._scrData && window._scrData.status) ||
     (window._loadedPrimarySddRow && window._loadedPrimarySddRow['SCR - Screening Status']) || ''
   ).trim().toLowerCase();
-  if (scrSt !== 'submitted') {
+
+  if (scrSt === 'submitted') {
     if (typeof window.showSddToast === 'function') {
-      window.showSddToast('Keputusan Approve / On Hold / Reject baru bisa dipilih setelah Submit.', 'info');
+      window.showSddToast(
+        '⛔ Screening sudah Submitted — keputusan tidak dapat diubah. ' +
+        'Gunakan "Cancel to Draft" terlebih dahulu jika perlu koreksi.',
+        'error'
+      );
     }
     return;
   }
 
-  var ta   = document.getElementById('noteBossDecision') || document.getElementById('noteSDD');
-  var note = ta ? String(ta.value || '').trim() : '';
-
-  if (!window._scrData) window._scrData = {};
-  window._scrData.statusSdd = statusSdd;
-  window._scrData.statusBossDecision = statusSdd;
-  window._scrData.noteSdd = note;
-  window._scrData.noteBossDecision = note;
-
-  if (window._loadedPrimarySddRow) {
-    window._loadedPrimarySddRow['noteSDD'] = note;
-    window._loadedPrimarySddRow['noteBossDecision'] = note;
-    window._loadedPrimarySddRow['statusSDD'] = statusSdd;
-    window._loadedPrimarySddRow['statusBossDecision'] = statusSdd;
-  }
-
-  _syncDecisionBadge();
-  _refreshDecisionChromeForDraft();
-  if (scrSt === 'submitted' && sid) {
-    apiSetSubmissionStatus({ submission_id: sid, statusSDD: statusSdd })
-      .then(function(statusResp) {
-        window._lastTtpSyncResult = statusResp && statusResp.ttp_sync ? statusResp.ttp_sync : null;
-        return apiUpdateSubmission({
-          submission_id: sid,
-          main: {
-            noteSDD: note,
-            noteBossDecision: note,
-            statusBossDecision: statusSdd,
-          }
-        });
-      })
-      .then(function() {
-        if (typeof window.refreshSavedScreeningListGlobal === 'function') {
-          return window.refreshSavedScreeningListGlobal(sid);
-        }
-      })
-      .then(function() {
-        if (typeof renderMillTaskList === 'function') renderMillTaskList();
-        var saveOk = document.getElementById('scr-save-ok');
-        if (saveOk) {
-          saveOk.style.display = 'block';
-          saveOk.style.color = '#059669';
-          saveOk.textContent = '✓ Decision saved: ' + statusSdd + ' · Submission ID: ' + sid;
-        }
-        if (typeof window.__contactListInvalidate === 'function') window.__contactListInvalidate();
-        if (typeof window.__ttpInvalidate === 'function') window.__ttpInvalidate();
-        var normDecision = _normalizeDecisionLabel(statusSdd);
-        if (normDecision === 'APPROVED') {
-          var clsPanel = document.getElementById('panel-contact-list-supplier');
-          if (clsPanel && clsPanel.classList.contains('active') && typeof window.loadContactListData === 'function') {
-            return window.loadContactListData(true);
-          }
-          var ttpPanel = document.getElementById('panel-ttm-ttp');
-          if (ttpPanel && ttpPanel.classList.contains('active') && typeof loadTTPData === 'function') {
-            return loadTTPData();
-          }
-        }
-      })
-      .then(function() {
-        if (typeof window.showSddToast === 'function') {
-          var normToast = _normalizeDecisionLabel(statusSdd);
-          var extraCls = normToast === 'APPROVED'
-            ? ' Kontak Sustainability PIC disimpan ke Contact List Supplier.'
-            : '';
-          var ttpSync = window._lastTtpSyncResult;
-          if (normToast === 'APPROVED' && ttpSync) {
-            if (ttpSync.synced) {
-              extraCls += ' Monitoring TTM/TTP: ' + String(ttpSync.inserted || 0) + ' baru, '
-                + String(ttpSync.updated || 0) + ' diperbarui.';
-            } else if (ttpSync.skipped && ttpSync.reason === 'no_ffb_rows') {
-              extraCls += ' Monitoring TTM/TTP: tidak ada baris FFB di traceability.';
-            }
-          }
-          window.showSddToast('Keputusan Submitted disimpan: ' + statusSdd + ' (SID: ' + sid + ').' + extraCls, 'success');
-        }
-      })
-      .catch(function(e) {
-        var msg = (e && e.message) ? e.message : String(e);
-        var saveErr = document.getElementById('scr-save-ok');
-        if (saveErr) {
-          saveErr.style.display = 'block';
-          saveErr.style.color = '#dc2626';
-          saveErr.textContent = '✗ Decision save failed untuk Submission ID: ' + sid;
-        }
-        if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Gagal menyimpan keputusan Submitted: ' + msg, 'error');
-        }
-      });
+  // Fresh import (not yet saved to Sheets): store decision locally so it is
+  // carried into the payload when the user saves Draft or Submits.
+  if (!sid) {
+    if (!window._scrData) window._scrData = {};
+    window._scrData.statusSdd = statusSdd;
+    window._scrData.statusBossDecision = statusSdd;
+    if (window._loadedPrimarySddRow) {
+      window._loadedPrimarySddRow['statusSDD'] = statusSdd;
+      window._loadedPrimarySddRow['statusBossDecision'] = statusSdd;
+    }
+    _syncDecisionBadge();
+    _refreshDecisionChromeForDraft();
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('Keputusan dipilih: ' + statusSdd + '. Akan disimpan saat Save Draft / Submit.', 'info');
+    }
     return;
   }
-  if (typeof window.showSddToast === 'function') {
-    window.showSddToast(
-      'Keputusan: ' + statusSdd + '. Disimpan ke server saat Save Draft atau Submit.',
-      'info'
-    );
+  var ta   = document.getElementById('noteBossDecision') || document.getElementById('noteSDD');
+  var note = ta ? String(ta.value || '').trim() : '';
+  try {
+    // Write statusSDD via lightweight status patch
+    await apiSetSubmissionStatus({ submission_id: sid, statusSDD: statusSdd });
+    // Write approver fields to relational MAIN row
+    await apiUpdateSubmission({
+      submission_id: sid,
+      main: {
+        noteSDD: note,
+        noteBossDecision: note,
+        statusBossDecision: statusSdd,
+      }
+    });
+    if (window._loadedPrimarySddRow) {
+      window._loadedPrimarySddRow['noteSDD']          = note;
+      window._loadedPrimarySddRow['noteBossDecision']  = note;
+      window._loadedPrimarySddRow['statusSDD']        = statusSdd;
+      window._loadedPrimarySddRow['statusBossDecision'] = statusSdd;
+    }
+    if (window._scrData && typeof window._scrData === 'object') {
+      window._scrData.noteSdd           = note;
+      window._scrData.statusSdd         = statusSdd;
+      window._scrData.noteBossDecision  = note;
+      window._scrData.statusBossDecision = statusSdd;
+    }
+    _syncDecisionBadge();
+    if (typeof window.refreshSavedScreeningListGlobal === 'function') {
+      await window.refreshSavedScreeningListGlobal(sid);
+    }
+    if (typeof window.refreshSddBossDecisionViewer === 'function') {
+      window.refreshSddBossDecisionViewer();
+    }
+    _refreshDecisionChromeForDraft();
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('Keputusan tersimpan (' + statusSdd + ').', 'success');
+    }
+    if (typeof window.showSddNotification === 'function') {
+      window.showSddNotification('Saved', 'Keputusan screening tersimpan.', 'success');
+    }
+  } catch (e) {
+    var msg = (e && e.message) ? e.message : String(e);
+    if (typeof window.showSddToast === 'function') window.showSddToast('Save failed: ' + msg, 'error');
+    if (typeof window.showSddNotification === 'function') window.showSddNotification('Save Failed', msg, 'error');
   }
 };
 
@@ -4355,9 +4091,6 @@ function buildScrDataPayload(scrData) {
     'SCR - Certification': scrData.cert || '',
     'SCR - NDPE Policy': scrData.ndpe || '',
     'SCR - No Buy List': scrData.nbl || '',
-    'SCR - NBL Check Result': scrData.nblCheckResult || '',
-    'SCR - NBL Match Detail': scrData.nblCheckDetail || '',
-    'SCR - NBL Checked At': scrData.nblCheckedAt || '',
     'SCR - Grievance (Y/N)': scrData.grvYN || '',
     'SCR - PRI (Y/N)': scrData.priYN || '',
     'SCR - Notes': scrData.traceNote || '',
@@ -5023,17 +4756,13 @@ function initDashboardApp() {
     window.refreshSavedScreeningListGlobal();
   }
 
-  const MILL_FIELDS = ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
+  const MILL_FIELDS = ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
   let modalTaskKey = ''; // submission_id dari SDD yang di-add via Task List
   let allData = [];
   let currentFilter = 'All';
   let currentSearch = '';
-  let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpPkPctCol = '', ttpCategoryCol = '', ttpSearch = '';
-  let ttpPkTraceVolCol = '', ttpCpoTraceVolCol = '', ttpPkTraceDenomCol = '', ttpCpoTraceDenomCol = '';
-  let ttpPeriodMode = 'overall'; // 'overall' (full year) | 'quarter'
-  let ttpPeriodYear = '';
-  let ttpPeriodQuarter = 'Q1';
+  let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpSearch = '';
   let millLoadPromise = null;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -5061,7 +4790,6 @@ function initDashboardApp() {
     'SUPPLIER STATUS': ['Active','Inactive','Conditional'],
     'SUPPLIER LEVEL': ['Tier 1','Tier 2','Tier 3'],
     'RISK LEVEL': ['High','Medium','Low'],
-    'RESULT RISK LEVEL': ['High','Medium','Low'],
     'RECOMMENDATION LEVEL': ['Approved','Conditional','Not Approved'],
     'VOLUME SUPPLY STATUS': ['Active','Inactive'],
     'COMPLIMENT/NOT COMPLIMENT': ['Compliment','Not Compliment'],
@@ -5076,7 +4804,7 @@ function initDashboardApp() {
     { title: 'Grievances', fields: ['DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT'], totalField: 'TOTAL GRIEVANCES', totalLabel: 'Total Grievances (auto)' },
     { title: 'Policy', fields: ['NDPE','HRDD'], totalField: 'TOTAL POLICY', totalLabel: 'Total Policy (auto)' },
     { title: 'Sertifikasi', fields: ['CERTIFICATION','TOTAL CERTIFICATION'] },
-    { title: 'Supply & Status', fields: ['SUPPLIER LEVEL','SUPPLIER STATUS','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'] },
+    { title: 'Supply & Status', fields: ['SUPPLIER LEVEL','SUPPLIER STATUS','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'] },
   ];
 
   function calcTotals() {
@@ -5318,30 +5046,9 @@ function initDashboardApp() {
           }
           if (currentFilter === 'Task List') renderMillTaskList();
         }
-        // Mark supply draft row as submitted if opened from supply import context
-        if (window._supplyModalContext) {
-          const ctx = window._supplyModalContext;
-          window._supplyModalContext = null;
-          try {
-            const ctxBatch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
-            if (ctxBatch && ctxBatch.rows[ctx.rowIdx]) {
-              ctxBatch.rows[ctx.rowIdx]._submitted = true;
-              const allDone = ctxBatch.rows.every(function(r) { return r._submitted; });
-              if (allDone) ctxBatch.status = 'submitted';
-              // Mark on server
-              apiPost({ action: 'submitSupplyDraft', batch_id: ctx.batchId, rows: [ctxBatch.rows[ctx.rowIdx]] })
-                .catch(function(err) { console.warn('[supplyDraft] Mark submitted failed:', err.message); });
-              if (typeof renderSupplyDraftList_ === 'function') renderSupplyDraftList_();
-            }
-          } catch(e) {
-            console.warn('[supplyDraft] Failed to mark row submitted after modal save:', e);
-          }
-        }
         await loadMillData();
       } else if (modalSheet === 'ttp') {
         ttpLoaded = false; await loadTTPData();
-      } else if (modalSheet === 'contactSupplier') {
-        contactListLoaded = false; await loadContactListData(true);
       } else if (modalSheet === 'grievance') {
         grvLoaded = false; await loadGrvData();
       }
@@ -5398,12 +5105,9 @@ function initDashboardApp() {
 
   // ─── MILL DATA ──────────────────────────────────────────
   let millFilteredRows = [];
-  let millProfileVariantRows_ = [];
   let millSortKey = null;
   let millSortAsc = true;
   let millTableDelegationBound = false;
-  let millColumnFilters = {};
-  let millFilterOptions = {};
 
   /** Normalize sheet header key (trim, NBSP → space, lower). */
   function millHeaderNorm_(k) {
@@ -5507,21 +5211,12 @@ function initDashboardApp() {
       row['COMPANY NAME'],
       row['PROVINCE'],
       row['TRADER NAME'],
-      row['RISK LEVEL'],
-      row['RESULT RISK LEVEL'],
     ].map(function(v) {
       return String(v || '').toLowerCase();
     }).join('|');
     row._sddNblLower = nblLower;
     row._sddSearchBlob = searchBlob;
     return row;
-  }
-
-  /** Prefer computed result risk when present; else input risk (for summary cards). */
-  function millResolvedRiskLevelForStats_(d) {
-    const rr = String(d && d['RESULT RISK LEVEL'] != null ? d['RESULT RISK LEVEL'] : '').trim();
-    if (rr) return rr;
-    return String(d && d['RISK LEVEL'] != null ? d['RISK LEVEL'] : '').trim();
   }
 
   // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
@@ -5535,15 +5230,13 @@ function initDashboardApp() {
     { key: 'PROVINCE', label: 'Province' },
     { key: 'SUPPLIER STATUS', label: 'Supplier Status' },
     { key: 'RISK LEVEL', label: 'Risk Level' },
-    { key: 'RESULT RISK LEVEL', label: 'Result Risk Level' },
     { key: 'BUYER NO BUY LIST', label: 'No Buy List' },
-    { key: '__NBL_BY__', label: 'NBL by (riser)' },
     { key: 'CERTIFICATION', label: 'Certification' },
     { key: 'FACILITY NAME CPO', label: 'Facility CPO' },
     { key: 'FACILITY NAME PK', label: 'Facility PK' },
     { key: 'PRODUCT SUPPLY', label: 'Product Supply' },
   ];
-  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
+  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', 'CERTIFICATION'];
   let millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
   let millPdfDimFilters = {
     quarter: new Set(),
@@ -5569,38 +5262,6 @@ function initDashboardApp() {
 
   function millRegistryChipFilter() {
     return currentFilter === 'Task List' ? 'All' : currentFilter;
-  }
-
-  const MILL_TABLE_FILTER_COLS = [
-    'RESULT RISK LEVEL','GROUP NAME','COMPANY NAME','MILL NAME','PROVINCE',
-    'SUPPLIER STATUS','BUYER NO BUY LIST','CERTIFICATION',
-    'FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'
-  ];
-
-  function getMillFilterCellValue(row, colKey) {
-    if (colKey === 'QUARTER') return String(millQuarterVal(row) || '—');
-    if (colKey === 'YEAR') return String(millYearVal(row) || '—');
-    return String((row && row[colKey]) || '—').trim() || '—';
-  }
-
-  function millRefreshFilterOptions(baseRows) {
-    millFilterOptions = {};
-    MILL_TABLE_FILTER_COLS.forEach(function(col) {
-      millFilterOptions[col] = Array.from(new Set(baseRows.map(function(r) {
-        return getMillFilterCellValue(r, col);
-      }))).sort(function(a, b) {
-        return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
-      });
-      if (!Array.isArray(millColumnFilters[col])) millColumnFilters[col] = [];
-    });
-  }
-
-  function millRowMatchesColumnFilters(row) {
-    return MILL_TABLE_FILTER_COLS.every(function(col) {
-      var active = millColumnFilters[col];
-      if (!Array.isArray(active) || !active.length) return true;
-      return active.indexOf(getMillFilterCellValue(row, col)) !== -1;
-    });
   }
 
   function millRowMatchesChipAndSearch(d) {
@@ -5650,95 +5311,11 @@ function initDashboardApp() {
     return sorted;
   }
 
-  function bindMillHeaderFiltersOnce() {
-    const table = document.getElementById('millTable');
-    if (!table || table.dataset.millFilterBound === '1') return;
-    table.dataset.millFilterBound = '1';
-    table.addEventListener('click', function(e) {
-      const btn = e.target.closest('[data-mill-filter-btn]');
-      if (!btn || !table.contains(btn)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      document.querySelectorAll('.mill-col-filter-menu').forEach(function(m) { m.remove(); });
-      const col = btn.getAttribute('data-mill-filter-btn') || '';
-      if (!col) return;
-      const options = millFilterOptions[col] || [];
-      let selectedVals = (millColumnFilters[col] && millColumnFilters[col].length) ? millColumnFilters[col].slice() : options.slice();
-      const menu = document.createElement('div');
-      menu.className = 'mill-col-filter-menu';
-      menu.innerHTML =
-        '<div class="mill-col-filter-head">' + col + '</div>'
-        + '<input type="text" class="mill-col-filter-search" placeholder="Search value...">'
-        + '<div class="mill-col-filter-actions">'
-        + '<button type="button" data-act="all">Select all</button>'
-        + '<button type="button" data-act="none">Clear all</button>'
-        + '</div>'
-        + '<div class="mill-col-filter-list"></div>'
-        + '<div class="mill-col-filter-foot">'
-        + '<button type="button" data-act="cancel">Cancel</button>'
-        + '<button type="button" data-act="ok" class="is-primary">OK</button>'
-        + '</div>';
-      document.body.appendChild(menu);
-      const br = btn.getBoundingClientRect();
-      menu.style.top = (br.bottom + 6 + window.scrollY) + 'px';
-      menu.style.left = Math.max(8, br.right - 260 + window.scrollX) + 'px';
-
-      const listEl = menu.querySelector('.mill-col-filter-list');
-      const searchEl = menu.querySelector('.mill-col-filter-search');
-      function renderItems() {
-        if (!listEl) return;
-        const q = String((searchEl && searchEl.value) || '').trim().toLowerCase();
-        const items = options.filter(function(v) { return !q || String(v).toLowerCase().indexOf(q) !== -1; });
-        listEl.innerHTML = items.map(function(v) {
-          const checked = selectedVals.indexOf(v) !== -1;
-          return '<label class="mill-col-filter-item"><input type="checkbox" value="' + String(v).replace(/"/g,'&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + v + '</span></label>';
-        }).join('') || '<div class="mill-col-filter-empty">No values</div>';
-        listEl.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-          cb.addEventListener('change', function() {
-            const val = cb.value;
-            if (cb.checked) {
-              if (selectedVals.indexOf(val) === -1) selectedVals.push(val);
-            } else {
-              selectedVals = selectedVals.filter(function(x) { return x !== val; });
-            }
-          });
-        });
-      }
-      renderItems();
-      if (searchEl) searchEl.addEventListener('input', renderItems);
-      menu.querySelectorAll('[data-act]').forEach(function(ab) {
-        ab.addEventListener('click', function() {
-          const act = ab.getAttribute('data-act');
-          if (act === 'all') { selectedVals = options.slice(); renderItems(); return; }
-          if (act === 'none') { selectedVals = []; renderItems(); return; }
-          if (act === 'cancel') { menu.remove(); return; }
-          if (act === 'ok') {
-            millColumnFilters[col] = (selectedVals.length === 0 || selectedVals.length === options.length) ? [] : selectedVals.slice();
-            menu.remove();
-            scheduleRenderMillTable();
-          }
-        });
-      });
-      setTimeout(function() {
-        function closeOut(ev) {
-          if (!menu.contains(ev.target) && ev.target !== btn) {
-            menu.remove();
-            document.removeEventListener('click', closeOut, true);
-          }
-        }
-        document.addEventListener('click', closeOut, true);
-      }, 0);
-    });
-  }
-
-  function millRowsAfterRegistryDimFilters() {
-    return allData.filter(function(d) {
+  function getMillRowsForPdfExport() {
+    const filtered = allData.filter(function(d) {
       return millRowMatchesChipAndSearch(d) && millRowMatchesPdfDimFilters(d);
     });
-  }
-
-  function getMillRowsForPdfExport() {
-    return sortMillRowsForDisplay(millRowsAfterRegistryDimFilters());
+    return sortMillRowsForDisplay(filtered);
   }
 
   function updateMillPdfExportScope() {
@@ -5748,12 +5325,12 @@ function initDashboardApp() {
       el.textContent = 'Muat data mill terlebih dahulu';
       return;
     }
+    const tableN = sortMillRowsForDisplay(allData.filter(millRowMatchesChipAndSearch)).length;
     const pdfN = getMillRowsForPdfExport().length;
-    const tableN = sortMillRowsForDisplay(millRowsAfterRegistryDimFilters().filter(millRowMatchesColumnFilters)).length;
     if (tableN === pdfN) {
-      el.textContent = pdfN + ' rows · table view matches export';
+      el.textContent = pdfN + ' baris · sama dengan tabel';
     } else {
-      el.textContent = pdfN + ' rows exported · ' + tableN + ' rows shown in table (column filters active)';
+      el.textContent = pdfN + ' baris untuk PDF · ' + tableN + ' di tabel';
     }
   }
 
@@ -5846,28 +5423,42 @@ function initDashboardApp() {
     if (millPdfDimFilters[dim]) millPdfDimFilters[dim].clear();
     document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-dim="' + dim + '"][data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
     updateMillPdfExportScope();
-    scheduleRenderMillTable();
   }
 
   function millPdfResetAllDims() {
     millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
     document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
     updateMillPdfExportScope();
-    scheduleRenderMillTable();
   }
 
-  async function millExportToPdf() {
+  function millExportToPdf() {
     const toastErr = function(msg) {
       if (typeof window.showSddToast === 'function') window.showSddToast(msg, 'error');
     };
     const rows = getMillRowsForPdfExport();
     if (!rows.length) {
-      toastErr('Tidak ada baris untuk diekspor. Sesuaikan chip, pencarian, filter registry, atau filter kolom.');
+      toastErr('Tidak ada baris untuk diekspor. Sesuaikan chip, pencarian, atau saringan export.');
       return;
     }
     const cols = MILL_PDF_EXPORT_COLS.filter(function(c) { return millPdfColSelected.has(c.key); });
     if (!cols.length) {
       toastErr('Pilih minimal satu kolom di menu Kolom PDF.');
+      return;
+    }
+    const JsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+    if (!JsPDFLib) {
+      toastErr('Library jsPDF belum dimuat. Refresh halaman.');
+      return;
+    }
+    let probe;
+    try {
+      probe = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    } catch (e) {
+      toastErr('Gagal membuat PDF: ' + (e.message || e));
+      return;
+    }
+    if (typeof probe.autoTable !== 'function') {
+      toastErr('Plugin AutoTable belum dimuat. Refresh halaman.');
       return;
     }
 
@@ -5876,8 +5467,6 @@ function initDashboardApp() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Menghasilkan…'; }
 
     try {
-      const nblLists = await ensureNblListsForCheck_();
-      const JsPDFLib = getJsPDF();
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4', orientation: 'landscape' });
       const RED = [139, 26, 26];
       const WHITE = [255, 255, 255];
@@ -5894,20 +5483,10 @@ function initDashboardApp() {
 
       const body = rows.map(function(row) {
         return cols.map(function(c) {
-          if (c.key === '__NBL_BY__') {
-            if (!millIsNblYes_(row['BUYER NO BUY LIST'])) return '';
-            var info = millNblByInfoFromMatches_(millNblSourceMatchesForRow_(row, nblLists));
-            return String(info && info.label ? info.label : '').replace(/\r?\n/g, ' ');
-          }
           const v = row[c.key];
           return String(v !== undefined && v !== null ? v : '').replace(/\r?\n/g, ' ');
         });
       });
-      const nblByColIdx = cols.findIndex(function(c) { return c.key === '__NBL_BY__'; });
-      const columnStyles = {};
-      if (nblByColIdx !== -1) {
-        columnStyles[nblByColIdx] = { cellWidth: 42, overflow: 'linebreak' };
-      }
       doc.autoTable({
         head: [cols.map(function(c) { return c.label; })],
         body: body,
@@ -5917,7 +5496,6 @@ function initDashboardApp() {
         headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 7 },
         alternateRowStyles: { fillColor: [253, 250, 250] },
         theme: 'striped',
-        columnStyles: columnStyles,
       });
 
       const fname = 'Mill-Registry-' + new Date().toISOString().slice(0, 10) + '.pdf';
@@ -5973,7 +5551,6 @@ function initDashboardApp() {
       if (t.checked) millPdfDimFilters[dim].add(tok);
       else millPdfDimFilters[dim].delete(tok);
       updateMillPdfExportScope();
-      scheduleRenderMillTable();
     });
 
     const resetAll = document.getElementById('millPdfDimResetAll');
@@ -6032,7 +5609,6 @@ function initDashboardApp() {
     if (!tr || tr.dataset.millSortBound) return;
     tr.dataset.millSortBound = '1';
     tr.addEventListener('click', function(e) {
-      if (e.target && e.target.closest && e.target.closest('[data-mill-filter-btn]')) return;
       const th = e.target.closest('[data-mill-sort]');
       if (!th || !tr.contains(th)) return;
       const key = th.getAttribute('data-mill-sort');
@@ -6121,7 +5697,7 @@ function initDashboardApp() {
 
       document.getElementById('stat-total').textContent = allData.length;
       document.getElementById('stat-groups').textContent = new Set(allData.map(d => d['GROUP NAME']).filter(Boolean)).size;
-      document.getElementById('stat-high-risk').textContent = allData.filter(d => (millResolvedRiskLevelForStats_(d) || '').toLowerCase().includes('high')).length;
+      document.getElementById('stat-high-risk').textContent = allData.filter(d => (d['RISK LEVEL']||'').toLowerCase().includes('high')).length;
       document.getElementById('stat-nbl').textContent = allData.filter(d => (d['BUYER NO BUY LIST']||'').toLowerCase() === 'yes' || (d['BUYER NO BUY LIST']||'').toLowerCase().includes('nbl')).length;
       loading.style.display = 'none';
       table.style.display = 'table';
@@ -6150,8 +5726,8 @@ function initDashboardApp() {
     const v = val.toString().toLowerCase();
     const isNBL = v === 'yes' || v.includes('nbl') || v.includes('no buy');
     return isNBL
-      ? `<span class="status-badge" style="background:rgba(192,57,43,0.1);color:#c0392b">${val}</span>`
-      : `<span class="status-badge s-active">${val}</span>`;
+      ? `<span class="status-badge" style="background:rgba(192,57,43,0.1);color:#c0392b"><span class="s-dot"></span>${val}</span>`
+      : `<span class="status-badge s-active"><span class="s-dot"></span>${val}</span>`;
   }
 
   function supplierBadge(val) {
@@ -6160,7 +5736,7 @@ function initDashboardApp() {
     let cls = 's-pending';
     if (['active','compliant'].some(k => lower.includes(k))) cls = 's-active';
     else if (['review','pending','conditional'].some(k => lower.includes(k))) cls = 's-review';
-    return `<span class="status-badge ${cls}">${val}</span>`;
+    return `<span class="status-badge ${cls}"><span class="s-dot"></span>${val}</span>`;
   }
 
   function riskBadgeLevel(val) {
@@ -6170,46 +5746,19 @@ function initDashboardApp() {
     if (lower.includes('high') || lower.includes('tinggi')) { bg = 'rgba(192,57,43,0.1)'; color = '#c0392b'; }
     else if (lower.includes('med') || lower.includes('sedang')) { bg = 'rgba(200,168,75,0.15)'; color = '#8a6e1a'; }
     else if (lower.includes('low') || lower.includes('rendah')) { bg = 'rgba(39,174,96,0.1)'; color = '#1e8449'; }
-    return `<span class="status-badge" style="background:${bg};color:${color}">${val}</span>`;
-  }
-
-  /** Glossy pill for Mill Registry "Result Risk Level" only (HIGH / MEDIUM / LOW). */
-  function resultRiskLevelPill(val) {
-    if (val == null || val === '-') {
-      return '<span class="mill-rrl mill-rrl--empty" aria-hidden="true">—</span>';
-    }
-    const raw = String(val).trim();
-    if (!raw) {
-      return '<span class="mill-rrl mill-rrl--empty" aria-hidden="true">—</span>';
-    }
-    const lower = raw.toLowerCase();
-    let tier = 'other';
-    if (lower.includes('high') || lower.includes('tinggi')) tier = 'high';
-    else if (lower.includes('med') || lower.includes('sedang')) tier = 'medium';
-    else if (lower.includes('low') || lower.includes('rendah')) tier = 'low';
-    const lbl = millPdfEscHtml(raw);
-    const aria = millPdfEscHtml('Result risk level: ' + raw);
-    return '<span class="mill-rrl mill-rrl--' + tier + '" role="img" aria-label="' + aria + '">'
-      + '<span class="mill-rrl-pill"><span class="mill-rrl-pill__sheen" aria-hidden="true"></span>'
-      + '<span class="mill-rrl-pill__lbl">' + lbl + '</span></span></span>';
+    return `<span class="status-badge" style="background:${bg};color:${color}"><span class="s-dot"></span>${val}</span>`;
   }
 
   function renderMillTable() {
     const body = document.getElementById('millTableBody');
     if (!body) return;
     bindMillTableDelegationOnce();
-    bindMillHeaderFiltersOnce();
-    const baseFiltered = millRowsAfterRegistryDimFilters();
-    millRefreshFilterOptions(baseFiltered);
-    const filtered = baseFiltered.filter(millRowMatchesColumnFilters);
+    const filtered = allData.filter(d => millRowMatchesChipAndSearch(d));
     const sorted = sortMillRowsForDisplay(filtered);
     millFilteredRows = sorted;
     updateMillPdfExportScope();
 
     const theadRow = document.querySelector('#millTable thead tr');
-    if (millSortKey && theadRow && !theadRow.querySelector('[data-mill-sort="' + millSortKey + '"]')) {
-      millSortKey = null;
-    }
     if (theadRow) {
       theadRow.querySelectorAll('[data-mill-sort]').forEach(function(th) {
         th.classList.remove('is-sorted', 'is-sorted-asc', 'is-sorted-desc');
@@ -6217,28 +5766,25 @@ function initDashboardApp() {
           th.classList.add('is-sorted', millSortAsc ? 'is-sorted-asc' : 'is-sorted-desc');
         }
       });
-      theadRow.querySelectorAll('[data-mill-filter-btn]').forEach(function(btn) {
-        const key = btn.getAttribute('data-mill-filter-btn') || '';
-        const hasActive = Array.isArray(millColumnFilters[key]) && millColumnFilters[key].length > 0;
-        btn.classList.toggle('is-active', hasActive);
-      });
     }
 
     body.innerHTML = sorted.length === 0
-      ? `<tr><td colspan="11" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
+      ? `<tr><td colspan="13" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
       : sorted.map((d, i) => `
         <tr class="mill-row-clickable" data-idx="${i}" title="Klik untuk lihat detail lengkap">
-          <td>${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
+          <td>${millQuarterVal(d) || '—'}</td>
+          <td>${millYearVal(d) || '—'}</td>
           <td>${d['GROUP NAME'] || '—'}</td>
           <td>${d['COMPANY NAME'] || '—'}</td>
           <td><span class="mill-name">${d['MILL NAME'] || '—'}</span><div class="mill-id">${d['UML ID'] || ''}</div></td>
           <td>${d['PROVINCE'] || '—'}</td>
           <td>${supplierBadge(d['SUPPLIER STATUS'])}</td>
+          <td>${riskBadgeLevel(d['RISK LEVEL'])}</td>
           <td>${nblBadge(d['BUYER NO BUY LIST'])}</td>
           <td>${d['CERTIFICATION'] || '—'}</td>
-          <td class="mill-cell-long">${d['FACILITY NAME CPO'] || '—'}</td>
-          <td class="mill-cell-long">${d['FACILITY NAME PK'] || '—'}</td>
-          <td class="mill-cell-long">${d['PRODUCT SUPPLY'] || '—'}</td>
+          <td class="td-truncate" title="${d['FACILITY NAME CPO'] || ''}">${d['FACILITY NAME CPO'] ? (d['FACILITY NAME CPO'].length > 18 ? d['FACILITY NAME CPO'].substring(0,18)+'…' : d['FACILITY NAME CPO']) : '—'}</td>
+          <td class="td-truncate" title="${d['FACILITY NAME PK'] || ''}">${d['FACILITY NAME PK'] ? (d['FACILITY NAME PK'].length > 18 ? d['FACILITY NAME PK'].substring(0,18)+'…' : d['FACILITY NAME PK']) : '—'}</td>
+          <td class="td-truncate" title="${d['PRODUCT SUPPLY'] || ''}">${d['PRODUCT SUPPLY'] ? (d['PRODUCT SUPPLY'].length > 18 ? d['PRODUCT SUPPLY'].substring(0,18)+'…' : d['PRODUCT SUPPLY']) : '—'}</td>
         </tr>`).join('');
   }
 
@@ -6246,400 +5792,41 @@ function initDashboardApp() {
   if (btnAddMill) btnAddMill.addEventListener('click', () => openModal('mill', MILL_FIELDS, 'add', null));
 
   // ─── MILL PROFILE POPUP ─────────────────────────────────
-
-  function millProfileSameEntityRows_(anchorRow) {
-    if (!anchorRow || typeof anchorRow !== 'object') return [];
-    if (!Array.isArray(allData) || !allData.length) return [anchorRow];
-    function nk(r, k) {
-      return String(r && r[k] != null ? r[k] : '').trim().toLowerCase();
-    }
-    const c = nk(anchorRow, 'COMPANY NAME');
-    const m = nk(anchorRow, 'MILL NAME');
-    const g = nk(anchorRow, 'GROUP NAME');
-    const rows = allData.filter(function(r) {
-      return nk(r, 'COMPANY NAME') === c && nk(r, 'MILL NAME') === m && nk(r, 'GROUP NAME') === g;
-    });
-    return rows.length ? rows : [anchorRow];
-  }
-
-  function millProfileComparePeriodDesc_(a, b) {
-    const ya = parseMillYearSort(millYearVal(a));
-    const yb = parseMillYearSort(millYearVal(b));
-    if (ya !== yb) return yb - ya;
-    const qa = parseMillQuarterSort(millQuarterVal(a));
-    const qb = parseMillQuarterSort(millQuarterVal(b));
-    return qb - qa;
-  }
-
-  function millProfileSortYearTokDesc_(toks) {
-    return toks.slice().sort(function(a, b) {
-      if (a === '__EMPTY__') return 1;
-      if (b === '__EMPTY__') return -1;
-      return parseMillYearSort(b) - parseMillYearSort(a);
-    });
-  }
-
-  function millProfileSortQuarterTokDesc_(toks) {
-    return toks.slice().sort(function(a, b) {
-      if (a === '__EMPTY__') return 1;
-      if (b === '__EMPTY__') return -1;
-      return parseMillQuarterSort(b) - parseMillQuarterSort(a);
-    });
-  }
-
-  function millProfileCollectYearToks_(siblings) {
-    const s = new Set();
-    siblings.forEach(function(r) { s.add(millPdfTokenForCell(millYearVal(r))); });
-    return millProfileSortYearTokDesc_(Array.from(s));
-  }
-
-  function millProfileCollectQuarterToksForYear_(siblings, yearTok) {
-    const s = new Set();
-    siblings.forEach(function(r) {
-      if (millPdfTokenForCell(millYearVal(r)) === yearTok) {
-        s.add(millPdfTokenForCell(millQuarterVal(r)));
-      }
-    });
-    return millProfileSortQuarterTokDesc_(Array.from(s));
-  }
-
-  function millProfileFillSelectToks_(sel, toks) {
-    if (!sel) return;
-    const list = (toks && toks.length) ? toks : ['__EMPTY__'];
-    sel.innerHTML = list.map(function(t) {
-      return '<option value="' + millPdfEscHtml(t) + '">' + millPdfEscHtml(millPdfLabelForToken(t)) + '</option>';
-    }).join('');
-  }
-
-  function millProfileFindRowByPeriodTok_(siblings, yTok, qTok) {
-    for (let i = 0; i < siblings.length; i++) {
-      const r = siblings[i];
-      if (millPdfTokenForCell(millYearVal(r)) === yTok && millPdfTokenForCell(millQuarterVal(r)) === qTok) {
-        return r;
-      }
-    }
-    return null;
-  }
-
-  function millProfileTitleCaseWords_(s) {
-    return String(s == null ? '' : s).trim().split(/\s+/).map(function(w) {
-      if (!w) return '';
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-    }).filter(Boolean).join(' ');
-  }
-
-  function millIsNblYes_(raw) {
-    var v = String(raw == null ? '' : raw).trim().toLowerCase();
-    return v === 'yes' || v.includes('nbl') || v.includes('no buy');
-  }
-
-  function millNameSimilarLoose_(a, b) {
-    var na = normalizeLooseKey(a);
-    var nb = normalizeLooseKey(b);
-    if (!na || !nb) return false;
-    if (na === nb) return true;
-    // "mirip" match: one contained in another, but avoid very short false positives
-    if (na.length >= 4 && nb.includes(na)) return true;
-    if (nb.length >= 4 && na.includes(nb)) return true;
-    // Token-level fuzzy match for small spelling variants (e.g. sumatra/sumatera).
-    var ta = String(a || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function(t) { return t.length >= 3; });
-    var tb = String(b || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function(t) { return t.length >= 3; });
-    if (!ta.length || !tb.length) return false;
-    function levDist_(x, y) {
-      if (x === y) return 0;
-      var m = x.length, n = y.length;
-      if (!m) return n;
-      if (!n) return m;
-      var prev = [];
-      for (var j = 0; j <= n; j++) prev[j] = j;
-      for (var i = 1; i <= m; i++) {
-        var cur = [i];
-        for (var j2 = 1; j2 <= n; j2++) {
-          var cost = x.charAt(i - 1) === y.charAt(j2 - 1) ? 0 : 1;
-          cur[j2] = Math.min(
-            cur[j2 - 1] + 1,
-            prev[j2] + 1,
-            prev[j2 - 1] + cost
-          );
-        }
-        prev = cur;
-      }
-      return prev[n];
-    }
-    function tokenNear_(x, y) {
-      if (x === y) return true;
-      if (x.length >= 4 && y.includes(x)) return true;
-      if (y.length >= 4 && x.includes(y)) return true;
-      // allow one-char typo on longer tokens
-      if (x.length >= 6 && y.length >= 6 && Math.abs(x.length - y.length) <= 1) {
-        return levDist_(x, y) <= 1;
-      }
-      return false;
-    }
-    var hits = 0;
-    for (var i = 0; i < ta.length; i++) {
-      var t1 = ta[i];
-      var ok = false;
-      for (var j = 0; j < tb.length; j++) {
-        if (tokenNear_(t1, tb[j])) { ok = true; break; }
-      }
-      if (ok) hits++;
-    }
-    // Require at least 2 token hits to reduce false positives.
-    if (hits >= 2) return true;
-    return false;
-  }
-
-  function millNblSourceMatchesForRow_(row, lists) {
-    var group = String(row && row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
-    var company = String(row && row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
-    var out = [];
-    var seen = {};
-
-    function pushOnce_(key, item) {
-      if (seen[key]) return;
-      seen[key] = true;
-      out.push(item);
-    }
-
-    // Source: NBL registry (Group/Company)
-    (lists.registry || []).forEach(function(r, i) {
-      var groupHit = !!(group && (millNameSimilarLoose_(group, r._nblGroup) || millNameSimilarLoose_(group, r._nblCompany)));
-      var companyHit = !!(company && (millNameSimilarLoose_(company, r._nblGroup) || millNameSimilarLoose_(company, r._nblCompany)));
-      if (!groupHit && !companyHit) return;
-      var hitBy = [];
-      if (groupHit) hitBy.push('GROUP NAME');
-      if (companyHit) hitBy.push('COMPANY NAME');
-      pushOnce_('nbl-' + i, {
-        source: 'NBL',
-        by: hitBy.join(' / '),
-        target: (r._nblGroup || r._nblCompany || '—'),
-        riser: (r._nblRiser || '').trim(),
-      });
-    });
-
-    // Source: Unilever NBL (match by GROUP/COMPANY vs Unilever COMPANY)
-    (lists.unilever || []).forEach(function(r, i) {
-      var groupHit = !!(group && millNameSimilarLoose_(group, r._nblCompany));
-      var companyHit = !!(company && millNameSimilarLoose_(company, r._nblCompany));
-      if (!groupHit && !companyHit) return;
-      var hitBy = [];
-      if (groupHit) hitBy.push('GROUP NAME');
-      if (companyHit) hitBy.push('COMPANY NAME');
-      pushOnce_('uni-' + i, {
-        source: 'Unilever NBL',
-        by: hitBy.join(' / '),
-        target: (r._nblCompany || '—'),
-        riser: (String(r._nblRiser || '').trim() || 'Unilever'),
-      });
-    });
-
-    return out;
-  }
-
-  function millNblByInfoFromMatches_(matches) {
-    var risers = [];
-    var seen = {};
-    var hasUnilever = false;
-    (matches || []).forEach(function(m) {
-      var src = String(m && m.source ? m.source : '').trim();
-      var riser = String(m && m.riser ? m.riser : '').trim();
-      if (src === 'Unilever NBL') hasUnilever = true;
-      if (!riser) return;
-      var key = riser.toLowerCase();
-      if (seen[key]) return;
-      seen[key] = true;
-      risers.push(riser);
-    });
-
-    function formatRisersLabel_(vals) {
-      var clean = (vals || []).map(function(v) {
-        return millProfileTitleCaseWords_(String(v || '').trim());
-      }).filter(Boolean);
-      if (!clean.length) return '';
-      clean.sort(function(a, b) { return a.localeCompare(b, 'id', { sensitivity: 'base' }); });
-      return clean.join(', ');
-    }
-
-    if (risers.length) {
-      return {
-        label: 'NBL by ' + formatRisersLabel_(risers),
-        risers: risers,
-        hasUnilever: hasUnilever
-      };
-    }
-    if (hasUnilever) {
-      return { label: 'NBL by Unilever NBL', risers: [], hasUnilever: true };
-    }
-    return { label: 'Yes (source unresolved)', risers: [], hasUnilever: false };
-  }
-
-  async function millResolveNblByInfo_(row) {
-    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
-      return { label: '', risers: [], hasUnilever: false, matches: [] };
-    }
-    var lists = await ensureNblListsForCheck_();
-    var matches = millNblSourceMatchesForRow_(row || {}, lists);
-    var info = millNblByInfoFromMatches_(matches);
-    info.matches = matches;
-    return info;
-  }
-
-  let millProfileNblInfoReqSeq_ = 0;
-  async function millProfileUpdateNblSourceInfo_(row) {
-    var infoEl = document.getElementById('mp-mill-nbl-source');
-    if (!infoEl) return;
-    var reqId = ++millProfileNblInfoReqSeq_;
-
-    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
-      infoEl.innerHTML = '';
-      return;
-    }
-
-    infoEl.innerHTML = 'Checking NBL source…';
-    try {
-      if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
-      var info = await millResolveNblByInfo_(row || {});
-      if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
-      if (!info.label) {
-        infoEl.innerHTML = '';
-        return;
-      }
-      infoEl.innerHTML = '<strong>' + escHtml(info.label) + '</strong>';
-    } catch (err) {
-      if (reqId !== millProfileNblInfoReqSeq_) return;
-      infoEl.innerHTML = '<strong>Yes (source unresolved)</strong>';
-    }
-  }
-
-  function millProfileFormatHeaderLoc_(row) {
-    const g = String(row && row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
-    const p = String(row && row['PROVINCE'] != null ? row['PROVINCE'] : '').trim();
-    if (!g && !p) return '—';
-    if (!g) return millProfileTitleCaseWords_(p);
-    if (!p) return millProfileTitleCaseWords_(g);
-    return millProfileTitleCaseWords_(g) + ' — ' + millProfileTitleCaseWords_(p);
-  }
-
-  function millProfileUpdateHeaderFromRow_(row) {
-    if (!row || typeof row !== 'object') return;
-    const nameEl = document.getElementById('mp-mill-name');
-    const locEl = document.getElementById('mp-mill-loc');
-    const supEl = document.getElementById('mp-mill-supplier');
-    const nblEl = document.getElementById('mp-mill-nbl');
-    const nblSourceEl = document.getElementById('mp-mill-nbl-source');
-    const rrEl = document.getElementById('mp-mill-result-risk');
-    if (!nameEl || !locEl || !supEl || !nblEl || !rrEl) return;
-    const companyName = String(row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
-    const groupName = String(row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
-    const millName = String(row['MILL NAME'] != null ? row['MILL NAME'] : '').trim();
-    nameEl.textContent = companyName
-      ? millProfileTitleCaseWords_(companyName)
-      : (millName ? millProfileTitleCaseWords_(millName) : '—');
-    locEl.textContent = groupName
-      ? millProfileTitleCaseWords_(groupName)
-      : millProfileFormatHeaderLoc_(row);
-    const sup = String(row['SUPPLIER STATUS'] != null ? row['SUPPLIER STATUS'] : '').trim();
-    supEl.textContent = sup ? millProfileTitleCaseWords_(sup) : '—';
-    nblEl.innerHTML = nblBadge(row['BUYER NO BUY LIST']);
-    if (nblSourceEl) nblSourceEl.innerHTML = '';
-    rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
-    millProfileUpdateNblSourceInfo_(row);
-  }
-
-  const MILL_PROFILE_FIELD_ALIASES_ = {
-    'MILL LOC': ['MILL LOC', 'MILL LOCATION', 'Mill Location', 'LOC'],
-    'DEFORESTATION SPATIAL': ['DEFORESTATION SPATIAL', 'Deforestation Spatial'],
-    'BURN AREA SPATIAL': ['BURN AREA SPATIAL', 'Burn Area Spatial'],
-    'PEAT': ['PEAT', 'Peat'],
-    'NDPE': ['NDPE'],
-    'HRDD': ['HRDD'],
-  };
-
-  const MILL_PROFILE_YESNO_KEYS_ = new Set([
-    'DEFORESTATION SPATIAL', 'BURN AREA SPATIAL', 'PEAT', 'NDPE', 'HRDD',
-  ]);
-
-  /** Sheet column LEGALITY SCORE (or SCORE): 1 → Complete, 0 → Not Complete. */
-  function millProfileLegalityFromScore_(d) {
-    const raw = pickSavedCol(d, ['LEGALITY SCORE', 'SCORE', 'Legality Score']);
-    if (raw === '' || raw === null || raw === undefined) return '';
-    if (typeof raw === 'number' && !isNaN(raw)) {
-      if (raw === 1) return 'Complete';
-      if (raw === 0) return 'Not Complete';
-    }
-    const s = String(raw).trim();
-    const t = s.toLowerCase();
-    if (t === '1' || t === 'complete') return 'Complete';
-    if (t === '0' || t === 'not complete' || t === 'non complete') return 'Not Complete';
-    return s;
-  }
-
-  function millProfileFormatYesNo_(raw) {
-    const s = String(raw == null ? '' : raw).trim();
-    if (!s) return '';
-    const t = s.toLowerCase();
-    if (t === 'yes' || t === 'y' || t === '1' || t === 'true' || t === 'ada') return 'Yes';
-    if (t === 'no' || t === 'n' || t === '0' || t === 'false' || t === 'tidak') return 'No';
-    return s;
-  }
-
-  function millProfileResolveField_(d, key, opts) {
-    opts = opts || {};
-    const aliases = MILL_PROFILE_FIELD_ALIASES_[key] || [key];
-    const v = pickSavedCol(d, aliases);
-    if (!v) return '';
-    if (opts.raw) return v;
-    if (opts.yesNo || MILL_PROFILE_YESNO_KEYS_.has(key)) return millProfileFormatYesNo_(v) || v;
-    return v;
-  }
-
-  function millProfileBuildSectionsHtml_(d) {
-    function millProfileFormatSupplyValue_(raw) {
-      if (raw == null) return '';
-      if (typeof raw === 'string') return raw.trim();
-      if (typeof raw === 'number') {
-        if (!isFinite(raw)) return '';
-        if (Number.isInteger(raw) && Math.abs(raw) >= 1000) {
-          return String(raw).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-        }
-        return String(raw);
-      }
-      const s = String(raw).trim();
-      if (!s) return '';
-      if (/^[+-]?\d+$/.test(s) && s.length > 3) {
-        const neg = s[0] === '-';
-        const digits = neg ? s.slice(1) : s;
-        const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-        return neg ? '-' + grouped : grouped;
-      }
-      return s;
-    }
+  function openMillProfile(d) {
+    document.getElementById('mp-mill-name').textContent = d['MILL NAME'] || '—';
+    document.getElementById('mp-mill-sub').textContent =
+      [d['UML ID'], d['GROUP NAME'], d['PROVINCE']].filter(Boolean).join(' • ');
 
     const sections = [
       {
-        title: 'Mill Identity',
+        title: 'Identitas Mill',
         fields: [
-          ['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'],
-          ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'],
-          ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)'],
+          ['QUARTER','Quarter'], ['YEAR','Year'],
+          ['COMPANY CODE','Company Code'], ['TRADER NAME','Trader Name'], ['GROUP NAME','Group Name'],
+          ['COMPANY NAME','Company Name'], ['MILL NAME','Mill Name'], ['UML ID','UML ID'],
+          ['PROVINCE','Province'],
+          ['ADDRESS','Address'], ['COORDINATES','Coordinates'],
+          ['MILL CATEGORY','Mill Category'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)'],
         ]
       },
       {
-        title: 'Legality',
+        title: 'Legalitas',
         fields: [
-          ['LEGALITY', 'Legality'],
-          ['MILL LOC', 'Mill Location'],
-        ],
-      },
-      {
-        title: 'Certification',
-        fields: [
-          ['CERTIFICATION','Certification'],
+          ['HGU/HGB','HGU/HGB'], ['IZIN LOKASI','Izin Lokasi'], ['IUP','IUP'],
+          ['IZIN LINGKUNGAN','Izin Lingkungan'], ['LEGALITY','Legality'],
         ]
       },
       {
-        title: 'Spatial',
+        title: 'Skor & Sertifikasi',
+        fields: [
+          ['SCORE','Score'], ['MILL LOC','Mill Loc'],
+          ['COMPLIMENT/NOT COMPLIMENT','Compliment/Not Compliment'],
+          ['CERTIFICATION','Certification'], ['TOTAL CERTIFICATION','Total Certification'],
+          ['TOTAL SCORE','Total Score'],
+        ]
+      },
+      {
+        title: 'Spatial & Lingkungan',
         fields: [
           ['DEFORESTATION SPATIAL','Deforestation Spatial'], ['BURN AREA SPATIAL','Burn Area Spatial'],
           ['PEAT','Peat'],
@@ -6648,296 +5835,42 @@ function initDashboardApp() {
       {
         title: 'Grievances',
         fields: [
-          ['TOTAL GRIEVANCES','Grievance'],
+          ['DEFORESTATION GRIEVANCES','Deforestation Grievances'], ['BURN AREA GRIEVANCES','Burn Area Grievances'],
+          ['HUMAN RIGHT','Human Right'], ['SAFETY','Safety'], ['SOCIAL','Social'],
+          ['ENVIRONMENT','Environment'], ['TOTAL GRIEVANCES','Total Grievances'],
         ]
       },
       {
-        title: 'Policy',
+        title: 'Policy & Supply',
         fields: [
-          ['NDPE','NDPE'], ['HRDD','HRDD'],
-        ]
-      },
-      {
-        title: 'Supplied Data',
-        fields: [
+          ['NDPE','NDPE'], ['HRDD','HRDD'], ['TOTAL POLICY','Total Policy'],
+          ['SUPPLIER LEVEL','Supplier Level'], ['BUYER NO BUY LIST','No Buy List'],
+          ['VOLUME SUPPLY STATUS','Volume Supply Status'], ['RECOMMENDATION LEVEL','Recommendation Level'],
+          ['SIGN','Sign'], ['SUPPLIER STATUS','Supplier Status'],
+          ['FACILITY NAME CPO','Facility Name CPO'], ['FACILITY NAME PK','Facility Name PK'],
           ['PRODUCT SUPPLY','Product Supply'],
-          ['SUPPLY CPO','Supply CPO'],
-          ['SUPPLY PK','Supply PK'],
-          ['FACILITY NAME','Facility Name'],
         ]
       },
     ];
-    return sections.map(function(sec) {
-      return `
+
+    const mpBody = document.getElementById('millProfileBody');
+    if (!mpBody) return;
+    mpBody.innerHTML = sections.map(sec => `
       <div class="mp-section">
         <div class="mp-section-title">${sec.title}</div>
-        <div class="mp-grid${sec.fields.length <= 4 ? ' cols2' : ''}${sec.title === 'Legality' ? ' legalitas-stack' : ''}${sec.title === 'Spatial' ? ' spatial-stack' : ''}${sec.title === 'Grievances' ? ' grievances-stack' : ''}${sec.title === 'Policy' ? ' policy-stack' : ''}${sec.title === 'Supplied Data' ? ' supplied-stack' : ''}">
-          ${sec.fields.map(function(fl) {
-            const key = fl[0];
-            const label = fl[1];
-            let val = '';
-            if (key === 'LEGALITY') {
-              val = millProfileLegalityFromScore_(d);
-            } else {
-              val = millProfileResolveField_(d, key, {
-                yesNo: MILL_PROFILE_YESNO_KEYS_.has(key),
-              });
-            }
-            if (key === 'FACILITY NAME') {
-              const facCpo = String(d['FACILITY NAME CPO'] || '').trim();
-              const facPk = String(d['FACILITY NAME PK'] || '').trim();
-              val = [facCpo, facPk].filter(Boolean).join(' / ');
-            }
-            if (key === 'SUPPLY CPO') {
-              val =
-                (d['SUPPLY CPO'] != null ? d['SUPPLY CPO'] : '') ||
-                (d['CPO SUPPLY to REFINERY'] != null ? d['CPO SUPPLY to REFINERY'] : '') ||
-                (d['SCR - CPO Supply'] != null ? d['SCR - CPO Supply'] : '');
-              val = millProfileFormatSupplyValue_(val);
-            }
-            if (key === 'SUPPLY PK') {
-              val =
-                (d['SUPPLY PK'] != null ? d['SUPPLY PK'] : '') ||
-                (d['PK SUPPLY to KCP'] != null ? d['PK SUPPLY to KCP'] : '') ||
-                (d['SCR - PK Supply'] != null ? d['SCR - PK Supply'] : '');
-              val = millProfileFormatSupplyValue_(val);
-            }
-            if (key === 'TOTAL POLICY') {
-              const polTok = String(val == null ? '' : val).trim().toLowerCase();
-              if (polTok === '1' || polTok === 'yes') val = 'Yes';
-              else if (polTok === '0' || polTok === 'no') val = 'No';
-            }
-            if (key === 'TOTAL GRIEVANCES') {
-              const grvTok = String(val == null ? '' : val).trim().toLowerCase();
-              if (grvTok === '1' || grvTok === 'yes') val = 'Yes';
-              else if (grvTok === '0' || grvTok === 'no') val = 'No';
-            }
-            const isWide = key === 'ADDRESS';
-            const isLong = key === 'COORDINATES' || (sec.title === 'Certification' && key === 'CERTIFICATION');
-            return `<div class="mp-field${isWide ? ' wide' : ''}${isLong ? ' full' : ''}">
+        <div class="mp-grid${sec.fields.length <= 4 ? ' cols2' : ''}">
+          ${sec.fields.map(([key, label]) => {
+            const val = d[key] || '';
+            const isLong = key === 'ADDRESS' || key === 'COORDINATES';
+            return `<div class="mp-field${isLong ? ' full' : ''}">
               <div class="mp-label">${label}</div>
               <div class="mp-val">${val || '—'}</div>
             </div>`;
           }).join('')}
         </div>
-      </div>`;
-    }).join('');
-  }
+      </div>`).join('');
 
-  function millProfileRenderBody_(d) {
-    const mpBody = document.getElementById('millProfileBody');
-    if (!mpBody) return;
-    mpBody.innerHTML = millProfileBuildSectionsHtml_(d);
-  }
-
-  function millProfileCurrentRow_() {
-    const siblings = millProfileVariantRows_ || [];
-    if (!siblings.length) return null;
-    const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
-    if (!ySel || !qSel) return siblings[0];
-    const row = millProfileFindRowByPeriodTok_(siblings, ySel.value, qSel.value);
-    return row || siblings[0];
-  }
-
-  async function millProfileExportPdf() {
-    const row = millProfileCurrentRow_();
-    const btn = document.getElementById('millProfileExportPdfBtn');
-    const toastErr = function(msg) {
-      if (typeof window.showSddToast === 'function') window.showSddToast(msg, 'error');
-      else alert(msg);
-    };
-    if (!row) {
-      toastErr('Data mill tidak ditemukan untuk diekspor.');
-      return;
-    }
-    const prevTxt = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Exporting...'; }
-    try {
-      const nblByInfo = await millResolveNblByInfo_(row);
-      const JsPDFLib = getJsPDF();
-      const doc = new JsPDFLib({ unit: 'mm', format: 'a4' });
-      const title = String(row['COMPANY NAME'] || row['MILL NAME'] || 'Mill Profile').trim() || 'Mill Profile';
-      const group = String(row['GROUP NAME'] || '').trim();
-      const quarter = String(millQuarterVal(row) || '').trim();
-      const year = String(millYearVal(row) || '').trim();
-      const periodText = (year || quarter) ? ('Period: ' + [year, quarter ? ('Q' + quarter) : ''].filter(Boolean).join(' ')) : '';
-      const sections = [
-        { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
-        { title: 'Legality', fields: [['LEGALITY', 'Legality'], ['MILL LOC', 'Mill Location']] },
-        { title: 'Certification', fields: [['CERTIFICATION','Certification']] },
-        { title: 'Spatial', fields: [['DEFORESTATION SPATIAL','Deforestation Spatial'], ['BURN AREA SPATIAL','Burn Area Spatial'], ['PEAT','Peat']] },
-        { title: 'Grievances', fields: [['TOTAL GRIEVANCES','Grievance']] },
-        { title: 'Policy', fields: [['NDPE','NDPE'], ['HRDD','HRDD']] },
-        { title: 'Supplied Data', fields: [['PRODUCT SUPPLY','Product Supply'], ['SUPPLY CPO','Supply CPO'], ['SUPPLY PK','Supply PK'], ['FACILITY NAME','Facility Name']] },
-      ];
-      const valOrDash = function(v) {
-        const s = String(v == null ? '' : v).trim();
-        return s ? s : '—';
-      };
-      const mapBool01 = function(v) {
-        const s = String(v == null ? '' : v).trim().toLowerCase();
-        if (s === '1' || s === 'yes') return 'Yes';
-        if (s === '0' || s === 'no') return 'No';
-        return valOrDash(v);
-      };
-      const formatSupplyLikeUi = function(raw) {
-        if (raw == null) return '';
-        if (typeof raw === 'string') return raw.trim();
-        if (typeof raw === 'number') {
-          if (!isFinite(raw)) return '';
-          if (Number.isInteger(raw) && Math.abs(raw) >= 1000) {
-            return String(raw).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-          }
-          return String(raw);
-        }
-        return String(raw).trim();
-      };
-      const resolveExportVal = function(key) {
-        if (key === 'SUPPLY CPO') {
-          const v = (row['SUPPLY CPO'] != null ? row['SUPPLY CPO'] : '') ||
-                    (row['CPO SUPPLY to REFINERY'] != null ? row['CPO SUPPLY to REFINERY'] : '') ||
-                    (row['SCR - CPO Supply'] != null ? row['SCR - CPO Supply'] : '');
-          return formatSupplyLikeUi(v);
-        }
-        if (key === 'SUPPLY PK') {
-          const v = (row['SUPPLY PK'] != null ? row['SUPPLY PK'] : '') ||
-                    (row['PK SUPPLY to KCP'] != null ? row['PK SUPPLY to KCP'] : '') ||
-                    (row['SCR - PK Supply'] != null ? row['SCR - PK Supply'] : '');
-          return formatSupplyLikeUi(v);
-        }
-        if (key === 'FACILITY NAME') {
-          const facCpo = String(row['FACILITY NAME CPO'] || '').trim();
-          const facPk = String(row['FACILITY NAME PK'] || '').trim();
-          return [facCpo, facPk].filter(Boolean).join(' / ');
-        }
-        if (key === 'SUPPLIER STATUS') {
-          return millProfileTitleCaseWords_(row['SUPPLIER STATUS']);
-        }
-        if (key === 'LEGALITY') {
-          return valOrDash(millProfileLegalityFromScore_(row));
-        }
-        if (MILL_PROFILE_YESNO_KEYS_.has(key)) {
-          return valOrDash(millProfileResolveField_(row, key, { yesNo: true }));
-        }
-        const resolved = millProfileResolveField_(row, key);
-        if (resolved) return resolved;
-        return row[key];
-      };
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14);
-      doc.setTextColor(26, 26, 26);
-      doc.text(title, 14, 14);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      let y = 20;
-      if (group) { doc.text(group, 14, y); y += 5; }
-      if (periodText) { doc.text(periodText, 14, y); y += 5; }
-      if (nblByInfo && nblByInfo.label) { doc.text(nblByInfo.label, 14, y); y += 5; }
-      doc.text('Exported: ' + new Date().toLocaleString('id-ID'), 14, y);
-      y += 4;
-
-      y = renderMillProfileSummaryPdf(doc, row, y + 4, resolveExportVal);
-
-      sections.forEach(function(sec) {
-        const body = sec.fields.map(function(pair) {
-          const key = pair[0];
-          const label = pair[1];
-          let value = resolveExportVal(key);
-          if (key === 'TOTAL GRIEVANCES' || key === 'TOTAL POLICY') value = mapBool01(value);
-          return [label, valOrDash(value)];
-        });
-        doc.autoTable({
-          head: [[sec.title, 'Value']],
-          body: body,
-          startY: y + 4,
-          margin: { left: 14, right: 14 },
-          theme: 'grid',
-          styles: { fontSize: 9, cellPadding: 2 },
-          headStyles: { fillColor: [139, 26, 26], textColor: [255, 255, 255], fontStyle: 'bold' },
-          columnStyles: { 0: { cellWidth: 58 }, 1: { cellWidth: 'auto' } },
-        });
-        y = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : y + 8;
-      });
-
-      const safeName = title.replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'Mill-Profile';
-      const fileName = safeName + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
-      doc.save(fileName);
-      if (typeof window.showSddToast === 'function') window.showSddToast('PDF berhasil diunduh.', 'success');
-    } catch (e) {
-      toastErr('Export PDF gagal: ' + (e && e.message ? e.message : e));
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = prevTxt || 'Export PDF'; }
-    }
-  }
-
-  function millProfileSyncBodyToQySelections_(changeSourceId) {
-    const siblings = millProfileVariantRows_;
-    const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
-    if (!siblings || !siblings.length || !ySel || !qSel) return;
-    if (changeSourceId === 'millProfileYearSel') {
-      const yTok = ySel.value;
-      const qToks = millProfileCollectQuarterToksForYear_(siblings, yTok);
-      millProfileFillSelectToks_(qSel, qToks);
-      if (qSel.options.length) qSel.selectedIndex = 0;
-    }
-    const yTok = ySel.value;
-    const qTok = qSel.value;
-    const row = millProfileFindRowByPeriodTok_(siblings, yTok, qTok) || siblings[0];
-    if (!row) return;
-    millProfileUpdateHeaderFromRow_(row);
-    millProfileRenderBody_(row);
-    millProfileResetScroll_();
-  }
-
-  function millProfileResetScroll_() {
-    const mpOverlay = document.getElementById('millProfileOverlay');
-    if (!mpOverlay) return;
-    const mpBox = mpOverlay.querySelector('.mill-profile-box');
-    const mpBody = document.getElementById('millProfileBody');
-    [mpOverlay, mpBox, mpBody].forEach(function(el) {
-      if (el) el.scrollTop = 0;
-    });
-  }
-
-  function openMillProfile(d) {
-    millProfileVariantRows_ = millProfileSameEntityRows_(d).slice().sort(millProfileComparePeriodDesc_);
-    const chosen = millProfileVariantRows_[0] || d;
-    const mpOverlay = document.getElementById('millProfileOverlay');
-    const yBar = document.getElementById('millProfileQyBar');
-    const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
-
-    if (yBar && ySel && qSel) {
-      yBar.hidden = false;
-      const yearToks = millProfileCollectYearToks_(millProfileVariantRows_);
-      millProfileFillSelectToks_(ySel, yearToks);
-      const yTokChosen = millPdfTokenForCell(millYearVal(chosen));
-      if (yearToks.indexOf(yTokChosen) !== -1) ySel.value = yTokChosen;
-      else if (ySel.options.length) ySel.selectedIndex = 0;
-      const yTok = ySel.value;
-      const qToks = millProfileCollectQuarterToksForYear_(millProfileVariantRows_, yTok);
-      millProfileFillSelectToks_(qSel, qToks);
-      const qTokChosen = millPdfTokenForCell(millQuarterVal(chosen));
-      if (qToks.indexOf(qTokChosen) !== -1) qSel.value = qTokChosen;
-      else if (qSel.options.length) qSel.selectedIndex = 0;
-    }
-
-    let yTokFinal = millPdfTokenForCell(millYearVal(chosen));
-    let qTokFinal = millPdfTokenForCell(millQuarterVal(chosen));
-    if (ySel && qSel) {
-      yTokFinal = ySel.value;
-      qTokFinal = qSel.value;
-    }
-    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, qTokFinal) || chosen;
-    millProfileUpdateHeaderFromRow_(displayRow);
-    millProfileRenderBody_(displayRow);
-
-    mpOverlay?.classList.add('active');
-    millProfileResetScroll_();
-    requestAnimationFrame(function() { millProfileResetScroll_(); });
+    document.getElementById('millProfileOverlay')?.classList.add('active');
   }
 
   (function bindMillProfileOverlay() {
@@ -6947,927 +5880,15 @@ function initDashboardApp() {
       console.warn('[dashboard] Mill profile overlay nodes missing.');
       return;
     }
-    function closeMillProfileOverlay_() {
+    mpc.addEventListener('click', () => {
       mpo.classList.remove('active');
-      millProfileResetScroll_();
-    }
-    mpc.addEventListener('click', closeMillProfileOverlay_);
-    mpo.addEventListener('click', function(e) {
-      if (e.target === this) closeMillProfileOverlay_();
-    });
-    mpo.addEventListener('change', function(e) {
-      const t = e.target;
-      if (!t || (t.id !== 'millProfileYearSel' && t.id !== 'millProfileQuarterSel')) return;
-      e.stopPropagation();
-      millProfileSyncBodyToQySelections_(t.id);
     });
     mpo.addEventListener('click', function(e) {
-      const btn = e.target && e.target.closest && e.target.closest('#millProfileExportPdfBtn');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      millProfileExportPdf();
+      if (e.target === this) this.classList.remove('active');
     });
   })();
 
   // ─── TTP DATA ───────────────────────────────────────────
-  let ttpViewMode = 'flat'; // default: flat table (not grouped)
-  let ttpFlatFilteredRows = [];
-  let ttpDetailCurrentRow = null;
-  function normalizeTtpHeaderKey_(h) {
-    return String(h || '').trim().replace(/\s+/g, ' ').toUpperCase();
-  }
-
-  function pickTtpCategoryCol_(fields) {
-    if (!fields || !fields.length) return 'CATEGORY';
-    const exact = fields.find(function(h) { return normalizeTtpHeaderKey_(h) === 'CATEGORY'; });
-    if (exact) return exact;
-    const fuzzy = fields.find(function(h) {
-      const u = normalizeTtpHeaderKey_(h);
-      return u.includes('CATEGORY') && u !== 'SUPPLIER CATEGORY' && !u.includes('MILL CATEGORY');
-    });
-    return fuzzy || 'CATEGORY';
-  }
-
-  function ttpRowCategoryValue_(row) {
-    if (!row || typeof row !== 'object') return '—';
-    const key = ttpCategoryCol || 'CATEGORY';
-    if (row[key] != null && String(row[key]).trim()) return ttpCategoryDisplay_(row[key]);
-    const alt = Object.keys(row).find(function(k) {
-      if (k === '_row' || k === '_sddSearchBlob') return false;
-      return normalizeTtpHeaderKey_(k) === 'CATEGORY';
-    });
-    return alt ? ttpCategoryDisplay_(row[alt]) : '—';
-  }
-
-  function ttpCategoryDisplay_(raw) {
-    const s = String(raw == null ? '' : raw).trim();
-    return s || '—';
-  }
-
-  function ttpCategoryGroupSummary_(rows) {
-    if (!rows || !rows.length) return '—';
-    const vals = rows.map(function(r) { return ttpRowCategoryValue_(r); }).filter(function(v) { return v && v !== '—'; });
-    if (!vals.length) return '—';
-    const uniq = [];
-    vals.forEach(function(v) { if (uniq.indexOf(v) === -1) uniq.push(v); });
-    if (uniq.length === 1) return uniq[0];
-    if (uniq.length <= 3) return uniq.join(', ');
-    return uniq.slice(0, 2).join(', ') + ' +' + (uniq.length - 2);
-  }
-
-  /**
-   * Compute supplier % by category based on FFB Supply volume.
-   * Returns array of {label, pct, pctLabel, color} sorted by supply desc.
-   */
-  function ttpSupplierPctByCategory_(rows) {
-    const supplyCol = ttpFindSupplyCol_();
-    const supByBucket = Object.create(null);
-    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) { supByBucket[b.id] = 0; });
-
-    let total = 0;
-    (rows || []).forEach(function(row) {
-      const raw = ttpRowCategoryValue_(row);
-      const bucket = ttpNormalizeCategoryBucket_(raw);
-      const supRaw = supplyCol ? row[supplyCol] : undefined;
-      let sup = typeof supRaw === 'number' ? supRaw : parseFloat(String(supRaw || '').replace(/,/g, ''));
-      if (isNaN(sup) || sup < 0) sup = 0;
-      if (bucket && bucket !== 'other' && supByBucket[bucket] !== undefined) {
-        supByBucket[bucket] += sup;
-      }
-      total += sup;
-    });
-
-    if (!total) return [];
-
-    const items = TTP_CATEGORY_MIX_BUCKETS
-      .filter(function(b) { return supByBucket[b.id] > 0; })
-      .map(function(b) {
-        const pct = (supByBucket[b.id] / total) * 100;
-        const pctLabel = pct < 0.1 ? '<0.1%' : (pct % 1 === 0 ? pct.toFixed(0) + '%' : pct.toFixed(1) + '%');
-        return { label: b.label, pct: pct, pctLabel: pctLabel, color: b.color };
-      })
-      .sort(function(a, b) { return b.pct - a.pct; });
-
-    return items;
-  }
-
-  function ttpSupplierPctHtml_(rows) {
-    const items = ttpSupplierPctByCategory_(rows);
-    if (!items.length) {
-      const text = ttpCategoryGroupSummary_(rows);
-      return '<span class="ttp-category-val">' + escHtml(text) + '</span>';
-    }
-    const parts = items.map(function(it) {
-      return '<span class="ttp-sup-pct-item">'
-        + '<span class="ttp-sup-pct-dot" style="background:' + it.color + '"></span>'
-        + '<span class="ttp-sup-pct-label">' + escHtml(it.label) + '</span>'
-        + '<span class="ttp-sup-pct-val">' + escHtml(it.pctLabel) + '</span>'
-        + '</span>';
-    }).join('');
-    return '<div class="ttp-sup-pct-wrap">' + parts + '</div>';
-  }
-
-  const TTP_CATEGORY_MIX_BUCKETS = [
-    { id: 'own_estate',      label: 'Own Estate',      color: '#2d5a3d' },
-    { id: 'external_estate', label: 'External Estate', color: '#1a6b5c' },
-    { id: 'dealer',          label: 'Dealer',          color: '#9a6b1a' },
-    { id: 'plasma',          label: 'Plasma',          color: '#2a5f8f' },
-    { id: 'cooperative',     label: 'Cooperative',     color: '#6b3f8f' },
-  ];
-
-  function ttpNormalizeCategoryBucket_(raw) {
-    const s = String(raw == null ? '' : raw).trim().toLowerCase().replace(/\s+/g, ' ');
-    if (!s || s === '—' || s === '-') return '';
-    if (/^own\s*estate/.test(s) || s === 'own estate') return 'own_estate';
-    if (/^external\s*estate/.test(s) || s === 'external estate') return 'external_estate';
-    if (s === 'dealer' || /^dealer\b/.test(s)) return 'dealer';
-    if (/plasma/.test(s)) return 'plasma';
-    if (/cooperat|co-op|kooperasi|\bcoop\b/.test(s)) return 'cooperative';
-    return 'other';
-  }
-
-  /**
-   * Largest-remainder on tenths (×10) so displayed % labels always sum to 100.0%.
-   * Bar/track widths use the same adjusted values (sum = 100).
-   */
-  function ttpApplyMixPctLabels_(items, basis) {
-    if (!basis) {
-      items.forEach(function(it) {
-        it.pct = 0;
-        it.pctLabel = '0%';
-      });
-      return items;
-    }
-
-    const work = items.map(function(it) {
-      const exactTenths = (it.count / basis) * 1000;
-      const floorTenths = Math.floor(exactTenths);
-      return {
-        it: it,
-        floorTenths: floorTenths,
-        remainder: exactTenths - floorTenths,
-      };
-    });
-
-    let sumTenths = work.reduce(function(s, w) { return s + w.floorTenths; }, 0);
-    let need = 1000 - sumTenths;
-    work.sort(function(a, b) { return b.remainder - a.remainder; });
-    for (let i = 0; i < need && i < work.length; i++) {
-      work[i].floorTenths++;
-    }
-
-    work.forEach(function(w) {
-      const tenths = w.floorTenths;
-      const it = w.it;
-      it.pct = tenths / 10;
-      if (it.count > 0 && tenths === 0) {
-        it.pctLabel = '<0.1%';
-        it.pct = 0.05;
-      } else if (tenths % 10 === 0) {
-        it.pctLabel = String(tenths / 10) + '%';
-      } else {
-        it.pctLabel = (tenths / 10).toFixed(1) + '%';
-      }
-    });
-
-    return items;
-  }
-
-  function ttpComputeCategoryMix_(rows) {
-    const counts = Object.create(null);
-    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) { counts[b.id] = 0; });
-
-    (rows || []).forEach(function(row) {
-      const raw = ttpRowCategoryValue_(row);
-      const bucket = ttpNormalizeCategoryBucket_(raw);
-      if (!bucket || bucket === 'other') return;
-      if (counts[bucket] !== undefined) counts[bucket]++;
-    });
-
-    const basis = TTP_CATEGORY_MIX_BUCKETS.reduce(function(sum, b) {
-      return sum + (counts[b.id] || 0);
-    }, 0);
-
-    const items = TTP_CATEGORY_MIX_BUCKETS.map(function(b) {
-      return {
-        id: b.id,
-        label: b.label,
-        color: b.color,
-        count: counts[b.id] || 0,
-        pct: 0,
-        pctLabel: '0%',
-      };
-    });
-
-    ttpApplyMixPctLabels_(items, basis);
-    return { items: items, basis: basis };
-  }
-
-  function ttpQuarterToken_(row) {
-    const q = millQuarterVal(row);
-    if (!q) return '';
-    const n = parseMillQuarterSort(q);
-    if (n >= 1 && n <= 4) return 'Q' + n;
-    return String(q).trim().toUpperCase();
-  }
-
-  function ttpYearToken_(row) {
-    const y = millYearVal(row);
-    if (!y) return '';
-    const n = parseMillYearSort(y);
-    return n ? String(n) : String(y).trim();
-  }
-
-  function ttpFilterByPeriod_(rows) {
-    const list = rows || [];
-    if (ttpPeriodMode === 'quarter') {
-      const wantY = String(ttpPeriodYear || '');
-      const wantQ = String(ttpPeriodQuarter || '');
-      return list.filter(function(r) {
-        return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
-      });
-    }
-    if (ttpPeriodMode === 'overall') {
-      const wantY = String(ttpPeriodYear || '');
-      if (!wantY) return list.slice();
-      return list.filter(function(r) { return ttpYearToken_(r) === wantY; });
-    }
-    return list.slice();
-  }
-
-  function ttpGetPeriodRows_() {
-    return ttpFilterByPeriod_(ttpData);
-  }
-
-  function ttpApplyTableFilters_(rows) {
-    let filtered = ttpFilterByPeriod_(rows || []);
-    filtered = filtered.filter(function(d) {
-      return !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch);
-    });
-    if (ttpSelectedCompanies !== null) {
-      const filterCol = ttpActiveFilterCol || ttpCompanyCol;
-      if (filterCol) {
-        filtered = filtered.filter(function(d) {
-          return ttpSelectedCompanies.has((d[filterCol] || '').toString());
-        });
-      }
-    }
-    return filtered;
-  }
-
-  function ttpParsePctValue_(raw) {
-    if (raw === null || raw === undefined) return NaN;
-    let s = String(raw).trim();
-    if (!s || s === '—' || s === '-') return NaN;
-    s = s.replace(/%/g, '').trim().replace(/\s/g, '');
-    if (/,\d/.test(s) && !/\.\d{1,}/.test(s.replace(/,\d+$/, ''))) {
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else {
-      s = s.replace(/,/g, '');
-    }
-    const n = parseFloat(s);
-    return isNaN(n) ? NaN : n;
-  }
-
-  /** Sheets getValues() returns % cells as 0–1 fractions (0.7081 = 70.81%). */
-  function ttpNormalizePctNumber_(n) {
-    if (isNaN(n)) return NaN;
-    if (n >= 0 && n <= 1) return n * 100;
-    return n;
-  }
-
-  function ttpParseNumber_(raw) {
-    if (raw === null || raw === undefined) return NaN;
-    if (typeof raw === 'number' && !isNaN(raw)) return raw;
-    let s = String(raw).trim();
-    if (!s || s === '—' || s === '-') return NaN;
-    s = s.replace(/%/g, '').replace(/\s/g, '');
-    const dotCount = (s.match(/\./g) || []).length;
-    const commaCount = (s.match(/,/g) || []).length;
-    if (commaCount && /,\d{1,3}$/.test(s)) {
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (dotCount > 1) {
-      s = s.replace(/\./g, '');
-    } else if (dotCount === 1 && /^\d{1,3}(\.\d{3})+$/.test(s)) {
-      s = s.replace(/\./g, '');
-    } else {
-      s = s.replace(/,/g, '');
-    }
-    const n = parseFloat(s);
-    return isNaN(n) ? NaN : n;
-  }
-
-  function ttpIsDataRow_(row) {
-    if (!row || typeof row !== 'object') return false;
-    if (row._sddSearchBlob && /total traceable cpo|total traceable pk/.test(row._sddSearchBlob)) {
-      return false;
-    }
-    let hasMill = false;
-    let hasCompany = false;
-    let hasSupplier = false;
-    const keys = Object.keys(row);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
-      const v = String(row[k] || '').trim();
-      if (/^total traceable/i.test(v)) return false;
-      const u = normalizeTtpHeaderKey_(k);
-      if (u === 'MILL NAME' && v && v !== '—' && v !== '-') hasMill = true;
-      if ((u === 'COMPANY NAME' || u === 'COMPANY CODE') && v && v !== '—' && v !== '-') hasCompany = true;
-      if ((u === 'FFB SUPPLIER NAME' || u === 'FFB SUPPLIER GROUP NAME') && v && v !== '—' && v !== '-') {
-        hasSupplier = true;
-      }
-    }
-    return hasMill || hasCompany || hasSupplier;
-  }
-
-  /** Sheet footer: PK = SUM(PK Traceable) / SUM(PK SUPPLY to KCP); CPO = SUM(CPO Traceable) / SUM(CPO SUPPLY to REFINERY). */
-  var TTP_TRACEABLE_COL_CANDIDATES_ = {
-    pk: {
-      numerator: ['PK TRACEABLE VOLUME', 'PK TRACEABLE'],
-      denominator: ['PK SUPPLY TO KCP', 'PK SUPPLY TO KCP (TON)', 'PK SUPPLY']
-    },
-    cpo: {
-      numerator: ['CPO TRACEABLE', 'CPO TRACEABLE VOLUME'],
-      denominator: ['CPO SUPPLY TO REFINERY']
-    }
-  };
-
-  function ttpPickHeaderCol_(fields, candidates, opts) {
-    const list = fields || [];
-    const norms = (candidates || []).map(function(c) { return normalizeTtpHeaderKey_(c); });
-    let i;
-    for (i = 0; i < norms.length; i++) {
-      const exact = list.find(function(h) { return normalizeTtpHeaderKey_(h) === norms[i]; });
-      if (exact) return exact;
-    }
-    const excludePct = opts && opts.excludePct;
-    const excludeTotal = opts && opts.excludeTotal;
-    const tag = opts && opts.tag;
-    for (i = 0; i < norms.length; i++) {
-      const want = norms[i];
-      const hit = list.find(function(h) {
-        const u = normalizeTtpHeaderKey_(h);
-        if (excludePct && u.includes('%')) return false;
-        if (excludeTotal && u.includes('TOTAL')) return false;
-        if (tag && !u.includes(tag)) return false;
-        if (want.includes('SUPPLY') && u.includes('CONVERSION')) return false;
-        if (want.includes('CPO SUPPLY') && !u.includes('REFINERY')) return false;
-        if (want.includes('PK SUPPLY') && !u.includes('KCP')) return false;
-        if (u.includes('TRACEABLE') && u.includes('%')) return false;
-        return u.includes(want) || u === want;
-      });
-      if (hit) return hit;
-    }
-    return '';
-  }
-
-  function ttpFindTraceableVolCol_(fields, product) {
-    const cfg = TTP_TRACEABLE_COL_CANDIDATES_[product];
-    if (!cfg) return '';
-    return ttpPickHeaderCol_(fields, cfg.numerator, {
-      excludePct: true,
-      excludeTotal: true,
-      tag: product === 'pk' ? 'PK' : 'CPO'
-    });
-  }
-
-  function ttpFindTraceableDenomCol_(fields, product) {
-    const cfg = TTP_TRACEABLE_COL_CANDIDATES_[product];
-    if (!cfg) return '';
-    return ttpPickHeaderCol_(fields, cfg.denominator, {
-      excludePct: true,
-      tag: product === 'pk' ? 'PK' : 'CPO'
-    });
-  }
-
-  function ttpFormatCellPct_(raw) {
-    const n = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
-    if (isNaN(n)) {
-      if (raw === null || raw === undefined || String(raw).trim() === '') return '—';
-      return String(raw);
-    }
-    if (n > 0 && n < 0.05) return '<0.1%';
-    if (n >= 10) return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%';
-    return (Math.round(n * 10) / 10).toFixed(1) + '%';
-  }
-
-  function ttpFindSupplyCol_() {
-    if (!ttpFields || !ttpFields.length) return '';
-    return ttpFields.find(function(h) {
-      const u = normalizeTtpHeaderKey_(h);
-      return u.includes('FFB SUPPLY') && u.includes('MILL');
-    }) || ttpFields.find(function(h) {
-      return normalizeTtpHeaderKey_(h).includes('FFB SUPPLY');
-    }) || '';
-  }
-
-  /** Same as sheet footer: SUM(traceable volume) ÷ SUM(supply volume). */
-  function ttpAggregateTotalTraceablePct_(rows, product) {
-    const numCol = product === 'pk' ? ttpPkTraceVolCol : ttpCpoTraceVolCol;
-    const denCol = product === 'pk' ? ttpPkTraceDenomCol : ttpCpoTraceDenomCol;
-    const pctCol = product === 'pk' ? ttpPkPctCol : ttpPctCol;
-    const dataRows = (rows || []).filter(ttpIsDataRow_);
-
-    if (!numCol || !denCol) {
-      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
-      legacy.method = 'average';
-      return legacy;
-    }
-
-    let sumNum = 0;
-    let sumDen = 0;
-    let rowsWithNum = 0;
-    let rowsWithDen = 0;
-    dataRows.forEach(function(row) {
-      const n = ttpParseNumber_(row[numCol]);
-      const d = ttpParseNumber_(row[denCol]);
-      if (!isNaN(n)) {
-        sumNum += n;
-        rowsWithNum++;
-      }
-      if (!isNaN(d)) {
-        sumDen += d;
-        if (d > 0) rowsWithDen++;
-      }
-    });
-
-    if (!rowsWithNum || sumDen <= 0) {
-      return {
-        value: NaN,
-        rowsUsed: 0,
-        totalRows: dataRows.length,
-        method: 'sum',
-        numCol: numCol,
-        denCol: denCol,
-        sumNum: sumNum,
-        sumDen: sumDen
-      };
-    }
-
-    const ratio = sumNum / sumDen;
-    const value = ratio <= 1.5 ? ratio * 100 : ratio;
-
-    return {
-      value: value,
-      rowsUsed: dataRows.length,
-      rowsWithNum: rowsWithNum,
-      rowsWithDen: rowsWithDen,
-      totalRows: dataRows.length,
-      method: 'sum',
-      numCol: numCol,
-      denCol: denCol,
-      sumNum: sumNum,
-      sumDen: sumDen
-    };
-  }
-
-  function ttpAggregateTraceablePctFromCol_(rows, pctCol) {
-    if (!pctCol) return { value: NaN, rowsUsed: 0, totalRows: (rows || []).length };
-    let sumSimple = 0;
-    let rowsUsed = 0;
-    (rows || []).forEach(function(row) {
-      const pct = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
-      if (isNaN(pct)) return;
-      rowsUsed++;
-      sumSimple += pct;
-    });
-    if (!rowsUsed) return { value: NaN, rowsUsed: 0, totalRows: (rows || []).length };
-    return { value: sumSimple / rowsUsed, rowsUsed: rowsUsed, totalRows: (rows || []).length };
-  }
-
-  function ttpFormatTraceablePct_(n) {
-    if (isNaN(n)) return '—';
-    if (n > 0 && n < 0.05) return '<0.1%';
-    if (n >= 10) return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%';
-    return (Math.round(n * 10) / 10).toFixed(1) + '%';
-  }
-
-  function ttpPeriodScopeLabel_() {
-    const y = ttpPeriodYear || '—';
-    if (ttpPeriodMode === 'overall') return 'Full year ' + y;
-    return y + ' · ' + (ttpPeriodQuarter || '—');
-  }
-
-  function ttpFormatTtpTon_(n) {
-    if (n === null || n === undefined || isNaN(n)) return '—';
-    return Math.round(n).toLocaleString('en-US');
-  }
-
-  function ttpPeriodMetaText_(periodRows, cpoAgg, pkAgg) {
-    const dataRows = (periodRows || []).filter(ttpIsDataRow_);
-    const n = dataRows.length;
-    const total = ttpData.length;
-    const scope = ttpPeriodScopeLabel_();
-    if (!total) return 'No data loaded';
-    let line = scope + ' · ' + n.toLocaleString() + ' supplier rows';
-    if (ttpPeriodMode === 'quarter') {
-      line += ' (filtered)';
-    } else if (n < total) {
-      line += ' · ' + total.toLocaleString() + ' total in database';
-    }
-    if (cpoAgg && cpoAgg.method === 'sum' && cpoAgg.sumDen > 0) {
-      line += ' · CPO: ' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' / ' + ttpFormatTtpTon_(cpoAgg.sumDen) + ' ton';
-    }
-    return line;
-  }
-
-  function buildTtpPeriodDropdowns_() {
-    const yearSel = document.getElementById('ttpPeriodYear');
-    if (!yearSel) return;
-    const years = [];
-    const seenY = Object.create(null);
-    ttpData.forEach(function(row) {
-      const y = ttpYearToken_(row);
-      if (y && !seenY[y]) { seenY[y] = true; years.push(y); }
-    });
-    years.sort(function(a, b) { return parseInt(b, 10) - parseInt(a, 10); });
-    yearSel.innerHTML = years.length
-      ? years.map(function(y) { return '<option value="' + escHtml(y) + '">' + escHtml(y) + '</option>'; }).join('')
-      : '<option value="">—</option>';
-    if (years.length && (!ttpPeriodYear || years.indexOf(ttpPeriodYear) === -1)) {
-      ttpPeriodYear = years[0];
-    }
-    yearSel.value = ttpPeriodYear || '';
-  }
-
-  function syncTtpPeriodPickersUi_() {
-    const pickers = document.getElementById('ttpPeriodPickers');
-    const yearWrap = document.getElementById('ttpPeriodYearWrap');
-    const quarterWrap = document.getElementById('ttpPeriodQuarterWrap');
-    const modeBtns = document.querySelectorAll('[data-ttp-period-mode]');
-    modeBtns.forEach(function(btn) {
-      btn.classList.toggle('active', btn.getAttribute('data-ttp-period-mode') === ttpPeriodMode);
-    });
-    const isQuarter = ttpPeriodMode === 'quarter';
-    if (pickers) pickers.hidden = false;
-    if (yearWrap) yearWrap.style.display = '';
-    if (quarterWrap) quarterWrap.style.display = isQuarter ? '' : 'none';
-    const qSel = document.getElementById('ttpPeriodQuarter');
-    if (qSel && ttpPeriodQuarter) qSel.value = ttpPeriodQuarter;
-    const ySel = document.getElementById('ttpPeriodYear');
-    if (ySel && ttpPeriodYear) ySel.value = ttpPeriodYear;
-  }
-
-  function renderTtpTraceableStats_() {
-    const cpoEl = document.getElementById('ttp-stat-cpo-traceable');
-    const pkEl = document.getElementById('ttp-stat-pk-traceable');
-    const metaEl = document.getElementById('ttpPeriodMeta');
-    const periodRows = ttpGetPeriodRows_();
-    const cpoAgg = ttpAggregateTotalTraceablePct_(periodRows, 'cpo');
-    const pkAgg = ttpAggregateTotalTraceablePct_(periodRows, 'pk');
-    if (metaEl) metaEl.textContent = ttpPeriodMetaText_(periodRows, cpoAgg, pkAgg);
-
-    if (cpoEl) {
-      cpoEl.textContent = ttpFormatTraceablePct_(cpoAgg.value);
-      cpoEl.title = cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
-        ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
-          + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
-          + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
-          + '\nBandingkan dengan total kolom CPO Traceable & CPO SUPPLY to REFINERY di sheet (periode sama).'
-        : 'Tidak ada data CPO traceable pada periode ini';
-    }
-    if (pkEl) {
-      pkEl.textContent = ttpFormatTraceablePct_(pkAgg.value);
-      pkEl.title = pkAgg.method === 'sum' && pkAgg.sumDen > 0
-        ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ')'
-          + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
-          + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
-        : 'Tidak ada data PK traceable pada periode ini';
-    }
-  }
-
-  function refreshTtpPeriodDashboard_() {
-    syncTtpPeriodPickersUi_();
-    renderTtpTraceableStats_();
-    renderTtpCategoryMix_();
-    scheduleRenderTTPTable();
-  }
-
-  let ttpPeriodBarBound = false;
-  function bindTtpPeriodBarOnce_() {
-    if (ttpPeriodBarBound) return;
-    const panel = document.getElementById('panel-ttm-ttp');
-    if (!panel) return;
-    ttpPeriodBarBound = true;
-    panel.addEventListener('click', function(e) {
-      const btn = e.target.closest('[data-ttp-period-mode]');
-      if (!btn || !panel.contains(btn)) return;
-      const mode = btn.getAttribute('data-ttp-period-mode');
-      if (!mode || mode === ttpPeriodMode) return;
-      ttpPeriodMode = mode;
-      refreshTtpPeriodDashboard_();
-    });
-    const yearSel = document.getElementById('ttpPeriodYear');
-    const qSel = document.getElementById('ttpPeriodQuarter');
-    if (yearSel) {
-      yearSel.addEventListener('change', function() {
-        ttpPeriodYear = this.value;
-        refreshTtpPeriodDashboard_();
-      });
-    }
-    if (qSel) {
-      qSel.addEventListener('change', function() {
-        ttpPeriodQuarter = this.value;
-        refreshTtpPeriodDashboard_();
-      });
-    }
-    syncTtpPeriodPickersUi_();
-  }
-
-  function renderTtpCategoryMix_() {
-    const section = document.getElementById('ttpCategoryMixSection');
-    const barEl = document.getElementById('ttpCategoryMixBar');
-    const gridEl = document.getElementById('ttpCategoryMixGrid');
-    const descEl = document.querySelector('.ttp-category-mix-desc');
-    if (!section || !barEl || !gridEl) return;
-
-    if (!ttpData.length) {
-      section.hidden = true;
-      return;
-    }
-
-    const periodRows = ttpGetPeriodRows_();
-    if (descEl) {
-      descEl.textContent = 'Share of five supplier categories for ' + ttpPeriodScopeLabel_().toLowerCase()
-        + ' (' + periodRows.length.toLocaleString() + ' records)';
-    }
-
-    const mix = ttpComputeCategoryMix_(periodRows);
-    section.hidden = false;
-
-    const barParts = mix.items.filter(function(it) { return it.pct > 0; });
-    barEl.innerHTML = barParts.map(function(it) {
-      return '<span class="ttp-category-mix-seg" style="flex:' + it.pct + ' 1 0;background:' + it.color + ';" title="'
-        + escHtml(it.label) + ': ' + escHtml(it.pctLabel) + '"></span>';
-    }).join('');
-
-    gridEl.innerHTML = mix.items.map(function(it) {
-      return ''
-        + '<div class="ttp-category-mix-item" data-cat="' + escHtml(it.id) + '">'
-        + '<div class="ttp-category-mix-pct" style="color:' + escHtml(it.color) + '">' + escHtml(it.pctLabel) + '</div>'
-        + '<div class="ttp-category-mix-label">' + escHtml(it.label) + '</div>'
-        + '<div class="ttp-category-mix-track" aria-hidden="true"><span class="ttp-category-mix-fill" style="width:'
-        + Math.min(100, Math.max(0, it.pct)) + '%;background:' + escHtml(it.color) + ';"></span></div>'
-        + '</div>';
-    }).join('');
-
-    section.setAttribute('aria-label', 'Supplier category distribution across five categories');
-  }
-
-  function ttpMainTableColspan_(grouped) {
-    return grouped ? 7 : 6;
-  }
-
-  function ttpGroupAvgPctHtml_(rows, product, subCount) {
-    const col = product === 'pk' ? ttpPkPctCol : ttpPctCol;
-    if (!col) return '—';
-    const agg = ttpAggregateTotalTraceablePct_(rows, product);
-    const val = isNaN(agg.value) ? '—' : ttpFormatTraceablePct_(agg.value);
-    const avgSuffix = subCount > 1 ? '<span class="ttp-group-meta"> avg</span>' : '';
-    return '<span style="font-weight:600;color:var(--forest)">' + val + '</span>' + avgSuffix;
-  }
-
-  /** Nested supplier grid when a mill group row is expanded (grouped view only). */
-  function ttpGroupedNestedTableHtml_(rows) {
-    const cols = [
-      { label: 'FFB Supplier Group Name', get: function(d) { return ttpRowField_(d, ['FFB SUPPLIER GROUP NAME']); } },
-      { label: 'FFB Supplier Name', get: function(d) { return ttpRowField_(d, ['FFB SUPPLIER NAME']); } },
-      { label: 'Category', get: function(d) { return ttpRowCategoryValue_(d); } },
-      { label: 'Lat', get: function(d) { return ttpRowField_(d, ['LAT', 'LATITUDE']); } },
-      { label: 'Long', get: function(d) { return ttpRowField_(d, ['LONG', 'LONGITUDE']); } },
-      { label: 'Village', get: function(d) { return ttpRowField_(d, ['VILLAGE']); } },
-      { label: 'Sub District', get: function(d) { return ttpRowField_(d, ['SUBDISTRICT', 'SUB DISTRICT']); } },
-    ];
-    const gridCols = 'minmax(120px, 1.4fr) minmax(120px, 1.4fr) minmax(88px, 0.9fr) minmax(72px, 0.7fr) minmax(72px, 0.7fr) minmax(88px, 0.9fr) minmax(88px, 0.9fr)';
-    let html = '<div class="ttp-group-nested-wrap" role="region" aria-label="FFB suppliers for this mill">'
-      + '<div class="ttp-group-nested-grid">';
-    html += '<div class="ttp-group-nested-head" style="grid-template-columns:' + gridCols + '">';
-    cols.forEach(function(c) {
-      html += '<div class="ttp-group-nested-cell ttp-group-nested-th">' + escHtml(c.label) + '</div>';
-    });
-    html += '</div>';
-    rows.forEach(function(d) {
-      const rowJson = JSON.stringify(d).replace(/'/g, '&#39;');
-      html += '<div class="ttp-group-nested-row" style="grid-template-columns:' + gridCols + '" tabindex="0" role="button" data-row=\'' + rowJson
-        + '\' title="Click for full supplier detail">';
-      cols.forEach(function(c) {
-        html += '<div class="ttp-group-nested-cell">' + escHtml(c.get(d)) + '</div>';
-      });
-      html += '</div>';
-    });
-    html += '<p class="ttp-group-nested-hint">Click a row to open supplier detail.</p></div></div>';
-    return html;
-  }
-
-  function ttpMainTableHeadHtml_(grouped) {
-    const cpoLabel = ttpPctCol || '% CPO TRACEABLE';
-    const pkLabel = ttpPkPctCol || '% PK TRACEABLE';
-    const isGrouped = !!grouped;
-    let row = '<tr>'
-      + '<th class="ttp-th ttp-th-group">Group Name</th>'
-      + '<th class="ttp-th ttp-th-company">Company Name</th>'
-      + '<th class="ttp-th ttp-th-mill">Mill Name</th>'
-      + '<th class="ttp-th ttp-th-pct ttp-th-pct-cpo">' + cpoLabel + '</th>'
-      + '<th class="ttp-th ttp-th-pct ttp-th-pct-pk">' + pkLabel + '</th>'
-      + '<th class="ttp-th ttp-th-category">Supplier %</th>';
-    if (isGrouped) row += '<th class="ttp-th ttp-th-actions"></th>';
-    return row + '</tr>';
-  }
-
-  function ttpSyncTableLayoutClass_() {
-    const table = document.getElementById('ttpTable');
-    if (!table) return;
-    table.classList.toggle('ttp-table-grouped', ttpViewMode === 'grouped');
-  }
-
-  function ttpPickField_(patterns) {
-    if (!ttpFields || !ttpFields.length) return '';
-    for (let pi = 0; pi < patterns.length; pi++) {
-      const p = patterns[pi];
-      const want = typeof p === 'string' ? normalizeTtpHeaderKey_(p) : null;
-      for (let i = 0; i < ttpFields.length; i++) {
-        const h = ttpFields[i];
-        const u = normalizeTtpHeaderKey_(h);
-        if (want && u === want) return h;
-        if (p instanceof RegExp && p.test(h)) return h;
-      }
-    }
-    return '';
-  }
-
-  function ttpRowField_(row, patterns) {
-    if (!row) return '—';
-    const col = ttpPickField_(patterns);
-    if (col) {
-      const v = row[col];
-      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-    }
-    for (const k of Object.keys(row)) {
-      if (k === '_row' || k === '_sddSearchBlob') continue;
-      const u = normalizeTtpHeaderKey_(k);
-      for (let pi = 0; pi < patterns.length; pi++) {
-        const p = patterns[pi];
-        if (typeof p === 'string' && u === normalizeTtpHeaderKey_(p)) {
-          const s = String(row[k]).trim();
-          if (s) return s;
-        }
-      }
-    }
-    return '—';
-  }
-
-  function ttpRowCertificationHtml_(row) {
-    const items = [
-      { label: 'ISPO', patterns: ['ISPO (Y/N)', 'ISPO'] },
-      { label: 'RSPO', patterns: ['RSPO (Y/N)', 'RSPO'] },
-      { label: 'ISCC', patterns: ['ISCC (Y/N)', 'ISCC'] },
-    ];
-    return items.map(function(it) {
-      const v = ttpRowField_(row, it.patterns);
-      const yn = v === '—' ? '—' : v;
-      let cls = 'na';
-      if (/^y(es)?$/i.test(yn) || yn === '1') cls = 'yes';
-      else if (/^n(o)?$/i.test(yn) || yn === '0') cls = 'no';
-      return '<span class="ttp-cert-badge ttp-cert-' + cls + '">' + escHtml(it.label) + ': ' + escHtml(yn) + '</span>';
-    }).join('');
-  }
-
-  function ttpDetailItemHtml_(label, value) {
-    const v = value === undefined || value === null || String(value).trim() === '' ? '—' : String(value).trim();
-    return '<div class="ttp-detail-item">'
-      + '<div class="ttp-detail-label">' + escHtml(label) + '</div>'
-      + '<div class="ttp-detail-val">' + escHtml(v) + '</div>'
-      + '</div>';
-  }
-
-  function buildTtpDetailBodyHtml_(row) {
-    const certHtml = '<div class="ttp-detail-item ttp-detail-item--wide">'
-      + '<div class="ttp-detail-label">Certification</div>'
-      + '<div class="ttp-detail-val"><div class="ttp-cert-badges">' + ttpRowCertificationHtml_(row) + '</div></div>'
-      + '</div>';
-    return ''
-      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Supplier</div><div class="ttp-detail-grid">'
-      + ttpDetailItemHtml_('FFB Supplier Group Name', ttpRowField_(row, ['FFB SUPPLIER GROUP NAME']))
-      + ttpDetailItemHtml_('FFB Supplier Name', ttpRowField_(row, ['FFB SUPPLIER NAME']))
-      + ttpDetailItemHtml_('Category', ttpRowCategoryValue_(row))
-      + '</div></div>'
-      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Location</div><div class="ttp-detail-grid">'
-      + ttpDetailItemHtml_('Latitude', ttpRowField_(row, ['LAT', 'LATITUDE']))
-      + ttpDetailItemHtml_('Longitude', ttpRowField_(row, ['LONG', 'LONGITUDE']))
-      + ttpDetailItemHtml_('Village', ttpRowField_(row, ['VILLAGE']))
-      + ttpDetailItemHtml_('Sub district', ttpRowField_(row, ['SUBDISTRICT', 'SUB DISTRICT']))
-      + ttpDetailItemHtml_('District', ttpRowField_(row, ['DISTRICT']))
-      + ttpDetailItemHtml_('Province', ttpRowField_(row, ['PROVINCE']))
-      + '</div></div>'
-      + '<div class="ttp-detail-section"><div class="ttp-detail-section-title">Supply</div><div class="ttp-detail-grid">'
-      + ttpDetailItemHtml_('Planted Area', ttpRowField_(row, ['PLANTED AREA', 'PLANTED AREA (HA)']))
-      + ttpDetailItemHtml_('FFB Supply', ttpRowField_(row, ['FFB SUPPLY TO MILL (TON)', 'FFB SUPPLY']))
-      + certHtml
-      + '</div></div>';
-  }
-
-  function mountTtpDetailOverlayOnce_() {
-    const overlay = document.getElementById('ttpDetailOverlay');
-    if (!overlay) {
-      console.warn('[TTP] #ttpDetailOverlay tidak ditemukan — cek partials/modals-shared.html di index.html.');
-      return null;
-    }
-    if (overlay.parentElement !== document.body) {
-      document.body.appendChild(overlay);
-    }
-    return overlay;
-  }
-
-  function syncTtpViewUi_() {
-    const flatBtn = document.getElementById('ttpViewFlat');
-    const groupedBtn = document.getElementById('ttpViewGrouped');
-    if (!flatBtn || !groupedBtn) return;
-    flatBtn.classList.toggle('active', ttpViewMode === 'flat');
-    groupedBtn.classList.toggle('active', ttpViewMode === 'grouped');
-  }
-
-  function closeTtpDetailModal_() {
-    const overlay = mountTtpDetailOverlayOnce_();
-    if (overlay) overlay.classList.remove('active');
-    document.body.classList.remove('ttp-detail-open');
-    ttpDetailCurrentRow = null;
-    const body = document.getElementById('ttpDetailBody');
-    if (body) body.innerHTML = '';
-  }
-
-  function openTtpDetailModal_(row) {
-    if (!row) return;
-    const overlay = mountTtpDetailOverlayOnce_();
-    const titleEl = document.getElementById('ttpDetailTitle');
-    const subEl = document.getElementById('ttpDetailSubtitle');
-    const bodyEl = document.getElementById('ttpDetailBody');
-    if (!overlay || !titleEl || !subEl || !bodyEl) return;
-
-    ttpDetailCurrentRow = row;
-
-    const supplier = ttpRowField_(row, ['FFB SUPPLIER NAME']);
-    const mill = ttpRowField_(row, ['MILL NAME']);
-    const company = ttpRowField_(row, ['COMPANY NAME']);
-    const group = ttpRowField_(row, ['GROUP NAME']);
-
-    titleEl.textContent = supplier !== '—' ? supplier : 'Supplier detail';
-    const subParts = [group, company, mill].filter(function(p) { return p && p !== '—'; });
-    subEl.textContent = subParts.length ? subParts.join(' · ') : 'Monitoring TTM/TTP';
-
-    try {
-      bodyEl.innerHTML = buildTtpDetailBodyHtml_(row);
-    } catch (err) {
-      console.error('[TTP] Gagal render detail supplier', err, row);
-      bodyEl.innerHTML = '<p class="ttp-detail-error">Gagal memuat detail. Muat ulang halaman (Ctrl+Shift+R).</p>';
-    }
-
-    document.body.classList.add('ttp-detail-open');
-    overlay.classList.add('active');
-    bodyEl.scrollTop = 0;
-    overlay.scrollTop = 0;
-  }
-
-  (function bindTtpDetailOverlay() {
-    const overlay = mountTtpDetailOverlayOnce_();
-    if (!overlay) return;
-    const closeBtn = document.getElementById('ttpDetailClose');
-    const closeBtn2 = document.getElementById('ttpDetailCloseBtn');
-    const editBtn = document.getElementById('ttpDetailEditBtn');
-    const delBtn = document.getElementById('ttpDetailDeleteBtn');
-
-    function onOverlayClick_(e) {
-      if (e.target === overlay) closeTtpDetailModal_();
-    }
-    if (closeBtn) closeBtn.addEventListener('click', closeTtpDetailModal_);
-    if (closeBtn2) closeBtn2.addEventListener('click', closeTtpDetailModal_);
-    overlay.addEventListener('click', onOverlayClick_);
-    if (editBtn) {
-      editBtn.addEventListener('click', function() {
-        const row = ttpDetailCurrentRow;
-        if (!row) return;
-        closeTtpDetailModal_();
-        openModal('ttp', ttpFields, 'edit', row);
-      });
-    }
-    if (delBtn) {
-      delBtn.addEventListener('click', function() {
-        const row = ttpDetailCurrentRow;
-        if (!row || !row._row) return;
-        closeTtpDetailModal_();
-        openConfirm('ttp', parseInt(row._row, 10));
-      });
-    }
-    if (!window.__sddTtpDetailEscBound) {
-      window.__sddTtpDetailEscBound = true;
-      document.addEventListener('keydown', function(e) {
-        if (e.key !== 'Escape') return;
-        if (overlay.classList.contains('active')) closeTtpDetailModal_();
-      });
-    }
-  })();
-
   async function loadTTPDataImpl() {
     const loading = document.getElementById('ttp-loading');
     const errorEl = document.getElementById('ttp-error');
@@ -7886,64 +5907,43 @@ function initDashboardApp() {
       ttpData = ttpData.map(function(row) {
         return prepareTtpRowPerfCache(row, ttpFields);
       });
-      ttpPkTraceVolCol = ttpFindTraceableVolCol_(ttpFields, 'pk');
-      ttpCpoTraceVolCol = ttpFindTraceableVolCol_(ttpFields, 'cpo');
-      ttpPkTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'pk');
-      ttpCpoTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'cpo');
-      ttpData = ttpData.filter(ttpIsDataRow_);
       ttpUniqueValuesCache = Object.create(null);
-      // Traceability % columns
+      document.getElementById('ttp-stat-total').textContent = ttpData.length;
+      document.getElementById('ttp-stat-loaded').textContent = ttpData.length;
+      // Traceability % column: legacy "PERCENTAGE TRACEABILITY" or new "% CPO / % PK TRACEABLE" headers
       ttpPctCol = (function pickTtpPctCol(fields) {
         if (!fields || !fields.length) return '% CPO TRACEABLE';
         const U = function (h) { return String(h || '').toUpperCase(); };
         const cpo = fields.find(function (h) { return U(h).includes('% CPO TRACEABLE'); });
         if (cpo) return cpo;
+        const pk = fields.find(function (h) { return U(h).includes('% PK TRACEABLE'); });
+        if (pk) return pk;
         const legacy = fields.find(function (h) {
           return U(h).includes('PERCENTAGE TRACEABILITY') ||
             U(h) === 'PERCENTAGE TRACEABILITY' ||
             h.toLowerCase().includes('percentage');
         });
         if (legacy) return legacy;
+        // Header label fallback (values resolve only if sheet uses this exact column name)
         return '% CPO TRACEABLE';
       })(ttpFields);
-      ttpPkPctCol = (function pickTtpPkPctCol(fields) {
-        if (!fields || !fields.length) return '% PK TRACEABLE';
-        const U = function (h) { return String(h || '').toUpperCase(); };
-        const pk = fields.find(function (h) { return U(h).includes('% PK TRACEABLE'); });
-        if (pk) return pk;
-        return fields.find(function (h) {
-          return normalizeTtpHeaderKey_(h).includes('% PK TRACEABLE');
-        }) || '% PK TRACEABLE';
-      })(ttpFields);
-      ttpCategoryCol = pickTtpCategoryCol_(ttpFields);
-      document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(false);
-      ttpSyncTableLayoutClass_();
+      document.getElementById('ttpTableHead').innerHTML =
+        '<tr><th>Group Name</th><th>Company Name</th><th>Mill Name</th><th>' + (ttpPctCol || 'Traceability %') + '</th><th></th></tr>';
       loading.style.display = 'none';
       table.style.display = 'table';
       // reset selection state on fresh load
       ttpSelectedCompanies = null;
-      ttpColFilterMode = 'ttm';
-      ttpFieldSectionsCache = null;
+      ttpVisibleCols = null;
       buildCompanyDropdown();
-      buildColumnModePanel();
+      buildColumnDropdown();
       document.getElementById('btn-export-ttp-xlsx').disabled = false;
-      ttpViewMode = 'flat';
-      syncTtpViewUi_();
-      buildTtpPeriodDropdowns_();
-      bindTtpPeriodBarOnce_();
-      refreshTtpPeriodDashboard_();
+      scheduleRenderTTPTable();
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
       errorEl.textContent = 'Gagal memuat data: ' + err.message;
-      const mixSection = document.getElementById('ttpCategoryMixSection');
-      if (mixSection) mixSection.hidden = true;
     }
   }
-
-  window.__ttpInvalidate = function() {
-    ttpLoaded = false;
-  };
 
   async function loadTTPData() {
     if (ttpLoadPromise) return ttpLoadPromise;
@@ -7956,6 +5956,7 @@ function initDashboardApp() {
   }
 
   // ─── TTP VIEW MODE (grouped / flat) ────────────────────
+  let ttpViewMode = 'grouped'; // 'grouped' | 'flat'
   let ttpTableDelegationBound = false;
 
   function bindTtpTableDelegationOnce() {
@@ -7978,29 +5979,24 @@ function initDashboardApp() {
         return;
       }
 
-      const flatRow = e.target.closest('.ttp-flat-row');
-      if (flatRow && body.contains(flatRow) && ttpViewMode === 'flat') {
-        const idx = parseInt(flatRow.dataset.flatIdx, 10);
-        const row = ttpFlatFilteredRows[idx];
-        if (row) openTtpDetailModal_(row);
-        return;
-      }
-
-      const nestedRow = e.target.closest('.ttp-group-nested-row');
-      if (nestedRow && body.contains(nestedRow) && ttpViewMode === 'grouped') {
-        if (nestedRow.dataset.row) {
-          try {
-            const parsed = JSON.parse(nestedRow.dataset.row.replace(/&#39;/g, "'"));
-            openTtpDetailModal_(parsed);
-          } catch (err) {
-            console.warn('[TTP] Could not parse row for detail popup', err);
-          }
+      const expandBtn = e.target.closest('.ttp-expand');
+      if (expandBtn && body.contains(expandBtn)) {
+        e.stopPropagation();
+        const idx = expandBtn.dataset.idx;
+        const detail = document.getElementById('ttp-detail-' + idx);
+        if (!detail) return;
+        const isOpen = detail.classList.contains('open');
+        document.querySelectorAll('.grv-detail').forEach(d => d.classList.remove('open'));
+        document.querySelectorAll('.btn-expand').forEach(b => b.classList.remove('open'));
+        if (!isOpen) {
+          detail.classList.add('open');
+          expandBtn.classList.add('open');
         }
         return;
       }
 
       const groupRow = e.target.closest('.ttp-group-row');
-      if (groupRow && body.contains(groupRow) && !e.target.closest('.ttp-group-detail-row')) {
+      if (groupRow && body.contains(groupRow)) {
         const groupId = groupRow.dataset.group;
         const expanded = groupRow.dataset.expanded === '1';
         const children = body.querySelectorAll(`[data-parent="${groupId}"]`);
@@ -8015,30 +6011,14 @@ function initDashboardApp() {
         }
       }
     });
-    body.addEventListener('keydown', function(e) {
-      if (ttpViewMode !== 'grouped') return;
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      const nestedRow = e.target.closest('.ttp-group-nested-row');
-      if (!nestedRow || !body.contains(nestedRow) || !nestedRow.dataset.row) return;
-      e.preventDefault();
-      try {
-        const parsed = JSON.parse(nestedRow.dataset.row.replace(/&#39;/g, "'"));
-        openTtpDetailModal_(parsed);
-      } catch (err) {
-        console.warn('[TTP] Could not parse row for detail popup', err);
-      }
-    });
   }
 
   function renderTTPTable() {
-    syncTtpViewUi_();
-    ttpSyncTableLayoutClass_();
     if (ttpViewMode === 'grouped') {
       renderTTPGrouped();
     } else {
       renderTTPFlat();
     }
-    updateTTPSelectionInfo();
   }
 
   // ── GROUPED VIEW ─────────────────────────────────────────
@@ -8047,18 +6027,36 @@ function initDashboardApp() {
     if (!body) return;
     bindTtpTableDelegationOnce();
 
-    const groupCol   = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'GROUP NAME')
-      || ttpFields.find(h => { const u = normalizeTtpHeaderKey_(h); return u.includes('GROUP') && u.includes('NAME') && !u.includes('FFB'); })
-      || '';
-    const companyCol = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'COMPANY NAME') || '';
-    const millCol    = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'MILL NAME') || '';
-    // Fixed header — no "Detail" column, fixed widths that don't depend on content
-    document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
+    const groupCol   = ttpFields.find(h => h.toLowerCase().includes('group')) || '';
+    const companyCol = ttpFields.find(h => h.toUpperCase() === 'COMPANY NAME') || ttpFields.find(h => h.toLowerCase().includes('company name')) || '';
+    const millCol    = ttpFields.find(h => h.toUpperCase().includes('MILL NAME') || h.toLowerCase() === 'mill name') || ttpFields.find(h => h.toLowerCase().includes('mill')) || '';
+    const villageCol = ttpFields.find(h => /village|desa|kebun|estate|location|lokasi/i.test(h)) || '';
 
-    let filtered = ttpApplyTableFilters_(ttpData);
+    // Columns to show inline in child row (exclude the 4 main cols already shown)
+    const mainCols = new Set([groupCol, companyCol, millCol, ttpPctCol].filter(Boolean));
+    const extraCols = (ttpVisibleCols && ttpVisibleCols.size > 0)
+      ? ttpFields.filter(f => ttpVisibleCols.has(f) && !mainCols.has(f))
+      : ttpFields.filter(f => !mainCols.has(f));
+
+    // Fixed header — no "Detail" column, fixed widths that don't depend on content
+    document.getElementById('ttpTableHead').innerHTML = `<tr>
+      <th style="width:160px;min-width:130px">Group Name</th>
+      <th style="width:200px;min-width:160px">Company Name</th>
+      <th style="min-width:200px">Mill Name</th>
+      <th style="width:160px;min-width:120px">${ttpPctCol || 'Traceability %'}</th>
+      <th style="width:90px;min-width:80px"></th>
+    </tr>`;
+
+    // Apply filters
+    let filtered = ttpData.filter(d =>
+      !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
+    );
+    if (ttpSelectedCompanies !== null) {
+      filtered = filtered.filter(d => ttpSelectedCompanies.has((d[ttpCompanyCol] || '').toString()));
+    }
 
     if (filtered.length === 0) {
-      body.innerHTML = '<tr><td colspan="' + ttpMainTableColspan_(true) + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
       document.getElementById('ttpGroupInfo').textContent = '';
       return;
     }
@@ -8083,9 +6081,13 @@ function initDashboardApp() {
       const subCount  = rows.length;
       const groupId   = 'ttpg-' + gIdx;
 
-      const supplierPctHtml = ttpSupplierPctHtml_(rows);
-      const avgCpoHtml = ttpGroupAvgPctHtml_(rows, 'cpo', subCount);
-      const avgPkHtml = ttpGroupAvgPctHtml_(rows, 'pk', subCount);
+      const avgPct = ttpPctCol ? (() => {
+        const nums = rows.map(r => parseFloat(r[ttpPctCol])).filter(n => !isNaN(n));
+        if (!nums.length) return '—';
+        const avg = nums.reduce((a,b) => a+b, 0) / nums.length;
+        const hasPct = (rows[0][ttpPctCol]||'').toString().includes('%');
+        return (Number.isInteger(avg) ? avg : avg.toFixed(1)) + (hasPct ? '%' : '');
+      })() : '—';
 
       // ── Parent row ──
       html += `<tr class="ttp-group-row" data-group="${groupId}" data-expanded="0">
@@ -8098,16 +6100,39 @@ function initDashboardApp() {
             ${subCount > 1 ? `<span class="ttp-sub-badge">${subCount}</span>` : ''}
           </div>
         </td>
-        <td>${avgCpoHtml}</td>
-        <td>${avgPkHtml}</td>
-        <td>${supplierPctHtml}</td>
+        <td><span style="font-weight:600;color:var(--forest)">${avgPct}</span>${subCount > 1 ? '<span class="ttp-group-meta"> avg</span>' : ''}</td>
         <td></td>
       </tr>`;
 
-      html += '<tr class="ttp-group-detail-row hidden" data-parent="' + groupId + '">'
-        + '<td colspan="' + ttpMainTableColspan_(true) + '" class="ttp-group-detail-cell">'
-        + ttpGroupedNestedTableHtml_(rows)
-        + '</td></tr>';
+      // ── Child rows — clean horizontal layout ──
+      rows.forEach((d, ri) => {
+        const pct        = ttpPctCol ? (d[ttpPctCol] !== undefined && d[ttpPctCol] !== '' ? d[ttpPctCol] : '—') : '—';
+        const childLabel = villageCol && d[villageCol] ? d[villageCol] : ('Record #' + (ri + 1));
+
+        // Pick up to 2 most informative extra fields to show as subtle text in each cell
+        const extraInfo = extraCols.slice(0, 6).filter(f => {
+          const v = (d[f] || '').toString().trim();
+          return v && v !== '—' && v !== '-';
+        }).map(f => `<span class="ttp-child-meta">${f}: <strong>${d[f]}</strong></span>`).join('');
+
+        html += `<tr class="ttp-child-row hidden" data-parent="${groupId}">
+          <td style="padding-left:12px;">
+            <span style="color:#D0B8B8;font-size:13px;line-height:1;">└</span>
+          </td>
+          <td style="color:var(--muted);font-size:11px;">${ri + 1} / ${rows.length}</td>
+          <td class="ttp-child-indent">
+            <div class="ttp-child-village">${childLabel}</div>
+            ${extraInfo ? `<div class="ttp-child-extra">${extraInfo}</div>` : ''}
+          </td>
+          <td style="font-weight:500;color:var(--text-light);font-size:12px;">${pct}</td>
+          <td>
+            <div class="row-actions">
+              <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="ttp">Edit</button>
+              <button class="btn-row btn-delete" data-rownum="${d._row}" data-sheet="ttp">Del</button>
+            </div>
+          </td>
+        </tr>`;
+      });
 
       gIdx++;
     });
@@ -8116,50 +6141,62 @@ function initDashboardApp() {
 
   }
 
-  // ── FLAT VIEW (default) — one row per record; click row for detail popup ──
+  // ── FLAT VIEW (original behaviour) ────────────────────
   function renderTTPFlat() {
     const body = document.getElementById('ttpTableBody');
     if (!body) return;
     bindTtpTableDelegationOnce();
 
-    let filtered = ttpApplyTableFilters_(ttpData);
-    ttpFlatFilteredRows = filtered;
+    let filtered = ttpData.filter(d =>
+      !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
+    );
+    if (ttpSelectedCompanies !== null) {
+      filtered = filtered.filter(d => ttpSelectedCompanies.has((d[ttpCompanyCol] || '').toString()));
+    }
 
-    const groupCol   = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'GROUP NAME')
-      || ttpFields.find(h => { const u = normalizeTtpHeaderKey_(h); return u.includes('GROUP') && u.includes('NAME') && !u.includes('FFB'); })
-      || '';
-    const companyCol = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'COMPANY NAME') || '';
-    const millCol    = ttpFields.find(h => normalizeTtpHeaderKey_(h) === 'MILL NAME') || '';
+    const colsForDetail = (ttpVisibleCols && ttpVisibleCols.size > 0) ? ttpFields.filter(f => ttpVisibleCols.has(f)) : ttpFields;
+    const groupCol   = ttpFields.find(h => h.toLowerCase().includes('group')) || '';
+    const companyCol = ttpFields.find(h => h.toUpperCase() === 'COMPANY NAME') || ttpFields.find(h => h.toLowerCase().includes('company name')) || '';
+    const millCol    = ttpFields.find(h => h.toUpperCase().includes('MILL NAME') || h.toLowerCase() === 'mill name') || ttpFields.find(h => h.toLowerCase().includes('mill')) || '';
 
-    document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(false);
-    document.getElementById('ttpGroupInfo').textContent =
-      filtered.length + ' records · click a row for supplier detail';
+    document.getElementById('ttpTableHead').innerHTML =
+      '<tr><th>Group Name</th><th>Company Name</th><th>Mill Name</th><th>' + (ttpPctCol || 'Traceability %') + '</th><th></th></tr>';
+    document.getElementById('ttpGroupInfo').textContent = filtered.length + ' records';
 
     if (filtered.length === 0) {
-      body.innerHTML = '<tr><td colspan="' + ttpMainTableColspan_(false) + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
       return;
     }
 
     body.innerHTML = filtered.map((d, i) => {
-      const cpoPct = ttpPctCol ? ttpFormatCellPct_(d[ttpPctCol]) : '—';
-      const pkPct = ttpPkPctCol ? ttpFormatCellPct_(d[ttpPkPctCol]) : '—';
-      const category = ttpRowCategoryValue_(d);
-      const supplierHint = ttpRowField_(d, ['FFB SUPPLIER NAME']);
-      const titleAttr = supplierHint !== '—'
-        ? ' title="View: ' + supplierHint.replace(/"/g, '&quot;') + '"'
-        : ' title="View supplier detail"';
-      return ''
-        + '<tr class="mill-row-clickable ttp-flat-row" data-flat-idx="' + i + '"' + titleAttr + '>'
-        + '<td>' + escHtml(d[groupCol] || '—') + '</td>'
-        + '<td>' + escHtml(d[companyCol] || '—') + '</td>'
-        + '<td><span class="mill-name">' + escHtml(d[millCol] || '—') + '</span></td>'
-        + '<td><span class="ttp-pct-val">' + escHtml(String(cpoPct)) + '</span></td>'
-        + '<td><span class="ttp-pct-val">' + escHtml(String(pkPct)) + '</span></td>'
-        + '<td><span class="ttp-category-val">' + escHtml(category) + '</span></td>'
-        + '</tr>';
+      const detailHTML = colsForDetail.map(f => `
+        <div class="grv-detail-item">
+          <div class="grv-detail-label">${f}</div>
+          <div class="grv-detail-val">${d[f] !== undefined && d[f] !== '' ? d[f] : '—'}</div>
+        </div>`).join('');
+      const pct = ttpPctCol ? (d[ttpPctCol] !== undefined && d[ttpPctCol] !== '' ? d[ttpPctCol] : '—') : '—';
+      return `
+        <tr class="mill-row-clickable ttp-main-row" data-idx="${i}">
+          <td>${d[groupCol] || '—'}</td>
+          <td>${d[companyCol] || '—'}</td>
+          <td><span class="mill-name">${d[millCol] || '—'}</span></td>
+          <td>${pct}</td>
+          <td>
+            <div class="row-actions">
+              <button class="btn-expand ttp-expand" data-idx="${i}" title="View detail">▾</button>
+              <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="ttp">Edit</button>
+              <button class="btn-row btn-delete" data-rownum="${d._row}" data-sheet="ttp">Del</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="grv-expand-row">
+          <td colspan="5">
+            <div class="grv-detail" id="ttp-detail-${i}" style="grid-template-columns:1fr 1fr 1fr;">${detailHTML}</div>
+          </td>
+        </tr>`;
     }).join('');
-  }
 
+  }
 
   (function bindTtpToolbarIfPresent() {
     const btnAddTtp = document.getElementById('btn-add-ttp');
@@ -8201,15 +6238,16 @@ function initDashboardApp() {
 
     ttpViewGrouped.addEventListener('click', function() {
       ttpViewMode = 'grouped';
-      syncTtpViewUi_();
+      this.classList.add('active');
+      document.getElementById('ttpViewFlat')?.classList.remove('active');
       scheduleRenderTTPTable();
     });
     ttpViewFlat.addEventListener('click', function() {
       ttpViewMode = 'flat';
-      syncTtpViewUi_();
+      this.classList.add('active');
+      document.getElementById('ttpViewGrouped')?.classList.remove('active');
       scheduleRenderTTPTable();
     });
-    syncTtpViewUi_();
 
     ttpBtnSelect.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -8219,12 +6257,6 @@ function initDashboardApp() {
       e.stopPropagation();
       openTTPDropdown('ttpBtnFilter', 'ttpFilterPanel', 'ttpSelectPanel', 'ttpBtnSelect');
     });
-    const ttpBtnReset = document.getElementById('ttpBtnResetFilters');
-    if (ttpBtnReset) {
-      ttpBtnReset.addEventListener('click', function() {
-        resetTtpTableFilters_();
-      });
-    }
     if (!window.__sddTtpDropdownOutsideClickBound) {
       window.__sddTtpDropdownOutsideClickBound = true;
       document.addEventListener('click', function(e) {
@@ -8246,27 +6278,34 @@ function initDashboardApp() {
     ttpExportBtn.addEventListener('click', function() {
       if (!ttpData.length) return;
 
-      const colsToExport = ttpFieldsForColMode_(ttpColFilterMode);
+      const colsToExport = ttpVisibleCols && ttpVisibleCols.size > 0
+        ? ttpFields.filter(f => ttpVisibleCols.has(f))
+        : ttpFields;
 
-      const rowsToExport = ttpApplyTableFilters_(ttpData);
+      const rowsToExport = ttpData.filter(d => {
+        if (ttpSelectedCompanies === null) return true;
+        const co = (d[ttpCompanyCol] || '').toString();
+        return ttpSelectedCompanies.has(co);
+      }).filter(d =>
+        !ttpSearch || (d._sddSearchBlob || '').includes(ttpSearch)
+      );
 
       if (!rowsToExport.length) { alert('Tidak ada data untuk di-export.'); return; }
 
       if (typeof XLSX === 'undefined') {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-        script.onload = () => doExportXLSX(rowsToExport, colsToExport, ttpColFilterMode);
+        script.onload = () => doExportXLSX(rowsToExport, colsToExport);
         document.head.appendChild(script);
       } else {
-        doExportXLSX(rowsToExport, colsToExport, ttpColFilterMode);
+        doExportXLSX(rowsToExport, colsToExport);
       }
     });
   })();
 
   // ─── TTP SELECT (dynamic column-based filter) ─────────────
   let ttpSelectedCompanies = null; // null = all selected (values of the active filter col)
-  let ttpColFilterMode = 'ttm';    // 'ttm' | 'ttp'
-  let ttpFieldSectionsCache = null;
+  let ttpVisibleCols = null;       // null = all columns
   let ttpCompanyCol = '';          // currently active filter column (legacy name kept for compat)
   let ttpActiveFilterCol = '';     // which column is currently being used for row-filter
   let ttpCompanyDropdownListenersBound = false;
@@ -8375,60 +6414,7 @@ function initDashboardApp() {
 
   function updateTTPSelection() {
     scheduleRenderTTPTable();
-  }
-
-  function getTtpDefaultFilterCol_() {
-    return ttpFields.find(function(h) { return h.toUpperCase() === 'COMPANY NAME'; }) ||
-      ttpFields.find(function(h) { return h.toLowerCase().includes('company name'); }) ||
-      ttpFields[1] || ttpFields[0] || '';
-  }
-
-  function closeTtpDropdownPanels_() {
-    const selectPanel = document.getElementById('ttpSelectPanel');
-    const filterPanel = document.getElementById('ttpFilterPanel');
-    const selBtn = document.getElementById('ttpBtnSelect');
-    const filBtn = document.getElementById('ttpBtnFilter');
-    if (selectPanel) selectPanel.classList.remove('open');
-    if (filterPanel) filterPanel.classList.remove('open');
-    if (selBtn) selBtn.classList.remove('active');
-    if (filBtn) filBtn.classList.remove('active');
-  }
-
-  function ttpHasActiveTableFilters_() {
-    if (ttpSearch) return true;
-    if (!ttpData.length) return false;
-    const allValues = getUniqueValuesForCol(ttpActiveFilterCol);
-    if (ttpSelectedCompanies && ttpSelectedCompanies.size < allValues.length) return true;
-    if (ttpColFilterMode !== 'ttm') return true;
-    const defCol = getTtpDefaultFilterCol_();
-    if (defCol && ttpActiveFilterCol && ttpActiveFilterCol !== defCol) return true;
-    return false;
-  }
-
-  function resetTtpTableFilters_() {
-    if (!ttpLoaded || !ttpData.length) return;
-    ttpSearch = '';
-    const searchInp = document.getElementById('ttpSearch');
-    const searchClear = document.getElementById('ttpSearchClear');
-    if (searchInp) searchInp.value = '';
-    if (searchClear) searchClear.classList.remove('show');
-    ttpSelectedCompanies = null;
-    ttpColFilterMode = 'ttm';
-    ttpFieldSectionsCache = null;
-    const defCol = getTtpDefaultFilterCol_();
-    ttpActiveFilterCol = defCol;
-    ttpCompanyCol = defCol;
-    const btnLabel = document.getElementById('ttpBtnSelectLabel');
-    if (btnLabel) {
-      btnLabel.textContent = defCol && defCol.length > 18 ? defCol.substring(0, 17) + '…' : (defCol || 'Select');
-    }
-    const coSearch = document.getElementById('ttpCompanySearch');
-    if (coSearch) coSearch.value = '';
-    closeTtpDropdownPanels_();
-    buildColPickerChips();
-    buildCompanyDropdown();
-    buildColumnModePanel();
-    scheduleRenderTTPTable();
+    updateTTPSelectionInfo();
   }
 
   function updateTTPSelectionInfo() {
@@ -8438,15 +6424,12 @@ function initDashboardApp() {
     if (!info || !txt || !exportBtn) return;
     const allValues = ttpData.length ? getUniqueValuesForCol(ttpActiveFilterCol) : [];
     const selCount = ttpSelectedCompanies ? ttpSelectedCompanies.size : allValues.length;
-    const colModeLabel = ttpColFilterMode === 'ttp' ? 'TTP Only' : 'TTM Only';
-    const isDefault = selCount === allValues.length && ttpColFilterMode === 'ttm';
+    const colCount = ttpVisibleCols ? ttpVisibleCols.size : ttpFields.length;
+    const isDefault = selCount === allValues.length && colCount === ttpFields.length;
     const colLabel = ttpActiveFilterCol || 'nilai';
-    if (!isDefault || selCount < allValues.length || ttpColFilterMode !== 'ttm') {
+    if (!isDefault || selCount < allValues.length || colCount < ttpFields.length) {
       info.style.display = 'flex';
-      const parts = [];
-      if (selCount < allValues.length) parts.push('<span class="ttp-badge">' + selCount + ' ' + colLabel.toLowerCase() + '</span>');
-      if (ttpColFilterMode !== 'ttm') parts.push('<span class="ttp-badge">' + colModeLabel + '</span>');
-      txt.innerHTML = parts.join(' · ');
+      txt.innerHTML = `<span class="ttp-badge">${selCount} ${colLabel.toLowerCase()}</span> · <span class="ttp-badge">${colCount} kolom</span>`;
     } else {
       info.style.display = 'none';
     }
@@ -8454,74 +6437,52 @@ function initDashboardApp() {
     const selBtn = document.getElementById('ttpBtnSelect');
     const filBtn = document.getElementById('ttpBtnFilter');
     if (selBtn) selBtn.classList.toggle('active', ttpSelectedCompanies !== null && ttpSelectedCompanies.size < allValues.length);
-    if (filBtn) filBtn.classList.toggle('active', ttpColFilterMode !== 'ttm');
-    const resetBtn = document.getElementById('ttpBtnResetFilters');
-    if (resetBtn) resetBtn.disabled = !ttpHasActiveTableFilters_();
+    if (filBtn) filBtn.classList.toggle('active', ttpVisibleCols !== null && ttpVisibleCols.size < ttpFields.length);
   }
 
-  // ─── TTP FILTER COLUMNS (TTM Only / TTP Only) ─────────────
-  function resolveTtpFieldSections_() {
-    if (ttpFieldSectionsCache) return ttpFieldSectionsCache;
-    const ttm = [];
-    const ttp = [];
-    let inTtp = false;
-    let closedTtp = false;
-    ttpFields.forEach(function(f) {
-      if (closedTtp) return;
-      const key = normalizeTtpHeaderKey_(f);
-      if (!inTtp) {
-        if (key.includes('FFB SUPPLIER')) {
-          inTtp = true;
-          ttp.push(f);
-        } else {
-          ttm.push(f);
-        }
-      } else {
-        ttp.push(f);
-        if (key.includes('ISCC')) closedTtp = true;
-      }
-    });
-    ttpFieldSectionsCache = { ttm: ttm, ttp: ttp };
-    return ttpFieldSectionsCache;
-  }
-
-  function ttpFieldsForColMode_(mode) {
-    const sections = resolveTtpFieldSections_();
-    if (mode === 'ttp') return sections.ttp.slice();
-    return sections.ttm.slice();
-  }
-
-  function buildColumnModePanel() {
+  // ─── TTP FILTER COLUMNS ───────────────────────────────────
+  function buildColumnDropdown() {
     if (!ttpFields.length) return;
-    const list = document.getElementById('ttpColumnModeList');
+    if (ttpVisibleCols === null) ttpVisibleCols = new Set(ttpFields);
+
+    const list = document.getElementById('ttpColumnList');
     if (!list) return;
-    const sections = resolveTtpFieldSections_();
-    const modes = [
-      { id: 'ttm', label: 'TTM Only', desc: 'No – UML ID', cols: sections.ttm },
-      { id: 'ttp', label: 'TTP Only', desc: 'FFB Supplier – ISCC (Y/N)', cols: sections.ttp },
-    ];
-    list.innerHTML = modes.map(function(m) {
-      const checked = ttpColFilterMode === m.id ? ' checked' : '';
-      return ''
-        + '<label class="ttp-col-mode-opt">'
-        + '<input type="radio" name="ttpColMode" value="' + m.id + '"' + checked + '>'
-        + '<span class="ttp-col-mode-opt-body">'
-        + '<span class="ttp-col-mode-opt-title">' + escHtml(m.label) + '</span>'
-        + '<span class="ttp-col-mode-opt-desc">' + escHtml(m.desc) + ' · ' + m.cols.length + ' kolom</span>'
-        + '</span>'
-        + '</label>';
+    list.innerHTML = ttpFields.map(f => {
+      const checked = ttpVisibleCols.has(f) ? 'checked' : '';
+      const id = 'ttp-col-' + f.replace(/[^a-zA-Z0-9]/g,'_').substring(0,20);
+      return `<div class="ttp-dropdown-item">
+        <input type="checkbox" id="${id}" value="${f.replace(/"/g,'&quot;')}" ${checked} onchange="ttpToggleCol(this)">
+        <label for="${id}">${f}</label>
+      </div>`;
     }).join('');
 
     if (!ttpColumnDropdownListenersBound) {
+      const ttpColAll = document.getElementById('ttpColAll');
+      const ttpColNone = document.getElementById('ttpColNone');
+      if (!ttpColAll || !ttpColNone) return;
       ttpColumnDropdownListenersBound = true;
-      list.addEventListener('change', function(e) {
-        const inp = e.target;
-        if (!inp || inp.name !== 'ttpColMode') return;
-        ttpColFilterMode = inp.value === 'ttp' ? 'ttp' : 'ttm';
+      ttpColAll.addEventListener('click', () => {
+        ttpVisibleCols = new Set(ttpFields);
+        buildColumnDropdown();
+        scheduleRenderTTPTable();
+        updateTTPSelectionInfo();
+      });
+      ttpColNone.addEventListener('click', () => {
+        ttpVisibleCols = new Set();
+        buildColumnDropdown();
+        scheduleRenderTTPTable();
         updateTTPSelectionInfo();
       });
     }
   }
+
+  window.ttpToggleCol = function(cb) {
+    if (!ttpVisibleCols) ttpVisibleCols = new Set(ttpFields);
+    if (cb.checked) ttpVisibleCols.add(cb.value);
+    else ttpVisibleCols.delete(cb.value);
+    scheduleRenderTTPTable();
+    updateTTPSelectionInfo();
+  };
 
   // ─── TTP DROPDOWN TOGGLE (absolute under .ttp-dropdown-wrap — avoid position:fixed + ancestor transform mismatch) ──
   function openTTPDropdown(btnId, panelId, otherPanelId, otherBtnId) {
@@ -8560,10 +6521,7 @@ function initDashboardApp() {
     btn.classList.add('active');
   }
 
-  function doExportXLSX(rows, cols, colMode) {
-    const mode = colMode === 'ttp' ? 'ttp' : 'ttm';
-    const sheetName = mode === 'ttp' ? 'TTP' : 'TTM';
-    const filePrefix = mode === 'ttp' ? 'monitoring_ttp' : 'monitoring_ttm';
+  function doExportXLSX(rows, cols) {
     const wsData = [cols, ...rows.map(d => cols.map(f => d[f] !== undefined ? d[f] : ''))];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -8615,11 +6573,11 @@ function initDashboardApp() {
     })};
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.utils.book_append_sheet(wb, ws, 'TTP-TTM');
 
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-    XLSX.writeFile(wb, `${filePrefix}_${stamp}.xlsx`, { cellStyles: true });
+    XLSX.writeFile(wb, `monitoring_ttp_ttm_${stamp}.xlsx`, { cellStyles: true });
   }
 
   // ─── GRIEVANCE DATA ─────────────────────────────────────
@@ -8814,774 +6772,6 @@ function initDashboardApp() {
     });
   })();
 
-  // ─── CONTACT LIST SUPPLIER ───────────────────────────────
-  const CLS_EXPORT_FIELDS = [
-    'Group Name', 'Company Name', 'Supplier Type',
-    'Sustainability PIC', 'Phone Number', 'Email', 'approved_at', 'submission_id',
-  ];
-  const CLS_MODAL_FIELDS = [
-    'Group Name', 'Company Name', 'Supplier Type',
-    'Sustainability PIC', 'Phone Number', 'Email',
-  ];
-  let contactListData = [];
-  let contactListLoaded = false;
-  let contactListSearch = '';
-  let contactLoadPromise = null;
-  let clsRenderScheduled = false;
-
-  function formatClsApprovedAt_(raw) {
-    const s = String(raw || '').trim();
-    if (!s) return '—';
-    if (s.length >= 10 && s.indexOf('T') !== -1) return s.slice(0, 10);
-    return s.length > 16 ? s.slice(0, 16) : s;
-  }
-
-  function prepareContactListRow_(d) {
-    const parts = [
-      d['Group Name'], d['Company Name'], d['Supplier Type'],
-      d['Sustainability PIC'], d['Phone Number'], d['Email'], d['submission_id'],
-    ].map(function(x) { return String(x || '').toLowerCase(); });
-    d._clsSearchBlob = parts.join(' ');
-    return d;
-  }
-
-  function updateContactListStats_() {
-    const totalEl = document.getElementById('cls-stat-total');
-    if (!totalEl) return;
-    const rows = contactListData;
-    totalEl.textContent = String(rows.length);
-    const countType = function(t) {
-      return rows.filter(function(d) {
-        return String(d['Supplier Type'] || '').toUpperCase() === t;
-      }).length;
-    };
-    const millEl = document.getElementById('cls-stat-mill');
-    const kcpEl = document.getElementById('cls-stat-kcp');
-    const traderEl = document.getElementById('cls-stat-trader');
-    if (millEl) millEl.textContent = String(countType('MILL'));
-    if (kcpEl) kcpEl.textContent = String(countType('KCP'));
-    if (traderEl) traderEl.textContent = String(countType('TRADER'));
-  }
-
-  function renderContactListTable_() {
-    const body = document.getElementById('clsTableBody');
-    if (!body) return;
-    const q = contactListSearch;
-    const filtered = contactListData.filter(function(d) {
-      return !q || (d._clsSearchBlob || '').includes(q);
-    });
-    filtered.sort(function(a, b) {
-      const ta = String(a['approved_at'] || a['updated_at'] || '');
-      const tb = String(b['approved_at'] || b['updated_at'] || '');
-      return tb.localeCompare(ta);
-    });
-    if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
-        + (q ? 'No results match your search.' : 'No contacts yet. PIC details appear here after an SDD screening is approved.')
-        + '</td></tr>';
-      return;
-    }
-    body.innerHTML = filtered.map(function(d) {
-      const pic = d['Sustainability PIC'] || '—';
-      const phone = d['Phone Number'] || '—';
-      const email = String(d['Email'] || '').trim();
-      const phoneCell = phone !== '—'
-        ? '<a class="cls-phone-link" href="tel:' + escHtml(String(phone).replace(/\s/g, '')) + '">' + escHtml(phone) + '</a>'
-        : '—';
-      const emailCell = email
-        ? '<a class="cls-phone-link" href="mailto:' + escHtml(email) + '">' + escHtml(email) + '</a>'
-        : '—';
-      return '<tr>'
-        + '<td><span class="mill-name">' + escHtml(d['Group Name'] || '—') + '</span></td>'
-        + '<td>' + escHtml(d['Company Name'] || '—') + '</td>'
-        + '<td><span class="status-badge risk-low"><span class="s-dot"></span>' + escHtml(d['Supplier Type'] || '—') + '</span></td>'
-        + '<td><strong>' + escHtml(pic) + '</strong></td>'
-        + '<td>' + phoneCell + '</td>'
-        + '<td>' + emailCell + '</td>'
-        + '<td>' + escHtml(formatClsApprovedAt_(d['approved_at'])) + '</td>'
-        + '<td style="text-align:right;"><button type="button" class="btn-sm btn-outline cls-edit-btn" data-row="' + Number(d._row || 0) + '" title="Edit contact">Edit</button></td>'
-        + '</tr>';
-    }).join('');
-
-    body.querySelectorAll('.cls-edit-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var rowNum = Number(btn.getAttribute('data-row') || 0);
-        if (!rowNum) return;
-        var hit = contactListData.find(function(it) { return Number(it._row || 0) === rowNum; });
-        if (!hit) return;
-        openModal('contactSupplier', CLS_MODAL_FIELDS, 'edit', hit);
-      });
-    });
-  }
-
-  function scheduleRenderContactListTable_() {
-    if (clsRenderScheduled) return;
-    clsRenderScheduled = true;
-    requestAnimationFrame(function() {
-      clsRenderScheduled = false;
-      renderContactListTable_();
-    });
-  }
-
-  async function loadContactListDataImpl_(force) {
-    const loading = document.getElementById('cls-loading');
-    const errorEl = document.getElementById('cls-error');
-    const table = document.getElementById('clsTable');
-    if (!loading || !errorEl || !table) return;
-    try {
-      loading.style.display = 'block';
-      errorEl.style.display = 'none';
-      table.style.display = 'none';
-      const raw = await apiGet('contactSupplier');
-      contactListData = (Array.isArray(raw) ? raw : []).map(prepareContactListRow_);
-      contactListLoaded = true;
-      updateContactListStats_();
-      loading.style.display = 'none';
-      table.style.display = 'table';
-      scheduleRenderContactListTable_();
-    } catch (err) {
-      loading.style.display = 'none';
-      errorEl.style.display = 'block';
-      errorEl.textContent = 'Failed to load Contact List Supplier: ' + ((err && err.message) ? err.message : String(err));
-      if (force) throw err;
-    }
-  }
-
-  async function loadContactListData(force) {
-    if (contactListLoaded && !force) {
-      scheduleRenderContactListTable_();
-      return;
-    }
-    if (contactLoadPromise) return contactLoadPromise;
-    contactLoadPromise = loadContactListDataImpl_(!!force);
-    try {
-      await contactLoadPromise;
-    } finally {
-      contactLoadPromise = null;
-    }
-  }
-
-  window.__contactListInvalidate = function() {
-    contactListLoaded = false;
-  };
-  window.loadContactListData = loadContactListData;
-
-  (function bindContactListToolbarIfPresent_() {
-    const searchEl = document.getElementById('clsSearch');
-    const clearEl = document.getElementById('clsSearchClear');
-    const btnRefresh = document.getElementById('btn-refresh-cls');
-    const btnExport = document.getElementById('btn-export-cls');
-    const btnAdd = document.getElementById('btn-add-cls');
-    if (!searchEl || !clearEl || !btnRefresh || !btnExport || !btnAdd) return;
-
-    const debouncedRender = debounce(function() {
-      scheduleRenderContactListTable_();
-    }, 120);
-
-    searchEl.addEventListener('input', function() {
-      contactListSearch = this.value.toLowerCase().trim();
-      if (this.value) clearEl.classList.add('show');
-      else clearEl.classList.remove('show');
-      debouncedRender();
-    });
-
-    clearEl.addEventListener('click', function() {
-      searchEl.value = '';
-      contactListSearch = '';
-      this.classList.remove('show');
-      if (debouncedRender.cancel) debouncedRender.cancel();
-      if (debouncedRender.flush) debouncedRender.flush();
-      else scheduleRenderContactListTable_();
-      searchEl.focus();
-    });
-
-    btnRefresh.addEventListener('click', function() {
-      contactListLoaded = false;
-      loadContactListData(true);
-    });
-
-    btnAdd.addEventListener('click', function() {
-      openModal('contactSupplier', CLS_MODAL_FIELDS, 'add', null);
-    });
-
-    btnExport.addEventListener('click', function() {
-      if (!contactListData.length) return;
-      const csv = '\uFEFF' + [CLS_EXPORT_FIELDS].concat(
-        contactListData.map(function(d) {
-          return CLS_EXPORT_FIELDS.map(function(f) {
-            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
-          });
-        })
-      ).map(function(r) { return r.join(','); }).join('\n');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      a.download = 'contact_list_supplier.csv';
-      a.click();
-    });
-  })();
-
-  // ─── NO BUY LIST (NBL + Unilever NBL) ────────────────────
-  const NBL_REGISTRY_FIELDS = ['Riser', 'Group Name NBL', 'Company Name NBL', 'SOURCE'];
-  const UNILEVER_NBL_FIELDS = [
-    'Riser', 'UML ID', 'COMPANY NAME', 'MILL NAME', 'COUNTRY', 'PROVINCE',
-    'DISTRICT / REGENCY', 'LAT.', 'LONG.',
-  ];
-  let nblRegistryData = [];
-  let nblUnileverData = [];
-  let nblRegistryLoaded = false;
-  let nblUnileverLoaded = false;
-  let nblLoadPromise = null;
-  let nblActiveSource = 'nbl';
-  let nblSearchRegistry = '';
-  let nblSearchUnilever = '';
-  let nblRenderScheduled = false;
-
-  function nblPickField_(row, keys) {
-    for (var i = 0; i < keys.length; i++) {
-      var v = row[keys[i]];
-      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-    }
-    var norm = {};
-    Object.keys(row || {}).forEach(function(k) {
-      if (k === '_row') return;
-      norm[String(k).trim().toLowerCase()] = row[k];
-    });
-    for (var j = 0; j < keys.length; j++) {
-      var lk = String(keys[j]).trim().toLowerCase();
-      if (norm[lk] !== undefined && norm[lk] !== null && String(norm[lk]).trim() !== '') {
-        return String(norm[lk]).trim();
-      }
-    }
-    return '';
-  }
-
-  function prepareNblRegistryRow_(d) {
-    d._nblRiser = nblPickField_(d, ['Riser']);
-    d._nblGroup = nblPickField_(d, ['Group Name NBL', 'Group Name']);
-    d._nblCompany = nblPickField_(d, ['Company Name NBL', 'Company Name']);
-    d._nblSource = nblPickField_(d, ['SOURCE', 'Source']);
-    d._nblSearchBlob = [d._nblRiser, d._nblGroup, d._nblCompany, d._nblSource]
-      .join(' ').toLowerCase();
-    return d;
-  }
-
-  function prepareNblUnileverRow_(d) {
-    d._nblRiser = nblPickField_(d, ['Riser', 'RISER', 'NO.', 'NO', 'No.']);
-    d._nblNo = d._nblRiser;
-    d._nblUml = nblPickField_(d, ['UML ID']);
-    d._nblCompany = nblPickField_(d, ['COMPANY NAME', 'Company Name']);
-    d._nblMill = nblPickField_(d, ['MILL NAME', 'Mill Name']);
-    d._nblCountry = nblPickField_(d, ['COUNTRY', 'Country']);
-    d._nblProvince = nblPickField_(d, ['PROVINCE', 'Province']);
-    d._nblDistrict = nblPickField_(d, ['DISTRICT / REGENCY', 'DISTRICT/REGENCY', 'District / Regency']);
-    d._nblLat = nblPickField_(d, ['LAT.', 'LAT', 'Latitude', 'Lat']);
-    d._nblLong = nblPickField_(d, ['LONG.', 'LONG', 'Longitude', 'Long']);
-    d._nblSearchBlob = [
-      d._nblRiser, d._nblNo, d._nblUml, d._nblCompany, d._nblMill, d._nblCountry,
-      d._nblProvince, d._nblDistrict, d._nblLat, d._nblLong,
-    ].join(' ').toLowerCase();
-    return d;
-  }
-
-  function updateNblStats_() {
-    var regEl = document.getElementById('nbl-stat-registry');
-    var uniEl = document.getElementById('nbl-stat-unilever');
-    var grpEl = document.getElementById('nbl-stat-groups');
-    var ctyEl = document.getElementById('nbl-stat-countries');
-    if (regEl) regEl.textContent = String(nblRegistryData.length);
-    if (uniEl) uniEl.textContent = String(nblUnileverData.length);
-    if (grpEl) {
-      var groups = {};
-      nblRegistryData.forEach(function(d) {
-        var g = d._nblGroup;
-        if (g) groups[g.toLowerCase()] = true;
-      });
-      grpEl.textContent = String(Object.keys(groups).length);
-    }
-    if (ctyEl) {
-      var countries = {};
-      nblUnileverData.forEach(function(d) {
-        var c = d._nblCountry;
-        if (c) countries[c.toLowerCase()] = true;
-      });
-      ctyEl.textContent = String(Object.keys(countries).length);
-    }
-  }
-
-  function setNblActiveSource_(source) {
-    nblActiveSource = source === 'unilever' ? 'unilever' : 'nbl';
-    document.querySelectorAll('#panel-no-buy-list .nbl-source-tab').forEach(function(btn) {
-      var on = btn.getAttribute('data-nbl-source') === nblActiveSource;
-      btn.classList.toggle('active', on);
-      btn.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    var paneReg = document.getElementById('nbl-pane-registry');
-    var paneUni = document.getElementById('nbl-pane-unilever');
-    if (paneReg) {
-      paneReg.classList.toggle('active', nblActiveSource === 'nbl');
-      paneReg.hidden = nblActiveSource !== 'nbl';
-    }
-    if (paneUni) {
-      paneUni.classList.toggle('active', nblActiveSource === 'unilever');
-      paneUni.hidden = nblActiveSource !== 'unilever';
-    }
-    var titleEl = document.getElementById('nbl-table-title');
-    if (titleEl) {
-      titleEl.textContent = nblActiveSource === 'unilever' ? 'Unilever NBL' : 'NBL registry';
-    }
-    var searchEl = document.getElementById('nblSearch');
-    if (searchEl) {
-      searchEl.value = nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
-      searchEl.placeholder = nblActiveSource === 'unilever'
-        ? 'Search riser, UML ID, company, mill, location...'
-        : 'Search riser, group, company, source...';
-    }
-    scheduleRenderNblTable_();
-  }
-
-  function renderNblRegistryTable_() {
-    var body = document.getElementById('nblTableRegistryBody');
-    var table = document.getElementById('nblTableRegistry');
-    if (!body || !table) return;
-    var q = nblSearchRegistry;
-    var filtered = nblRegistryData.filter(function(d) {
-      return !q || (d._nblSearchBlob || '').includes(q);
-    });
-    if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:32px;color:#9C8A8A;">'
-        + (q ? 'No results match your search.' : 'No NBL registry rows in the sheet yet.')
-        + '</td></tr>';
-      table.style.display = 'table';
-      return;
-    }
-    body.innerHTML = filtered.map(function(d) {
-      return '<tr>'
-        + '<td>' + escHtml(d._nblRiser || '—') + '</td>'
-        + '<td><span class="mill-name">' + escHtml(d._nblGroup || '—') + '</span></td>'
-        + '<td>' + escHtml(d._nblCompany || '—') + '</td>'
-        + '<td>' + escHtml(d._nblSource || '—') + '</td>'
-        + '</tr>';
-    }).join('');
-    table.style.display = 'table';
-  }
-
-  function renderNblUnileverTable_() {
-    var body = document.getElementById('nblTableUnileverBody');
-    var table = document.getElementById('nblTableUnilever');
-    if (!body || !table) return;
-    var q = nblSearchUnilever;
-    var filtered = nblUnileverData.filter(function(d) {
-      return !q || (d._nblSearchBlob || '').includes(q);
-    });
-    if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#9C8A8A;">'
-        + (q ? 'No results match your search.' : 'No Unilever NBL rows in the sheet yet.')
-        + '</td></tr>';
-      table.style.display = 'table';
-      return;
-    }
-    body.innerHTML = filtered.map(function(d) {
-      return '<tr>'
-        + '<td>' + escHtml(d._nblRiser || d._nblNo || '—') + '</td>'
-        + '<td><span class="mill-id">' + escHtml(d._nblUml || '—') + '</span></td>'
-        + '<td>' + escHtml(d._nblCompany || '—') + '</td>'
-        + '<td><span class="mill-name">' + escHtml(d._nblMill || '—') + '</span></td>'
-        + '<td>' + escHtml(d._nblCountry || '—') + '</td>'
-        + '<td>' + escHtml(d._nblProvince || '—') + '</td>'
-        + '<td>' + escHtml(d._nblDistrict || '—') + '</td>'
-        + '<td class="nbl-coord">' + escHtml(d._nblLat || '—') + '</td>'
-        + '<td class="nbl-coord">' + escHtml(d._nblLong || '—') + '</td>'
-        + '</tr>';
-    }).join('');
-    table.style.display = 'table';
-  }
-
-  function scheduleRenderNblTable_() {
-    if (nblRenderScheduled) return;
-    nblRenderScheduled = true;
-    requestAnimationFrame(function() {
-      nblRenderScheduled = false;
-      if (nblActiveSource === 'unilever') renderNblUnileverTable_();
-      else renderNblRegistryTable_();
-    });
-  }
-
-  function showNblTablesAfterLoad_() {
-    var loading = document.getElementById('nbl-loading');
-    if (loading) loading.style.display = 'none';
-    var tblReg = document.getElementById('nblTableRegistry');
-    var tblUni = document.getElementById('nblTableUnilever');
-    if (nblActiveSource === 'unilever') {
-      if (tblReg) tblReg.style.display = 'none';
-      if (tblUni) tblUni.style.display = 'table';
-    } else {
-      if (tblUni) tblUni.style.display = 'none';
-      if (tblReg) tblReg.style.display = 'table';
-    }
-    scheduleRenderNblTable_();
-  }
-
-  async function loadNoBuyListDataImpl_(force) {
-    var loading = document.getElementById('nbl-loading');
-    var errorEl = document.getElementById('nbl-error');
-    if (!loading) return;
-    try {
-      loading.style.display = 'block';
-      if (errorEl) errorEl.style.display = 'none';
-      var tblReg = document.getElementById('nblTableRegistry');
-      var tblUni = document.getElementById('nblTableUnilever');
-      if (tblReg) tblReg.style.display = 'none';
-      if (tblUni) tblUni.style.display = 'none';
-
-      var results = await Promise.all([
-        apiGet('nbl'),
-        apiGet('unileverNbl'),
-      ]);
-      nblRegistryData = (Array.isArray(results[0]) ? results[0] : []).map(prepareNblRegistryRow_);
-      nblUnileverData = (Array.isArray(results[1]) ? results[1] : []).map(prepareNblUnileverRow_);
-      nblRegistryLoaded = true;
-      nblUnileverLoaded = true;
-      updateNblStats_();
-      showNblTablesAfterLoad_();
-    } catch (err) {
-      loading.style.display = 'none';
-      if (errorEl) {
-        errorEl.style.display = 'block';
-        errorEl.textContent = 'Failed to load No Buy List: ' + ((err && err.message) ? err.message : String(err));
-      }
-      if (force) throw err;
-    }
-  }
-
-  async function loadNoBuyListData(force) {
-    if (nblRegistryLoaded && nblUnileverLoaded && !force) {
-      showNblTablesAfterLoad_();
-      return;
-    }
-    if (nblLoadPromise) return nblLoadPromise;
-    nblLoadPromise = loadNoBuyListDataImpl_(!!force);
-    try {
-      await nblLoadPromise;
-    } finally {
-      nblLoadPromise = null;
-    }
-  }
-
-  (function bindNoBuyListToolbarIfPresent_() {
-    var panel = document.getElementById('panel-no-buy-list');
-    if (!panel) return;
-
-    panel.querySelectorAll('.nbl-source-tab').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        setNblActiveSource_(btn.getAttribute('data-nbl-source') || 'nbl');
-      });
-    });
-
-    var searchEl = document.getElementById('nblSearch');
-    var clearEl = document.getElementById('nblSearchClear');
-    var btnRefresh = document.getElementById('btn-refresh-nbl');
-    var btnExport = document.getElementById('btn-export-nbl');
-    if (!searchEl || !clearEl || !btnRefresh || !btnExport) return;
-
-    var debouncedRender = debounce(function() {
-      scheduleRenderNblTable_();
-    }, 120);
-
-    searchEl.addEventListener('input', function() {
-      var q = this.value.toLowerCase().trim();
-      if (nblActiveSource === 'unilever') nblSearchUnilever = q;
-      else nblSearchRegistry = q;
-      if (this.value) clearEl.classList.add('show');
-      else clearEl.classList.remove('show');
-      debouncedRender();
-    });
-
-    clearEl.addEventListener('click', function() {
-      searchEl.value = '';
-      if (nblActiveSource === 'unilever') nblSearchUnilever = '';
-      else nblSearchRegistry = '';
-      this.classList.remove('show');
-      if (debouncedRender.cancel) debouncedRender.cancel();
-      if (debouncedRender.flush) debouncedRender.flush();
-      else scheduleRenderNblTable_();
-      searchEl.focus();
-    });
-
-    btnRefresh.addEventListener('click', function() {
-      nblRegistryLoaded = false;
-      nblUnileverLoaded = false;
-      loadNoBuyListData(true);
-    });
-
-    btnExport.addEventListener('click', function() {
-      var fields = nblActiveSource === 'unilever' ? UNILEVER_NBL_FIELDS : NBL_REGISTRY_FIELDS;
-      var rows = nblActiveSource === 'unilever' ? nblUnileverData : nblRegistryData;
-      if (!rows.length) return;
-      var csv = '\uFEFF' + [fields].concat(
-        rows.map(function(d) {
-          return fields.map(function(f) {
-            if (nblActiveSource === 'unilever') {
-              if (f === 'Riser') return '"' + String(d._nblRiser || d._nblNo || '').replace(/"/g, '""') + '"';
-              if (f === 'UML ID') return '"' + String(d._nblUml || '').replace(/"/g, '""') + '"';
-              if (f === 'COMPANY NAME') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
-              if (f === 'MILL NAME') return '"' + String(d._nblMill || '').replace(/"/g, '""') + '"';
-              if (f === 'COUNTRY') return '"' + String(d._nblCountry || '').replace(/"/g, '""') + '"';
-              if (f === 'PROVINCE') return '"' + String(d._nblProvince || '').replace(/"/g, '""') + '"';
-              if (f === 'DISTRICT / REGENCY') return '"' + String(d._nblDistrict || '').replace(/"/g, '""') + '"';
-              if (f === 'LAT.') return '"' + String(d._nblLat || '').replace(/"/g, '""') + '"';
-              if (f === 'LONG.') return '"' + String(d._nblLong || '').replace(/"/g, '""') + '"';
-            }
-            if (f === 'Riser') return '"' + String(d._nblRiser || '').replace(/"/g, '""') + '"';
-            if (f === 'Group Name NBL') return '"' + String(d._nblGroup || '').replace(/"/g, '""') + '"';
-            if (f === 'Company Name NBL') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
-            if (f === 'SOURCE') return '"' + String(d._nblSource || '').replace(/"/g, '""') + '"';
-            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
-          });
-        })
-      ).map(function(r) { return r.join(','); }).join('\n');
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      a.download = nblActiveSource === 'unilever' ? 'unilever_nbl.csv' : 'nbl_registry.csv';
-      a.click();
-    });
-  })();
-
-  // ─── SDD: CHECK NBL (import vs NBL + Unilever NBL sheets) ───
-  let _nblListsCache = null;
-  let _nblListsCacheAt = 0;
-  const NBL_LISTS_CACHE_MS = 120000;
-
-  function nblNamesEqual_(a, b) {
-    var na = normalizeLooseKey(a);
-    var nb = normalizeLooseKey(b);
-    return !!(na && nb && na === nb);
-  }
-
-  function getSddPrimaryForNblCheck_() {
-    var p = window._loadedPrimarySddRow || window._sddImportFirstRow || {};
-    return {
-      group: normalizeCellText(p['Group Name'] || p['Grup Name'] || ''),
-      company: normalizeCellText(p['Company Name'] || ''),
-      mill: normalizeCellText(p['Mill Name'] || ''),
-    };
-  }
-
-  async function ensureNblListsForCheck_() {
-    var now = Date.now();
-    if (_nblListsCache && (now - _nblListsCacheAt) < NBL_LISTS_CACHE_MS) {
-      return _nblListsCache;
-    }
-    var results = await Promise.all([apiGet('nbl'), apiGet('unileverNbl')]);
-    _nblListsCache = {
-      registry: (Array.isArray(results[0]) ? results[0] : []).map(prepareNblRegistryRow_),
-      unilever: (Array.isArray(results[1]) ? results[1] : []).map(prepareNblUnileverRow_),
-    };
-    _nblListsCacheAt = now;
-    return _nblListsCache;
-  }
-
-  function runNblMatchCheck_(primary, lists) {
-    var matches = [];
-    var seen = {};
-    var group = primary.group;
-    var company = primary.company;
-    var mill = primary.mill;
-
-    function pushMatch_(key, entry) {
-      if (seen[key]) return;
-      seen[key] = true;
-      matches.push(entry);
-    }
-
-    // NBL: any single field match counts (Group OR Company)
-    if (group || company) {
-      lists.registry.forEach(function(r, i) {
-        var groupMatch = !!(group && nblNamesEqual_(r._nblGroup, group));
-        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
-        if (!groupMatch && !companyMatch) return;
-        var hit = [];
-        if (groupMatch) hit.push('Group Name');
-        if (companyMatch) hit.push('Company Name');
-        pushMatch_('nbl-' + i, {
-          source: 'NBL',
-          detail: 'Matched (' + hit.join(' or ') + '): Group ' + (r._nblGroup || '—')
-            + ' · Company ' + (r._nblCompany || '—')
-            + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
-        });
-      });
-    }
-
-    // Unilever NBL: any single field match counts (Company OR Mill)
-    if (company || mill) {
-      lists.unilever.forEach(function(r, i) {
-        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
-        var millMatch = !!(mill && nblNamesEqual_(r._nblMill, mill));
-        if (!companyMatch && !millMatch) return;
-        var hit = [];
-        if (companyMatch) hit.push('Company Name');
-        if (millMatch) hit.push('Mill Name');
-        pushMatch_('uni-' + i, {
-          source: 'Unilever NBL',
-          detail: 'Matched (' + hit.join(' or ') + '): Company ' + (r._nblCompany || '—')
-            + ' · Mill ' + (r._nblMill || '—')
-            + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
-        });
-      });
-    }
-
-    var status = matches.length ? 'Yes' : 'No';
-    return { status: status, matches: matches, checkedAt: new Date().toISOString(), primary: primary };
-  }
-
-  function renderSddNblCheckBanner_(result) {
-    var boxes = document.querySelectorAll('#sdd-nbl-check-result');
-    if (!boxes.length) return;
-    var isYes = result.status === 'Yes';
-    var bg = isYes ? 'rgba(185,28,28,0.08)' : 'rgba(30,107,58,0.08)';
-    var border = isYes ? 'rgba(185,28,28,0.35)' : 'rgba(30,107,58,0.35)';
-    var title = isYes ? 'Yes — on No Buy List' : 'No — not on No Buy List';
-    var html = '<strong style="color:#1A0A0A;">' + title + '</strong>';
-    html += '<div style="margin-top:6px;color:#5F4A48;">Compared: Group <em>' + escHtml(result.primary.group || '—')
-      + '</em> · Company <em>' + escHtml(result.primary.company || '—')
-      + '</em> · Mill <em>' + escHtml(result.primary.mill || '—') + '</em></div>';
-    if (result.matches.length) {
-      html += '<ul style="margin:8px 0 0;padding-left:18px;color:#4a1c1c;">';
-      result.matches.forEach(function(m) {
-        html += '<li style="margin-bottom:4px;"><span style="font-weight:600;">' + escHtml(m.source) + ':</span> '
-          + escHtml(m.detail) + '</li>';
-      });
-      html += '</ul>';
-    } else {
-      html += '<div style="margin-top:6px;">No similar Group Name, Company Name, or Mill Name found in NBL or Unilever NBL sheets.</div>';
-    }
-    html += '<div style="margin-top:8px;font-size:11px;color:#9C8080;">Screening field <strong>No Buy List</strong> set to '
-      + escHtml(result.status) + '. Included in PDF export.</div>';
-    boxes.forEach(function(box) {
-      box.style.display = 'block';
-      box.style.background = bg;
-      box.style.border = '1px solid ' + border;
-      box.style.borderRadius = '8px';
-      box.style.padding = '10px 12px';
-      box.innerHTML = html;
-    });
-  }
-
-  function persistNblCheckToSdd_(result) {
-    var isYes = result.status === 'Yes';
-    var statusLabel = isYes
-      ? 'YES — Supplier IS ON the No Buy List (NBL)'
-      : 'NO — Supplier is NOT on the No Buy List';
-    var detail = result.matches.length
-      ? result.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
-      : 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
-    window._scrData = window._scrData || {};
-    window._scrData.nblCheckResult = statusLabel;
-    window._scrData.nblCheckDetail = detail;
-    window._scrData.nblCheckedAt = result.checkedAt || new Date().toISOString();
-    if (window._loadedPrimarySddRow) {
-      window._loadedPrimarySddRow['SCR - NBL Check Result'] = statusLabel;
-      window._loadedPrimarySddRow['SCR - NBL Match Detail'] = detail;
-      window._loadedPrimarySddRow['SCR - NBL Checked At'] = window._scrData.nblCheckedAt;
-    }
-  }
-
-  function applyNblCheckToScrForm_(status) {
-    var val = status === 'Yes' ? 'Yes' : 'No';
-    var el = document.getElementById('scr-nbl');
-    if (el) {
-      el.value = val;
-      el.classList.remove('scr-sel-yes', 'scr-sel-no');
-      if (val === 'Yes') el.classList.add('scr-sel-yes');
-      else if (val === 'No') el.classList.add('scr-sel-no');
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    window._scrData = window._scrData || {};
-    window._scrData.nbl = val;
-    if (window._loadedPrimarySddRow) {
-      window._loadedPrimarySddRow['SCR - No Buy List'] = val;
-    }
-  }
-
-  function restoreNblCheckResultFromRow_(row) {
-    if (!row || typeof row !== 'object') return;
-    var stored = String(row['SCR - NBL Check Result'] || '').trim();
-    var detail = String(row['SCR - NBL Match Detail'] || '').trim();
-    var checkedAt = String(row['SCR - NBL Checked At'] || '').trim();
-    var nbl = String(row['SCR - No Buy List'] || '').trim();
-    if (!stored && !detail && !nbl) return;
-    var status = /^yes/i.test(nbl) || /on the no buy list/i.test(stored) ? 'Yes' : 'No';
-    if (stored && /not on the no buy list/i.test(stored)) status = 'No';
-    var matches = [];
-    if (detail && !/^no matching/i.test(detail)) {
-      detail.split(/\s*\|\s*/).forEach(function(part) {
-        var idx = part.indexOf(':');
-        if (idx > -1) {
-          matches.push({ source: part.slice(0, idx).trim(), detail: part.slice(idx + 1).trim() });
-        }
-      });
-    }
-    window._nblCheckResult = {
-      status: status,
-      matches: matches,
-      checkedAt: checkedAt || '',
-      primary: getSddPrimaryForNblCheck_(),
-    };
-    window._scrData = window._scrData || {};
-    window._scrData.nblCheckResult = stored;
-    window._scrData.nblCheckDetail = detail;
-    window._scrData.nblCheckedAt = checkedAt;
-  }
-  window.restoreNblCheckResultFromRow_ = restoreNblCheckResultFromRow_;
-
-  window.runSddNblCheck = async function() {
-    var primary = getSddPrimaryForNblCheck_();
-    if (!primary.company && !primary.group && !primary.mill) {
-      if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Import Excel dulu — Group Name, Company Name, dan Mill Name diperlukan untuk Check NBL.', 'error');
-      }
-      return;
-    }
-
-    var btns = document.querySelectorAll('#sdd-check-nbl-btn, #sdd-check-nbl-btn-trace');
-    btns.forEach(function(b) { b.disabled = true; });
-    var boxes = document.querySelectorAll('#sdd-nbl-check-result');
-    boxes.forEach(function(box) {
-      box.style.display = 'block';
-      box.style.background = 'rgba(249,250,251,0.9)';
-      box.style.border = '1px solid rgba(74,28,28,0.12)';
-      box.style.borderRadius = '8px';
-      box.style.padding = '10px 12px';
-      box.textContent = 'Checking against NBL sheets…';
-    });
-
-    try {
-      var lists = await ensureNblListsForCheck_();
-      var result = runNblMatchCheck_(primary, lists);
-      window._nblCheckResult = result;
-      applyNblCheckToScrForm_(result.status);
-      persistNblCheckToSdd_(result);
-      renderSddNblCheckBanner_(result);
-      if (typeof window.showSddToast === 'function') {
-        window.showSddToast('NBL check: ' + result.status + (result.matches.length
-          ? ' (' + result.matches.length + ' match' + (result.matches.length > 1 ? 'es' : '') + ')'
-          : ''), result.status === 'Yes' ? 'warning' : 'success');
-      }
-    } catch (err) {
-      var msg = (err && err.message) ? err.message : String(err);
-      boxes.forEach(function(box) {
-        box.style.display = 'block';
-        box.style.background = 'rgba(185,28,28,0.06)';
-        box.style.border = '1px solid rgba(185,28,28,0.25)';
-        box.textContent = 'Check NBL failed: ' + msg;
-      });
-      if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Check NBL failed: ' + msg, 'error');
-      }
-    } finally {
-      btns.forEach(function(b) { b.disabled = false; });
-    }
-  };
-
   // ─── NAVIGATION ─────────────────────────────────────────
   const pageEls = Array.from(document.querySelectorAll('.page'));
   pageEls.forEach(function(p) {
@@ -9654,7 +6844,7 @@ function initDashboardApp() {
     const grp = document.getElementById('navGroupTrace');
     if (grp && !grp.classList.contains('open')) grp.classList.add('open');
     const grpPrograms = document.getElementById('navGroupPrograms');
-    if (grpPrograms && ['no-buy-list', 'performa-facility', 'eudr-potential', 'contact-list-supplier', 'priority-supplier-engagement'].indexOf(name) !== -1) {
+    if (grpPrograms && ['performa-facility', 'eudr-potential', 'contact-list-supplier', 'priority-supplier-engagement'].indexOf(name) !== -1) {
       if (!grpPrograms.classList.contains('open')) grpPrograms.classList.add('open');
     }
     if (name === 'mill-onboarding' && allData.length) {
@@ -9670,973 +6860,10 @@ function initDashboardApp() {
     }
     if (name === 'ttm-ttp' && !ttpLoaded) loadTTPData();
     if (name === 'grievance' && !grvLoaded) loadGrvData();
-    if (name === 'contact-list-supplier') loadContactListData();
-    if (name === 'no-buy-list') loadNoBuyListData();
-    if (name === 'performa-facility') initPerformaFacility_();
     resetScrollToTopEverywhere();
   }
   // expose globally for onclick handlers
   window.switchPanel = switchPanel;
-
-  // ─── PERFORMA FACILITY ────────────────────────────────────────────────────────
-  (function setupPerformaFacility_() {
-    function pfPopulateYears_() {
-      const sel = document.getElementById('pfYearSel');
-      if (!sel) return;
-      const existing = Array.from(sel.options).map(function(o) { return o.value; });
-      const years = new Set();
-      (allData || []).forEach(function(r) {
-        const y = String(millYearVal(r) || '').trim();
-        if (y) years.add(y);
-      });
-      Array.from(years).sort(function(a, b) { return Number(b) - Number(a); }).forEach(function(y) {
-        if (existing.indexOf(y) === -1) {
-          const opt = document.createElement('option');
-          opt.value = y;
-          opt.textContent = y;
-          sel.appendChild(opt);
-        }
-      });
-    }
-
-    function pfIsValidFacilityName_(name) {
-      const s = String(name || '').trim();
-      if (!s) return false;
-      if (/^[-–—]+$/.test(s)) return false;
-      if (/^(n\/a|na|none|null)$/i.test(s)) return false;
-      return true;
-    }
-
-    function pfSplitFacility_(raw) {
-      const s = String(raw || '').trim();
-      if (!s) return [];
-      return s.split(/[,;/]+/).map(function(f) { return f.trim(); }).filter(function(f) {
-        return pfIsValidFacilityName_(f);
-      });
-    }
-
-    function pfFormatQuarter_(v) {
-      const n = parseMillQuarterSort(v);
-      return n ? 'Q' + n : (String(v || '').trim() || '—');
-    }
-
-    function pfQuarterMatchesFilter_(rowQ, filterQ) {
-      if (!filterQ) return true;
-      return String(parseMillQuarterSort(rowQ) || '') === String(filterQ);
-    }
-
-    function pfYearMatchesFilter_(rowY, filterY) {
-      if (!filterY) return true;
-      const rowNorm = String(parseMillYearSort(rowY) || String(rowY || '').trim());
-      const filterNorm = String(parseMillYearSort(filterY) || String(filterY).trim());
-      return rowNorm === filterNorm;
-    }
-
-    // ── Supplied CPO state ──────────────────────────────────
-    let _pfSuppliedCpoSheets = [];   // available sheet names from backend
-    let _pfSuppliedCpoData   = [];   // rows from the active sheet(s)
-    let _pfSuppliedCpoLoaded = false;
-
-    // ── Supplied PK state ───────────────────────────────────
-    let _pfSuppliedPkSheets = [];
-    let _pfSuppliedPkData   = [];
-    let _pfSuppliedPkLoaded = false;
-    let _pfAllPkGroups      = [];
-
-    /**
-     * Build a lookup from supplied CPO rows:
-     *   PLANT (uppercase) → { sellers: [{seller (uppercase), qty}], totalQty }
-     */
-    function pfBuildSuppliedCpoLookup_(rows) {
-      const byPlant = {};
-      rows.forEach(function(r) {
-        const plantRaw = String(r['PLANT']  || '').trim();
-        const seller = String(r['SELLER'] || '').trim().toUpperCase();
-        if (!pfIsValidFacilityName_(plantRaw) || !seller) return;
-        const plant  = plantRaw.toUpperCase();
-
-        // Parse qty — GAS returns a number, but handle string fallback too
-        let qty = r['SUM of Qty Kg'];
-        if (typeof qty !== 'number') {
-          qty = parseFloat(String(qty || '').replace(/\./g, '').replace(',', '.'));
-        }
-        if (isNaN(qty) || qty <= 0) qty = 0;
-
-        if (!byPlant[plant]) byPlant[plant] = { sellers: {}, totalQty: 0 };
-        if (!byPlant[plant].sellers[seller]) byPlant[plant].sellers[seller] = 0;
-        byPlant[plant].sellers[seller] += qty;
-        byPlant[plant].totalQty        += qty;
-      });
-      return byPlant;
-    }
-
-    /**
-     * Build TTP % traceable lookup: COMPANY NAME (uppercase) → avg % (0–100).
-     */
-    function pfBuildTtpLookup_() {
-      const lk = {};
-      const colKey = ttpPctCol || '% CPO TRACEABLE';
-      (ttpData || []).forEach(function(r) {
-        const co = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
-        if (!co) return;
-        const raw = r[colKey] || r['% CPO TRACEABLE'] || '';
-        const num = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
-        if (!isNaN(num)) {
-          if (!lk[co]) lk[co] = { sum: 0, count: 0 };
-          lk[co].sum   += num;
-          lk[co].count += 1;
-        }
-      });
-      return lk;
-    }
-
-    /** Match SELLER → TTP % (exact key, then loose normalized name). */
-    function pfTtpPctForSeller_(ttpLookup, sellerUpper) {
-      if (!sellerUpper) return NaN;
-      const direct = ttpLookup[sellerUpper];
-      if (direct && direct.count) return direct.sum / direct.count;
-
-      const sellerLoose = normalizeLooseKey(sellerUpper);
-      if (!sellerLoose) return NaN;
-      let best = NaN;
-      Object.keys(ttpLookup).forEach(function(key) {
-        const entry = ttpLookup[key];
-        if (!entry || !entry.count) return;
-        const pct = entry.sum / entry.count;
-        const keyLoose = normalizeLooseKey(key);
-        if (keyLoose === sellerLoose) {
-          best = pct;
-          return;
-        }
-        if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(key, sellerUpper)) {
-          best = pct;
-        }
-      });
-      return best;
-    }
-
-    /**
-     * Determine the appropriate Supplied CPO sheet name(s) to load
-     * based on current Quarter/Year filter dropdowns.
-     * Returns an array of sheet names to load (may be multiple).
-     */
-    function pfResolveSuppliedCpoSheets_() {
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-      const q = qSel ? qSel.value.trim() : '';
-      const y = ySel ? ySel.value.trim() : '';
-
-      if (!_pfSuppliedCpoSheets.length) return [];
-
-      // Q + Y selected  →  "SUPPLIED CPO Q{q} {y}"
-      if (q && y) {
-        const target = ('SUPPLIED CPO Q' + q + ' ' + y).toUpperCase();
-        const exact = _pfSuppliedCpoSheets.find(function(n) {
-          return n.trim().toUpperCase() === target;
-        });
-        if (exact) return [exact];
-      }
-
-      // Only Y selected  →  prefer annual "SUPPLIED CPO {y}", fallback to all Qn y
-      if (!q && y) {
-        const annual = _pfSuppliedCpoSheets.find(function(n) {
-          return n.trim().toUpperCase() === ('SUPPLIED CPO ' + y).toUpperCase();
-        });
-        if (annual) return [annual];
-        return _pfSuppliedCpoSheets.filter(function(n) {
-          return n.trim().toUpperCase().includes(y);
-        });
-      }
-
-      // All  →  return all sheets (load all, caller aggregates)
-      return _pfSuppliedCpoSheets.slice();
-    }
-
-    /**
-     * Fetch Supplied CPO data for the currently selected period.
-     * Caches: re-fetches only when sheet selection changes.
-     */
-    async function pfLoadSuppliedCpo_() {
-      // First time: get sheet list from backend
-      if (!_pfSuppliedCpoLoaded) {
-        try {
-          const names = await apiGetAction_('listSuppliedCpoSheets');
-          _pfSuppliedCpoSheets = Array.isArray(names) ? names : [];
-        } catch (e) {
-          console.warn('[Performa Facility] listSuppliedCpoSheets failed:', e);
-          _pfSuppliedCpoSheets = [];
-        }
-        _pfSuppliedCpoLoaded = true;
-      }
-
-      const sheetNames = pfResolveSuppliedCpoSheets_();
-      if (!sheetNames.length) { _pfSuppliedCpoData = []; return; }
-
-      // Load all resolved sheets concurrently
-      try {
-        const results = await Promise.all(sheetNames.map(function(sn) {
-          return apiGetAction_('getSuppliedCpo', { sheet: sn });
-        }));
-        _pfSuppliedCpoData = [].concat.apply([], results.map(function(r) {
-          return Array.isArray(r) ? r : [];
-        }));
-      } catch (e) {
-        console.warn('[Performa Facility] getSuppliedCpo failed:', e);
-        _pfSuppliedCpoData = [];
-      }
-    }
-
-    // ── PK data pipeline ─────────────────────────────────────
-
-    /** Build lookup from Supplied PK rows: PLANT → { sellers, totalQty } */
-    function pfBuildSuppliedPkLookup_(rows) {
-      const byPlant = {};
-      rows.forEach(function(r) {
-        const plantRaw = String(r['PLANT']  || '').trim();
-        const seller   = String(r['SELLER'] || '').trim().toUpperCase();
-        if (!pfIsValidFacilityName_(plantRaw) || !seller) return;
-        const plant = plantRaw.toUpperCase();
-        let qty = r['SUM of Qty Kg'];
-        if (typeof qty !== 'number') {
-          qty = parseFloat(String(qty || '').replace(/\./g, '').replace(',', '.'));
-        }
-        if (isNaN(qty) || qty <= 0) qty = 0;
-        if (!byPlant[plant]) byPlant[plant] = { sellers: {}, totalQty: 0 };
-        if (!byPlant[plant].sellers[seller]) byPlant[plant].sellers[seller] = 0;
-        byPlant[plant].sellers[seller] += qty;
-        byPlant[plant].totalQty        += qty;
-      });
-      return byPlant;
-    }
-
-    /** Build TTP % PK TRACEABLE lookup: COMPANY NAME (uppercase) → avg % (0-100). */
-    function pfBuildTtpPkLookup_() {
-      const lk = {};
-      (ttpData || []).forEach(function(r) {
-        const co  = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
-        if (!co) return;
-        const raw = r['% PK TRACEABLE'] || r['% pk traceable'] || '';
-        if (raw === '' || raw == null) return;
-        const num = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
-        if (!isNaN(num)) {
-          if (!lk[co]) lk[co] = { sum: 0, count: 0 };
-          lk[co].sum   += num;
-          lk[co].count += 1;
-        }
-      });
-      return lk;
-    }
-
-    /** Match SELLER → TTP % PK TRACEABLE */
-    function pfTtpPkPctForSeller_(ttpPkLookup, sellerUpper) {
-      if (!sellerUpper) return NaN;
-      const direct = ttpPkLookup[sellerUpper];
-      if (direct && direct.count) return direct.sum / direct.count;
-      const sellerLoose = normalizeLooseKey(sellerUpper);
-      if (!sellerLoose) return NaN;
-      let best = NaN;
-      Object.keys(ttpPkLookup).forEach(function(key) {
-        const entry = ttpPkLookup[key];
-        if (!entry || !entry.count) return;
-        const pct     = entry.sum / entry.count;
-        const keyLoose = normalizeLooseKey(key);
-        if (keyLoose === sellerLoose) { best = pct; return; }
-        if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(key, sellerUpper)) {
-          best = pct;
-        }
-      });
-      return best;
-    }
-
-    /** Resolve which Supplied PK sheet(s) to load for current Q/Y filter. */
-    function pfResolveSuppliedPkSheets_() {
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-      const q = qSel ? qSel.value.trim() : '';
-      const y = ySel ? ySel.value.trim() : '';
-      if (!_pfSuppliedPkSheets.length) return [];
-      const toUpper = function(n) { return n.trim().toUpperCase(); };
-      if (q && y) {
-        const target = ('SUPPLIED PK Q' + q + ' ' + y).toUpperCase();
-        const exact  = _pfSuppliedPkSheets.find(function(n) { return toUpper(n) === target; });
-        if (exact) return [exact];
-      }
-      if (!q && y) {
-        const annual = _pfSuppliedPkSheets.find(function(n) { return toUpper(n) === ('SUPPLIED PK ' + y).toUpperCase(); });
-        if (annual) return [annual];
-        return _pfSuppliedPkSheets.filter(function(n) { return toUpper(n).includes(y.toUpperCase()); });
-      }
-      return _pfSuppliedPkSheets.slice();
-    }
-
-    /** Fetch Supplied PK data for currently selected period. */
-    async function pfLoadSuppliedPk_() {
-      if (!_pfSuppliedPkLoaded) {
-        try {
-          const names = await apiGetAction_('listSuppliedPkSheets');
-          _pfSuppliedPkSheets = Array.isArray(names) ? names : [];
-        } catch (e) {
-          console.warn('[Performa Facility] listSuppliedPkSheets failed:', e);
-          _pfSuppliedPkSheets = [];
-        }
-        _pfSuppliedPkLoaded = true;
-      }
-      const sheetNames = pfResolveSuppliedPkSheets_();
-      if (!sheetNames.length) { _pfSuppliedPkData = []; return; }
-      try {
-        const results = await Promise.all(sheetNames.map(function(sn) {
-          return apiGetAction_('getSuppliedPk', { sheet: sn });
-        }));
-        _pfSuppliedPkData = [].concat.apply([], results.map(function(r) {
-          return Array.isArray(r) ? r : [];
-        }));
-      } catch (e) {
-        console.warn('[Performa Facility] getSuppliedPk failed:', e);
-        _pfSuppliedPkData = [];
-      }
-    }
-
-    // ── END PK data pipeline ──────────────────────────────────
-
-    function pfBuildRows_() {
-      const millRows = allData || [];
-      const ttpLookup = pfBuildTtpLookup_();
-      const suppliedLookup = pfBuildSuppliedCpoLookup_(_pfSuppliedCpoData);
-      const hasSupplied = Object.keys(suppliedLookup).length > 0;
-
-      // Group mill rows by facility
-      const byFacility = new Map();
-      millRows.forEach(function(r) {
-        const facilities = pfSplitFacility_(r['FACILITY NAME CPO']);
-        const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
-        const coLower = coUpper.toLowerCase();
-
-        // Per-company % CPO traceable from TTP
-        const ttpEntry = ttpLookup[coUpper] || ttpLookup[coLower];
-        const ttpPctNum = ttpEntry ? (ttpEntry.sum / ttpEntry.count) : NaN;
-
-        const company = {
-          quarter:    pfFormatQuarter_(millQuarterVal(r)),
-          year:       String(millYearVal(r) || '').trim() || '—',
-          quarterRaw: millQuarterVal(r),
-          yearRaw:    millYearVal(r),
-          company:    String(r['COMPANY NAME']        || '').trim() || '—',
-          companyKey: coUpper,
-          group:      String(r['GROUP NAME']          || '').trim() || '—',
-          nbl:        String(r['BUYER NO BUY LIST']   || '').trim() || '—',
-          riskLevel:  String(r['RESULT RISK LEVEL']   || '').trim() || '—',
-          grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
-          ttpPctNum:  ttpPctNum,
-        };
-
-        facilities.forEach(function(fac) {
-          const key = fac.trim().toUpperCase();
-          if (!byFacility.has(key)) {
-            byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
-          }
-          byFacility.get(key).companies.push(company);
-        });
-      });
-
-      // For each facility, calculate % traceable from Supplied CPO
-      byFacility.forEach(function(g) {
-        const supEntry = suppliedLookup[g.facilityKey];
-        if (!supEntry || !hasSupplied) {
-          g.traceCalc = null;
-          g.traceSource = 'ttp-fallback';
-        } else {
-          let traceableQty = 0;
-          let totalQty = supEntry.totalQty;
-          let sellersWithTtp = 0;
-          let sellerCount = 0;
-          Object.keys(supEntry.sellers).forEach(function(sellerKey) {
-            const qty = supEntry.sellers[sellerKey];
-            if (!qty) return;
-            sellerCount++;
-            const pct = pfTtpPctForSeller_(ttpLookup, sellerKey);
-            const pctVal = !isNaN(pct) ? pct : 0; // no TTP match → 0% traceable
-            if (!isNaN(pct)) sellersWithTtp++;
-            traceableQty += qty * (pctVal / 100);
-          });
-          const pct = totalQty > 0 ? (traceableQty / totalQty) * 100 : NaN;
-          g.traceCalc = {
-            totalQty:       totalQty,
-            traceableQty:   traceableQty,
-            pct:            pct,
-            formatted:      !isNaN(pct) ? ttpFormatCellPct_(pct) : '—',
-            sellerCount:    sellerCount,
-            sellersWithTtp: sellersWithTtp,
-          };
-          g.traceSource = sellerCount && sellersWithTtp < sellerCount ? 'supply-partial' : 'supply';
-        }
-      });
-
-      return Array.from(byFacility.values())
-        .filter(function(g) { return pfIsValidFacilityName_(g.facility); })
-        .sort(function(a, b) {
-          return a.facility.localeCompare(b.facility, undefined, { sensitivity: 'base' });
-        });
-    }
-
-    /**
-     * Build PK facility groups from FACILITY NAME PK column.
-     * Same algorithm as pfBuildRows_ but uses PK column + PK Supplied data.
-     */
-    function pfBuildPkGroups_() {
-      const millRows    = allData || [];
-      const ttpPkLookup = pfBuildTtpPkLookup_();
-      const suppliedLookup = pfBuildSuppliedPkLookup_(_pfSuppliedPkData);
-      const hasSupplied = Object.keys(suppliedLookup).length > 0;
-
-      const byFacility = new Map();
-      millRows.forEach(function(r) {
-        const pkRaw = String(r['FACILITY NAME PK'] || '').trim();
-        if (!pkRaw || !pfIsValidFacilityName_(pkRaw)) return;
-        // Split by comma or semicolon (same as CPO)
-        const facilities = pkRaw.split(/[,;]/).map(function(s) { return s.trim(); })
-          .filter(function(s) { return s && pfIsValidFacilityName_(s); });
-        if (!facilities.length) return;
-
-        const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
-        const pkEntry = ttpPkLookup[coUpper];
-        const ttpPkPctNum = pkEntry ? (pkEntry.sum / pkEntry.count) : NaN;
-
-        const company = {
-          quarter:    pfFormatQuarter_(millQuarterVal(r)),
-          year:       String(millYearVal(r) || '').trim() || '—',
-          quarterRaw: millQuarterVal(r),
-          yearRaw:    millYearVal(r),
-          company:    String(r['COMPANY NAME']      || '').trim() || '—',
-          companyKey: coUpper,
-          group:      String(r['GROUP NAME']        || '').trim() || '—',
-          nbl:        String(r['BUYER NO BUY LIST'] || '').trim() || '—',
-          riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
-          grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
-          ttpPctNum:  ttpPkPctNum,
-        };
-
-        facilities.forEach(function(fac) {
-          const key = fac.trim().toUpperCase();
-          if (!byFacility.has(key)) {
-            byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
-          }
-          byFacility.get(key).companies.push(company);
-        });
-      });
-
-      // Calculate % PK traceable per facility
-      byFacility.forEach(function(g) {
-        const supEntry = suppliedLookup[g.facilityKey];
-        if (!supEntry || !hasSupplied) {
-          g.traceCalc   = null;
-          g.traceSource = 'ttp-fallback';
-        } else {
-          let traceableQty = 0;
-          let totalQty     = supEntry.totalQty;
-          let sellersWithTtp = 0, sellerCount = 0;
-          Object.keys(supEntry.sellers).forEach(function(sellerKey) {
-            const qty = supEntry.sellers[sellerKey];
-            if (!qty) return;
-            sellerCount++;
-            const pct    = pfTtpPkPctForSeller_(ttpPkLookup, sellerKey);
-            const pctVal = !isNaN(pct) ? pct : 0;
-            if (!isNaN(pct)) sellersWithTtp++;
-            traceableQty += qty * (pctVal / 100);
-          });
-          const pct = totalQty > 0 ? (traceableQty / totalQty) * 100 : NaN;
-          g.traceCalc  = {
-            totalQty, traceableQty, pct,
-            formatted:      !isNaN(pct) ? ttpFormatCellPct_(pct) : '—',
-            sellerCount,
-            sellersWithTtp,
-          };
-          g.traceSource = sellerCount && sellersWithTtp < sellerCount ? 'supply-partial' : 'supply';
-        }
-      });
-
-      return Array.from(byFacility.values())
-        .filter(function(g) { return pfIsValidFacilityName_(g.facility); })
-        .sort(function(a, b) { return a.facility.localeCompare(b.facility, undefined, { sensitivity: 'base' }); });
-    }
-
-    /** PK group summary — same as pfGroupSummary_ but uses PK traceability. */
-    function pfPkGroupSummary_(g) {
-      const companies = g.companies;
-      let nblYes = 0, highRisk = 0, grievanceSum = 0;
-      companies.forEach(function(c) {
-        if (pfIsNblYes_(c.nbl))       nblYes++;
-        if (pfIsHighRisk_(c.riskLevel)) highRisk++;
-        grievanceSum += pfGrievanceNum_(c.grievance);
-      });
-
-      let avgPk = '—', traceNote = '';
-      const src = g.traceSource || 'ttp-fallback';
-      if (g.traceCalc) {
-        avgPk = g.traceCalc.formatted;
-        if (src === 'supply-partial') {
-          traceNote = 'Some sellers not matched in TTM/TTP (counted as 0%)';
-        }
-      } else {
-        let pkSum = 0;
-        const n   = companies.length || 1;
-        companies.forEach(function(c) { pkSum += !isNaN(c.ttpPctNum) ? c.ttpPctNum : 0; });
-        avgPk     = ttpFormatCellPct_(pkSum / n);
-        traceNote = 'No Supplied PK data — estimated from TTM/TTP';
-      }
-      return { nblYes, highRisk, grievanceSum, avgPk, traceSource: src, traceNote };
-    }
-
-    /** Nested detail table for PK facilities. */
-    function pfPkNestedTableHtml_(companies) {
-      const rows = companies.map(function(c) {
-        const pctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
-        return '<tr class="pf-nested-row">'
-          + '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>'
-          + '<td class="pf-td-group">'   + escHtml(c.group)   + '</td>'
-          + '<td class="pf-td-period">'  + escHtml(c.quarter) + '</td>'
-          + '<td class="pf-td-period">'  + escHtml(c.year)    + '</td>'
-          + '<td class="pf-td-plain">'   + escHtml(c.nbl)     + '</td>'
-          + '<td class="pf-td-plain">'   + escHtml(c.riskLevel) + '</td>'
-          + '<td class="pf-td-num">'     + escHtml(String(c.grievance)) + '</td>'
-          + '<td class="pf-td-num">'     + pfCpoPctHtml_(pctStr) + '</td>'
-          + '</tr>';
-      }).join('');
-      return '<div class="pf-detail-wrap pf-detail-wrap--pk">'
-        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span></div>'
-        + '<table class="pf-nested-table"><colgroup>'
-        + '<col class="pf-ncol-company"/><col class="pf-ncol-group"/>'
-        + '<col class="pf-ncol-period"/><col class="pf-ncol-period"/>'
-        + '<col class="pf-ncol-status"/><col class="pf-ncol-status"/>'
-        + '<col class="pf-ncol-num"/><col class="pf-ncol-pct"/>'
-        + '</colgroup><thead><tr>'
-        + '<th class="pf-th-left">Company Name</th><th class="pf-th-left">Group Name</th>'
-        + '<th class="pf-th-center">Quarter</th><th class="pf-th-center">Year</th>'
-        + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
-        + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% PK TRACEABLE</th>'
-        + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-    }
-
-    /** Render PK facility table into #pfPkTableBody. */
-    function pfRenderPkTable_(pkGroups) {
-      const tbl   = document.getElementById('pfPkTable');
-      const tbody = document.getElementById('pfPkTableBody');
-      const loading = document.getElementById('pf-pk-loading');
-      if (!tbl || !tbody) return;
-
-      // Bind delegation once
-      if (!tbody._pfPkDelegationBound) {
-        tbody._pfPkDelegationBound = true;
-        tbody.addEventListener('click', function(e) {
-          const groupRow = e.target.closest('.pf-group-row');
-          if (!groupRow || !tbody.contains(groupRow) || e.target.closest('.pf-group-detail-row')) return;
-          const groupId  = groupRow.dataset.group;
-          const expanded = groupRow.dataset.expanded === '1';
-          const children = tbody.querySelectorAll('[data-parent="' + groupId + '"]');
-          if (expanded) {
-            children.forEach(function(c) { c.classList.add('hidden'); });
-            groupRow.dataset.expanded = '0';
-            groupRow.classList.remove('expanded');
-          } else {
-            children.forEach(function(c) { c.classList.remove('hidden'); });
-            groupRow.dataset.expanded = '1';
-            groupRow.classList.add('expanded');
-          }
-        });
-      }
-
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-      const qFilter  = qSel ? qSel.value : '';
-      const yFilter  = ySel ? ySel.value : '';
-      const searchQ  = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
-
-      const filtered = pkGroups.map(function(g) {
-        let companies = g.companies.filter(function(c) {
-          if (!pfQuarterMatchesFilter_(c.quarterRaw, qFilter)) return false;
-          if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
-          return true;
-        });
-        if (searchQ) {
-          if (g.facility.toLowerCase().includes(searchQ)) return { facility: g.facility, facilityKey: g.facilityKey, companies: companies, traceCalc: g.traceCalc, traceSource: g.traceSource };
-          companies = companies.filter(function(c) {
-            return [c.company, c.group, c.quarter, c.year].some(function(v) { return String(v).toLowerCase().includes(searchQ); });
-          });
-        }
-        return { facility: g.facility, facilityKey: g.facilityKey, companies: companies, traceCalc: g.traceCalc, traceSource: g.traceSource };
-      }).filter(function(g) { return g.companies.length > 0; });
-
-      const pkCountEl = document.getElementById('pf-pk-count');
-      if (pkCountEl) pkCountEl.textContent = filtered.length + ' KCP facility · ' + filtered.reduce(function(s,g){return s+g.companies.length;}, 0) + ' company';
-
-      if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">No PK data matches the current filters.</td></tr>';
-        if (loading) loading.style.display = 'none';
-        tbl.style.display = 'table';
-        return;
-      }
-
-      let html = '';
-      let gIdx = 0;
-      filtered.forEach(function(g) {
-        const sum     = pfPkGroupSummary_(g);
-        const groupId = 'pfpkg-' + gIdx;
-        const count   = g.companies.length;
-        const nblLabel  = sum.nblYes > 0
-          ? '<span class="pf-plain-num">'      + escHtml(String(sum.nblYes) + ' Yes') + '</span>'
-          : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
-        const highLabel = sum.highRisk > 0
-          ? '<span class="pf-plain-num">'      + escHtml(String(sum.highRisk))         + '</span>'
-          : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
-        const grvLabel  = sum.grievanceSum > 0
-          ? '<span class="pf-metric-num">'     + escHtml(String(sum.grievanceSum))     + '</span>'
-          : pfMetricZeroHtml_(0);
-
-        html += '<tr class="pf-group-row pf-pk-group-row" data-group="' + groupId + '" data-expanded="0">'
-          + '<td class="pf-td-facility"><div class="pf-facility-cell">'
-          + '<span class="pf-group-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>'
-          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong></div></td>'
-          + '<td class="pf-td-center">' + pfCountPillHtml_(count)   + '</td>'
-          + '<td class="pf-td-plain">'  + nblLabel                  + '</td>'
-          + '<td class="pf-td-plain">'  + highLabel                 + '</td>'
-          + '<td class="pf-td-num">'    + grvLabel                  + '</td>'
-          + '<td class="pf-td-num">'    + pfCpoPctHtml_(sum.avgPk, sum.traceSource, sum.traceNote) + '</td>'
-          + '</tr>';
-        html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="6" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
-        gIdx++;
-      });
-
-      tbody.innerHTML = html;
-      if (loading) loading.style.display = 'none';
-      tbl.style.display = 'table';
-    }
-
-    function pfIsNblYes_(v) {
-      const s = String(v || '').toLowerCase();
-      return s === 'yes' || s.includes('nbl') || s.includes('no buy');
-    }
-
-    function pfIsHighRisk_(v) {
-      return String(v || '').toLowerCase().includes('high');
-    }
-
-    function pfGrievanceNum_(v) {
-      const n = parseFloat(String(v).replace(/,/g, ''));
-      return isNaN(n) ? 0 : n;
-    }
-
-    function pfGroupSummary_(g) {
-      const companies = g.companies;
-      let nblYes = 0;
-      let highRisk = 0;
-      let grievanceSum = 0;
-      companies.forEach(function(c) {
-        if (pfIsNblYes_(c.nbl)) nblYes++;
-        if (pfIsHighRisk_(c.riskLevel)) highRisk++;
-        grievanceSum += pfGrievanceNum_(c.grievance);
-      });
-
-      let avgCpo = '—';
-      let supQtyFmt = null;
-      let traceNote = '';
-      const src = g.traceSource || 'ttp-fallback';
-
-      if (g.traceCalc) {
-        avgCpo = g.traceCalc.formatted;
-        if (g.traceCalc.totalQty > 0) {
-          supQtyFmt = (g.traceCalc.totalQty / 1000).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' ton';
-        }
-        if (src === 'supply-partial') {
-          traceNote = 'Some sellers not matched in TTM/TTP (counted as 0%)';
-        }
-      } else {
-        // Fallback: rata-rata TTP per company di mill (tanpa data supply) — seller tanpa data = 0%
-        let cpoSum = 0;
-        const n = companies.length || 1;
-        companies.forEach(function(c) {
-          cpoSum += !isNaN(c.ttpPctNum) ? c.ttpPctNum : 0;
-        });
-        avgCpo = ttpFormatCellPct_(cpoSum / n);
-        traceNote = 'No Supplied CPO data — estimated from TTM/TTP';
-      }
-
-      return { nblYes, highRisk, grievanceSum, avgCpo, supQtyFmt, traceSource: src, traceNote: traceNote };
-    }
-
-    function pfRiskBadge_(v) {
-      const s = String(v || '').toLowerCase();
-      if (s.includes('high'))   return '<span class="status-badge risk-high"><span class="s-dot"></span>' + escHtml(v) + '</span>';
-      if (s.includes('med'))    return '<span class="status-badge risk-med"><span class="s-dot"></span>'  + escHtml(v) + '</span>';
-      if (s.includes('low'))    return '<span class="status-badge risk-low"><span class="s-dot"></span>'  + escHtml(v) + '</span>';
-      return '<span>' + escHtml(v) + '</span>';
-    }
-
-    function pfNblBadge_(v) {
-      const s = String(v || '').toLowerCase();
-      const isYes = s === 'yes' || s.includes('nbl') || s.includes('no buy');
-      if (isYes) return '<span class="status-badge risk-high"><span class="s-dot"></span>Yes</span>';
-      if (s === 'no') return '<span class="status-badge risk-low"><span class="s-dot"></span>No</span>';
-      return '<span>' + escHtml(v) + '</span>';
-    }
-
-    function pfMetricZeroHtml_(n) {
-      return '<span class="pf-metric-zero">' + escHtml(String(n)) + '</span>';
-    }
-
-    function pfCountPillHtml_(n) {
-      return '<span class="pf-count-pill">' + escHtml(String(n)) + '</span>';
-    }
-
-    function pfCpoPctHtml_(v, source, note) {
-      const s = String(v || '').trim();
-      if (!s || s === '—') return '<span class="pf-metric-zero">—</span>';
-      const isFull = s === '100%' || s.startsWith('100');
-      const hint = source === 'ttp-fallback'
-        ? '<span class="pf-pct-hint" title="' + escHtml(note || 'Estimated from TTM/TTP (no Supplied CPO data)') + '">*</span>'
-        : (source === 'supply-partial'
-          ? '<span class="pf-pct-hint" title="' + escHtml(note || 'Partial TTM/TTP seller match') + '">†</span>'
-          : '');
-      const titleAttr = note ? ' title="' + escHtml(note) + '"' : '';
-      return '<span class="pf-pct-val' + (isFull ? ' pf-pct-val--full' : '') + '"' + titleAttr + '>'
-        + escHtml(s) + hint + '</span>';
-    }
-
-    function pfNestedTableHtml_(companies) {
-      const rows = companies.map(function(c) {
-        const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
-        return '<tr class="pf-nested-row">'
-          + '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>'
-          + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
-          + '<td class="pf-td-period">' + escHtml(c.quarter) + '</td>'
-          + '<td class="pf-td-period">' + escHtml(c.year) + '</td>'
-          + '<td class="pf-td-plain">' + escHtml(c.nbl) + '</td>'
-          + '<td class="pf-td-plain">' + escHtml(c.riskLevel) + '</td>'
-          + '<td class="pf-td-num">' + escHtml(String(c.grievance)) + '</td>'
-          + '<td class="pf-td-num">' + pfCpoPctHtml_(ttpPctStr) + '</td>'
-          + '</tr>';
-      }).join('');
-      return '<div class="pf-detail-wrap">'
-        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span></div>'
-        + '<table class="pf-nested-table"><colgroup>'
-        + '<col class="pf-ncol-company" /><col class="pf-ncol-group" />'
-        + '<col class="pf-ncol-period" /><col class="pf-ncol-period" />'
-        + '<col class="pf-ncol-status" /><col class="pf-ncol-status" />'
-        + '<col class="pf-ncol-num" /><col class="pf-ncol-pct" />'
-        + '</colgroup><thead><tr>'
-        + '<th class="pf-th-left">Company Name</th><th class="pf-th-left">Group Name</th>'
-        + '<th class="pf-th-center">Quarter</th><th class="pf-th-center">Year</th>'
-        + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
-        + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% TRACEABLE</th>'
-        + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-    }
-
-    function pfApplyFilters_(groups) {
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-      const qFilter = qSel ? qSel.value : '';
-      const yFilter = ySel ? ySel.value : '';
-      const searchQ = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
-
-      return groups.map(function(g) {
-        let companies = g.companies.filter(function(c) {
-          if (!pfQuarterMatchesFilter_(c.quarterRaw, qFilter)) return false;
-          if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
-          return true;
-        });
-        if (searchQ) {
-          if (g.facility.toLowerCase().includes(searchQ)) return { facility: g.facility, companies: companies };
-          companies = companies.filter(function(c) {
-            return [c.company, c.group, c.quarter, c.year].some(function(v) {
-              return String(v).toLowerCase().includes(searchQ);
-            });
-          });
-        }
-        return { facility: g.facility, companies: companies };
-      }).filter(function(g) { return g.companies.length > 0; });
-    }
-
-    function pfBindTableDelegationOnce_() {
-      const body = document.getElementById('pfTableBody');
-      if (!body || body._pfDelegationBound) return;
-      body._pfDelegationBound = true;
-      body.addEventListener('click', function(e) {
-        const groupRow = e.target.closest('.pf-group-row');
-        if (!groupRow || !body.contains(groupRow) || e.target.closest('.pf-group-detail-row')) return;
-        const groupId = groupRow.dataset.group;
-        const expanded = groupRow.dataset.expanded === '1';
-        const children = body.querySelectorAll('[data-parent="' + groupId + '"]');
-        if (expanded) {
-          children.forEach(function(c) { c.classList.add('hidden'); });
-          groupRow.dataset.expanded = '0';
-          groupRow.classList.remove('expanded');
-        } else {
-          children.forEach(function(c) { c.classList.remove('hidden'); });
-          groupRow.dataset.expanded = '1';
-          groupRow.classList.add('expanded');
-        }
-      });
-    }
-
-    function pfRenderTable_(groups) {
-      const tbl   = document.getElementById('pfTable');
-      const tbody = document.getElementById('pfTableBody');
-      const loading = document.getElementById('pf-loading');
-      const scope = document.getElementById('pfScopeText');
-      if (!tbl || !tbody) return;
-      pfBindTableDelegationOnce_();
-
-      const filtered = pfApplyFilters_(groups);
-
-      let totalCompanies = 0;
-      let highCount = 0;
-      let nblCount = 0;
-      let grvCount = 0;
-      filtered.forEach(function(g) {
-        totalCompanies += g.companies.length;
-        g.companies.forEach(function(c) {
-          if (pfIsHighRisk_(c.riskLevel)) highCount++;
-          if (pfIsNblYes_(c.nbl)) nblCount++;
-          if (pfGrievanceNum_(c.grievance) > 0) grvCount++;
-        });
-      });
-
-      const totalEl   = document.getElementById('pf-stat-total');
-      const highEl    = document.getElementById('pf-stat-high');
-      const nblEl     = document.getElementById('pf-stat-nbl');
-      const grvEl     = document.getElementById('pf-stat-grievance');
-      if (totalEl) totalEl.textContent = String(filtered.length);
-      if (highEl)  highEl.textContent  = String(highCount);
-      if (nblEl)   nblEl.textContent   = String(nblCount);
-      if (grvEl)   grvEl.textContent   = String(grvCount);
-      if (scope)   scope.textContent   = filtered.length + ' facility · ' + totalCompanies + ' company';
-
-      if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">'
-          + 'No data matches the current filters.'
-          + '</td></tr>';
-        if (loading) loading.style.display = 'none';
-        tbl.style.display = 'table';
-        return;
-      }
-
-      let html = '';
-      let gIdx = 0;
-      filtered.forEach(function(g) {
-        const sum = pfGroupSummary_(g);
-        const groupId = 'pfg-' + gIdx;
-        const count = g.companies.length;
-        const nblLabel = sum.nblYes > 0
-          ? '<span class="pf-plain-num">' + escHtml(String(sum.nblYes) + ' Yes') + '</span>'
-          : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
-
-        const highLabel = sum.highRisk > 0
-          ? '<span class="pf-plain-num">' + escHtml(String(sum.highRisk)) + '</span>'
-          : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
-
-        const grvLabel = sum.grievanceSum > 0
-          ? '<span class="pf-metric-num">' + escHtml(String(sum.grievanceSum)) + '</span>'
-          : pfMetricZeroHtml_(0);
-
-        html += '<tr class="pf-group-row" data-group="' + groupId + '" data-expanded="0">'
-          + '<td class="pf-td-facility"><div class="pf-facility-cell">'
-          + '<span class="pf-group-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>'
-          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong></div></td>'
-          + '<td class="pf-td-center">' + pfCountPillHtml_(count) + '</td>'
-          + '<td class="pf-td-plain">' + nblLabel + '</td>'
-          + '<td class="pf-td-plain">' + highLabel + '</td>'
-          + '<td class="pf-td-num">' + grvLabel + '</td>'
-          + '<td class="pf-td-num">' + pfCpoPctHtml_(sum.avgCpo, sum.traceSource, sum.traceNote) + '</td>'
-          + '</tr>';
-        html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="6" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
-        gIdx++;
-      });
-
-      tbody.innerHTML = html;
-      if (loading) loading.style.display = 'none';
-      tbl.style.display = 'table';
-    }
-
-    let _pfAllGroups = [];
-
-    async function pfLoadAndRender_() {
-      const loading = document.getElementById('pf-loading');
-      const tbl     = document.getElementById('pfTable');
-      const errEl   = document.getElementById('pf-error');
-      if (loading) { loading.style.display = 'block'; loading.textContent = 'Loading data…'; }
-      if (tbl) tbl.style.display = 'none';
-      if (errEl) errEl.style.display = 'none';
-
-      try {
-        await Promise.all([
-          allData && allData.length ? Promise.resolve() : loadMillData(),
-          ttpLoaded ? Promise.resolve() : loadTTPData(),
-        ]);
-        // Load CPO + PK supplied data concurrently
-        await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
-        pfPopulateYears_();
-        _pfAllGroups   = pfBuildRows_();
-        _pfAllPkGroups = pfBuildPkGroups_();
-        pfRenderTable_(_pfAllGroups);
-        pfRenderPkTable_(_pfAllPkGroups);
-      } catch (err) {
-        if (loading) loading.style.display = 'none';
-        if (errEl) {
-          errEl.style.display = 'block';
-          errEl.textContent = 'Failed to load data: ' + (err && err.message ? err.message : err);
-        }
-      }
-    }
-
-    window.initPerformaFacility_ = function initPerformaFacility_() {
-      const searchEl = document.getElementById('pfSearch');
-      const qSel = document.getElementById('pfQuarterSel');
-      const ySel = document.getElementById('pfYearSel');
-
-      // Search: re-render both CPO and PK tables
-      if (searchEl && !searchEl._pfBound) {
-        searchEl._pfBound = true;
-        searchEl.addEventListener('input', function() {
-          if (_pfAllGroups.length)   pfRenderTable_(_pfAllGroups);
-          if (_pfAllPkGroups.length) pfRenderPkTable_(_pfAllPkGroups);
-        });
-      }
-
-      // Quarter/Year change: reload supplied CPO + PK data for the new period, then rebuild
-      async function onPeriodChange_() {
-        _pfSuppliedCpoLoaded = false; // force re-fetch on next load
-        _pfSuppliedPkLoaded  = false;
-        await pfLoadAndRender_();
-      }
-
-      if (qSel && !qSel._pfBound) {
-        qSel._pfBound = true;
-        qSel.addEventListener('change', onPeriodChange_);
-      }
-      if (ySel && !ySel._pfBound) {
-        ySel._pfBound = true;
-        ySel.addEventListener('change', onPeriodChange_);
-      }
-
-      // Reset filter button
-      const resetBtn = document.getElementById('pfResetFilter');
-      if (resetBtn && !resetBtn._pfBound) {
-        resetBtn._pfBound = true;
-        resetBtn.addEventListener('click', async function() {
-          if (qSel) qSel.value = '';
-          if (ySel) ySel.value = '';
-          const searchEl2 = document.getElementById('pfSearch');
-          if (searchEl2) searchEl2.value = '';
-          _pfSuppliedCpoLoaded = false;
-          _pfSuppliedPkLoaded  = false;
-          await pfLoadAndRender_();
-        });
-      }
-
-      pfLoadAndRender_();
-    };
-  })();
-  // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 
   // ─── LOGIN (simple page, no modal needed) ─────────────────────────────────────────
   // focus email on load
@@ -10907,12 +7134,8 @@ function initDashboardApp() {
     const submitted = Object.entries(rows)
       .filter(function([, r]) {
         const status    = String(r['SCR - Screening Status'] || '').toLowerCase();
-        const decision  = String(
-          r['statusSDD'] || r['statusSdd'] || r['Status SDD'] ||
-          r['statusBossDecision'] || r['Status Boss Decision'] || ''
-        ).trim().toLowerCase();
         const millAdded = String(r['mill_added'] || '').toLowerCase();
-        return status === 'submitted' && (decision === 'approve' || decision === 'approved') && millAdded !== 'true';
+        return status === 'submitted' && millAdded !== 'true';
       })
       .sort(function([, a], [, b]) {
         return new Date(b['updated_at'] || 0) - new Date(a['updated_at'] || 0);
@@ -11078,7 +7301,7 @@ function initDashboardApp() {
   }
 
   // ─── SDD PDF EXPORT ─────────────────────────────────────────────────────────
-  async function sddExportPdf() {
+  function sddExportPdf() {
     var status = String(
       (window._scrData && window._scrData.status) ||
       (window._loadedPrimarySddRow && window._loadedPrimarySddRow['SCR - Screening Status']) || ''
@@ -11089,16 +7312,16 @@ function initDashboardApp() {
       }
       return;
     }
+    if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+      if (typeof window.showSddToast === 'function') window.showSddToast('Library jsPDF belum dimuat.', 'error');
+      return;
+    }
 
     var pdfBtn = document.getElementById('sdd-export-pdf-btn');
     if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.innerHTML = 'Generating…'; }
 
     try {
-      if (window._loadedPrimarySddRow && typeof window.restoreNblCheckResultFromRow_ === 'function') {
-        window.restoreNblCheckResultFromRow_(window._loadedPrimarySddRow);
-      }
-
-      var jsPDFLib = getJsPDF();
+      var jsPDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
       var doc = new jsPDFLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
       // ─── Data sources ────────────────────────────────────────────────────
@@ -11138,9 +7361,6 @@ function initDashboardApp() {
         cert        : val('scr-cert',      'cert',     'SCR - Certification'),
         ndpe        : val('scr-ndpe',      'ndpe',     'SCR - NDPE Policy'),
         nbl         : val('scr-nbl',       'nbl',      'SCR - No Buy List'),
-        nblCheckResult: val(null, 'nblCheckResult', 'SCR - NBL Check Result'),
-        nblCheckDetail: val(null, 'nblCheckDetail', 'SCR - NBL Match Detail'),
-        nblCheckedAt  : val(null, 'nblCheckedAt',   'SCR - NBL Checked At'),
         grvYN       : val('scr-grv-yn',    'grvYN',    'SCR - Grievance (Y/N)'),
         priYN       : val('scr-pri-yn',    'priYN',    'SCR - PRI (Y/N)'),
         note        : val('traceRecInput', 'traceNote','SCR - Notes'),
@@ -11514,89 +7734,11 @@ function initDashboardApp() {
       // 4. SCREENING SUMMARY
       // ═══════════════════════════════════════════════════════════════════════
       S('Screening Summary');
-
-      // ── No Buy List (NBL) — prominent summary for PDF readers ──
-      (function renderNblPdfBlock_() {
-        var nblRaw = String(f.nbl || '').trim();
-        var nblYes = nblRaw.toLowerCase() === 'yes';
-        var nblNo = nblRaw.toLowerCase() === 'no';
-        var resultLine = String(f.nblCheckResult || pick('SCR - NBL Check Result') || '').trim();
-        if (!resultLine) {
-          if (nblYes) resultLine = 'YES — Supplier IS ON the No Buy List (NBL)';
-          else if (nblNo) resultLine = 'NO — Supplier is NOT on the No Buy List';
-          else resultLine = 'Not checked — run Check NBL before export for a definitive result';
-        }
-        var detailLine = String(f.nblCheckDetail || pick('SCR - NBL Match Detail') || '').trim();
-        if (!detailLine && window._nblCheckResult) {
-          if (window._nblCheckResult.matches && window._nblCheckResult.matches.length) {
-            detailLine = window._nblCheckResult.matches.map(function(m) {
-              return m.source + ': ' + m.detail;
-            }).join(' | ');
-          } else if (window._nblCheckResult.status === 'No') {
-            detailLine = 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
-          }
-        }
-        if (!detailLine && nblNo) {
-          detailLine = 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
-        }
-        if (!detailLine && nblYes) {
-          detailLine = 'Supplier matched a name on the NBL or Unilever NBL registry (screening: Yes).';
-        }
-        var checkedLine = String(f.nblCheckedAt || pick('SCR - NBL Checked At') || '').trim();
-        if (!checkedLine && window._nblCheckResult && window._nblCheckResult.checkedAt) {
-          checkedLine = window._nblCheckResult.checkedAt;
-        }
-        if (checkedLine) {
-          try {
-            var dChk = new Date(checkedLine);
-            if (!isNaN(dChk.getTime())) {
-              checkedLine = dChk.toLocaleString('id-ID', {
-                day: '2-digit', month: 'short', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-              });
-            }
-          } catch (eChk) {}
-        }
-
-        var detailPdfLines = detailLine ? doc.splitTextToSize(detailLine, cW - 8) : [];
-        var resultPdfLines = doc.splitTextToSize(resultLine, cW - 8);
-        var boxH = 7 + resultPdfLines.length * KV_LH
-          + (detailPdfLines.length ? detailPdfLines.length * KV_LH + 2 : 0)
-          + (checkedLine ? KV_LH + 2 : 0);
-        checkPage(boxH + 4);
-        doc.setFillColor.apply(doc, nblYes ? [255, 235, 235] : (nblNo ? [235, 245, 238] : [249, 250, 251]));
-        doc.setDrawColor.apply(doc, nblYes ? RED : (nblNo ? [30, 107, 58] : [200, 185, 185]));
-        doc.setLineWidth(0.35);
-        doc.rect(mL, y, cW, boxH, 'FD');
-        var ty = y + 5;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor.apply(doc, nblYes ? RED : (nblNo ? [30, 107, 58] : GRY_DRK));
-        doc.text(resultPdfLines, mL + 4, ty);
-        ty += resultPdfLines.length * KV_LH + 1;
-        if (detailPdfLines.length) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7.5);
-          doc.setTextColor.apply(doc, BLACK);
-          doc.text(detailPdfLines, mL + 4, ty);
-          ty += detailPdfLines.length * KV_LH + 1;
-        }
-        if (checkedLine) {
-          doc.setFont('helvetica', 'italic');
-          doc.setFontSize(7);
-          doc.setTextColor.apply(doc, GRY_LBL);
-          doc.text('NBL checked: ' + checkedLine, mL + 4, ty);
-        }
-        doc.setTextColor.apply(doc, BLACK);
-        doc.setFont('helvetica', 'normal');
-        y += boxH + 4;
-      })();
-
       kv ('Group / Owners',  f.owners   || '—');
       kv ('Previous News',   f.news     || '—');
       kv ('Supply To',       f.supplyto || '—');
       kv2('Legality Status', f.legality || '—',  'Certification', f.cert  || '—');
-      kv2('NDPE Policy',     f.ndpe     || '—',  'No Buy List (Y/N)', f.nbl || '—');
+      kv2('NDPE Policy',     f.ndpe     || '—',  'No Buy List',   f.nbl   || '—');
       kv2('Grievance (Y/N)', f.grvYN    || '—',  'PRI (Y/N)',     f.priYN || '—');
       kv ('Screening Notes', f.note     || '—');
       kv ('Requested Data',  f.reqData  || '—');
@@ -11873,589 +8015,6 @@ function initDashboardApp() {
       }
     }
   }
-  window.sddExportPdf = sddExportPdf;
-  // ─── END SDD PDF EXPORT ──────────────────────────────────────────────────
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  SUPPLY IMPORT — Task List (Excel → Draft → Submit to Mill)
-  // ═══════════════════════════════════════════════════════════════════════════
-  (function initSupplyImport() {
-    // ── Year options ─────────────────────────────────────────────────────────
-    const yearSel = document.getElementById('supply-import-year');
-    if (yearSel) {
-      const curYear = new Date().getFullYear();
-      for (let y = curYear + 1; y >= curYear - 4; y--) {
-        const opt = document.createElement('option');
-        opt.value = String(y); opt.textContent = String(y);
-        yearSel.appendChild(opt);
-      }
-      yearSel.value = String(curYear);
-    }
-
-    // ── Modal open/close ──────────────────────────────────────────────────────
-    const overlay   = document.getElementById('supply-import-modal-overlay');
-    const openBtn   = document.getElementById('btn-supply-import-open');
-    const closeBtn  = document.getElementById('btn-supply-import-close');
-    const cancelBtn = document.getElementById('btn-supply-import-cancel');
-    function closeModal() {
-      if (overlay) overlay.style.display = 'none';
-      resetImportModal_();
-    }
-    if (openBtn)   openBtn.addEventListener('click', function() { if (overlay) overlay.style.display = 'block'; });
-    if (closeBtn)  closeBtn.addEventListener('click', closeModal);
-    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-    if (overlay)   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
-
-    // ── Drag & drop ───────────────────────────────────────────────────────────
-    const dropZone  = document.getElementById('supply-import-drop-zone');
-    const fileInput = document.getElementById('supply-import-file-input');
-    if (dropZone) {
-      dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.style.background = 'rgba(139,26,26,0.04)'; });
-      dropZone.addEventListener('dragleave', function() { dropZone.style.background = ''; });
-      dropZone.addEventListener('drop', function(e) { e.preventDefault(); dropZone.style.background = ''; if (e.dataTransfer.files[0]) handleSupplyFile_(e.dataTransfer.files[0]); });
-    }
-    if (fileInput) fileInput.addEventListener('change', function() { if (this.files[0]) handleSupplyFile_(this.files[0]); });
-
-    // ── Quarter/Year validation → enable proceed btn ──────────────────────────
-    const quarterSel = document.getElementById('supply-import-quarter');
-    function checkProceedReady_() {
-      const q = quarterSel ? quarterSel.value : '';
-      const y = yearSel ? yearSel.value : '';
-      const hasData = window._supplyImportParsedRows && window._supplyImportParsedRows.length > 0;
-      const proceedBtn = document.getElementById('btn-supply-import-proceed');
-      if (proceedBtn) {
-        const ready = !!(q && y && hasData);
-        proceedBtn.disabled = !ready;
-        proceedBtn.style.opacity = ready ? '1' : '0.45';
-        proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
-      }
-    }
-    if (quarterSel) quarterSel.addEventListener('change', checkProceedReady_);
-    if (yearSel)    yearSel.addEventListener('change', checkProceedReady_);
-
-    // ── Proceed → build task list ─────────────────────────────────────────────
-    const proceedBtn = document.getElementById('btn-supply-import-proceed');
-    if (proceedBtn) proceedBtn.addEventListener('click', function() {
-      const q = quarterSel ? quarterSel.value : '';
-      const y = yearSel ? yearSel.value : '';
-      if (!q || !y || !window._supplyImportParsedRows) return;
-      buildSupplyTaskList_(window._supplyImportParsedRows, q, y);
-      closeModal();
-    });
-
-    // ── Load existing drafts on panel open ────────────────────────────────────
-    loadSupplyDraftsFromServer_();
-  })();
-
-  function resetImportModal_() {
-    window._supplyImportParsedRows = null;
-    const fileInput  = document.getElementById('supply-import-file-input');
-    const fileInfo   = document.getElementById('supply-import-file-info');
-    const fileError  = document.getElementById('supply-import-file-error');
-    const preview    = document.getElementById('supply-import-preview-wrap');
-    const proceedBtn = document.getElementById('btn-supply-import-proceed');
-    if (fileInput)   { fileInput.value = ''; }
-    if (fileInfo)    { fileInfo.style.display = 'none'; }
-    if (fileError)   { fileError.style.display = 'none'; fileError.textContent = ''; }
-    if (preview)     { preview.style.display = 'none'; }
-    if (proceedBtn)  { proceedBtn.disabled = true; proceedBtn.style.opacity = '0.45'; }
-  }
-
-  function handleSupplyFile_(file) {
-    const fileInfo  = document.getElementById('supply-import-file-info');
-    const fileError = document.getElementById('supply-import-file-error');
-    const fileName  = document.getElementById('supply-import-file-name');
-    const rowCount  = document.getElementById('supply-import-row-count');
-
-    function showErr(msg) {
-      if (fileError) { fileError.textContent = msg; fileError.style.display = 'block'; }
-      if (fileInfo)  fileInfo.style.display = 'none';
-    }
-    if (fileError) fileError.style.display = 'none';
-
-    if (typeof XLSX === 'undefined') {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-      script.onload = function() { parseSupplyFile_(file, showErr); };
-      document.head.appendChild(script);
-    } else {
-      parseSupplyFile_(file, showErr);
-    }
-
-    function parseSupplyFile_(f, errCb) {
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        try {
-          const wb = XLSX.read(evt.target.result, { type: 'array' });
-          const sheetName = wb.SheetNames.find(function(n) {
-            return n.toLowerCase().trim().includes('contoh pengisian');
-          });
-          if (!sheetName) {
-            errCb('Sheet "Contoh Pengisian" tidak ditemukan. Pastikan file sudah sesuai template.');
-            return;
-          }
-          const ws   = wb.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          if (rows.length < 2) { errCb('Sheet "Contoh Pengisian" kosong.'); return; }
-
-          const headers = rows[0].map(function(h) { return String(h || '').trim().toUpperCase(); });
-          const dataRows = rows.slice(1).filter(function(r) {
-            return r.some(function(c) { return String(c || '').trim() !== ''; });
-          });
-          if (!dataRows.length) { errCb('Tidak ada data di sheet "Contoh Pengisian".'); return; }
-
-          // Map columns
-          const colPlant    = headers.indexOf('PLANT');
-          const colCategory = headers.indexOf('CATEGORY');
-          const colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
-          const colCoName   = headers.indexOf('COMPANY NAME');
-          const colMillName = headers.indexOf('MILL NAME');
-          const colSumQty   = headers.indexOf('SUM OF QTY KG');
-
-          if (colCoName < 0 || colMillName < 0) {
-            errCb('Kolom COMPANY NAME atau MILL NAME tidak ditemukan di sheet "Contoh Pengisian".');
-            return;
-          }
-
-          window._supplyImportParsedRows = dataRows.map(function(r) {
-            return {
-              PLANT:              String(r[colPlant]    != null ? r[colPlant]    : '').trim(),
-              CATEGORY:           String(r[colCategory] != null ? r[colCategory] : '').trim(),
-              COMPANY_GROUP_NAME: String(r[colCoGroup]  != null ? r[colCoGroup]  : '').trim(),
-              COMPANY_NAME:       String(r[colCoName]   != null ? r[colCoName]   : '').trim(),
-              MILL_NAME:          String(r[colMillName] != null ? r[colMillName] : '').trim(),
-              SUM_QTY_KG:         r[colSumQty] != null ? r[colSumQty] : '',
-            };
-          }).filter(function(r) { return r.COMPANY_NAME || r.MILL_NAME; });
-
-          // Show file info
-          if (fileName) fileName.textContent = f.name;
-          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' baris';
-          if (fileInfo) fileInfo.style.display = 'flex';
-
-          // Build preview table
-          buildImportPreview_(window._supplyImportParsedRows);
-
-          // Re-check proceed readiness
-          const quarterSel = document.getElementById('supply-import-quarter');
-          const yearSel    = document.getElementById('supply-import-year');
-          const q = quarterSel ? quarterSel.value : '';
-          const y = yearSel ? yearSel.value : '';
-          const proceedBtn = document.getElementById('btn-supply-import-proceed');
-          if (proceedBtn) {
-            const ready = !!(q && y);
-            proceedBtn.disabled = !ready;
-            proceedBtn.style.opacity = ready ? '1' : '0.45';
-            proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
-          }
-        } catch (ex) {
-          errCb('Gagal membaca file: ' + ex.message);
-        }
-      };
-      reader.readAsArrayBuffer(f);
-    }
-  }
-
-  function buildImportPreview_(parsedRows) {
-    const wrap   = document.getElementById('supply-import-preview-wrap');
-    const tHead  = document.getElementById('supply-import-preview-head');
-    const tBody  = document.getElementById('supply-import-preview-body');
-    if (!wrap || !tHead || !tBody) return;
-
-    tHead.innerHTML = '<tr>'
-      + ['Company Name','Mill Name','Plant','Category','Supply (Kg)'].map(function(h) {
-          return '<th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(h) + '</th>';
-        }).join('') + '</tr>';
-
-    const preview = parsedRows.slice(0, 8);
-    tBody.innerHTML = preview.map(function(r, i) {
-      const bg = i % 2 === 0 ? '#fff' : '#fdf9f9';
-      return '<tr style="background:' + bg + ';">'
-        + [r.COMPANY_NAME, r.MILL_NAME, r.PLANT, r.CATEGORY, r.SUM_QTY_KG].map(function(v) {
-            return '<td style="padding:6px 10px;font-size:11.5px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-              + escHtml(String(v || '—')) + '</td>';
-          }).join('') + '</tr>';
-    }).join('');
-    if (parsedRows.length > 8) {
-      tBody.innerHTML += '<tr><td colspan="5" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… dan ' + (parsedRows.length - 8) + ' baris lagi</td></tr>';
-    }
-    wrap.style.display = 'block';
-  }
-
-  // ── Build task list in panel ──────────────────────────────────────────────
-  // State: current open/editing draft batches
-  window._supplyDraftBatches = window._supplyDraftBatches || [];
-
-  function buildSupplyTaskList_(parsedRows, quarter, year) {
-    const batchId = 'batch-' + Date.now();
-    const now     = new Date().toISOString();
-    const rows    = parsedRows.map(function(r, idx) {
-      // Try to find matching mill in allData
-      const match = allData.find(function(d) {
-        const cn = String(d['COMPANY NAME'] || '').trim().toLowerCase();
-        const mn = String(d['MILL NAME']    || '').trim().toLowerCase();
-        return cn === r.COMPANY_NAME.toLowerCase() && mn === r.MILL_NAME.toLowerCase();
-      });
-
-      const draft = {
-        draft_id:    batchId + '_' + idx,
-        batch_id:    batchId,
-        status:      'draft',
-        quarter:     quarter,
-        year:        year,
-        match_status: match ? 'matched' : 'new',
-        QUARTER:     quarter,
-        YEAR:        year,
-      };
-
-      // Mapping: Excel → Mill columns
-      draft['FACILITY NAME CPO'] = r.PLANT;
-      draft['TRADER NAME']       = r.CATEGORY;
-      draft['GROUP NAME']        = r.COMPANY_GROUP_NAME || (match ? (match['GROUP NAME'] || '') : '');
-      draft['COMPANY NAME']      = r.COMPANY_NAME;
-      draft['MILL NAME']         = r.MILL_NAME;
-      draft['SUPPLY CPO']        = r.SUM_QTY_KG;
-
-      // Prefill all other mill fields from matched record (EXCEPT SUPPLY CPO)
-      if (match) {
-        const PREFILL_SKIP = new Set(['SUPPLY CPO', 'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME', 'FACILITY NAME CPO', 'TRADER NAME']);
-        (window.MILL_FIELDS_LIST || [
-          'COMPANY CODE','UML ID','ADDRESS','PROVINCE','COORDINATES',
-          'MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI',
-          'IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT',
-          'DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY',
-          'DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT',
-          'SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD',
-          'TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE',
-          'SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS',
-          'RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL',
-          'RESULT RISK LEVEL','FACILITY NAME PK','PRODUCT SUPPLY',
-        ]).forEach(function(f) {
-          if (PREFILL_SKIP.has(f)) return;
-          if (match[f] !== undefined && match[f] !== null && String(match[f]).trim() !== '') {
-            draft[f] = match[f];
-          }
-        });
-      }
-
-      return draft;
-    });
-
-    const batch = { batch_id: batchId, quarter: quarter, year: year, rows: rows, status: 'draft', created_at: now };
-    window._supplyDraftBatches.push(batch);
-    renderSupplyDraftList_();
-
-    // Auto-save draft to server
-    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: rows, meta: { quarter, year } })
-      .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
-  }
-
-  function renderSupplyDraftList_() {
-    const container = document.getElementById('supply-draft-list');
-    const empty     = document.getElementById('supply-draft-empty');
-    if (!container) return;
-
-    const batches = window._supplyDraftBatches || [];
-    if (!batches.length) {
-      container.innerHTML = '';
-      if (empty) empty.style.display = 'block';
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-
-    container.innerHTML = batches.map(function(b) {
-      const rowCount    = b.rows ? b.rows.length : 0;
-      const matched     = b.rows ? b.rows.filter(function(r) { return r.match_status === 'matched'; }).length : 0;
-      const newCount    = b.rows ? b.rows.filter(function(r) { return r.match_status !== 'matched'; }).length : 0;
-      const doneCount   = b.rows ? b.rows.filter(function(r) { return r._submitted; }).length : 0;
-      const isSubmitted = b.status === 'submitted';
-      const statusBadge = isSubmitted
-        ? '<span class="supply-badge supply-badge--submitted">Submitted</span>'
-        : '<span class="supply-badge supply-badge--draft">Draft</span>';
-      const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-
-      return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
-        + '<div class="supply-batch-card-head">'
-        + '<div class="supply-batch-card-meta">'
-        + '<span class="supply-batch-period">' + escHtml(b.quarter) + ' · ' + escHtml(b.year) + '</span>'
-        + statusBadge
-        + '<span class="supply-batch-info">' + rowCount + ' rows · ' + matched + ' matched · ' + newCount + ' new'
-        + (doneCount > 0 ? ' · ' + doneCount + ' done' : '') + '</span>'
-        + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
-        + '</div>'
-        + '<div class="supply-batch-actions">'
-        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--expand" data-batch="' + escHtml(b.batch_id) + '">Lihat / Edit</button>' : '')
-        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Hapus</button>'
-        + '</div>'
-        + '</div>'
-        + '<div class="supply-batch-table-wrap" id="supply-batch-table-' + escHtml(b.batch_id) + '" style="display:none;">'
-        + renderSupplyBatchTable_(b)
-        + '</div>'
-        + '</div>';
-    }).join('');
-
-    // Bind events
-    container.querySelectorAll('[data-action]').forEach(function(btn) {
-      btn.addEventListener('click', handleSupplyBatchAction_);
-    });
-    container.querySelectorAll('.supply-btn--expand').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        const batchId = btn.dataset.batch;
-        const wrap    = document.getElementById('supply-batch-table-' + batchId);
-        if (!wrap) return;
-        const isOpen = wrap.style.display !== 'none';
-        wrap.style.display = isOpen ? 'none' : 'block';
-        btn.textContent    = isOpen ? 'Lihat / Edit' : 'Tutup';
-      });
-    });
-  }
-
-  function renderSupplyBatchTable_(batch) {
-    if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">Tidak ada baris.</p>';
-    const isSubmitted = batch.status === 'submitted';
-    const SHOW_COLS = [
-      ['COMPANY NAME',    'Company Name'],
-      ['MILL NAME',       'Mill Name'],
-      ['GROUP NAME',      'Group Name'],
-      ['TRADER NAME',     'Trader Name (Category)'],
-      ['FACILITY NAME CPO','Facility CPO (Plant)'],
-      ['SUPPLY CPO',      'Supply CPO (Kg)'],
-      ['PROVINCE',        'Province'],
-    ];
-
-    const head = '<tr>'
-      + (isSubmitted ? '' : '<th style="width:24px;"></th>')
-      + SHOW_COLS.map(function(c) {
-          return '<th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(c[1]) + '</th>';
-        }).join('')
-      + '<th style="width:80px;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);"></th>'
-      + '</tr>';
-
-    const body = batch.rows.map(function(row, i) {
-      const isMatched  = row.match_status === 'matched';
-      const isRowDone  = row._submitted === true;
-      const matchBadge = isMatched
-        ? '<span style="font-size:9.5px;font-weight:700;background:rgba(46,125,50,0.12);color:#2e7d32;border-radius:4px;padding:1px 5px;margin-left:4px;">✓ Match</span>'
-        : '<span style="font-size:9.5px;font-weight:700;background:rgba(139,26,26,0.1);color:#8B1A1A;border-radius:4px;padding:1px 5px;margin-left:4px;">New</span>';
-      const cells = SHOW_COLS.map(function(c) {
-        const key = c[0];
-        const val = row[key] != null ? row[key] : '';
-        if (key === 'COMPANY NAME') {
-          return '<td style="padding:7px 10px;font-size:12px;color:#1A0A0A;border-bottom:1px solid rgba(139,26,26,0.05);">'
-            + escHtml(String(val || '—')) + matchBadge + '</td>';
-        }
-        if (!isSubmitted && !isRowDone && (key === 'SUPPLY CPO' || key === 'FACILITY NAME CPO' || key === 'TRADER NAME' || key === 'GROUP NAME')) {
-          return '<td style="padding:4px 6px;border-bottom:1px solid rgba(139,26,26,0.05);">'
-            + '<input class="supply-inline-input" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '" data-field="' + escHtml(key) + '"'
-            + ' value="' + escHtml(String(val || '')) + '"'
-            + ' style="width:100%;height:28px;border:1px solid rgba(139,26,26,0.18);border-radius:5px;padding:0 7px;font-size:11.5px;color:#1A0A0A;background:#fff;">'
-            + '</td>';
-        }
-        return '<td style="padding:7px 10px;font-size:12px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);">' + escHtml(String(val || '—')) + '</td>';
-      }).join('');
-
-      // Per-row action button — all rows open modal for review/edit before save
-      let rowAction = '';
-      if (!isSubmitted) {
-        if (isRowDone) {
-          rowAction = '<span style="font-size:10px;font-weight:700;color:#2e7d32;">✓ Submitted</span>';
-        } else {
-          const btnLabel = isMatched ? 'Edit / Submit →' : 'Lengkapi →';
-          const btnStyle = isMatched ? 'supply-btn--primary' : 'supply-btn--ghost';
-          rowAction = '<button type="button" class="supply-btn ' + btnStyle + '" style="padding:4px 10px;font-size:11px;white-space:nowrap;"'
-            + ' data-action="open-modal-row" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '">' + btnLabel + '</button>';
-        }
-      }
-
-      return '<tr' + (isRowDone ? ' style="opacity:0.5;"' : '') + '>'
-        + (isSubmitted ? '' : '<td style="padding:7px 6px;border-bottom:1px solid rgba(139,26,26,0.05);vertical-align:middle;"><input type="checkbox" class="supply-row-check" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '"' + (isRowDone ? ' disabled' : ' checked') + '></td>')
-        + cells
-        + '<td style="padding:4px 8px;border-bottom:1px solid rgba(139,26,26,0.05);text-align:right;white-space:nowrap;">' + rowAction + '</td>'
-        + '</tr>';
-    }).join('');
-
-    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
-      + '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
-      + (!isSubmitted ? supplyBatchFooterHtml_(batch.batch_id) : '');
-  }
-
-  function supplyBatchFooterHtml_(batchId) {
-    const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
-    const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 10px 4px;border-top:1px solid rgba(139,26,26,0.07);flex-wrap:wrap;">'
-      + '<span style="font-size:11px;color:#9C8080;">Klik <strong>Edit / Submit →</strong> atau <strong>Lengkapi →</strong> untuk review/isi data lalu Save. Atau bulk-submit semua Matched langsung.</span>'
-      + '<div style="display:flex;gap:8px;">'
-      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">💾 Save as Draft</button>'
-      + (matched > 0 ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-matched" data-batch="' + escHtml(batchId) + '">✓ Submit Matched (' + matched + ')</button>' : '')
-      + '</div>'
-      + '</div>';
-  }
-
-  function handleSupplyBatchAction_(e) {
-    const btn    = e.currentTarget;
-    const action = btn.dataset.action;
-    const bId    = btn.dataset.batch;
-    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === bId; });
-    if (!batch) return;
-
-    if (action === 'delete-batch') {
-      if (!confirm('Hapus draft batch ' + batch.quarter + ' ' + batch.year + '? Tidak bisa dibatalkan.')) return;
-      window._supplyDraftBatches = window._supplyDraftBatches.filter(function(b) { return b.batch_id !== bId; });
-      renderSupplyDraftList_();
-      apiPost({ action: 'deleteSupplyDraft', batch_id: bId })
-        .catch(function(err) { console.warn('[supplyDraft] Delete failed:', err.message); });
-      return;
-    }
-
-    if (action === 'save-draft') {
-      // Collect inline edits
-      collectInlineEdits_(bId);
-      btn.textContent = 'Menyimpan…'; btn.disabled = true;
-      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: {} })
-        .then(function() {
-          btn.textContent = '✓ Tersimpan';
-          setTimeout(function() { btn.textContent = '💾 Save as Draft'; btn.disabled = false; }, 2000);
-        })
-        .catch(function(err) {
-          btn.textContent = '💾 Save as Draft'; btn.disabled = false;
-          alert('Gagal menyimpan: ' + err.message);
-        });
-      return;
-    }
-
-    // Submit all matched rows directly (data already complete from prefill)
-    if (action === 'submit-matched') {
-      collectInlineEdits_(bId);
-      const matchedRows = (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; });
-      if (!matchedRows.length) { alert('Tidak ada baris matched yang belum disubmit.'); return; }
-      if (!confirm('Submit ' + matchedRows.length + ' baris Matched ke Mill Onboarding Profile?')) return;
-      btn.textContent = 'Submitting…'; btn.disabled = true;
-      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
-        .then(function(res) {
-          matchedRows.forEach(function(r) { r._submitted = true; });
-          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
-          if (allDone) batch.status = 'submitted';
-          renderSupplyDraftList_();
-          millLoadPromise = null;
-          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris Matched berhasil di-submit.');
-        })
-        .catch(function(err) {
-          btn.textContent = '✓ Submit Matched'; btn.disabled = false;
-          alert('Gagal submit: ' + err.message);
-        });
-      return;
-    }
-
-    // Submit a single matched row directly
-    if (action === 'submit-row') {
-      collectInlineEdits_(bId);
-      const rowIdx = parseInt(btn.dataset.row, 10);
-      const row    = batch.rows && batch.rows[rowIdx];
-      if (!row) return;
-      btn.textContent = '…'; btn.disabled = true;
-      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] })
-        .then(function() {
-          row._submitted = true;
-          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
-          if (allDone) batch.status = 'submitted';
-          millLoadPromise = null;
-          renderSupplyDraftList_();
-        })
-        .catch(function(err) {
-          btn.textContent = 'Submit'; btn.disabled = false;
-          alert('Gagal submit: ' + err.message);
-        });
-      return;
-    }
-
-    // Open full Add New Record modal for a New (unmatched) row
-    if (action === 'open-modal-row') {
-      collectInlineEdits_(bId);
-      const rowIdx  = parseInt(btn.dataset.row, 10);
-      const draftRow = batch.rows && batch.rows[rowIdx];
-      if (!draftRow) return;
-
-      // Build prefill object for the mill modal (uppercase MILL_FIELDS keys)
-      const prefill = {};
-      Object.keys(draftRow).forEach(function(k) {
-        if (k === 'draft_id' || k === 'batch_id' || k === 'status' || k === 'match_status' || k === '_submitted'
-            || k === 'created_at' || k === 'updated_at' || k === 'created_by') return;
-        if (draftRow[k] !== undefined && draftRow[k] !== null && String(draftRow[k]).trim() !== '') {
-          prefill[k] = draftRow[k];
-        }
-      });
-      // Ensure QUARTER and YEAR are set from batch meta if missing in row
-      if (!prefill['QUARTER'] && batch.quarter) prefill['QUARTER'] = batch.quarter;
-      if (!prefill['YEAR']    && batch.year)    prefill['YEAR']    = String(batch.year);
-
-      // Store context so after save we can mark draft row as submitted
-      window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
-      openModal('mill', MILL_FIELDS, 'add', prefill);
-      return;
-    }
-  }
-
-  function collectInlineEdits_(batchId) {
-    const container = document.getElementById('supply-draft-list');
-    if (!container) return;
-    const inputs = container.querySelectorAll('.supply-inline-input[data-batch="' + batchId + '"]');
-    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
-    if (!batch) return;
-    inputs.forEach(function(inp) {
-      const rowIdx = parseInt(inp.dataset.row, 10);
-      const field  = inp.dataset.field;
-      if (batch.rows[rowIdx] !== undefined) batch.rows[rowIdx][field] = inp.value;
-    });
-  }
-
-  function getSelectedRows_(batchId, allRows) {
-    const container = document.getElementById('supply-draft-list');
-    if (!container) return allRows;
-    const checks = container.querySelectorAll('.supply-row-check[data-batch="' + batchId + '"]');
-    if (!checks.length) return allRows;
-    const selected = [];
-    checks.forEach(function(cb) {
-      if (cb.checked) {
-        const idx = parseInt(cb.dataset.row, 10);
-        if (allRows[idx]) selected.push(allRows[idx]);
-      }
-    });
-    return selected.length ? selected : allRows;
-  }
-
-  function loadSupplyDraftsFromServer_() {
-    apiGet('supplyDraft')
-      .then(function(data) {
-        if (!Array.isArray(data) || !data.length) {
-          renderSupplyDraftList_();
-          return;
-        }
-        // Group by batch_id
-        const batches = {};
-        data.forEach(function(row) {
-          const bid = row.batch_id || row.draft_id || 'unknown';
-          if (!batches[bid]) {
-            batches[bid] = {
-              batch_id:   bid,
-              quarter:    row.quarter || '',
-              year:       row.year    || '',
-              status:     row.status  || 'draft',
-              created_at: row.created_at || '',
-              rows:       [],
-            };
-          }
-          batches[bid].rows.push(row);
-        });
-        window._supplyDraftBatches = Object.values(batches);
-        renderSupplyDraftList_();
-      })
-      .catch(function(err) {
-        console.warn('[supplyDraft] Load drafts failed:', err.message);
-        renderSupplyDraftList_();
-      });
-  }
-  // ─── END SUPPLY IMPORT ────────────────────────────────────────────────────
-
   window.sddExportPdf = sddExportPdf;
   // ─── END SDD PDF EXPORT ──────────────────────────────────────────────────
 
