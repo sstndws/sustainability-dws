@@ -10,7 +10,7 @@ const ICONS = {
   facility: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`,
   eudr: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a14 14 0 0 1 0 20 14 14 0 0 1 0-20"/></svg>`,
   contacts: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-  priority: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  questionnaire: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
   nbl: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,
 };
 
@@ -54,7 +54,7 @@ const CARDS = [
   {
     panel: 'eudr-potential',
     title: 'EUDR Potential',
-    desc: 'Kesiapan dan paparan risiko terkait EU Deforestation Regulation.',
+    desc: 'Kesiapan EUDR per mill — identitas dari Mill Onboarding, Status di sheet terpisah.',
     icon: 'eudr',
   },
   {
@@ -64,10 +64,10 @@ const CARDS = [
     icon: 'contacts',
   },
   {
-    panel: 'priority-supplier-engagement',
-    title: 'Priority Supplier Engagement',
-    desc: 'Prioritas follow-up strategis dan status sentuhan dengan supplier kunci.',
-    icon: 'priority',
+    panel: 'questionnaire-monitoring',
+    title: 'Questionnaire Monitoring',
+    desc: 'Pantau progress kuesioner per mill — status, milestone, dan tanggal follow-up.',
+    icon: 'questionnaire',
   },
 ];
 

@@ -1,14 +1,50 @@
+      <!-- ── EUDR POTENTIAL PANEL ── -->
       <div class="panel" id="panel-eudr-potential">
         <div class="breadcrumb">Dashboard <span>/ EUDR Potential</span></div>
-        <div class="coming-soon coming-soon--module">
-          <div class="cs-soon-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <div class="page-header">
+          <h1>EUDR Potential</h1>
+          <p>Kesiapan EUDR per mill — identitas dari Mill Onboarding; status dihitung dari formula (Potential / Not Potential).</p>
+        </div>
+
+        <div class="stats-row eudr-stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="eudr-stat-total">—</div><div class="stat-card-label">Total mills</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="eudr-stat-pending">—</div><div class="stat-card-label">Not evaluated</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="eudr-stat-set">—</div><div class="stat-card-label">Evaluated</div></div>
+        </div>
+
+        <div class="table-card eudr-table-card">
+          <div class="table-header">
+            <h3>EUDR registry</h3>
+            <div class="table-actions">
+              <button type="button" class="btn-sm btn-outline" id="btn-sync-eudr" title="Sync mill list to EUDR Potential sheet">Sync to sheet</button>
+              <button type="button" class="btn-sm btn-outline" id="btn-refresh-eudr" title="Reload from sheet">Refresh</button>
+            </div>
           </div>
-          <div class="cs-badge">Coming Soon</div>
-          <div class="cs-title">EUDR Potential</div>
-          <p class="cs-sub">Kesiapan dan paparan risiko terkait EU Deforestation Regulation — agregasi sinyal dari data yang sudah Anda kumpulkan.</p>
-          <div class="cs-back-wrap">
-            <button type="button" class="btn-sm btn-outline nav-soon-back">Kembali ke Overview</button>
+          <div class="search-bar">
+            <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
+            <input type="text" id="eudrSearch" placeholder="Search group, company, mill, province, supply to..." autocomplete="off" />
+            <button type="button" class="search-clear" id="eudrSearchClear" aria-label="Clear search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
+          <div id="eudr-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
+          <div class="eudr-table-wrap">
+            <table id="eudrTable" class="eudr-registry-table" style="display:none;">
+              <thead>
+                <tr>
+                  <th>Group Name</th>
+                  <th>Company Name</th>
+                  <th>Mill Name</th>
+                  <th>Province</th>
+                  <th>Supply To</th>
+                  <th>Mill Capacity</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="eudrTableBody"></tbody>
+            </table>
+          </div>
+          <p class="eudr-table-hint">Klik baris untuk detail · Save to Sheet menghitung status Potential/Not Potential · Formula checklist disimpan di tab EUDR Status Formula.</p>
+          <div id="eudr-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
         </div>
       </div>

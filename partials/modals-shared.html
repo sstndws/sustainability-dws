@@ -170,3 +170,103 @@
     </div>
   </div>
 </div>
+
+<!-- Questionnaire Monitoring — Export Excel -->
+<div id="qm-export-modal" class="pf-export-modal qm-export-modal" style="display:none;" aria-hidden="true">
+  <div class="pf-export-modal-backdrop" id="qmExportModalBackdrop"></div>
+  <div class="pf-export-modal-dialog" role="dialog" aria-labelledby="qmExportModalTitle">
+    <div class="pf-export-modal-head">
+      <h3 id="qmExportModalTitle">Export Questionnaire Monitoring</h3>
+      <button type="button" class="pf-export-modal-close" id="qmExportModalClose" aria-label="Close">✕</button>
+    </div>
+    <div class="pf-export-modal-body">
+      <p class="pf-export-hint" id="qmExportHint">Pilih baris dan kolom untuk file Excel. Header sheet menggunakan gaya dashboard.</p>
+      <div class="pf-export-type-row">
+        <span class="pf-export-label">Rows</span>
+        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="all" checked /> Semua baris (sesuai filter pencarian)</label>
+        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="selected" /> Baris tercentang saja</label>
+      </div>
+      <div class="pf-export-facility-toolbar">
+        <span class="pf-export-label">Columns</span>
+        <button type="button" class="pf-export-link-btn" id="qmExportColAll">Select all</button>
+        <button type="button" class="pf-export-link-btn" id="qmExportColDefault">Default</button>
+        <button type="button" class="pf-export-link-btn" id="qmExportColNone">Clear</button>
+      </div>
+      <div id="qmExportColList" class="pf-export-facility-list qm-export-col-list"></div>
+    </div>
+    <div class="pf-export-modal-foot">
+      <button type="button" class="pf-btn pf-btn--ghost" id="qmExportCancel">Cancel</button>
+      <button type="button" class="pf-btn pf-btn--primary" id="qmExportConfirm">Export Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Questionnaire Monitoring edit modal -->
+<div class="qm-form-overlay" id="qmFormOverlay" role="dialog" aria-modal="true" aria-labelledby="qmFormTitle">
+  <div class="qm-form-box">
+    <div class="qm-form-head">
+      <div>
+        <h2 id="qmFormTitle">Edit Questionnaire</h2>
+        <p class="qm-form-sub" id="qmFormSubtitle">Update status, progress, and milestone dates.</p>
+      </div>
+      <button type="button" class="qm-form-close" id="qmFormClose" aria-label="Close">✕</button>
+    </div>
+    <div class="qm-form-body">
+      <div class="qm-form-identity">
+        <div class="qm-form-id-item"><span class="qm-form-id-label">Group</span><strong id="qmFormGroup">—</strong></div>
+        <div class="qm-form-id-item"><span class="qm-form-id-label">Company</span><strong id="qmFormCompany">—</strong></div>
+        <div class="qm-form-id-item"><span class="qm-form-id-label">Mill</span><strong id="qmFormMill">—</strong></div>
+      </div>
+      <div class="qm-form-grid">
+        <label class="qm-form-field">
+          <span>Status</span>
+          <select id="qmFormStatus">
+            <option value="On Progress">On Progress</option>
+            <option value="Done">Done</option>
+          </select>
+        </label>
+        <label class="qm-form-field">
+          <span>Progress</span>
+          <select id="qmFormProgress">
+            <option value="Open">Open</option>
+            <option value="Send Email">Send Email</option>
+            <option value="Received Questionnaire">Received Questionnaire</option>
+            <option value="Send Back With Feedback">Send Back With Feedback</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </label>
+      </div>
+      <section class="qm-form-section">
+        <h3 class="qm-form-section-title">Milestone dates</h3>
+        <p class="qm-form-section-desc">Set or backdate each step. Saving will write dates to the Questionnaire Monitoring sheet.</p>
+        <div class="qm-form-dates" id="qmFormDatesGrid"></div>
+      </section>
+    </div>
+    <div class="qm-form-foot">
+      <button type="button" class="btn-cancel" id="qmFormCancel">Cancel</button>
+      <button type="button" class="btn-save" id="qmFormSave">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- EUDR Potential — mill detail (read-only) -->
+<div class="eudr-detail-overlay" id="eudrDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="eudrDetailTitle">
+  <div class="eudr-detail-box">
+    <div class="eudr-detail-head">
+      <div class="eudr-detail-head-main">
+        <div class="eudr-detail-head-left">
+          <p class="eudr-detail-kicker">EUDR Potential</p>
+          <h2 id="eudrDetailTitle">—</h2>
+          <p class="eudr-detail-sub" id="eudrDetailSubtitle">—</p>
+        </div>
+        <div class="eudr-detail-head-badges" id="eudrDetailBadges"></div>
+      </div>
+      <button type="button" class="eudr-detail-close" id="eudrDetailClose" aria-label="Close">✕</button>
+    </div>
+    <div class="eudr-detail-body" id="eudrDetailBody"></div>
+    <div class="eudr-detail-foot">
+      <button type="button" class="btn-cancel" id="eudrDetailCloseBtn">Close</button>
+      <button type="button" class="btn-save" id="eudrDetailSave">Save to Sheet</button>
+    </div>
+  </div>
+</div>

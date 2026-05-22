@@ -54,6 +54,9 @@ const SHEETS = {
   unileverNbl     : 'Unilever NBL',
   supplyDraft     : 'Supply Import Draft',
   blMonitoring    : 'BL Monitoring',
+  questionnaireMonitoring : 'Questionnaire Monitoring',
+  eudrPotential           : 'EUDR Potential',
+  eudrStatusFormula       : 'EUDR Status Formula',
 };
 
 /** Tab name for BL Monitoring (must match spreadsheet tab exactly). */
@@ -159,6 +162,84 @@ const CONTACT_SUPPLIER_HEADERS = [
   'approved_at',
   'updated_at',
   'updated_by',
+];
+
+const QUESTIONNAIRE_MONITORING_HEADERS = [
+  'GROUP NAME',
+  'COMPANY NAME',
+  'MILL NAME',
+  'UML ID',
+  'STATUS',
+  'PROGRESS',
+  'LAST UPDATE',
+  'DATE OPEN',
+  'DATE SEND EMAIL',
+  'DATE RECEIVED QUESTIONNAIRE',
+  'DATE SEND BACK WITH FEEDBACK',
+  'DATE COMPLETED',
+  'UPDATED BY',
+];
+
+const EUDR_POTENTIAL_HEADERS = [
+  'GROUP NAME',
+  'COMPANY NAME',
+  'MILL NAME',
+  'UML ID',
+  'PROVINCE',
+  'SUPPLY TO',
+  'MILL CAPACITY',
+  'STATUS',
+  'DEFORESTATION (AFTER 2020)',
+  'COMPLETE QUESTIONNAIRE',
+  'NDPE IRF DEFORESTATION',
+  'NDPE IRF PEAT',
+  'SATELLITE MONITORING',
+  '3RD PARTY VERIFICATION NDPE',
+  '3RD PARTY VERIFICATION TRACEABILITY',
+  '3RD PARTY VERIFICATION DEFORESTATION FREE',
+  'LAST UPDATE',
+  'UPDATED BY',
+];
+
+const EUDR_STATUS_FORMULA_HEADERS = ['CRITERION KEY', 'ENABLED', 'LABEL'];
+
+const EUDR_STATUS_FORMULA_DEFAULTS = [
+  ['legality', 'Yes', 'Legality = Complete (1)'],
+  ['millCategory', 'Yes', 'Mill Category = Integrated'],
+  ['cpoTraceable', 'Yes', '% CPO Traceable = 100%'],
+  ['resultRiskLevel', 'Yes', 'Result Risk Level = Low'],
+  ['millLocation', 'Yes', 'Mill Location = APL'],
+  ['certification', 'Yes', 'Certification (at least 1 certificate)'],
+  ['grievance', 'Yes', 'Grievance = No'],
+  ['ndpePolicy', 'Yes', 'NDPE Policy = Yes'],
+  ['noBuyList', 'Yes', 'No Buy List = No'],
+  ['deforestation', 'Yes', 'Deforestation < 10 Ha'],
+];
+
+/** Identity fields merged from existing row when omitted on upsert. */
+const EUDR_IDENTITY_FIELDS = [
+  'GROUP NAME',
+  'COMPANY NAME',
+  'MILL NAME',
+  'UML ID',
+  'PROVINCE',
+  'SUPPLY TO',
+  'MILL CAPACITY',
+];
+
+/** Sheet-only fields preserved when sync identity from Mill Onboarding. */
+const EUDR_SHEET_PRESERVE_FIELDS = [
+  'STATUS',
+  'DEFORESTATION (AFTER 2020)',
+  'COMPLETE QUESTIONNAIRE',
+  'NDPE IRF DEFORESTATION',
+  'NDPE IRF PEAT',
+  'SATELLITE MONITORING',
+  '3RD PARTY VERIFICATION NDPE',
+  '3RD PARTY VERIFICATION TRACEABILITY',
+  '3RD PARTY VERIFICATION DEFORESTATION FREE',
+  'LAST UPDATE',
+  'UPDATED BY',
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -355,6 +436,9 @@ function doGet(e) {
       if (sheetKey === 'unileverNbl') ensureUnileverNblHeaders_();
       if (sheetKey === 'supplyDraft') ensureSupplyDraftHeaders_();
       if (sheetKey === 'blMonitoring') ensureBlMonitoringHeaders_();
+      if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();
+      if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
+      if (sheetKey === 'eudrStatusFormula') ensureEudrStatusFormulaHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
@@ -362,8 +446,11 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-bl-monitoring',
+        version: 'v3-eudr-formula',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
+        questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
+        eudrPotential: !!resolveSheetTabName_('eudrPotential'),
+        eudrStatusFormula: !!resolveSheetTabName_('eudrStatusFormula'),
       });
     }
     if (action === 'getSubmissionById')    return respond(getSubmissionById(e.parameter.submission_id));
@@ -386,6 +473,12 @@ function doPost(e) {
     const sheetKey = body.sheet    || '';
 
     if (sheetKey === 'blMonitoring') ensureBlMonitoringHeaders_();
+    if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();
+    if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
+    if (action === 'upsertQuestionnaire') return respond(upsertQuestionnaireRow_(body.data || {}));
+    if (action === 'syncEudrPotential') return respond(syncEudrPotentialRows_(body.mills || []));
+    if (action === 'upsertEudr') return respond(upsertEudrPotentialRow_(body.data || {}));
+    if (action === 'saveEudrStatusFormula') return respond(saveEudrStatusFormula_(body.criteria || []));
     if (action === 'add')    return respond(addRow(sheetKey, body.data || {}));
     if (action === 'update') return respond(updateRow(sheetKey, body.row, body.data || {}));
     if (action === 'delete') {
@@ -701,6 +794,245 @@ function ensureSheetHeadersGeneric_(sheetKey, wantHeaders) {
 
 function ensureContactSupplierHeaders_() {
   return ensureSheetHeadersGeneric_('contactSupplier', CONTACT_SUPPLIER_HEADERS);
+}
+
+function ensureQuestionnaireMonitoringHeaders_() {
+  return ensureSheetHeadersGeneric_('questionnaireMonitoring', QUESTIONNAIRE_MONITORING_HEADERS);
+}
+
+function ensureEudrPotentialHeaders_() {
+  return ensureSheetHeadersGeneric_('eudrPotential', EUDR_POTENTIAL_HEADERS);
+}
+
+function ensureEudrStatusFormulaHeaders_() {
+  const sheet = ensureSheetHeadersGeneric_('eudrStatusFormula', EUDR_STATUS_FORMULA_HEADERS);
+  if (sheet.getLastRow() <= 1) {
+    const rows = EUDR_STATUS_FORMULA_DEFAULTS.map(function(r) {
+      return [r[0], r[1], r[2]];
+    });
+    if (rows.length) {
+      sheet.getRange(2, 1, rows.length, EUDR_STATUS_FORMULA_HEADERS.length).setValues(rows);
+    }
+  }
+  return sheet;
+}
+
+function saveEudrStatusFormula_(criteria) {
+  ensureEudrStatusFormulaHeaders_();
+  const sheet = getSheet('eudrStatusFormula');
+  const headers = EUDR_STATUS_FORMULA_HEADERS;
+  const labelMap = {};
+  EUDR_STATUS_FORMULA_DEFAULTS.forEach(function(r) { labelMap[r[0]] = r[2]; });
+  const enabledMap = {};
+  (criteria || []).forEach(function(c) {
+    if (!c || !c.key) return;
+    enabledMap[String(c.key).trim()] = c.enabled !== false && String(c.enabled).toLowerCase() !== 'no';
+  });
+  const rows = EUDR_STATUS_FORMULA_DEFAULTS.map(function(def) {
+    const key = def[0];
+    const enabled = enabledMap.hasOwnProperty(key) ? enabledMap[key] : true;
+    return [key, enabled ? 'Yes' : 'No', labelMap[key] || def[2]];
+  });
+  const last = Math.max(sheet.getLastRow(), 1);
+  if (last > 1) sheet.deleteRows(2, last - 1);
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  return { success: true, saved: rows.length };
+}
+
+function eudrEntityKey_(group, company, mill) {
+  return [group, company, mill].map(function(s) {
+    return String(s || '').trim().toLowerCase();
+  }).join('|');
+}
+
+function findEudrRowByEntity_(rows, data) {
+  const key = eudrEntityKey_(data['GROUP NAME'], data['COMPANY NAME'], data['MILL NAME']);
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i];
+    if (eudrEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME']) === key) return r;
+  }
+  return null;
+}
+
+function eudrIdentityPatch_(m) {
+  m = m || {};
+  return {
+    'GROUP NAME': String(m['GROUP NAME'] || '').trim(),
+    'COMPANY NAME': String(m['COMPANY NAME'] || '').trim(),
+    'MILL NAME': String(m['MILL NAME'] || '').trim(),
+    'UML ID': String(m['UML ID'] || '').trim(),
+    'PROVINCE': String(m['PROVINCE'] || '').trim(),
+    'SUPPLY TO': String(m['SUPPLY TO'] || '').trim(),
+    'MILL CAPACITY': String(m['MILL CAPACITY'] || '').trim(),
+  };
+}
+
+function syncEudrPotentialRows_(mills) {
+  ensureEudrPotentialHeaders_();
+  const sheet = getSheet('eudrPotential');
+  const headers = EUDR_POTENTIAL_HEADERS;
+  const rows = getData('eudrPotential');
+  const existing = {};
+  (rows || []).forEach(function(r) {
+    existing[eudrEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'])] = r;
+  });
+  var inserted = 0;
+  var updated = 0;
+  var appendRows = [];
+  var updateOps = [];
+
+  (mills || []).forEach(function(m) {
+    const patch = eudrIdentityPatch_(m);
+    if (!patch['MILL NAME'] && !patch['COMPANY NAME']) return;
+    const key = eudrEntityKey_(patch['GROUP NAME'], patch['COMPANY NAME'], patch['MILL NAME']);
+    const hit = existing[key];
+    if (hit && hit._row) {
+      const merged = {};
+      headers.forEach(function(h) {
+        if (EUDR_SHEET_PRESERVE_FIELDS.indexOf(h) !== -1) {
+          merged[h] = hit[h] != null ? hit[h] : '';
+        } else if (patch[h] !== undefined && String(patch[h]).trim() !== '') {
+          merged[h] = patch[h];
+        } else {
+          merged[h] = hit[h] != null ? hit[h] : '';
+        }
+      });
+      updateOps.push({
+        row: hit._row,
+        values: headers.map(function(h) { return merged[h] !== undefined ? merged[h] : ''; }),
+      });
+      updated++;
+    } else {
+      patch['STATUS'] = '';
+      appendRows.push(headers.map(function(h) { return patch[h] !== undefined ? patch[h] : ''; }));
+      inserted++;
+    }
+  });
+
+  if (appendRows.length) {
+    const startRow = Math.max(sheet.getLastRow(), 1) + 1;
+    sheet.getRange(startRow, 1, appendRows.length, headers.length).setValues(appendRows);
+  }
+
+  updateOps.forEach(function(op) {
+    sheet.getRange(op.row, 1, 1, headers.length).setValues([op.values]);
+  });
+
+  return { success: true, inserted: inserted, updated: updated };
+}
+
+function stampEudrRowMeta_(data, user, now) {
+  data = data || {};
+  now = now || nowIso_();
+  user = user || callerEmail_();
+  data['LAST UPDATE'] = now.slice(0, 10);
+  data['UPDATED BY'] = user;
+  return data;
+}
+
+function upsertEudrPotentialRow_(data) {
+  ensureEudrPotentialHeaders_();
+  const user = callerEmail_();
+  const now = nowIso_();
+  const rows = getData('eudrPotential');
+  const hit = findEudrRowByEntity_(rows, data || {});
+  var patch = Object.assign({}, data || {});
+  if (hit) {
+    EUDR_IDENTITY_FIELDS.forEach(function(h) {
+      if (patch[h] === undefined || patch[h] === null || String(patch[h]).trim() === '') {
+        if (hit[h] != null && String(hit[h]).trim() !== '') patch[h] = hit[h];
+      }
+    });
+  } else {
+    EUDR_SHEET_PRESERVE_FIELDS.forEach(function(h) {
+      if (patch[h] === undefined || patch[h] === null) patch[h] = '';
+    });
+  }
+  patch = stampEudrRowMeta_(patch, user, now);
+  if (hit && hit._row) {
+    updateRow('eudrPotential', hit._row, patch);
+    return { success: true, mode: 'update', row: hit._row };
+  }
+  addRow('eudrPotential', patch);
+  return { success: true, mode: 'insert' };
+}
+
+function qmEntityKey_(group, company, mill) {
+  return [group, company, mill].map(function(s) {
+    return String(s || '').trim().toLowerCase();
+  }).join('|');
+}
+
+function findQmRowByEntity_(rows, data) {
+  const key = qmEntityKey_(data['GROUP NAME'], data['COMPANY NAME'], data['MILL NAME']);
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i];
+    if (qmEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME']) === key) return r;
+  }
+  return null;
+}
+
+function stampQmRowMeta_(data, user, now) {
+  data = data || {};
+  now = now || nowIso_();
+  user = user || callerEmail_();
+  data['LAST UPDATE'] = now.slice(0, 10);
+  data['UPDATED BY'] = user;
+  if (!String(data['STATUS'] || '').trim()) data['STATUS'] = 'On Progress';
+  if (!String(data['PROGRESS'] || '').trim()) data['PROGRESS'] = 'Open';
+  return data;
+}
+
+function qmProgressDateMap_() {
+  return {
+    'Open': 'DATE OPEN',
+    'Send Email': 'DATE SEND EMAIL',
+    'Received Questionnaire': 'DATE RECEIVED QUESTIONNAIRE',
+    'Send Back With Feedback': 'DATE SEND BACK WITH FEEDBACK',
+    'Completed': 'DATE COMPLETED',
+  };
+}
+
+function qmApplyProgressDates_(data, now, prevRow) {
+  data = data || {};
+  now = now || nowIso_();
+  const map = qmProgressDateMap_();
+  const order = ['Open', 'Send Email', 'Received Questionnaire', 'Send Back With Feedback', 'Completed'];
+  const idx = order.indexOf(String(data['PROGRESS'] || '').trim());
+  if (idx < 0) return data;
+  const today = now.slice(0, 10);
+  for (var i = 0; i <= idx; i++) {
+    const col = map[order[i]];
+    const incoming = String(data[col] != null ? data[col] : '').trim();
+    if (incoming) continue;
+    const prev = prevRow ? String(prevRow[col] != null ? prevRow[col] : '').trim() : '';
+    data[col] = prev || today;
+  }
+  return data;
+}
+
+function upsertQuestionnaireRow_(data) {
+  ensureQuestionnaireMonitoringHeaders_();
+  const user = callerEmail_();
+  const now = nowIso_();
+  const rows = getData('questionnaireMonitoring');
+  const hit = findQmRowByEntity_(rows, data || {});
+  var patch = Object.assign({}, data || {});
+  if (hit) {
+    QUESTIONNAIRE_MONITORING_HEADERS.forEach(function(h) {
+      if (patch[h] === undefined || patch[h] === null || String(patch[h]).trim() === '') {
+        if (hit[h] != null && String(hit[h]).trim() !== '') patch[h] = hit[h];
+      }
+    });
+  }
+  patch = stampQmRowMeta_(patch, user, now);
+  patch = qmApplyProgressDates_(patch, now, hit);
+  if (hit && hit._row) {
+    updateRow('questionnaireMonitoring', hit._row, patch);
+    return { success: true, mode: 'update', row: hit._row };
+  }
+  addRow('questionnaireMonitoring', patch);
+  return { success: true, mode: 'insert' };
 }
 
 function ensureNblHeaders_() {
@@ -1844,6 +2176,24 @@ function addRow(sheetKey, data) {
     if (!data.approved_at) data.approved_at = now.slice(0, 10);
     if (!data.statusSDD) data.statusSDD = 'Manual';
   }
+  if (sheetKey === 'questionnaireMonitoring') {
+    ensureQuestionnaireMonitoringHeaders_();
+    headers = QUESTIONNAIRE_MONITORING_HEADERS;
+    stampQmRowMeta_(data, callerEmail_(), nowIso_());
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true };
+  }
+  if (sheetKey === 'eudrPotential') {
+    ensureEudrPotentialHeaders_();
+    headers = EUDR_POTENTIAL_HEADERS;
+    EUDR_SHEET_PRESERVE_FIELDS.forEach(function(h) {
+      if (data[h] === undefined) data[h] = '';
+    });
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true };
+  }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const newRow  = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
   sheet.appendRow(newRow);
@@ -1870,6 +2220,16 @@ function updateRow(sheetKey, rowNum, data) {
   if (sheetKey === 'contactSupplier') {
     data.updated_at = nowIso_();
     data.updated_by = callerEmail_();
+  }
+  if (sheetKey === 'questionnaireMonitoring') {
+    ensureQuestionnaireMonitoringHeaders_();
+    headers = QUESTIONNAIRE_MONITORING_HEADERS;
+    stampQmRowMeta_(data, callerEmail_(), nowIso_());
+  }
+  if (sheetKey === 'eudrPotential') {
+    ensureEudrPotentialHeaders_();
+    headers = EUDR_POTENTIAL_HEADERS;
+    stampEudrRowMeta_(data, callerEmail_(), nowIso_());
   }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];

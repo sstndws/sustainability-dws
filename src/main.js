@@ -3811,8 +3811,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyn_Rl1geJybTgp9LkNonFT-cVYsv7vGpGons95Bt9XAhwk6PrlVzMAn21lAFKmRiENkw/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyn_Rl1geJybTgp9LkNonFT-cVYsv7vGpGons95Bt9XAhwk6PrlVzMAn21lAFKmRiENkw';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw1Y6bkD7howwBXmmDG_gFuHuFGimXn17vsjKiGv7JnLcMmVBry4Mx1_u6gmF5x0sP7Gg/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw1Y6bkD7howwBXmmDG_gFuHuFGimXn17vsjKiGv7JnLcMmVBry4Mx1_u6gmF5x0sP7Gg';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -4015,16 +4015,32 @@ async function apiPost(body, opts) {
   var url = (opts && opts.baseUrl) ? normalizeSddWebAppUrl_(opts.baseUrl) : getSddApiUrl();
   if (!url) url = SDD_DEFAULT_WEBAPP_URL;
   var payload = JSON.stringify(body);
+  var timeoutMs = (opts && opts.timeoutMs) ? Number(opts.timeoutMs) : 120000;
   console.log('📤 API POST →', url, body);
-  /* Google Apps Script: use text/plain so the browser sends a "simple" request (no CORS preflight). doPost still receives JSON in e.postData.contents. */
-  var res = await fetch(url, {
-    method: 'POST',
-    mode: 'cors',
-    credentials: 'omit',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: payload
-  });
+  var controller = new AbortController();
+  var tid = setTimeout(function() { controller.abort(); }, timeoutMs);
+  var res;
+  try {
+    /* Google Apps Script: use text/plain so the browser sends a "simple" request (no CORS preflight). doPost still receives JSON in e.postData.contents. */
+    res = await fetch(url, {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(tid);
+    var ename = e && e.name;
+    var emsg = (e && e.message) || String(e);
+    if (ename === 'AbortError') {
+      throw new Error('POST timeout (' + Math.round(timeoutMs / 1000) + 's). Coba lagi atau kurangi data sync.');
+    }
+    throw new Error('POST failed: ' + emsg);
+  }
+  clearTimeout(tid);
   var text = await res.text();
   var data;
   try {
@@ -9369,7 +9385,7 @@ function initDashboardApp() {
 
   /** BL Monitoring — always hit latest GAS deploy (bypass stale Vite prebundle). */
   var BL_MONITORING_GAS_URL =
-    'https://script.google.com/macros/s/AKfycbyn_Rl1geJybTgp9LkNonFT-cVYsv7vGpGons95Bt9XAhwk6PrlVzMAn21lAFKmRiENkw/exec';
+    'https://script.google.com/macros/s/AKfycbw1Y6bkD7howwBXmmDG_gFuHuFGimXn17vsjKiGv7JnLcMmVBry4Mx1_u6gmF5x0sP7Gg/exec';
 
   async function fetchBlMonitoringRows_() {
     var base = (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL)
@@ -10192,6 +10208,1856 @@ function initDashboardApp() {
     });
   })();
 
+  // ─── QUESTIONNAIRE MONITORING ────────────────────────────
+  const QM_STATUS_VALUES = ['On Progress', 'Done'];
+  const QM_PROGRESS_STEPS = [
+    'Open',
+    'Send Email',
+    'Received Questionnaire',
+    'Send Back With Feedback',
+    'Completed',
+  ];
+  const QM_DATE_FIELDS = [
+    { progress: 'Open', field: 'DATE OPEN', short: 'Open' },
+    { progress: 'Send Email', field: 'DATE SEND EMAIL', short: 'Email' },
+    { progress: 'Received Questionnaire', field: 'DATE RECEIVED QUESTIONNAIRE', short: 'Received' },
+    { progress: 'Send Back With Feedback', field: 'DATE SEND BACK WITH FEEDBACK', short: 'Feedback' },
+    { progress: 'Completed', field: 'DATE COMPLETED', short: 'Completed' },
+  ];
+  const QM_EXPORT_COLUMN_DEFS = [
+    { id: 'group', label: 'Group Name', header: 'Group Name', field: 'GROUP NAME' },
+    { id: 'company', label: 'Company Name', header: 'Company Name', field: 'COMPANY NAME' },
+    { id: 'mill', label: 'Mill Name', header: 'Mill Name', field: 'MILL NAME' },
+    { id: 'uml', label: 'UML ID', header: 'UML ID', field: 'UML ID' },
+    { id: 'status', label: 'Status', header: 'Status', field: 'STATUS', format: 'status' },
+    { id: 'last_update', label: 'Last Update', header: 'Last Update', field: 'LAST UPDATE', format: 'date' },
+    { id: 'progress', label: 'Progress', header: 'Progress', field: 'PROGRESS', format: 'progress' },
+    { id: 'date_open', label: 'Date Open', header: 'Date Open', field: 'DATE OPEN', format: 'date' },
+    { id: 'date_email', label: 'Date Send Email', header: 'Date Send Email', field: 'DATE SEND EMAIL', format: 'date' },
+    { id: 'date_received', label: 'Date Received Questionnaire', header: 'Date Received Questionnaire', field: 'DATE RECEIVED QUESTIONNAIRE', format: 'date' },
+    { id: 'date_feedback', label: 'Date Send Back With Feedback', header: 'Date Send Back With Feedback', field: 'DATE SEND BACK WITH FEEDBACK', format: 'date' },
+    { id: 'date_completed', label: 'Date Completed', header: 'Date Completed', field: 'DATE COMPLETED', format: 'date' },
+    { id: 'updated_by', label: 'Updated By', header: 'Updated By', field: 'UPDATED BY' },
+  ];
+  const QM_EXPORT_DEFAULT_COL_IDS = QM_EXPORT_COLUMN_DEFS.map(function(c) { return c.id; });
+  let qmRows = [];
+  let qmSheetRows = [];
+  let qmLoaded = false;
+  let qmLoadPromise = null;
+  let qmSearch = '';
+  let qmRenderScheduled = false;
+  let qmEditRow = null;
+  let qmFormDateInputs = {};
+  let qmTableDelegationBound = false;
+  let qmSavingKeys = {};
+  let qmSelectedKeys = new Set();
+  let qmExportSelectedColIds = QM_EXPORT_DEFAULT_COL_IDS.slice();
+
+  function qmEntityKey_(group, company, mill) {
+    return [group, company, mill].map(function(s) {
+      return String(s || '').trim().toLowerCase();
+    }).join('|');
+  }
+
+  function qmNormStatus_(val) {
+    const s = String(val || '').trim().toLowerCase();
+    if (!s) return 'On Progress';
+    if (s.includes('done')) return 'Done';
+    return 'On Progress';
+  }
+
+  function qmNormProgress_(val) {
+    const s = String(val || '').trim();
+    if (QM_PROGRESS_STEPS.indexOf(s) !== -1) return s;
+    return 'Open';
+  }
+
+  function qmToInputDate_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (m) {
+      var dd = m[1].padStart(2, '0');
+      var mm = m[2].padStart(2, '0');
+      var yy = m[3].length === 2 ? ('20' + m[3]) : m[3];
+      return yy + '-' + mm + '-' + dd;
+    }
+    if (s.length >= 10 && s.indexOf('T') !== -1) return s.slice(0, 10);
+    return s.slice(0, 10);
+  }
+
+  function qmFormatDisplayDate_(raw) {
+    const iso = qmToInputDate_(raw);
+    if (!iso) return '—';
+    const parts = iso.split('-');
+    if (parts.length !== 3) return iso;
+    return parts[2] + '/' + parts[1] + '/' + parts[0];
+  }
+
+  function qmStatusBadge_(val) {
+    const norm = qmNormStatus_(val);
+    const cls = norm === 'Done' ? 'grv-closed' : 'grv-open';
+    return '<span class="status-badge ' + cls + '"><span class="s-dot"></span>' + escHtml(norm) + '</span>';
+  }
+
+  function qmProgressPill_(val) {
+    const norm = qmNormProgress_(val);
+    const cls = norm === 'Completed' ? ' qm-progress-pill--completed' : '';
+    return '<span class="qm-progress-pill' + cls + '">' + escHtml(norm) + '</span>';
+  }
+
+  function qmBuildMillRegistry_() {
+    const seen = new Map();
+    (allData || []).forEach(function(r) {
+      const group = String(r['GROUP NAME'] || r['Group Name'] || r['Grup Name'] || '').trim();
+      const company = String(r['COMPANY NAME'] || r['Company Name'] || '').trim();
+      const mill = String(r['MILL NAME'] || r['Mill Name'] || '').trim();
+      if (!mill && !company) return;
+      const key = qmEntityKey_(group, company, mill);
+      if (seen.has(key)) return;
+      seen.set(key, {
+        'GROUP NAME': group,
+        'COMPANY NAME': company,
+        'MILL NAME': mill,
+        'UML ID': String(r['UML ID'] || '').trim(),
+        _millRow: r._row,
+      });
+    });
+    return Array.from(seen.values()).sort(function(a, b) {
+      const ga = String(a['GROUP NAME'] || '').toLowerCase();
+      const gb = String(b['GROUP NAME'] || '').toLowerCase();
+      if (ga !== gb) return ga.localeCompare(gb);
+      const ca = String(a['COMPANY NAME'] || '').toLowerCase();
+      const cb = String(b['COMPANY NAME'] || '').toLowerCase();
+      if (ca !== cb) return ca.localeCompare(cb);
+      return String(a['MILL NAME'] || '').toLowerCase().localeCompare(String(b['MILL NAME'] || '').toLowerCase());
+    });
+  }
+
+  function qmDefaultRow_(base) {
+    const out = Object.assign({}, base || {});
+    out.STATUS = 'On Progress';
+    out.PROGRESS = 'Open';
+    out['LAST UPDATE'] = '';
+    QM_DATE_FIELDS.forEach(function(def) { out[def.field] = ''; });
+    return out;
+  }
+
+  function qmMergeRows_(mills, sheetRows) {
+    const sheetMap = {};
+    (sheetRows || []).forEach(function(r) {
+      sheetMap[qmEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'])] = r;
+    });
+    return (mills || []).map(function(m) {
+      const key = qmEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME']);
+      const hit = sheetMap[key];
+      if (hit) {
+        return Object.assign({}, m, hit, {
+          STATUS: qmNormStatus_(hit.STATUS),
+          PROGRESS: qmNormProgress_(hit.PROGRESS),
+          _entityKey: key,
+          _sheetRow: hit._row,
+        });
+      }
+      return Object.assign(qmDefaultRow_(m), { _entityKey: key, _sheetRow: null });
+    });
+  }
+
+  function qmPrepareRow_(d) {
+    d._entityKey = qmEntityKey_(d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME']);
+    d._qmSearchBlob = [
+      d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME'], d['UML ID'],
+      d.STATUS, d.PROGRESS, d['LAST UPDATE'],
+    ].concat(QM_DATE_FIELDS.map(function(def) { return d[def.field]; }))
+      .map(function(x) { return String(x || '').toLowerCase(); })
+      .join(' ');
+    return d;
+  }
+
+  function qmPayloadFromRow_(row) {
+    const payload = {
+      'GROUP NAME': row['GROUP NAME'] || '',
+      'COMPANY NAME': row['COMPANY NAME'] || '',
+      'MILL NAME': row['MILL NAME'] || '',
+      'UML ID': row['UML ID'] || '',
+      STATUS: qmNormStatus_(row.STATUS),
+      PROGRESS: qmNormProgress_(row.PROGRESS),
+    };
+    QM_DATE_FIELDS.forEach(function(def) {
+      payload[def.field] = qmToInputDate_(row[def.field]) || '';
+    });
+    return payload;
+  }
+
+  function qmGetFilteredRows_() {
+    const q = qmSearch;
+    return qmRows.filter(function(d) {
+      return !q || (d._qmSearchBlob || '').includes(q);
+    });
+  }
+
+  function qmSyncSelectAllHead_() {
+    const head = document.getElementById('qmSelectAllHead');
+    if (!head) return;
+    const filtered = qmGetFilteredRows_();
+    if (!filtered.length) {
+      head.checked = false;
+      head.indeterminate = false;
+      return;
+    }
+    const selectedCount = filtered.filter(function(d) {
+      return qmSelectedKeys.has(d._entityKey);
+    }).length;
+    head.checked = selectedCount === filtered.length;
+    head.indeterminate = selectedCount > 0 && selectedCount < filtered.length;
+  }
+
+  function qmExportCellValue_(row, colDef) {
+    if (!row || !colDef) return '';
+    const raw = row[colDef.field];
+    if (colDef.format === 'date') {
+      const iso = qmToInputDate_(raw);
+      return iso ? qmFormatDisplayDate_(iso) : '';
+    }
+    if (colDef.format === 'status') return qmNormStatus_(raw);
+    if (colDef.format === 'progress') return qmNormProgress_(raw);
+    return String(raw != null ? raw : '').trim();
+  }
+
+  function getQmExportColDefs_(selectedIds) {
+    const ids = selectedIds || qmExportSelectedColIds;
+    return QM_EXPORT_COLUMN_DEFS.filter(function(c) { return ids.indexOf(c.id) !== -1; });
+  }
+
+  function qmRowToExport_(row, colDefs) {
+    return (colDefs || getQmExportColDefs_()).map(function(col) {
+      return qmExportCellValue_(row, col);
+    });
+  }
+
+  function qmExcelStamp_() {
+    const now = new Date();
+    return now.getFullYear()
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + String(now.getDate()).padStart(2, '0')
+      + '_'
+      + String(now.getHours()).padStart(2, '0')
+      + String(now.getMinutes()).padStart(2, '0');
+  }
+
+  function writeQmExcelFile_(dataRows, colDefs, filename) {
+    if (typeof XLSX === 'undefined') {
+      alert('Excel library not loaded. Refresh the page and try again.');
+      return;
+    }
+    const defs = colDefs || getQmExportColDefs_();
+    if (!defs.length) {
+      alert('Pilih minimal satu kolom untuk export.');
+      return;
+    }
+    const headers = defs.map(function(c) { return c.header; });
+    const rows = (dataRows || []).map(function(d) { return qmRowToExport_(d, defs); });
+    const wsData = [headers].concat(rows);
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    ws['!cols'] = headers.map(function(h) {
+      return { wch: Math.min(Math.max(String(h).length + 4, 14), 42) };
+    });
+
+    const headerFill = '8B1A1A';
+    const headerFont = 'FFFFFF';
+    const borderThin = {
+      top: { style: 'thin', color: { rgb: 'D4C4C4' } },
+      bottom: { style: 'thin', color: { rgb: 'D4C4C4' } },
+      left: { style: 'thin', color: { rgb: 'D4C4C4' } },
+      right: { style: 'thin', color: { rgb: 'D4C4C4' } },
+    };
+
+    headers.forEach(function(h, ci) {
+      const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: h };
+      ws[cellAddr].s = {
+        font: { bold: true, color: { rgb: headerFont }, sz: 11, name: 'Calibri' },
+        fill: { fgColor: { rgb: headerFill } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: borderThin,
+      };
+    });
+
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][0] = { hpt: 28 };
+
+    rows.forEach(function(rowVals, ri) {
+      rowVals.forEach(function(val, ci) {
+        const cellAddr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+        if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: val != null ? String(val) : '' };
+        const isEven = ri % 2 === 0;
+        ws[cellAddr].s = {
+          font: { sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
+          fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'FBF7F7' } },
+          alignment: { vertical: 'center', wrapText: true },
+          border: borderThin,
+        };
+      });
+    });
+
+    if (rows.length) {
+      ws['!autofilter'] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: rows.length, c: headers.length - 1 },
+        }),
+      };
+      ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Questionnaire Monitoring');
+    XLSX.writeFile(wb, filename || ('questionnaire_monitoring_' + qmExcelStamp_() + '.xlsx'), { cellStyles: true });
+  }
+
+  function qmRefreshExportColList_() {
+    const listEl = document.getElementById('qmExportColList');
+    if (!listEl) return;
+    listEl.innerHTML = QM_EXPORT_COLUMN_DEFS.map(function(col) {
+      const checked = qmExportSelectedColIds.indexOf(col.id) !== -1 ? ' checked' : '';
+      return ''
+        + '<label class="pf-export-facility-item">'
+        + '<input type="checkbox" name="qmExportCol" value="' + escHtml(col.id) + '"' + checked + ' />'
+        + '<span>' + escHtml(col.label) + '</span>'
+        + '</label>';
+    }).join('');
+  }
+
+  function qmReadExportColSelection_() {
+    const checked = Array.from(document.querySelectorAll('#qmExportColList input[name="qmExportCol"]:checked'))
+      .map(function(cb) { return cb.value; });
+    const ordered = QM_EXPORT_COLUMN_DEFS
+      .map(function(c) { return c.id; })
+      .filter(function(id) { return checked.indexOf(id) !== -1; });
+    qmExportSelectedColIds = ordered;
+    return getQmExportColDefs_(ordered);
+  }
+
+  function qmUpdateExportHint_() {
+    const hint = document.getElementById('qmExportHint');
+    if (!hint) return;
+    const filtered = qmGetFilteredRows_();
+    const sel = filtered.filter(function(d) { return qmSelectedKeys.has(d._entityKey); }).length;
+    hint.textContent = 'Export '
+      + filtered.length + ' baris terfilter'
+      + (sel ? (' · ' + sel + ' tercentang') : '')
+      + '. Pilih kolom dan baris (semua atau tercentang).';
+  }
+
+  function mountQmExportModal_() {
+    const modal = document.getElementById('qm-export-modal');
+    if (!modal) return null;
+    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+    return modal;
+  }
+
+  function openQmExportModal_() {
+    const filtered = qmGetFilteredRows_();
+    if (!filtered.length) {
+      alert('Belum ada data untuk diexport.');
+      return;
+    }
+    const modal = mountQmExportModal_();
+    if (!modal) return;
+    qmUpdateExportHint_();
+    qmRefreshExportColList_();
+    const scopeSelected = document.querySelector('#qm-export-modal input[name="qmExportScope"][value="selected"]');
+    if (scopeSelected && qmSelectedKeys.size > 0) scopeSelected.checked = true;
+    else {
+      const scopeAll = document.querySelector('#qm-export-modal input[name="qmExportScope"][value="all"]');
+      if (scopeAll) scopeAll.checked = true;
+    }
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeQmExportModal_() {
+    const modal = document.getElementById('qm-export-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function confirmQmExport_() {
+    const colDefs = qmReadExportColSelection_();
+    if (!colDefs.length) {
+      alert('Pilih minimal satu kolom.');
+      return;
+    }
+    const scope = document.querySelector('#qm-export-modal input[name="qmExportScope"]:checked');
+    const mode = scope ? scope.value : 'all';
+    let rows = qmGetFilteredRows_();
+    if (mode === 'selected') {
+      rows = rows.filter(function(d) { return qmSelectedKeys.has(d._entityKey); });
+      if (!rows.length) {
+        alert('Centang minimal satu baris di tabel, atau pilih "Semua baris".');
+        return;
+      }
+    }
+    const suffix = mode === 'selected' ? 'selected_' : 'all_';
+    writeQmExcelFile_(rows, colDefs, 'questionnaire_monitoring_' + suffix + qmExcelStamp_() + '.xlsx');
+    closeQmExportModal_();
+  }
+
+  function qmUpdateStats_() {
+    const totalEl = document.getElementById('qm-stat-total');
+    if (!totalEl) return;
+    const rows = qmRows;
+    totalEl.textContent = String(rows.length);
+    const onProg = rows.filter(function(d) { return qmNormStatus_(d.STATUS) === 'On Progress'; }).length;
+    const done = rows.filter(function(d) { return qmNormStatus_(d.STATUS) === 'Done'; }).length;
+    const completed = rows.filter(function(d) { return qmNormProgress_(d.PROGRESS) === 'Completed'; }).length;
+    const progEl = document.getElementById('qm-stat-progress');
+    const doneEl = document.getElementById('qm-stat-done');
+    const compEl = document.getElementById('qm-stat-completed');
+    if (progEl) progEl.textContent = String(onProg);
+    if (doneEl) doneEl.textContent = String(done);
+    if (compEl) compEl.textContent = String(completed);
+  }
+
+  function renderQmTable_() {
+    const body = document.getElementById('qmTableBody');
+    if (!body) return;
+    const filtered = qmGetFilteredRows_();
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (qmSearch ? 'No results match your search.' : 'No mills found in Mill Onboarding.')
+        + '</td></tr>';
+      qmSyncSelectAllHead_();
+      return;
+    }
+    body.innerHTML = filtered.map(function(d) {
+      const key = d._entityKey || '';
+      const checked = qmSelectedKeys.has(key) ? ' checked' : '';
+      return '<tr class="qm-row-clickable" data-qm-key="' + escHtml(key) + '" title="Klik untuk edit status & progress">'
+        + '<td class="qm-check-col"><input type="checkbox" class="qm-row-check" data-qm-key="' + escHtml(key) + '"' + checked + ' aria-label="Select row" /></td>'
+        + '<td><span class="mill-name">' + escHtml(d['GROUP NAME'] || '—') + '</span></td>'
+        + '<td>' + escHtml(d['COMPANY NAME'] || '—') + '</td>'
+        + '<td>' + escHtml(d['MILL NAME'] || '—') + '<div class="mill-id">' + escHtml(d['UML ID'] || '') + '</div></td>'
+        + '<td>' + qmStatusBadge_(d.STATUS) + '</td>'
+        + '<td>' + escHtml(qmFormatDisplayDate_(d['LAST UPDATE'])) + '</td>'
+        + '<td>' + qmProgressPill_(d.PROGRESS) + '</td>'
+        + '</tr>';
+    }).join('');
+    qmSyncSelectAllHead_();
+  }
+
+  function scheduleRenderQmTable_() {
+    if (qmRenderScheduled) return;
+    qmRenderScheduled = true;
+    requestAnimationFrame(function() {
+      qmRenderScheduled = false;
+      renderQmTable_();
+    });
+  }
+
+  function qmFindRowByKey_(key) {
+    return qmRows.find(function(r) { return r._entityKey === key; }) || null;
+  }
+
+  async function qmSaveRow_(row, patch) {
+    const merged = Object.assign({}, row, patch || {});
+    const payload = qmPayloadFromRow_(merged);
+    const key = merged._entityKey || qmEntityKey_(payload['GROUP NAME'], payload['COMPANY NAME'], payload['MILL NAME']);
+    if (qmSavingKeys[key]) return qmSavingKeys[key];
+    qmSavingKeys[key] = apiPost({ action: 'upsertQuestionnaire', data: payload })
+      .then(function() {
+        Object.assign(row, merged, {
+          STATUS: payload.STATUS,
+          PROGRESS: payload.PROGRESS,
+          'LAST UPDATE': new Date().toISOString().slice(0, 10),
+        });
+        QM_DATE_FIELDS.forEach(function(def) {
+          row[def.field] = payload[def.field] || '';
+        });
+        qmPrepareRow_(row);
+        qmUpdateStats_();
+        scheduleRenderQmTable_();
+      })
+      .finally(function() {
+        delete qmSavingKeys[key];
+      });
+    return qmSavingKeys[key];
+  }
+
+  function qmBindTableDelegationOnce_() {
+    if (qmTableDelegationBound) return;
+    const body = document.getElementById('qmTableBody');
+    if (!body) return;
+    qmTableDelegationBound = true;
+
+    body.addEventListener('click', function(e) {
+      if (e.target.closest('.qm-row-check')) return;
+      const tr = e.target.closest('.qm-row-clickable');
+      if (!tr || !body.contains(tr)) return;
+      const key = tr.getAttribute('data-qm-key') || '';
+      const row = qmFindRowByKey_(key);
+      if (row) openQmFormModal_(row);
+    });
+
+    body.addEventListener('change', function(e) {
+      const cb = e.target.closest('.qm-row-check[data-qm-key]');
+      if (!cb || !body.contains(cb)) return;
+      const key = cb.getAttribute('data-qm-key') || '';
+      if (!key) return;
+      if (cb.checked) qmSelectedKeys.add(key);
+      else qmSelectedKeys.delete(key);
+      qmSyncSelectAllHead_();
+    });
+  }
+
+  function qmBindSelectAllHeadOnce_() {
+    const head = document.getElementById('qmSelectAllHead');
+    if (!head || head.dataset.qmBound) return;
+    head.dataset.qmBound = '1';
+    head.addEventListener('change', function() {
+      const filtered = qmGetFilteredRows_();
+      if (head.checked) {
+        filtered.forEach(function(d) { qmSelectedKeys.add(d._entityKey); });
+      } else {
+        filtered.forEach(function(d) { qmSelectedKeys.delete(d._entityKey); });
+      }
+      scheduleRenderQmTable_();
+    });
+  }
+
+  function qmBuildFormDatesGrid_(row) {
+    const grid = document.getElementById('qmFormDatesGrid');
+    if (!grid) return;
+    qmFormDateInputs = {};
+    grid.innerHTML = QM_DATE_FIELDS.map(function(def) {
+      const id = 'qmDate_' + def.field.replace(/\s+/g, '_');
+      qmFormDateInputs[def.field] = id;
+      return '<label class="qm-form-date-field" for="' + id + '">'
+        + '<span>' + escHtml(def.progress) + '</span>'
+        + '<input type="date" id="' + id + '" value="' + escHtml(qmToInputDate_(row[def.field])) + '" />'
+        + '</label>';
+    }).join('');
+  }
+
+  function openQmFormModal_(row) {
+    const overlay = document.getElementById('qmFormOverlay');
+    if (!overlay || !row) return;
+    qmEditRow = row;
+    const groupEl = document.getElementById('qmFormGroup');
+    const companyEl = document.getElementById('qmFormCompany');
+    const millEl = document.getElementById('qmFormMill');
+    const statusEl = document.getElementById('qmFormStatus');
+    const progressEl = document.getElementById('qmFormProgress');
+    if (groupEl) groupEl.textContent = row['GROUP NAME'] || '—';
+    if (companyEl) companyEl.textContent = row['COMPANY NAME'] || '—';
+    if (millEl) millEl.textContent = row['MILL NAME'] || '—';
+    if (statusEl) statusEl.value = qmNormStatus_(row.STATUS);
+    if (progressEl) progressEl.value = qmNormProgress_(row.PROGRESS);
+    qmBuildFormDatesGrid_(row);
+    overlay.classList.add('active');
+    document.body.classList.add('qm-form-open');
+  }
+
+  function closeQmFormModal_() {
+    const overlay = document.getElementById('qmFormOverlay');
+    if (overlay) overlay.classList.remove('active');
+    document.body.classList.remove('qm-form-open');
+    qmEditRow = null;
+  }
+
+  async function qmSaveFormModal_() {
+    if (!qmEditRow) return;
+    const statusEl = document.getElementById('qmFormStatus');
+    const progressEl = document.getElementById('qmFormProgress');
+    const patch = {
+      STATUS: statusEl ? statusEl.value : qmEditRow.STATUS,
+      PROGRESS: progressEl ? progressEl.value : qmEditRow.PROGRESS,
+    };
+    QM_DATE_FIELDS.forEach(function(def) {
+      const id = qmFormDateInputs[def.field];
+      const input = id ? document.getElementById(id) : null;
+      patch[def.field] = input ? (input.value || '') : (qmEditRow[def.field] || '');
+    });
+    const saveBtn = document.getElementById('qmFormSave');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+    try {
+      await qmSaveRow_(qmEditRow, patch);
+      closeQmFormModal_();
+    } catch (err) {
+      alert('Failed to save: ' + ((err && err.message) ? err.message : String(err)));
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Update';
+      }
+    }
+  }
+
+  async function loadQmDataImpl_(force) {
+    const loading = document.getElementById('qm-loading');
+    const errorEl = document.getElementById('qm-error');
+    const table = document.getElementById('qmTable');
+    if (!loading || !errorEl || !table) return;
+    try {
+      loading.style.display = 'block';
+      errorEl.style.display = 'none';
+      table.style.display = 'none';
+      if (!allData || !allData.length) await loadMillData();
+      const raw = await apiGet('questionnaireMonitoring');
+      qmSheetRows = Array.isArray(raw) ? raw : [];
+      const mills = qmBuildMillRegistry_();
+      qmRows = qmMergeRows_(mills, qmSheetRows).map(qmPrepareRow_);
+      qmLoaded = true;
+      qmBindTableDelegationOnce_();
+      qmBindSelectAllHeadOnce_();
+      qmUpdateStats_();
+      loading.style.display = 'none';
+      table.style.display = 'table';
+      scheduleRenderQmTable_();
+    } catch (err) {
+      loading.style.display = 'none';
+      errorEl.style.display = 'block';
+      const msg = (err && err.message) ? err.message : String(err);
+      if (/questionnaireMonitoring|Questionnaire Monitoring|Sheet key not found/i.test(msg)) {
+        errorEl.innerHTML = 'Tab <strong>Questionnaire Monitoring</strong> belum ada di spreadsheet. Tab akan dibuat otomatis saat save pertama — pastikan Apps Script sudah di-deploy ulang, lalu refresh.';
+      } else {
+        errorEl.textContent = 'Failed to load Questionnaire Monitoring: ' + msg;
+      }
+      if (force) throw err;
+    }
+  }
+
+  async function loadQmData(force) {
+    if (qmLoaded && !force) {
+      scheduleRenderQmTable_();
+      return;
+    }
+    if (qmLoadPromise) return qmLoadPromise;
+    qmLoadPromise = loadQmDataImpl_(!!force);
+    try {
+      await qmLoadPromise;
+    } finally {
+      qmLoadPromise = null;
+    }
+  }
+
+  window.loadQmData = loadQmData;
+
+  (function bindQmToolbarIfPresent_() {
+    const searchEl = document.getElementById('qmSearch');
+    const clearEl = document.getElementById('qmSearchClear');
+    const btnRefresh = document.getElementById('btn-refresh-qm');
+    const btnExport = document.getElementById('btn-export-qm');
+    const overlay = document.getElementById('qmFormOverlay');
+    const exportModal = document.getElementById('qm-export-modal');
+    const btnClose = document.getElementById('qmFormClose');
+    const btnCancel = document.getElementById('qmFormCancel');
+    const btnSave = document.getElementById('qmFormSave');
+    if (!searchEl || !clearEl || !btnRefresh) return;
+
+    qmBindSelectAllHeadOnce_();
+
+    const debouncedRender = debounce(function() {
+      scheduleRenderQmTable_();
+    }, 120);
+
+    searchEl.addEventListener('input', function() {
+      qmSearch = this.value.toLowerCase().trim();
+      if (this.value) clearEl.classList.add('show');
+      else clearEl.classList.remove('show');
+      debouncedRender();
+    });
+
+    clearEl.addEventListener('click', function() {
+      searchEl.value = '';
+      qmSearch = '';
+      this.classList.remove('show');
+      if (debouncedRender.cancel) debouncedRender.cancel();
+      if (debouncedRender.flush) debouncedRender.flush();
+      else scheduleRenderQmTable_();
+      searchEl.focus();
+    });
+
+    btnRefresh.addEventListener('click', function() {
+      qmLoaded = false;
+      loadQmData(true);
+    });
+
+    if (btnExport) btnExport.addEventListener('click', openQmExportModal_);
+
+    ['qmExportModalClose', 'qmExportCancel', 'qmExportModalBackdrop'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', closeQmExportModal_);
+    });
+    document.getElementById('qmExportConfirm')?.addEventListener('click', confirmQmExport_);
+    document.getElementById('qmExportColAll')?.addEventListener('click', function() {
+      qmExportSelectedColIds = QM_EXPORT_DEFAULT_COL_IDS.slice();
+      qmRefreshExportColList_();
+    });
+    document.getElementById('qmExportColDefault')?.addEventListener('click', function() {
+      qmExportSelectedColIds = QM_EXPORT_DEFAULT_COL_IDS.slice();
+      qmRefreshExportColList_();
+    });
+    document.getElementById('qmExportColNone')?.addEventListener('click', function() {
+      qmExportSelectedColIds = [];
+      qmRefreshExportColList_();
+    });
+
+    if (overlay) {
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closeQmFormModal_();
+      });
+    }
+    if (btnClose) btnClose.addEventListener('click', closeQmFormModal_);
+    if (btnCancel) btnCancel.addEventListener('click', closeQmFormModal_);
+    if (btnSave) btnSave.addEventListener('click', function() { qmSaveFormModal_(); });
+
+    if (!window.__sddQmEscBound) {
+      window.__sddQmEscBound = true;
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        if (exportModal && exportModal.style.display === 'flex') closeQmExportModal_();
+        else if (overlay && overlay.classList.contains('active')) closeQmFormModal_();
+      });
+    }
+  })();
+
+  // ─── EUDR POTENTIAL ──────────────────────────────────────
+  let eudrRows = [];
+  let eudrLoaded = false;
+  let eudrLoadPromise = null;
+  let eudrSearch = '';
+  let eudrRenderScheduled = false;
+  let eudrTableDelegationBound = false;
+  let eudrEditRow = null;
+
+  const EUDR_IRF_OPTIONS = [
+    'Unknown',
+    'Known',
+    'Awareness',
+    'Commitment and Starting Action',
+    'Progressing',
+    'Delivering',
+  ];
+  const EUDR_SHEET_FIELD_KEYS = [
+    'STATUS',
+    'DEFORESTATION (AFTER 2020)',
+    'COMPLETE QUESTIONNAIRE',
+    'NDPE IRF DEFORESTATION',
+    'NDPE IRF PEAT',
+    'SATELLITE MONITORING',
+    '3RD PARTY VERIFICATION NDPE',
+    '3RD PARTY VERIFICATION TRACEABILITY',
+    '3RD PARTY VERIFICATION DEFORESTATION FREE',
+    'LAST UPDATE',
+    'UPDATED BY',
+  ];
+  const EUDR_ASSESSMENT_YESNO = [
+    { key: 'DEFORESTATION (AFTER 2020)', label: 'Deforestation (After 2020)' },
+    { key: 'COMPLETE QUESTIONNAIRE', label: 'Complete Questionnaire' },
+    { key: 'SATELLITE MONITORING', label: 'Satellite Monitoring' },
+    { key: '3RD PARTY VERIFICATION NDPE', label: '3rd Party Verification NDPE' },
+    { key: '3RD PARTY VERIFICATION TRACEABILITY', label: '3rd Party Verification Traceability' },
+    { key: '3RD PARTY VERIFICATION DEFORESTATION FREE', label: '3rd Party Verification Deforestation Free' },
+  ];
+  const EUDR_ASSESSMENT_IRF = [
+    { key: 'NDPE IRF DEFORESTATION', label: 'NDPE IRF Deforestation' },
+    { key: 'NDPE IRF PEAT', label: 'NDPE IRF Peat' },
+  ];
+  const EUDR_STATUS_CRITERIA = [
+    { key: 'legality', label: 'Legality = Complete (1)' },
+    { key: 'millCategory', label: 'Mill Category = Integrated' },
+    { key: 'cpoTraceable', label: '% CPO Traceable = 100%' },
+    { key: 'resultRiskLevel', label: 'Result Risk Level = Low' },
+    { key: 'millLocation', label: 'Mill Location = APL' },
+    { key: 'certification', label: 'Certification (≥ 1 certificate)' },
+    { key: 'grievance', label: 'Grievance = No' },
+    { key: 'ndpePolicy', label: 'NDPE Policy = Yes' },
+    { key: 'noBuyList', label: 'No Buy List = No' },
+    { key: 'deforestation', label: 'Deforestation < 10 Ha' },
+  ];
+  let eudrFormulaConfig = null;
+  let eudrModalMillRow = null;
+
+  function eudrEntityKey_(group, company, mill) {
+    return [group, company, mill].map(function(s) {
+      return String(s || '').trim().toLowerCase();
+    }).join('|');
+  }
+
+  function eudrPickField_(row, keys) {
+    if (!row || typeof row !== 'object') return '';
+    for (var i = 0; i < keys.length; i++) {
+      var v = row[keys[i]];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    var norm = {};
+    Object.keys(row).forEach(function(k) {
+      if (k === '_row' || k.indexOf('_') === 0) return;
+      norm[String(k).trim().toLowerCase()] = row[k];
+    });
+    for (var j = 0; j < keys.length; j++) {
+      var lk = String(keys[j]).trim().toLowerCase();
+      if (norm[lk] !== undefined && norm[lk] !== null && String(norm[lk]).trim() !== '') {
+        return String(norm[lk]).trim();
+      }
+    }
+    return '';
+  }
+
+  function eudrDisplayCell_(val) {
+    if (val === undefined || val === null) return '—';
+    var s = String(val).trim();
+    return s === '' ? '—' : s;
+  }
+
+  /** Supply To = Facility Name CPO dari Mill Onboarding (bukan Facility PK). */
+  function eudrSupplyToFromMill_(r) {
+    return eudrPickField_(r, [
+      'FACILITY NAME CPO',
+      'Facility Name CPO',
+      'Facility CPO',
+    ]);
+  }
+
+  function eudrMillCapacityFromMill_(r) {
+    return eudrPickField_(r, [
+      'MILL CAPACITY',
+      'MILL CAPACITY (TON/HOUR)',
+      'Mill Capacity',
+      'Mill Capacity (Ton/Hour)',
+      'Mill Capacity (Ton/Hour)',
+      'KCP Capacity (Ton/Hour)',
+    ]);
+  }
+
+  function eudrMergePreferNonEmpty_(base, incoming) {
+    var inc = incoming;
+    if (inc !== undefined && inc !== null && typeof inc === 'number') inc = String(inc);
+    var b = base;
+    if (b !== undefined && b !== null && typeof b === 'number') b = String(b);
+    if (eudrDisplayCell_(inc) === '—') return b || '';
+    return inc;
+  }
+
+  function eudrBuildMillRegistry_() {
+    const seen = new Map();
+    (allData || []).forEach(function(r) {
+      const group = String(r['GROUP NAME'] || r['Group Name'] || r['Grup Name'] || '').trim();
+      const company = String(r['COMPANY NAME'] || r['Company Name'] || '').trim();
+      const mill = String(r['MILL NAME'] || r['Mill Name'] || '').trim();
+      if (!mill && !company) return;
+      const key = eudrEntityKey_(group, company, mill);
+      const cap = eudrMillCapacityFromMill_(r);
+      const supply = eudrSupplyToFromMill_(r);
+      if (seen.has(key)) {
+        const prev = seen.get(key);
+        prev['MILL CAPACITY'] = eudrMergePreferNonEmpty_(prev['MILL CAPACITY'], cap);
+        prev['SUPPLY TO'] = eudrMergePreferNonEmpty_(prev['SUPPLY TO'], supply);
+        if (!prev['UML ID']) prev['UML ID'] = String(r['UML ID'] || '').trim();
+        if (!prev['PROVINCE']) prev['PROVINCE'] = String(r['PROVINCE'] || r['Province'] || '').trim();
+        return;
+      }
+      seen.set(key, {
+        'GROUP NAME': group,
+        'COMPANY NAME': company,
+        'MILL NAME': mill,
+        'UML ID': String(r['UML ID'] || '').trim(),
+        'PROVINCE': String(r['PROVINCE'] || r['Province'] || '').trim(),
+        'SUPPLY TO': supply,
+        'MILL CAPACITY': cap,
+        _entityKey: key,
+      });
+    });
+    return Array.from(seen.values()).sort(function(a, b) {
+      const ga = String(a['GROUP NAME'] || '').toLowerCase();
+      const gb = String(b['GROUP NAME'] || '').toLowerCase();
+      if (ga !== gb) return ga.localeCompare(gb);
+      const ca = String(a['COMPANY NAME'] || '').toLowerCase();
+      const cb = String(b['COMPANY NAME'] || '').toLowerCase();
+      if (ca !== cb) return ca.localeCompare(cb);
+      return String(a['MILL NAME'] || '').toLowerCase().localeCompare(String(b['MILL NAME'] || '').toLowerCase());
+    });
+  }
+
+  function eudrMillToSyncPayload_(m) {
+    return {
+      'GROUP NAME': m['GROUP NAME'] || '',
+      'COMPANY NAME': m['COMPANY NAME'] || '',
+      'MILL NAME': m['MILL NAME'] || '',
+      'UML ID': m['UML ID'] || '',
+      'PROVINCE': m['PROVINCE'] || '',
+      'SUPPLY TO': m['SUPPLY TO'] || '',
+      'MILL CAPACITY': m['MILL CAPACITY'] || '',
+    };
+  }
+
+  function eudrMergeDisplay_(mills, sheetRows) {
+    const sheetMap = {};
+    (sheetRows || []).forEach(function(r) {
+      sheetMap[eudrEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'])] = r;
+    });
+    return (mills || []).map(function(m) {
+      const hit = sheetMap[m._entityKey];
+      var cap = m['MILL CAPACITY'] || '';
+      var supply = m['SUPPLY TO'] || '';
+      var out = Object.assign({}, m, {
+        'MILL CAPACITY': cap,
+        'SUPPLY TO': supply,
+        STATUS: '',
+        _sheetRow: null,
+      });
+      if (hit) {
+        cap = eudrMergePreferNonEmpty_(cap, hit['MILL CAPACITY']);
+        supply = eudrMergePreferNonEmpty_(supply, hit['SUPPLY TO']);
+        out['MILL CAPACITY'] = cap;
+        out['SUPPLY TO'] = supply;
+        out._sheetRow = hit._row;
+        EUDR_SHEET_FIELD_KEYS.forEach(function(k) {
+          if (hit[k] != null && String(hit[k]).trim() !== '') out[k] = hit[k];
+          else if (hit[k] != null) out[k] = hit[k];
+        });
+      }
+      return out;
+    });
+  }
+
+  function eudrPrepareRow_(d) {
+    d._eudrSearchBlob = [
+      d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME'], d['UML ID'],
+      d['PROVINCE'], d['SUPPLY TO'], d['MILL CAPACITY'], d.STATUS,
+    ].concat(EUDR_SHEET_FIELD_KEYS.map(function(k) { return d[k]; }))
+      .map(function(x) { return String(x || '').toLowerCase(); }).join(' ');
+    return d;
+  }
+
+  function eudrNormYesNoVal_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const t = s.toLowerCase();
+    if (t === 'yes' || t === 'y' || t === '1' || t === 'true') return 'Yes';
+    if (t === 'no' || t === 'n' || t === '0' || t === 'false') return 'No';
+    return s;
+  }
+
+  function eudrNormIrfVal_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const lower = s.toLowerCase();
+    for (var i = 0; i < EUDR_IRF_OPTIONS.length; i++) {
+      if (EUDR_IRF_OPTIONS[i].toLowerCase() === lower) return EUDR_IRF_OPTIONS[i];
+    }
+    return s;
+  }
+
+  function eudrSheetVal_(row, key) {
+    if (!row || !key) return '';
+    return row[key] != null ? String(row[key]).trim() : '';
+  }
+
+  function eudrDefaultFormulaConfig_() {
+    const out = {};
+    EUDR_STATUS_CRITERIA.forEach(function(c) { out[c.key] = true; });
+    return out;
+  }
+
+  function eudrParseFormulaRows_(rows) {
+    const cfg = eudrDefaultFormulaConfig_();
+    (rows || []).forEach(function(r) {
+      const key = String(r['CRITERION KEY'] || r.key || '').trim();
+      if (!key) return;
+      const en = String(r.ENABLED || r.enabled || '').trim().toLowerCase();
+      cfg[key] = en === 'yes' || en === 'y' || en === '1' || en === 'true';
+    });
+    return cfg;
+  }
+
+  async function loadEudrFormulaConfig_() {
+    try {
+      const rows = await apiGet('eudrStatusFormula');
+      eudrFormulaConfig = eudrParseFormulaRows_(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      eudrFormulaConfig = eudrDefaultFormulaConfig_();
+    }
+    return eudrFormulaConfig;
+  }
+
+  function eudrGetFormulaConfig_() {
+    return eudrFormulaConfig || eudrDefaultFormulaConfig_();
+  }
+
+  function eudrReadFormulaCheckboxes_() {
+    const cfg = {};
+    document.querySelectorAll('#eudrDetailBody [data-eudr-formula-key]').forEach(function(el) {
+      const key = el.getAttribute('data-eudr-formula-key');
+      if (!key) return;
+      cfg[key] = !!el.checked;
+    });
+    return cfg;
+  }
+
+  function eudrParseHaFromText_(raw) {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const s = String(raw).trim();
+    const t = s.toLowerCase();
+    if (t === 'no' || t === '0' || t === 'none') return 0;
+    if (t === 'yes' || t === '1') return null;
+    const paren = s.match(/\(([^)]+)\)/);
+    if (paren) {
+      const n = parseFloat(String(paren[1]).replace(/[^\d.,-]/g, '').replace(',', '.'));
+      if (!isNaN(n)) return n;
+    }
+    const haMatch = s.match(/([\d.,]+)\s*(?:ha|hectare|hektar)?/i);
+    if (haMatch) {
+      const n = parseFloat(haMatch[1].replace(',', '.'));
+      if (!isNaN(n)) return n;
+    }
+    const nums = s.match(/[\d.,]+/g);
+    if (nums && nums.length) {
+      const n = parseFloat(nums[0].replace(',', '.'));
+      if (!isNaN(n)) return n;
+    }
+    return null;
+  }
+
+  function eudrEvalCriterion_(key, millRow, eudrRow) {
+    millRow = millRow || {};
+    eudrRow = eudrRow || {};
+    if (key === 'legality') {
+      const v = millProfileLegalityFromScore_(millRow) || pickSavedCol(millRow, ['LEGALITY', 'Legality']);
+      const score = pickSavedCol(millRow, ['LEGALITY SCORE', 'SCORE']);
+      const pass = String(v).toLowerCase() === 'complete'
+        || String(score).trim() === '1';
+      return { pass: pass, actual: v || score || '—', expected: 'Complete (1)' };
+    }
+    if (key === 'millCategory') {
+      const v = pickSavedCol(millRow, ['MILL CATEGORY', 'Mill Category']);
+      const pass = String(v).toLowerCase().indexOf('integrated') !== -1;
+      return { pass: pass, actual: v || '—', expected: 'Integrated' };
+    }
+    if (key === 'cpoTraceable') {
+      const raw = eudrResolveTraceableCpo_(millRow);
+      const n = parseFloat(String(raw || '').replace('%', '').replace(',', '.'));
+      const pass = !isNaN(n) && n >= 100;
+      return { pass: pass, actual: raw || '—', expected: '100%' };
+    }
+    if (key === 'resultRiskLevel') {
+      const v = pickSavedCol(millRow, ['RESULT RISK LEVEL', 'Result Risk Level']);
+      const pass = String(v).trim().toLowerCase() === 'low';
+      return { pass: pass, actual: v || '—', expected: 'Low' };
+    }
+    if (key === 'millLocation') {
+      const fields = [
+        pickSavedCol(millRow, ['MILL LOC', 'MILL LOCATION', 'Mill Location']),
+        pickSavedCol(millRow, ['COMPLIMENT/NOT COMPLIMENT']),
+        pickSavedCol(millRow, ['DEFORESTATION SPATIAL']),
+      ];
+      const combined = fields.filter(Boolean).join(' ').toUpperCase();
+      const pass = combined.indexOf('APL') !== -1;
+      return { pass: pass, actual: fields[0] || fields[1] || '—', expected: 'APL' };
+    }
+    if (key === 'certification') {
+      const certs = ['RSPO', 'ISPO', 'ISCC'];
+      let count = 0;
+      certs.forEach(function(name) {
+        const v = eudrCertValue_(millRow, name);
+        const yn = millProfileFormatYesNo_(v) || String(v || '').trim();
+        if (/^yes$/i.test(yn) || yn === '1') count++;
+      });
+      if (!count) {
+        const total = pickSavedCol(millRow, ['TOTAL CERTIFICATION', 'CERTIFICATION']);
+        const n = parseFloat(String(total || '').replace(/[^\d.,-]/g, '').replace(',', '.'));
+        if (!isNaN(n) && n >= 1) count = n;
+      }
+      return { pass: count >= 1, actual: count ? (count + ' cert') : '—', expected: '≥ 1 certificate' };
+    }
+    if (key === 'grievance') {
+      const summary = eudrGrievanceSummary_(millRow);
+      const pass = String(summary).trim().toLowerCase() === 'no';
+      return { pass: pass, actual: summary || '—', expected: 'No' };
+    }
+    if (key === 'ndpePolicy') {
+      const v = pickSavedCol(millRow, ['NDPE', 'NDPE Policy']);
+      const yn = millProfileFormatYesNo_(v) || String(v || '').trim();
+      const pass = /^yes$/i.test(yn) || yn === '1';
+      return { pass: pass, actual: yn || v || '—', expected: 'Yes' };
+    }
+    if (key === 'noBuyList') {
+      const v = pickSavedCol(millRow, ['BUYER NO BUY LIST', 'Buyer No Buy List']);
+      if (!v) return { pass: true, actual: '—', expected: 'No' };
+      const yn = millProfileFormatYesNo_(v);
+      const lower = String(v).toLowerCase();
+      const isNbl = yn === 'Yes' || lower.indexOf('nbl') !== -1 || lower.indexOf('no buy') !== -1;
+      return { pass: !isNbl, actual: yn || v, expected: 'No' };
+    }
+    if (key === 'deforestation') {
+      const sources = [
+        pickSavedCol(millRow, ['DEFORESTATION SPATIAL', 'Deforestation Spatial']),
+        pickSavedCol(millRow, ['COMPLIMENT/NOT COMPLIMENT']),
+        eudrSheetVal_(eudrRow, 'DEFORESTATION (AFTER 2020)'),
+      ];
+      var ha = null;
+      for (var i = 0; i < sources.length; i++) {
+        ha = eudrParseHaFromText_(sources[i]);
+        if (ha !== null) break;
+      }
+      return {
+        pass: ha !== null && ha < 10,
+        actual: ha !== null ? (ha + ' Ha') : (sources[0] || '—'),
+        expected: '< 10 Ha',
+      };
+    }
+    return { pass: false, actual: '—', expected: '—' };
+  }
+
+  function eudrComputeStatus_(millRow, eudrRow, formulaCfg) {
+    formulaCfg = formulaCfg || eudrGetFormulaConfig_();
+    const enabledKeys = EUDR_STATUS_CRITERIA
+      .filter(function(c) { return formulaCfg[c.key] !== false; })
+      .map(function(c) { return c.key; });
+    if (!enabledKeys.length) {
+      return { status: '—', results: [], allPass: false, enabledCount: 0 };
+    }
+    const results = enabledKeys.map(function(key) {
+      const def = EUDR_STATUS_CRITERIA.find(function(c) { return c.key === key; }) || { key: key, label: key };
+      const evalRes = eudrEvalCriterion_(key, millRow, eudrRow);
+      return Object.assign({ key: key, label: def.label, enabled: true }, evalRes);
+    });
+    const allPass = results.every(function(r) { return r.pass; });
+    return {
+      status: allPass ? 'Potential' : 'Not Potential',
+      results: results,
+      allPass: allPass,
+      enabledCount: enabledKeys.length,
+    };
+  }
+
+  function eudrStatusBadgeHtml_(status) {
+    const s = String(status || '').trim();
+    if (!s || s === '—') return '<span class="eudr-status-empty">Status pending</span>';
+    const lower = s.toLowerCase();
+    if (lower === 'potential') {
+      return '<span class="eudr-status-val eudr-status-val--potential">Potential</span>';
+    }
+    if (lower === 'not potential') {
+      return '<span class="eudr-status-val eudr-status-val--not">Not Potential</span>';
+    }
+    return '<span class="eudr-status-val">' + escHtml(s) + '</span>';
+  }
+
+  function eudrBuildFormulaSectionHtml_(millRow, eudrRow, formulaCfg) {
+    formulaCfg = formulaCfg || eudrGetFormulaConfig_();
+    const computed = eudrComputeStatus_(millRow, eudrRow, formulaCfg);
+    const listHtml = EUDR_STATUS_CRITERIA.map(function(c) {
+      const checked = formulaCfg[c.key] !== false ? ' checked' : '';
+      const evalRes = computed.results.find(function(r) { return r.key === c.key; });
+      const enabled = formulaCfg[c.key] !== false;
+      let resultCls = 'eudr-formula-result--skip';
+      let resultTxt = 'Off';
+      if (enabled && evalRes) {
+        resultCls = evalRes.pass ? 'eudr-formula-result--pass' : 'eudr-formula-result--fail';
+        resultTxt = evalRes.pass ? 'Pass' : 'Fail';
+      }
+      const actual = enabled && evalRes ? (' · ' + escHtml(evalRes.actual)) : '';
+      return '<label class="eudr-formula-item">'
+        + '<input type="checkbox" data-eudr-formula-key="' + escHtml(c.key) + '"' + checked + ' />'
+        + '<span class="eudr-formula-item-text">' + escHtml(c.label) + '<span class="eudr-formula-item-actual">' + actual + '</span></span>'
+        + '<span class="eudr-formula-result ' + resultCls + '">' + resultTxt + '</span>'
+        + '</label>';
+    }).join('');
+    return ''
+      + '<section class="eudr-detail-section eudr-detail-section--formula">'
+      + '<h3 class="eudr-detail-section-title">Status Formula</h3>'
+      + '<p class="eudr-assessment-hint">Centang kriteria yang dipakai. Semua kriteria aktif harus <strong>Pass</strong> → status <strong>Potential</strong>. Simpan checklist ke tab <strong>EUDR Status Formula</strong>.</p>'
+      + '<div class="eudr-formula-status-bar">'
+      + '<span class="eudr-formula-status-label">Computed status</span>'
+      + eudrStatusBadgeHtml_(computed.status)
+      + '</div>'
+      + '<div class="eudr-formula-list">' + listHtml + '</div>'
+      + '<div class="eudr-formula-actions">'
+      + '<button type="button" class="btn-sm btn-outline" id="eudrSaveFormulaBtn">Save Formula to Sheet</button>'
+      + '</div>'
+      + '</section>';
+  }
+
+  function eudrRefreshFormulaSection_(millRow, eudrRow) {
+    const section = document.querySelector('#eudrDetailBody .eudr-detail-section--formula');
+    if (!section) return;
+    const formulaCfg = eudrReadFormulaCheckboxes_();
+    const html = eudrBuildFormulaSectionHtml_(millRow, eudrRow, formulaCfg);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const next = tmp.firstElementChild;
+    if (next) section.replaceWith(next);
+    eudrBindFormulaEvents_(millRow, eudrRow);
+  }
+
+  function eudrBindFormulaEvents_(millRow, eudrRow) {
+    document.querySelectorAll('#eudrDetailBody [data-eudr-formula-key]').forEach(function(el) {
+      el.addEventListener('change', function() {
+        eudrRefreshFormulaSection_(millRow, eudrRow);
+      });
+    });
+    const saveFormulaBtn = document.getElementById('eudrSaveFormulaBtn');
+    if (saveFormulaBtn) {
+      saveFormulaBtn.onclick = function() { eudrSaveFormulaConfig_(); };
+    }
+  }
+
+  async function eudrSaveFormulaConfig_() {
+    const btn = document.getElementById('eudrSaveFormulaBtn');
+    const cfg = eudrReadFormulaCheckboxes_();
+    const criteria = EUDR_STATUS_CRITERIA.map(function(c) {
+      return { key: c.key, enabled: cfg[c.key] !== false };
+    });
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+    }
+    try {
+      await apiPost({ action: 'saveEudrStatusFormula', criteria: criteria });
+      eudrFormulaConfig = cfg;
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Status formula saved to sheet.', 'success');
+      }
+    } catch (err) {
+      alert('Failed to save formula: ' + ((err && err.message) ? err.message : String(err)));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Save Formula to Sheet';
+      }
+    }
+  }
+
+  function eudrBuildAssessmentFormHtml_(row) {
+    row = row || {};
+    const yesNoHtml = EUDR_ASSESSMENT_YESNO.map(function(def) {
+      const cur = eudrNormYesNoVal_(eudrSheetVal_(row, def.key));
+      const id = 'eudrField_' + def.key.replace(/[^A-Za-z0-9]+/g, '_');
+      const opts = ['', 'Yes', 'No'].map(function(v) {
+        const sel = cur === v ? ' selected' : '';
+        const label = v === '' ? '— Select —' : v;
+        return '<option value="' + escHtml(v) + '"' + sel + '>' + escHtml(label) + '</option>';
+      }).join('');
+      return '<div class="eudr-assessment-field">'
+        + '<label for="' + id + '">' + escHtml(def.label) + '</label>'
+        + '<select id="' + id + '" data-eudr-field="' + escHtml(def.key) + '">' + opts + '</select>'
+        + '</div>';
+    }).join('');
+    const irfHtml = EUDR_ASSESSMENT_IRF.map(function(def) {
+      const cur = eudrNormIrfVal_(eudrSheetVal_(row, def.key));
+      const id = 'eudrField_' + def.key.replace(/[^A-Za-z0-9]+/g, '_');
+      const opts = [''].concat(EUDR_IRF_OPTIONS).map(function(v) {
+        const sel = cur === v ? ' selected' : '';
+        const label = v === '' ? '— Select —' : v;
+        return '<option value="' + escHtml(v) + '"' + sel + '>' + escHtml(label) + '</option>';
+      }).join('');
+      return '<div class="eudr-assessment-field eudr-assessment-field--wide">'
+        + '<label for="' + id + '">' + escHtml(def.label) + '</label>'
+        + '<select id="' + id + '" data-eudr-field="' + escHtml(def.key) + '">' + opts + '</select>'
+        + '</div>';
+    }).join('');
+    return ''
+      + '<section class="eudr-detail-section eudr-detail-section--assessment">'
+      + '<h3 class="eudr-detail-section-title">EUDR Assessment (saved to sheet)</h3>'
+      + '<p class="eudr-assessment-hint">Isi field di bawah lalu klik <strong>Save to Sheet</strong>. Status dihitung otomatis dari formula di bawah.</p>'
+      + '<div class="eudr-assessment-form">'
+      + yesNoHtml
+      + irfHtml
+      + '</div></section>';
+  }
+
+  function eudrReadAssessmentForm_() {
+    const out = {};
+    document.querySelectorAll('#eudrDetailBody [data-eudr-field]').forEach(function(el) {
+      const key = el.getAttribute('data-eudr-field');
+      if (!key) return;
+      out[key] = el.value != null ? String(el.value).trim() : '';
+    });
+    return out;
+  }
+
+  function eudrPayloadForSave_(eudrRow, assessmentPatch) {
+    const base = eudrMillToSyncPayload_(eudrRow);
+    return Object.assign({}, base, assessmentPatch || {});
+  }
+
+  async function eudrSaveDetailModal_() {
+    if (!eudrEditRow) return;
+    const saveBtn = document.getElementById('eudrDetailSave');
+    const assessment = eudrReadAssessmentForm_();
+    const millRows = eudrFindMillRowsForEntity_(eudrEditRow);
+    const millRow = eudrPickBestMillRow_(millRows) || eudrModalMillRow || {};
+    const formulaCfg = eudrReadFormulaCheckboxes_();
+    const mergedRow = Object.assign({}, eudrEditRow, assessment);
+    const computed = eudrComputeStatus_(millRow, mergedRow, formulaCfg);
+    if (computed.status && computed.status !== '—') assessment.STATUS = computed.status;
+    const payload = eudrPayloadForSave_(eudrEditRow, assessment);
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+    try {
+      await apiPost({ action: 'upsertEudr', data: payload });
+      Object.assign(eudrEditRow, assessment, {
+        'LAST UPDATE': new Date().toISOString().slice(0, 10),
+      });
+      eudrPrepareRow_(eudrEditRow);
+      const idx = eudrRows.findIndex(function(r) { return r._entityKey === eudrEditRow._entityKey; });
+      if (idx !== -1) eudrRows[idx] = eudrEditRow;
+      eudrUpdateStats_();
+      scheduleRenderEudrTable_();
+      const millRows = eudrFindMillRowsForEntity_(eudrEditRow);
+      const millRow = eudrPickBestMillRow_(millRows) || {};
+      const bodyEl = document.getElementById('eudrDetailBody');
+      const badgesEl = document.getElementById('eudrDetailBadges');
+      if (bodyEl) {
+        bodyEl.innerHTML = eudrBuildDetailReadonlyHtml_(millRow, eudrEditRow)
+          + eudrBuildAssessmentFormHtml_(eudrEditRow)
+          + eudrBuildFormulaSectionHtml_(millRow, eudrEditRow);
+        eudrBindFormulaEvents_(millRow, eudrEditRow);
+        eudrBindAssessmentFormulaRefresh_(millRow, eudrEditRow);
+      }
+      if (badgesEl) {
+        badgesEl.innerHTML = ''
+          + resultRiskLevelPill(millRow['RESULT RISK LEVEL'])
+          + eudrStatusBadgeHtml_(eudrEditRow.STATUS);
+      }
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('EUDR data saved to sheet.', 'success');
+      }
+    } catch (err) {
+      alert('Failed to save: ' + ((err && err.message) ? err.message : String(err)));
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save to Sheet';
+      }
+    }
+  }
+
+  function eudrStatusCell_(val) {
+    const s = String(val || '').trim();
+    if (!s) return '<span class="eudr-status-empty">—</span>';
+    return eudrStatusBadgeHtml_(s);
+  }
+
+  function eudrBindAssessmentFormulaRefresh_(millRow, eudrRow) {
+    document.querySelectorAll('#eudrDetailBody [data-eudr-field]').forEach(function(el) {
+      el.addEventListener('change', function() {
+        const merged = Object.assign({}, eudrRow, eudrReadAssessmentForm_());
+        eudrRefreshFormulaSection_(millRow, merged);
+      });
+    });
+  }
+
+  function eudrRenderDetailBody_(millRow, eudrRow) {
+    return eudrBuildDetailReadonlyHtml_(millRow, eudrRow)
+      + eudrBuildAssessmentFormHtml_(eudrRow)
+      + eudrBuildFormulaSectionHtml_(millRow, eudrRow);
+  }
+
+  function eudrFindMillRowsForEntity_(eudrRow) {
+    if (!eudrRow || !Array.isArray(allData) || !allData.length) return [];
+    const key = eudrRow._entityKey || eudrEntityKey_(
+      eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME']
+    );
+    return allData.filter(function(r) {
+      return eudrEntityKey_(
+        r['GROUP NAME'] || r['Group Name'],
+        r['COMPANY NAME'] || r['Company Name'],
+        r['MILL NAME'] || r['Mill Name']
+      ) === key;
+    });
+  }
+
+  function eudrPickBestMillRow_(rows) {
+    if (!rows || !rows.length) return null;
+    const sorted = rows.slice().sort(millProfileComparePeriodDesc_);
+    let best = sorted[0];
+    let bestScore = -1;
+    sorted.slice(0, 8).forEach(function(r) {
+      let score = 0;
+      Object.keys(r || {}).forEach(function(k) {
+        if (k.indexOf('_') === 0) return;
+        const v = r[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') score++;
+      });
+      if (score > bestScore) { bestScore = score; best = r; }
+    });
+    return best;
+  }
+
+  function eudrParseLatLong_(row) {
+    const lat = pickSavedCol(row, ['Latitude', 'LAT', 'Lat', 'LATITUDE']);
+    const lng = pickSavedCol(row, ['Longitude', 'LONG', 'Long', 'LONGITUDE']);
+    if (lat && lng) return { lat: lat, lng: lng };
+    const coords = pickSavedCol(row, ['COORDINATES', 'Coordinates']);
+    if (!coords) return { lat: '', lng: '' };
+    const parts = coords.split(/[,;]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    if (parts.length >= 2) return { lat: parts[0], lng: parts[1] };
+    return { lat: coords, lng: '' };
+  }
+
+  function eudrDetailVal_(raw) {
+    if (raw === undefined || raw === null) return '—';
+    const s = String(raw).trim();
+    return s === '' ? '—' : s;
+  }
+
+  function eudrDetailFieldHtml_(label, value, opts) {
+    opts = opts || {};
+    const wide = opts.wide ? ' eudr-detail-field--wide' : '';
+    const htmlVal = opts.html
+      ? (value || '—')
+      : escHtml(eudrDetailVal_(value));
+    return '<div class="eudr-detail-field' + wide + '">'
+      + '<div class="eudr-detail-label">' + escHtml(label) + '</div>'
+      + '<div class="eudr-detail-val">' + htmlVal + '</div>'
+      + '</div>';
+  }
+
+  function eudrYesNoField_(row, keys, label) {
+    const raw = pickSavedCol(row, keys);
+    const val = raw ? (millProfileFormatYesNo_(raw) || raw) : '';
+    return eudrDetailFieldHtml_(label, val);
+  }
+
+  function eudrCertBadgeHtml_(label, raw) {
+    const v = eudrDetailVal_(raw);
+    if (v === '—') {
+      return '<span class="eudr-cert-badge">' + escHtml(label) + ': —</span>';
+    }
+    const yn = millProfileFormatYesNo_(v) || v;
+    let cls = '';
+    if (/^yes$/i.test(yn) || yn === '1') cls = ' eudr-cert-badge--yes';
+    else if (/^no$/i.test(yn) || yn === '0') cls = ' eudr-cert-badge--no';
+    return '<span class="eudr-cert-badge' + cls + '">' + escHtml(label) + ': ' + escHtml(yn) + '</span>';
+  }
+
+  function eudrCertValue_(row, name) {
+    const direct = pickSavedCol(row, [name, name + ' (Y/N)', name + ' (y/n)']);
+    if (direct) return direct;
+    const blob = String(row['CERTIFICATION'] || '').trim();
+    if (!blob) return '';
+    const re = new RegExp(name + '[^\\n;]*?(yes|no|y|n|1|0)', 'i');
+    const m = blob.match(re);
+    if (m) return m[1];
+    if (blob.toUpperCase().indexOf(name) !== -1) return blob;
+    return '';
+  }
+
+  function eudrCertSectionHtml_(row) {
+    const items = [
+      { label: 'RSPO', val: eudrCertValue_(row, 'RSPO') },
+      { label: 'ISPO', val: eudrCertValue_(row, 'ISPO') },
+      { label: 'ISCC', val: eudrCertValue_(row, 'ISCC') },
+    ];
+    const badges = items.map(function(it) { return eudrCertBadgeHtml_(it.label, it.val); }).join('');
+    const full = pickSavedCol(row, ['CERTIFICATION', 'Certification']);
+    let extra = '';
+    if (full && items.every(function(it) { return !it.val; })) {
+      extra = eudrDetailFieldHtml_('Certification (full)', full, { wide: true });
+    }
+    return '<div class="eudr-detail-field eudr-detail-field--wide">'
+      + '<div class="eudr-detail-label">Certification</div>'
+      + '<div class="eudr-detail-val"><div class="eudr-cert-badges">' + badges + '</div></div>'
+      + '</div>' + extra;
+  }
+
+  function eudrGrievanceSummary_(row) {
+    const total = pickSavedCol(row, ['TOTAL GRIEVANCES', 'Total Grievances', 'Grievance']);
+    if (total) {
+      const t = String(total).trim().toLowerCase();
+      if (t === '1' || t === 'yes') return 'Yes';
+      if (t === '0' || t === 'no') return 'No';
+      return total;
+    }
+    const flags = [
+      'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES', 'HUMAN RIGHT',
+      'SAFETY', 'SOCIAL', 'ENVIRONMENT',
+    ];
+    const hits = flags.filter(function(k) {
+      const v = pickSavedCol(row, [k]);
+      if (!v) return false;
+      const t = String(v).trim().toLowerCase();
+      return t === '1' || t === 'yes' || t === 'y' || t === 'true';
+    });
+    return hits.length ? ('Yes (' + hits.length + ' category)') : 'No';
+  }
+
+  function eudrResolveTraceableCpo_(row) {
+    let raw = pickSavedCol(row, [
+      '% CPO TRACEABLE', '% TRACEABLE CPO', 'CPO TRACEABLE',
+      'PERCENTAGE TRACEABILITY', '% TRACEABLE',
+    ]);
+    if (raw) {
+      if (typeof ttpNormalizePctNumber_ === 'function' && typeof ttpParsePctValue_ === 'function') {
+        const n = ttpNormalizePctNumber_(ttpParsePctValue_(raw));
+        if (!isNaN(n)) return String(n) + '%';
+      }
+      return raw;
+    }
+    if (!ttpLoaded || !Array.isArray(ttpData) || !ttpData.length) return '';
+    const co = String(row['COMPANY NAME'] || row['Company Name'] || '').trim().toUpperCase();
+    if (!co) return '';
+    const colKey = ttpPctCol || '% CPO TRACEABLE';
+    let sum = 0;
+    let count = 0;
+    ttpData.forEach(function(r) {
+      const rc = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
+      if (rc !== co) return;
+      let v = r[colKey];
+      if (v == null || v === '') v = r['% CPO TRACEABLE'];
+      if (v == null || v === '') return;
+      const n = typeof ttpNormalizePctNumber_ === 'function'
+        ? ttpNormalizePctNumber_(ttpParsePctValue_(v))
+        : parseFloat(String(v).replace(',', '.'));
+      if (!isNaN(n)) { sum += n; count++; }
+    });
+    if (!count) return '';
+    return (Math.round((sum / count) * 100) / 100) + '%';
+  }
+
+  function eudrBuildDetailBodyHtml_(millRow, eudrRow) {
+    millRow = millRow || {};
+    eudrRow = eudrRow || {};
+    const coords = eudrParseLatLong_(millRow);
+    const country = pickSavedCol(millRow, ['COUNTRY', 'Country', 'NATION']) || 'Indonesia';
+    const capacity = eudrMillCapacityFromMill_(millRow) || eudrRow['MILL CAPACITY'] || '';
+    const supplyTo = eudrSupplyToFromMill_(millRow) || eudrRow['SUPPLY TO'] || '';
+    const traceable = eudrResolveTraceableCpo_(millRow);
+    const legalityOverall = millProfileLegalityFromScore_(millRow) || pickSavedCol(millRow, ['LEGALITY', 'Legality']);
+    const ndpe = pickSavedCol(millRow, ['NDPE', 'NDPE Policy', 'NDPE COMMITMENT']);
+    const ndpeVal = ndpe ? (millProfileFormatYesNo_(ndpe) || ndpe) : '—';
+    const nbl = pickSavedCol(millRow, ['BUYER NO BUY LIST', 'Buyer No Buy List']) || '—';
+
+    const identity = [
+      eudrDetailFieldHtml_('Group Name', eudrRow['GROUP NAME'] || millRow['GROUP NAME']),
+      eudrDetailFieldHtml_('Company Name', eudrRow['COMPANY NAME'] || millRow['COMPANY NAME']),
+      eudrDetailFieldHtml_('Mill Name', eudrRow['MILL NAME'] || millRow['MILL NAME']),
+      eudrDetailFieldHtml_('Address', pickSavedCol(millRow, ['ADDRESS', 'Address', 'Mill Address']), { wide: true }),
+      eudrDetailFieldHtml_('Country', country),
+      eudrDetailFieldHtml_('Latitude', coords.lat),
+      eudrDetailFieldHtml_('Longitude', coords.lng),
+      eudrDetailFieldHtml_('Mill Category', pickSavedCol(millRow, ['MILL CATEGORY', 'Mill Category'])),
+      eudrDetailFieldHtml_('Mill Capacity', capacity),
+      eudrDetailFieldHtml_('Product Supply', pickSavedCol(millRow, ['PRODUCT SUPPLY', 'Product Supply'])),
+      eudrDetailFieldHtml_('% Traceable CPO', traceable || '—'),
+      eudrDetailFieldHtml_('Result Risk Level', pickSavedCol(millRow, ['RESULT RISK LEVEL', 'Result Risk Level']), {
+        html: resultRiskLevelPill(millRow['RESULT RISK LEVEL']),
+      }),
+      eudrDetailFieldHtml_('Facility Name CPO', supplyTo),
+    ].join('');
+
+    const legality = [
+      eudrYesNoField_(millRow, ['HGU/HGB', 'HGU / HGB'], 'HGU / HGB'),
+      eudrYesNoField_(millRow, ['IZIN LOKASI', 'Izin Lokasi'], 'Izin Lokasi'),
+      eudrYesNoField_(millRow, ['IUP'], 'IUP'),
+      eudrYesNoField_(millRow, ['IZIN LINGKUNGAN', 'Izin Lingkungan'], 'Izin Lingkungan'),
+      eudrDetailFieldHtml_('Mill Location', pickSavedCol(millRow, ['MILL LOC', 'MILL LOCATION', 'Mill Location'])),
+      eudrDetailFieldHtml_('Legality', legalityOverall || '—'),
+    ].join('');
+
+    const grievanceFields = [
+      ['DEFORESTATION GRIEVANCES', 'Deforestation'],
+      ['BURN AREA GRIEVANCES', 'Burn Area'],
+      ['HUMAN RIGHT', 'Human Right'],
+      ['SAFETY', 'Safety'],
+      ['SOCIAL', 'Social'],
+      ['ENVIRONMENT', 'Environment'],
+    ].map(function(pair) {
+      return eudrYesNoField_(millRow, [pair[0]], pair[1]);
+    }).join('');
+
+    return ''
+      + '<section class="eudr-detail-section"><h3 class="eudr-detail-section-title">Mill Identity &amp; Supply</h3><div class="eudr-detail-grid">' + identity + '</div></section>'
+      + '<section class="eudr-detail-section"><h3 class="eudr-detail-section-title">Legality</h3><div class="eudr-detail-grid">' + legality + '</div></section>'
+      + '<section class="eudr-detail-section"><h3 class="eudr-detail-section-title">Certification</h3><div class="eudr-detail-grid">' + eudrCertSectionHtml_(millRow) + '</div></section>'
+      + '<section class="eudr-detail-section"><h3 class="eudr-detail-section-title">Grievance</h3><div class="eudr-detail-grid">'
+      + eudrDetailFieldHtml_('Summary', eudrGrievanceSummary_(millRow), { wide: true })
+      + grievanceFields
+      + '</div></section>'
+      + '<section class="eudr-detail-section"><h3 class="eudr-detail-section-title">Policy &amp; Compliance</h3><div class="eudr-detail-grid">'
+      + eudrDetailFieldHtml_('NDPE Policy', ndpeVal)
+      + eudrDetailFieldHtml_('No Buy List', nbl, { html: nblBadge(millRow['BUYER NO BUY LIST']) })
+      + '</div></section>';
+  }
+
+  function eudrBuildDetailReadonlyHtml_(millRow, eudrRow) {
+    return eudrBuildDetailBodyHtml_(millRow, eudrRow);
+  }
+
+  function openEudrDetailModal_(eudrRow) {
+    if (!eudrRow) return;
+    const overlay = document.getElementById('eudrDetailOverlay');
+    const bodyEl = document.getElementById('eudrDetailBody');
+    if (!overlay || !bodyEl) return;
+    eudrEditRow = eudrRow;
+    const millRows = eudrFindMillRowsForEntity_(eudrRow);
+    const millRow = eudrPickBestMillRow_(millRows) || {};
+    const titleEl = document.getElementById('eudrDetailTitle');
+    const subEl = document.getElementById('eudrDetailSubtitle');
+    const badgesEl = document.getElementById('eudrDetailBadges');
+    const millName = eudrRow['MILL NAME'] || millRow['MILL NAME'] || '—';
+    const group = eudrRow['GROUP NAME'] || millRow['GROUP NAME'] || '';
+    const company = eudrRow['COMPANY NAME'] || millRow['COMPANY NAME'] || '';
+    const province = eudrRow['PROVINCE'] || millRow['PROVINCE'] || '';
+    if (titleEl) titleEl.textContent = millName;
+    if (subEl) {
+      subEl.textContent = [group, company, province].filter(Boolean).join(' · ') || '—';
+    }
+    if (badgesEl) {
+      const previewStatus = eudrComputeStatus_(millRow, eudrRow).status;
+      badgesEl.innerHTML = ''
+        + resultRiskLevelPill(millRow['RESULT RISK LEVEL'])
+        + eudrStatusBadgeHtml_(eudrRow.STATUS || previewStatus);
+    }
+    bodyEl.innerHTML = eudrRenderDetailBody_(millRow, eudrRow);
+    eudrModalMillRow = millRow;
+    eudrBindFormulaEvents_(millRow, eudrRow);
+    eudrBindAssessmentFormulaRefresh_(millRow, eudrRow);
+    overlay.classList.add('active');
+    document.body.classList.add('eudr-detail-open');
+    overlay.scrollTop = 0;
+    bodyEl.scrollTop = 0;
+  }
+
+  function closeEudrDetailModal_() {
+    const overlay = document.getElementById('eudrDetailOverlay');
+    if (overlay) overlay.classList.remove('active');
+    document.body.classList.remove('eudr-detail-open');
+    eudrEditRow = null;
+    eudrModalMillRow = null;
+  }
+
+  function eudrBindTableDelegationOnce_() {
+    if (eudrTableDelegationBound) return;
+    const body = document.getElementById('eudrTableBody');
+    if (!body) return;
+    eudrTableDelegationBound = true;
+    body.addEventListener('click', function(e) {
+      const tr = e.target.closest('.eudr-row-clickable');
+      if (!tr || !body.contains(tr)) return;
+      const key = tr.getAttribute('data-eudr-key') || '';
+      const row = eudrRows.find(function(r) { return r._entityKey === key; });
+      if (row) openEudrDetailModal_(row);
+    });
+  }
+
+  function eudrUpdateStats_() {
+    const totalEl = document.getElementById('eudr-stat-total');
+    if (!totalEl) return;
+    totalEl.textContent = String(eudrRows.length);
+    const pending = eudrRows.filter(function(d) {
+      const s = String(d.STATUS || '').trim().toLowerCase();
+      return !s || s === '—';
+    }).length;
+    const set = eudrRows.length - pending;
+    const pendingEl = document.getElementById('eudr-stat-pending');
+    const setEl = document.getElementById('eudr-stat-set');
+    if (pendingEl) pendingEl.textContent = String(pending);
+    if (setEl) setEl.textContent = String(set);
+  }
+
+  function eudrGetFilteredRows_() {
+    const q = eudrSearch;
+    return eudrRows.filter(function(d) {
+      return !q || (d._eudrSearchBlob || '').includes(q);
+    });
+  }
+
+  function renderEudrTable_() {
+    const body = document.getElementById('eudrTableBody');
+    if (!body) return;
+    const filtered = eudrGetFilteredRows_();
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (eudrSearch ? 'No results match your search.' : 'No mills found in Mill Onboarding.')
+        + '</td></tr>';
+      return;
+    }
+    body.innerHTML = filtered.map(function(d) {
+      return '<tr class="eudr-row-clickable" data-eudr-key="' + escHtml(d._entityKey || '') + '" title="Klik untuk lihat detail">'
+        + '<td><span class="mill-name">' + escHtml(d['GROUP NAME'] || '—') + '</span></td>'
+        + '<td>' + escHtml(d['COMPANY NAME'] || '—') + '</td>'
+        + '<td>' + escHtml(d['MILL NAME'] || '—') + '<div class="mill-id">' + escHtml(d['UML ID'] || '') + '</div></td>'
+        + '<td>' + escHtml(d['PROVINCE'] || '—') + '</td>'
+        + '<td class="eudr-cell-long">' + escHtml(eudrDisplayCell_(d['SUPPLY TO'])) + '</td>'
+        + '<td>' + escHtml(eudrDisplayCell_(d['MILL CAPACITY'])) + '</td>'
+        + '<td>' + eudrStatusCell_(d.STATUS) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function scheduleRenderEudrTable_() {
+    if (eudrRenderScheduled) return;
+    eudrRenderScheduled = true;
+    requestAnimationFrame(function() {
+      eudrRenderScheduled = false;
+      renderEudrTable_();
+    });
+  }
+
+  async function eudrSyncToSheet_(mills) {
+    const list = (mills || eudrBuildMillRegistry_()).map(eudrMillToSyncPayload_);
+    if (!list.length) return { inserted: 0, updated: 0 };
+    return apiPost({ action: 'syncEudrPotential', mills: list }, { timeoutMs: 180000 });
+  }
+
+  async function ensureMillDataForEudr_() {
+    if (allData && allData.length) return;
+    await loadMillData();
+    if (allData && allData.length) return;
+    const rawRows = await apiGet('mill');
+    const rawData = (Array.isArray(rawRows) ? rawRows : []).map(normalizeMillApiRow);
+    if (rawData.length) allData = rawData.map(prepareMillRowPerfCache);
+  }
+
+  async function loadEudrDataImpl_(force) {
+    const loading = document.getElementById('eudr-loading');
+    const errorEl = document.getElementById('eudr-error');
+    const table = document.getElementById('eudrTable');
+    if (!loading || !errorEl || !table) return;
+    try {
+      loading.style.display = 'block';
+      errorEl.style.display = 'none';
+      table.style.display = 'none';
+      await ensureMillDataForEudr_();
+      await loadEudrFormulaConfig_();
+      const mills = eudrBuildMillRegistry_();
+      var raw = [];
+      try {
+        raw = await apiGet('eudrPotential');
+      } catch (getErr) {
+        var gmsg = (getErr && getErr.message) ? getErr.message : String(getErr);
+        if (!/eudrPotential|EUDR Potential|Sheet key not found/i.test(gmsg)) throw getErr;
+        raw = [];
+      }
+      eudrRows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
+      eudrLoaded = true;
+      eudrBindTableDelegationOnce_();
+      eudrUpdateStats_();
+      loading.style.display = 'none';
+      table.style.display = 'table';
+      scheduleRenderEudrTable_();
+    } catch (err) {
+      loading.style.display = 'none';
+      errorEl.style.display = 'block';
+      const msg = (err && err.message) ? err.message : String(err);
+      if (/eudrPotential|EUDR Potential|Sheet key not found/i.test(msg)) {
+        errorEl.innerHTML = 'Tab <strong>EUDR Potential</strong> belum ada di spreadsheet. Tab akan dibuat otomatis saat sync pertama — pastikan Apps Script sudah di-deploy ulang, lalu refresh.';
+      } else {
+        errorEl.textContent = 'Failed to load EUDR Potential: ' + msg;
+      }
+      if (force) throw err;
+    }
+  }
+
+  async function loadEudrData(force) {
+    if (eudrLoaded && !force) {
+      scheduleRenderEudrTable_();
+      return;
+    }
+    if (eudrLoadPromise) return eudrLoadPromise;
+    eudrLoadPromise = loadEudrDataImpl_(!!force);
+    try {
+      await eudrLoadPromise;
+    } finally {
+      eudrLoadPromise = null;
+    }
+  }
+
+  window.loadEudrData = loadEudrData;
+
+  (function bindEudrToolbarIfPresent_() {
+    const searchEl = document.getElementById('eudrSearch');
+    const clearEl = document.getElementById('eudrSearchClear');
+    const btnRefresh = document.getElementById('btn-refresh-eudr');
+    const btnSync = document.getElementById('btn-sync-eudr');
+    const detailOverlay = document.getElementById('eudrDetailOverlay');
+    if (!searchEl || !clearEl || !btnRefresh) return;
+
+    eudrBindTableDelegationOnce_();
+
+    const debouncedRender = debounce(function() {
+      scheduleRenderEudrTable_();
+    }, 120);
+
+    searchEl.addEventListener('input', function() {
+      eudrSearch = this.value.toLowerCase().trim();
+      if (this.value) clearEl.classList.add('show');
+      else clearEl.classList.remove('show');
+      debouncedRender();
+    });
+
+    clearEl.addEventListener('click', function() {
+      searchEl.value = '';
+      eudrSearch = '';
+      this.classList.remove('show');
+      if (debouncedRender.cancel) debouncedRender.cancel();
+      if (debouncedRender.flush) debouncedRender.flush();
+      else scheduleRenderEudrTable_();
+      searchEl.focus();
+    });
+
+    btnRefresh.addEventListener('click', function() {
+      eudrLoaded = false;
+      loadEudrData(true);
+    });
+
+    if (btnSync) {
+      btnSync.addEventListener('click', async function() {
+        btnSync.disabled = true;
+        const prev = btnSync.textContent;
+        btnSync.textContent = 'Syncing…';
+        try {
+          if (!allData || !allData.length) await loadMillData();
+          const mills = eudrBuildMillRegistry_();
+          const res = await eudrSyncToSheet_(mills);
+          eudrLoaded = false;
+          await loadEudrData(true);
+          const ins = res && res.inserted != null ? res.inserted : 0;
+          const upd = res && res.updated != null ? res.updated : 0;
+          if (ins || upd) {
+            console.log('[EUDR] Sync complete — inserted:', ins, 'updated:', upd);
+          }
+        } catch (err) {
+          alert('Sync failed: ' + ((err && err.message) ? err.message : String(err)));
+        } finally {
+          btnSync.disabled = false;
+          btnSync.textContent = prev;
+        }
+      });
+    }
+
+    if (detailOverlay) {
+      detailOverlay.addEventListener('click', function(e) {
+        if (e.target === detailOverlay) closeEudrDetailModal_();
+      });
+    }
+    ['eudrDetailClose', 'eudrDetailCloseBtn'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', closeEudrDetailModal_);
+    });
+    const saveBtn = document.getElementById('eudrDetailSave');
+    if (saveBtn) saveBtn.addEventListener('click', function() { eudrSaveDetailModal_(); });
+    if (!window.__sddEudrEscBound) {
+      window.__sddEudrEscBound = true;
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        if (detailOverlay && detailOverlay.classList.contains('active')) closeEudrDetailModal_();
+      });
+    }
+  })();
+
   // ─── NO BUY LIST (NBL + Unilever NBL) ────────────────────
   const NBL_REGISTRY_FIELDS = ['Riser', 'Group Name NBL', 'Company Name NBL', 'SOURCE'];
   const UNILEVER_NBL_FIELDS = [
@@ -10839,6 +12705,8 @@ function initDashboardApp() {
     if (name === 'ttm-ttp' && !ttpLoaded) loadTTPData();
     if (name === 'grievance' && !grvLoaded) loadGrvData();
     if (name === 'bl-monitoring' && !blLoaded) loadBlData();
+    if (name === 'questionnaire-monitoring' && !qmLoaded) loadQmData();
+    if (name === 'eudr-potential' && !eudrLoaded) loadEudrData();
     if (name === 'contact-list-supplier') loadContactListData();
     if (name === 'no-buy-list') loadNoBuyListData();
     if (name === 'performa-facility') initPerformaFacility_();
@@ -11194,6 +13062,7 @@ function initDashboardApp() {
           year:       String(millYearVal(r) || '').trim() || '—',
           quarterRaw: millQuarterVal(r),
           yearRaw:    millYearVal(r),
+          millRowNum: r._row,
           company:    String(r['COMPANY NAME']        || '').trim() || '—',
           companyKey: coUpper,
           group:      String(r['GROUP NAME']          || '').trim() || '—',
@@ -11282,6 +13151,7 @@ function initDashboardApp() {
           year:       String(millYearVal(r) || '').trim() || '—',
           quarterRaw: millQuarterVal(r),
           yearRaw:    millYearVal(r),
+          millRowNum: r._row,
           company:    String(r['COMPANY NAME']      || '').trim() || '—',
           companyKey: coUpper,
           group:      String(r['GROUP NAME']        || '').trim() || '—',
@@ -11368,14 +13238,62 @@ function initDashboardApp() {
     }
 
     /** Nested detail table for PK facilities. */
+    function pfCompanyCellHtml_(c) {
+      const rowNum = c && c.millRowNum ? c.millRowNum : '';
+      return ''
+        + '<td class="pf-td-company">'
+        + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="Lihat profil mill">'
+        + '<span class="mill-name">' + escHtml(c.company) + '</span>'
+        + '</button></td>';
+    }
+
+    async function pfOpenMillProfileByRowNum_(rowNum) {
+      const num = parseInt(rowNum, 10);
+      if (!num) return;
+      try {
+        if (!allData || !allData.length) await loadMillData();
+        const row = (allData || []).find(function(r) { return r._row === num; });
+        if (!row) {
+          alert('Profil mill tidak ditemukan di Mill Registry.');
+          return;
+        }
+        openMillProfile(row);
+      } catch (err) {
+        alert('Gagal membuka profil mill: ' + (err && err.message ? err.message : err));
+      }
+    }
+
+    function pfHandlePfTableClick_(e, body) {
+      const companyBtn = e.target.closest('.pf-company-open');
+      if (companyBtn && body.contains(companyBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        pfOpenMillProfileByRowNum_(companyBtn.dataset.millRow);
+        return;
+      }
+      const groupRow = e.target.closest('.pf-group-row');
+      if (!groupRow || !body.contains(groupRow) || e.target.closest('.pf-group-detail-row')) return;
+      const groupId = groupRow.dataset.group;
+      const expanded = groupRow.dataset.expanded === '1';
+      const children = body.querySelectorAll('[data-parent="' + groupId + '"]');
+      if (expanded) {
+        children.forEach(function(c) { c.classList.add('hidden'); });
+        groupRow.dataset.expanded = '0';
+        groupRow.classList.remove('expanded');
+      } else {
+        children.forEach(function(c) { c.classList.remove('hidden'); });
+        groupRow.dataset.expanded = '1';
+        groupRow.classList.add('expanded');
+      }
+    }
+
+    /** Nested detail table for PK facilities. */
     function pfPkNestedTableHtml_(companies) {
       const rows = companies.map(function(c) {
         const pctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
         return '<tr class="pf-nested-row">'
-          + '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>'
+          + pfCompanyCellHtml_(c)
           + '<td class="pf-td-group">'   + escHtml(c.group)   + '</td>'
-          + '<td class="pf-td-period">'  + escHtml(c.quarter) + '</td>'
-          + '<td class="pf-td-period">'  + escHtml(c.year)    + '</td>'
           + '<td class="pf-td-plain">'   + escHtml(c.nbl)     + '</td>'
           + '<td class="pf-td-plain">'   + escHtml(c.riskLevel) + '</td>'
           + '<td class="pf-td-num">'     + escHtml(String(c.grievance)) + '</td>'
@@ -11383,15 +13301,14 @@ function initDashboardApp() {
           + '</tr>';
       }).join('');
       return '<div class="pf-detail-wrap pf-detail-wrap--pk">'
-        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span></div>'
+        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span>'
+        + '<span class="pf-detail-hint">Klik nama company untuk profil mill</span></div>'
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-company"/><col class="pf-ncol-group"/>'
-        + '<col class="pf-ncol-period"/><col class="pf-ncol-period"/>'
         + '<col class="pf-ncol-status"/><col class="pf-ncol-status"/>'
         + '<col class="pf-ncol-num"/><col class="pf-ncol-pct"/>'
         + '</colgroup><thead><tr>'
         + '<th class="pf-th-left">Company Name</th><th class="pf-th-left">Group Name</th>'
-        + '<th class="pf-th-center">Quarter</th><th class="pf-th-center">Year</th>'
         + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
         + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% PK TRACEABLE</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
@@ -11408,20 +13325,7 @@ function initDashboardApp() {
       if (!tbody._pfPkDelegationBound) {
         tbody._pfPkDelegationBound = true;
         tbody.addEventListener('click', function(e) {
-          const groupRow = e.target.closest('.pf-group-row');
-          if (!groupRow || !tbody.contains(groupRow) || e.target.closest('.pf-group-detail-row')) return;
-          const groupId  = groupRow.dataset.group;
-          const expanded = groupRow.dataset.expanded === '1';
-          const children = tbody.querySelectorAll('[data-parent="' + groupId + '"]');
-          if (expanded) {
-            children.forEach(function(c) { c.classList.add('hidden'); });
-            groupRow.dataset.expanded = '0';
-            groupRow.classList.remove('expanded');
-          } else {
-            children.forEach(function(c) { c.classList.remove('hidden'); });
-            groupRow.dataset.expanded = '1';
-            groupRow.classList.add('expanded');
-          }
+          pfHandlePfTableClick_(e, tbody);
         });
       }
 
@@ -11569,10 +13473,8 @@ function initDashboardApp() {
       const rows = companies.map(function(c) {
         const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
         return '<tr class="pf-nested-row">'
-          + '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>'
+          + pfCompanyCellHtml_(c)
           + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
-          + '<td class="pf-td-period">' + escHtml(c.quarter) + '</td>'
-          + '<td class="pf-td-period">' + escHtml(c.year) + '</td>'
           + '<td class="pf-td-plain">' + escHtml(c.nbl) + '</td>'
           + '<td class="pf-td-plain">' + escHtml(c.riskLevel) + '</td>'
           + '<td class="pf-td-num">' + escHtml(String(c.grievance)) + '</td>'
@@ -11580,15 +13482,14 @@ function initDashboardApp() {
           + '</tr>';
       }).join('');
       return '<div class="pf-detail-wrap">'
-        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span></div>'
+        + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span>'
+        + '<span class="pf-detail-hint">Klik nama company untuk profil mill</span></div>'
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-company" /><col class="pf-ncol-group" />'
-        + '<col class="pf-ncol-period" /><col class="pf-ncol-period" />'
         + '<col class="pf-ncol-status" /><col class="pf-ncol-status" />'
         + '<col class="pf-ncol-num" /><col class="pf-ncol-pct" />'
         + '</colgroup><thead><tr>'
         + '<th class="pf-th-left">Company Name</th><th class="pf-th-left">Group Name</th>'
-        + '<th class="pf-th-center">Quarter</th><th class="pf-th-center">Year</th>'
         + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
         + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% TRACEABLE</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
@@ -11634,20 +13535,7 @@ function initDashboardApp() {
       if (!body || body._pfDelegationBound) return;
       body._pfDelegationBound = true;
       body.addEventListener('click', function(e) {
-        const groupRow = e.target.closest('.pf-group-row');
-        if (!groupRow || !body.contains(groupRow) || e.target.closest('.pf-group-detail-row')) return;
-        const groupId = groupRow.dataset.group;
-        const expanded = groupRow.dataset.expanded === '1';
-        const children = body.querySelectorAll('[data-parent="' + groupId + '"]');
-        if (expanded) {
-          children.forEach(function(c) { c.classList.add('hidden'); });
-          groupRow.dataset.expanded = '0';
-          groupRow.classList.remove('expanded');
-        } else {
-          children.forEach(function(c) { c.classList.remove('hidden'); });
-          groupRow.dataset.expanded = '1';
-          groupRow.classList.add('expanded');
-        }
+        pfHandlePfTableClick_(e, body);
       });
     }
 
@@ -12344,6 +14232,8 @@ function initDashboardApp() {
       switchPanel(panel);
       if (panel === 'grievance' && !grvLoaded) loadGrvData();
       if (panel === 'bl-monitoring' && !blLoaded) loadBlData();
+      if (panel === 'questionnaire-monitoring' && !qmLoaded) loadQmData();
+      if (panel === 'eudr-potential' && !eudrLoaded) loadEudrData();
     });
   });
 
