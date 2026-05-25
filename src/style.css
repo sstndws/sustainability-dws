@@ -2618,6 +2618,12 @@
      line-height: 1.5;
      word-break: break-word;
    }
+   .grv-cell-action {
+     max-width: 220px;
+     white-space: nowrap;
+     overflow: hidden;
+     text-overflow: ellipsis;
+   }
    
    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       16. COMING SOON PANEL
@@ -2763,6 +2769,236 @@
      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
      font-size: 12px;
      color: #5f4a48;
+   }
+   #panel-no-buy-list .nbl-group-info-bar {
+     padding: 6px 16px 0;
+     font-size: 11px;
+     color: #B09A9A;
+     text-align: right;
+   }
+   #panel-no-buy-list .nbl-table-hint {
+     margin: 0;
+     padding: 10px 16px 14px;
+     font-size: 11px;
+     color: #9C8080;
+   }
+   #panel-no-buy-list .nbl-data-table--grouped .nbl-th-count,
+   #panel-no-buy-list .nbl-data-table--grouped .nbl-count-cell {
+     width: 72px;
+     text-align: center;
+   }
+   #panel-no-buy-list .nbl-data-table--grouped .nbl-raiser-cell {
+     min-width: 120px;
+     max-width: 220px;
+     color: #4a2828;
+   }
+   #panel-no-buy-list .nbl-data-table--grouped .nbl-th-actions,
+   #panel-no-buy-list .nbl-data-table--grouped .nbl-actions-cell {
+     width: 120px;
+     text-align: right;
+     white-space: nowrap;
+   }
+   #panel-no-buy-list .nbl-group-row {
+     cursor: pointer;
+     background: #faf5f5;
+   }
+   #panel-no-buy-list .nbl-group-row:hover td { background: rgba(139,26,26,0.05) !important; }
+   #panel-no-buy-list .nbl-group-row.expanded td { background: rgba(139,26,26,0.03); }
+   #panel-no-buy-list .nbl-group-name-cell {
+     display: flex;
+     align-items: center;
+     gap: 8px;
+   }
+   #panel-no-buy-list .nbl-group-chevron {
+     display: flex;
+     align-items: center;
+     flex-shrink: 0;
+     color: #9C8A8A;
+     transition: rotate 180ms ease;
+   }
+   #panel-no-buy-list .nbl-group-chevron svg {
+     width: 14px;
+     height: 14px;
+     fill: none;
+     stroke: currentColor;
+     stroke-width: 2;
+     stroke-linecap: round;
+     stroke-linejoin: round;
+   }
+   #panel-no-buy-list .nbl-group-row.expanded .nbl-group-chevron { rotate: 90deg; }
+   #panel-no-buy-list .nbl-sub-badge {
+     font-size: 10px;
+     font-weight: 700;
+     color: #8B1A1A;
+     background: rgba(139, 26, 26, 0.1);
+     padding: 2px 7px;
+     border-radius: 999px;
+   }
+   #panel-no-buy-list .nbl-group-detail-row > td.nbl-group-detail-cell {
+     padding: 12px 14px 16px 32px !important;
+     background: #fff;
+     border-bottom: 1px solid rgba(139, 26, 26, 0.1);
+   }
+   #panel-no-buy-list .nbl-nested-wrap {
+     overflow-x: auto;
+     border: 1px solid rgba(139, 26, 26, 0.14);
+     border-radius: 10px;
+     background: #faf8f8;
+   }
+   #panel-no-buy-list .nbl-nested-grid { min-width: 520px; }
+   #panel-no-buy-list .nbl-nested-head,
+   #panel-no-buy-list .nbl-nested-row {
+     display: grid;
+     grid-template-columns: minmax(140px, 1.5fr) minmax(180px, 2fr) 140px;
+     gap: 0;
+   }
+   #panel-no-buy-list .nbl-nested-cell {
+     padding: 10px 12px;
+     font-size: 12px;
+     color: #2a1010;
+     border-bottom: 1px solid rgba(139, 26, 26, 0.06);
+     line-height: 1.4;
+     word-break: break-word;
+   }
+   #panel-no-buy-list .nbl-nested-th {
+     font-size: 10.5px;
+     font-weight: 700;
+     letter-spacing: 0.04em;
+     text-transform: uppercase;
+     color: #8b1a1a;
+     background: rgba(139, 26, 26, 0.07);
+     border-bottom: 1px solid rgba(139, 26, 26, 0.12);
+   }
+   #panel-no-buy-list .nbl-nested-source {
+     font-size: 11px;
+     color: #6e5a5a;
+   }
+   #panel-no-buy-list .nbl-nested-actions {
+     display: flex;
+     align-items: center;
+     justify-content: flex-end;
+     gap: 6px;
+   }
+   #panel-no-buy-list .nbl-btn-delete {
+     color: #c0392b;
+     border-color: rgba(192, 57, 43, 0.35);
+   }
+   #panel-no-buy-list .nbl-btn-delete:hover {
+     background: rgba(192, 57, 43, 0.08);
+   }
+   #panel-no-buy-list .nbl-btn-add-mill {
+     padding: 4px 10px;
+     font-size: 11px;
+   }
+   .nbl-modal-overlay {
+     position: fixed;
+     inset: 0;
+     z-index: 10100;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     padding: 24px;
+     background: rgba(26, 10, 10, 0.45);
+     opacity: 0;
+     visibility: hidden;
+     transition: opacity 0.2s ease, visibility 0.2s ease;
+   }
+   .nbl-modal-overlay.active {
+     opacity: 1;
+     visibility: visible;
+   }
+   body.nbl-entry-open { overflow: hidden; }
+   .nbl-modal {
+     width: min(520px, 100%);
+     max-height: min(90vh, 640px);
+     overflow: hidden;
+     display: flex;
+     flex-direction: column;
+     background: #fff;
+     border-radius: 14px;
+     box-shadow: 0 24px 64px rgba(26, 10, 10, 0.22);
+     border: 1px solid rgba(139, 26, 26, 0.12);
+   }
+   .nbl-modal-header {
+     display: flex;
+     align-items: flex-start;
+     justify-content: space-between;
+     gap: 12px;
+     padding: 18px 20px 12px;
+     border-bottom: 1px solid rgba(74, 28, 28, 0.08);
+     flex-shrink: 0;
+     background: #fff;
+   }
+   .nbl-modal-header h3 {
+     margin: 0;
+     font-size: 18px;
+     color: #1A0A0A;
+   }
+   .nbl-modal-subtitle {
+     margin: 4px 0 0;
+     font-size: 12px;
+     color: #9C8080;
+   }
+   .nbl-modal-close {
+     border: none;
+     background: transparent;
+     font-size: 24px;
+     line-height: 1;
+     color: #9C8080;
+     cursor: pointer;
+     padding: 0 4px;
+   }
+   .nbl-modal-body {
+     padding: 16px 20px;
+     overflow-y: auto;
+   }
+   .nbl-form-grid {
+     display: grid;
+     grid-template-columns: 1fr 1fr;
+     gap: 12px;
+   }
+   .nbl-form-field {
+     display: flex;
+     flex-direction: column;
+     gap: 6px;
+   }
+   .nbl-form-field--wide { grid-column: 1 / -1; }
+   .nbl-form-field span {
+     font-size: 11px;
+     font-weight: 600;
+     color: #6e5a5a;
+     text-transform: uppercase;
+     letter-spacing: 0.04em;
+   }
+   .nbl-form-field input {
+     padding: 9px 12px;
+     border: 1px solid rgba(74, 28, 28, 0.14);
+     border-radius: 8px;
+     font-size: 13px;
+     font-family: inherit;
+     color: #4A1C1C;
+   }
+   .nbl-form-field input:focus {
+     outline: none;
+     border-color: rgba(139, 26, 26, 0.35);
+     box-shadow: 0 0 0 2px rgba(139, 26, 26, 0.08);
+   }
+   .nbl-form-field input.nbl-input-readonly {
+     background: #f8f6f5;
+     color: #6e5a5a;
+   }
+   .nbl-modal-footer {
+     display: flex;
+     justify-content: flex-end;
+     gap: 8px;
+     padding: 12px 20px 18px;
+     border-top: 1px solid rgba(74, 28, 28, 0.08);
+     flex-shrink: 0;
+     background: #fff;
+   }
+   .nbl-modal .nbl-modal-body {
+     flex: 1 1 auto;
+     min-height: 0;
    }
 
    /* SDD — Check NBL */
