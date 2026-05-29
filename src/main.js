@@ -3811,8 +3811,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx9cGhXNUZ96pACKyMexq1IwKKFE14j6wLgB83QLT5c1hj7OUCOKV27KIMQH5ZCMKNEFQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9cGhXNUZ96pACKyMexq1IwKKFE14j6wLgB83QLT5c1hj7OUCOKV27KIMQH5ZCMKNEFQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyAqZvGXtbSplQW7laeEGNj9iUC6oJ7qubUskC64r6C07MN3uiZDP9urqcVFutGD0TOiw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyAqZvGXtbSplQW7laeEGNj9iUC6oJ7qubUskC64r6C07MN3uiZDP9urqcVFutGD0TOiw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5328,11 +5328,21 @@ function initDashboardApp() {
       buildMillForm(data);
     } else {
       grid.className = 'modal-form-grid';
-      grid.innerHTML = fields.map(f => `
-        <div class="form-field ${f === 'ADDRESS' ? 'full' : ''}">
-          <label>${f}</label>
-          <input type="text" data-field="${f}" value="${data ? (data[f] || '') : ''}" placeholder="${f}">
-        </div>`).join('');
+      grid.innerHTML = fields.map(f => {
+        const isFull = f === 'ADDRESS' || f === 'CERTIFICATION' || f === 'COORDINATE';
+        const isTextarea = f === 'ADDRESS' || f === 'CERTIFICATION';
+        const val = data ? (data[f] || '') : '';
+        if (isTextarea) {
+          return '<div class="form-field full">'
+            + '<label>' + escHtml(f) + '</label>'
+            + '<textarea data-field="' + escHtml(f) + '" rows="' + (f === 'CERTIFICATION' ? '4' : '3') + '" placeholder="' + escHtml(f) + '">'
+            + escHtml(String(val)) + '</textarea></div>';
+        }
+        return '<div class="form-field ' + (isFull ? 'full' : '') + '">'
+          + '<label>' + escHtml(f) + '</label>'
+          + '<input type="text" data-field="' + escHtml(f) + '" value="' + escHtml(String(val)) + '" placeholder="' + escHtml(f) + '">'
+          + '</div>';
+      }).join('');
     }
 
     document.getElementById('modalOverlay')?.classList.add('active');
@@ -5413,6 +5423,8 @@ function initDashboardApp() {
         ttpLoaded = false; await loadTTPData();
       } else if (modalSheet === 'contactSupplier') {
         contactListLoaded = false; await loadContactListData(true);
+      } else if (modalSheet === 'facilityProfile') {
+        cplLoaded = false; await loadCompanyProfileListData(true);
       } else if (modalSheet === 'grievance') {
         grvLoaded = false; await loadGrvData();
       }
@@ -5468,6 +5480,9 @@ function initDashboardApp() {
         nblRegistryLoaded = false;
         nblUnileverLoaded = false;
         await loadNoBuyListData(true);
+      } else if (pendingDelete.sheet === 'facilityProfile') {
+        cplLoaded = false;
+        await loadCompanyProfileListData(true);
       }
       pendingDelete = null;
     } catch(err) {
@@ -8732,23 +8747,9 @@ function initDashboardApp() {
     if (!body) return;
     grvTableDelegationBound = true;
     body.addEventListener('click', function(e) {
-      const expandBtn = e.target.closest('.btn-expand');
-      if (expandBtn && body.contains(expandBtn)) {
-        const idx = expandBtn.dataset.idx;
-        const detail = document.getElementById('grv-detail-' + idx);
-        if (!detail) return;
-        const isOpen = detail.classList.contains('open');
-        document.querySelectorAll('.grv-detail.open').forEach(d => d.classList.remove('open'));
-        document.querySelectorAll('.btn-expand.open').forEach(b => b.classList.remove('open'));
-        if (!isOpen) {
-          detail.classList.add('open');
-          expandBtn.classList.add('open');
-        }
-        return;
-      }
-
       const editBtn = e.target.closest('.btn-edit');
       if (editBtn && body.contains(editBtn)) {
+        e.stopPropagation();
         const row = JSON.parse(editBtn.dataset.row.replace(/&#39;/g, "'"));
         openModal('grievance', GRV_FIELDS, 'edit', row);
         return;
@@ -8756,7 +8757,25 @@ function initDashboardApp() {
 
       const delBtn = e.target.closest('.btn-delete');
       if (delBtn && body.contains(delBtn)) {
+        e.stopPropagation();
         openConfirm(delBtn.dataset.sheet, parseInt(delBtn.dataset.rownum, 10));
+        return;
+      }
+
+      const mainRow = e.target.closest('.grv-main-row');
+      if (!mainRow || !body.contains(mainRow)) return;
+
+      const idx = mainRow.dataset.idx;
+      const detail = document.getElementById('grv-detail-' + idx);
+      if (!detail) return;
+      const isOpen = detail.classList.contains('open');
+
+      body.querySelectorAll('.grv-detail.open').forEach(function(d) { d.classList.remove('open'); });
+      body.querySelectorAll('.grv-main-row.expanded').forEach(function(r) { r.classList.remove('expanded'); });
+
+      if (!isOpen) {
+        detail.classList.add('open');
+        mainRow.classList.add('expanded');
       }
     });
   }
@@ -8820,7 +8839,7 @@ function initDashboardApp() {
       !q || (d._sddSearchBlob || '').includes(q)
     );
     if (filtered.length === 0) {
-      body.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
+      body.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
       return;
     }
     body.innerHTML = filtered.map((d, i) => {
@@ -8833,9 +8852,10 @@ function initDashboardApp() {
           <div class="grv-detail-val">${escHtml(String(val))}</div>
         </div>`;
       }).join('');
+      const rowJson = JSON.stringify(d).replace(/'/g, '&#39;');
       return `
         <tr class="grv-main-row" data-idx="${i}">
-          <td>${escHtml(grvFormatDateDisplay_(d['Date Received']))}</td>
+          <td><span class="grv-row-chevron" aria-hidden="true">▸</span>${escHtml(grvFormatDateDisplay_(d['Date Received']))}</td>
           <td>${escHtml(d['Grievance Category'] || '—')}</td>
           <td><span class="mill-name">${escHtml(d['Subject'] || '—')}</span></td>
           <td>${escHtml(d['Grievance Subject Group'] || '—')}</td>
@@ -8845,16 +8865,15 @@ function initDashboardApp() {
           <td>${escHtml(grvFormatDateDisplay_(d['Date Closed']))}</td>
           <td class="grv-cell-action">${escHtml(d['Action Taken'] || '—')}</td>
           <td>${escHtml(d['Published'] || '—')}</td>
-          <td>
-            <div class="row-actions">
-              <button class="btn-expand" data-idx="${i}" title="View detail">▾</button>
-              <button class="btn-row btn-edit" data-row='${JSON.stringify(d).replace(/'/g,"&#39;")}' data-sheet="grievance">Edit</button>
-              <button class="btn-row btn-delete" data-rownum="${d._row}" data-sheet="grievance">Del</button>
-            </div>
-          </td>
         </tr>
         <tr class="grv-expand-row">
-          <td colspan="11"><div class="grv-detail" id="grv-detail-${i}">${detailHTML}</div></td>
+          <td colspan="10"><div class="grv-detail" id="grv-detail-${i}">
+            <div class="grv-detail-actions">
+              <button type="button" class="btn-sm btn-outline btn-edit" data-row='${rowJson}' data-sheet="grievance">Edit</button>
+              <button type="button" class="btn-sm btn-outline btn-delete" data-rownum="${d._row}" data-sheet="grievance">Delete</button>
+            </div>
+            ${detailHTML}
+          </div></td>
         </tr>`;
     }).join('');
 
@@ -9399,7 +9418,7 @@ function initDashboardApp() {
 
   /** BL Monitoring — always hit latest GAS deploy (bypass stale Vite prebundle). */
   var BL_MONITORING_GAS_URL =
-    'https://script.google.com/macros/s/AKfycbx9cGhXNUZ96pACKyMexq1IwKKFE14j6wLgB83QLT5c1hj7OUCOKV27KIMQH5ZCMKNEFQ/exec';
+    'https://script.google.com/macros/s/AKfycbyAqZvGXtbSplQW7laeEGNj9iUC6oJ7qubUskC64r6C07MN3uiZDP9urqcVFutGD0TOiw/exec';
 
   async function fetchBlMonitoringRows_() {
     var base = (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL)
@@ -10218,6 +10237,333 @@ function initDashboardApp() {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       a.download = 'contact_list_supplier.csv';
+      a.click();
+    });
+  })();
+
+  // ─── COMPANY PROFILE LIST (Facility Profile sheet) ─────────
+  const CPL_FIELDS = [
+    'PLANT', 'COMPANY NAME', 'SITE NAME', 'ADDRESS',
+    'CAPACITY', 'COORDINATE', 'FACILITY', 'CERTIFICATION',
+  ];
+  const CPL_EXPORT_FIELDS = CPL_FIELDS.slice();
+  let cplData = [];
+  let cplLoaded = false;
+  let cplLoadPromise = null;
+  let cplSearch = '';
+  let cplPlantFilter = '';
+  let cplFacilityFilter = '';
+  let cplRenderScheduled = false;
+  let cplTableDelegationBound = false;
+
+  function cplPick_(row, keys) {
+    if (!row) return '';
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+        return String(row[k]).trim();
+      }
+    }
+    return '';
+  }
+
+  function prepareCplRow_(row) {
+    if (!row || typeof row !== 'object') return row;
+    row._cplPlant = cplPick_(row, ['PLANT']);
+    row._cplCompany = cplPick_(row, ['COMPANY NAME', 'Company Name']);
+    row._cplSite = cplPick_(row, ['SITE NAME', 'Site Name']);
+    row._cplAddress = cplPick_(row, ['ADDRESS', 'Address']);
+    row._cplCapacity = cplPick_(row, ['CAPACITY', 'Capacity']);
+    row._cplCoordinate = cplPick_(row, ['COORDINATE', 'Coordinate']);
+    row._cplFacility = cplPick_(row, ['FACILITY', 'Facility']);
+    row._cplCert = cplPick_(row, ['CERTIFICATION', 'Certification']);
+    row._cplSearchBlob = [
+      row._cplPlant, row._cplCompany, row._cplSite, row._cplAddress,
+      row._cplCapacity, row._cplCoordinate, row._cplFacility, row._cplCert,
+    ].join(' ').toLowerCase();
+    return row;
+  }
+
+  function cplCertTagsHtml_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '<span class="cpl-cert-empty">—</span>';
+    const parts = s.split(/[,;|]+/).map(function(p) { return p.trim(); }).filter(Boolean);
+    if (!parts.length) return '<span class="cpl-cert-empty">—</span>';
+    return '<div class="cpl-cert-tags">' + parts.map(function(p) {
+      return '<span class="cpl-cert-tag">' + escHtml(p) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  function cplMapsLinkHtml_(coord) {
+    const s = String(coord || '').trim();
+    if (!s) return '—';
+    const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s);
+    return '<a class="cpl-map-link" href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer">'
+      + escHtml(s.length > 42 ? s.slice(0, 40) + '…' : s) + '</a>';
+  }
+
+  function cplPopulateFilters_() {
+    const plantSel = document.getElementById('cplPlantFilter');
+    const facSel = document.getElementById('cplFacilityFilter');
+    if (!plantSel || !facSel) return;
+
+    const plants = new Set();
+    const facilities = new Set();
+    cplData.forEach(function(d) {
+      if (d._cplPlant) plants.add(d._cplPlant);
+      if (d._cplFacility) facilities.add(d._cplFacility);
+    });
+
+    const plantVal = cplPlantFilter;
+    const facVal = cplFacilityFilter;
+    plantSel.innerHTML = '<option value="">All plants</option>'
+      + Array.from(plants).sort(function(a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
+        .map(function(p) {
+          return '<option value="' + escHtml(p) + '"' + (p === plantVal ? ' selected' : '') + '>' + escHtml(p) + '</option>';
+        }).join('');
+    facSel.innerHTML = '<option value="">All types</option>'
+      + Array.from(facilities).sort(function(a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
+        .map(function(f) {
+          return '<option value="' + escHtml(f) + '"' + (f === facVal ? ' selected' : '') + '>' + escHtml(f) + '</option>';
+        }).join('');
+  }
+
+  function cplFilteredRows_() {
+    const q = cplSearch;
+    const plant = cplPlantFilter.toLowerCase();
+    const fac = cplFacilityFilter.toLowerCase();
+    return cplData.filter(function(d) {
+      if (plant && String(d._cplPlant || '').toLowerCase() !== plant) return false;
+      if (fac && String(d._cplFacility || '').toLowerCase() !== fac) return false;
+      if (q && !(d._cplSearchBlob || '').includes(q)) return false;
+      return true;
+    });
+  }
+
+  function cplUpdateStats_() {
+    const filtered = cplFilteredRows_();
+    const plants = new Set();
+    const facTypes = new Set();
+    let withCert = 0;
+    filtered.forEach(function(d) {
+      if (d._cplPlant) plants.add(d._cplPlant);
+      if (d._cplFacility) facTypes.add(d._cplFacility);
+      if (d._cplCert) withCert++;
+    });
+    const set = function(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(val);
+    };
+    set('cpl-stat-total', filtered.length);
+    set('cpl-stat-plants', plants.size);
+    set('cpl-stat-facilities', facTypes.size);
+    set('cpl-stat-certified', withCert);
+  }
+
+  function cplBindTableDelegationOnce_() {
+    if (cplTableDelegationBound) return;
+    const body = document.getElementById('cplTableBody');
+    if (!body) return;
+    cplTableDelegationBound = true;
+    body.addEventListener('click', function(e) {
+      const editBtn = e.target.closest('.cpl-btn-edit');
+      if (editBtn && body.contains(editBtn)) {
+        e.stopPropagation();
+        const rowNum = parseInt(editBtn.dataset.rownum, 10);
+        const hit = cplData.find(function(d) { return parseInt(d._row, 10) === rowNum; });
+        if (hit) openModal('facilityProfile', CPL_FIELDS, 'edit', hit);
+        return;
+      }
+      const delBtn = e.target.closest('.cpl-btn-delete');
+      if (delBtn && body.contains(delBtn)) {
+        e.stopPropagation();
+        openConfirm('facilityProfile', parseInt(delBtn.dataset.rownum, 10));
+        return;
+      }
+      const mainRow = e.target.closest('.cpl-main-row');
+      if (!mainRow || !body.contains(mainRow) || e.target.closest('.cpl-btn-edit, .cpl-btn-delete')) return;
+      const idx = mainRow.dataset.idx;
+      const detail = document.getElementById('cpl-detail-' + idx);
+      if (!detail) return;
+      const isOpen = detail.classList.contains('open');
+      body.querySelectorAll('.cpl-detail.open').forEach(function(d) { d.classList.remove('open'); });
+      body.querySelectorAll('.cpl-main-row.expanded').forEach(function(r) { r.classList.remove('expanded'); });
+      if (!isOpen) {
+        detail.classList.add('open');
+        mainRow.classList.add('expanded');
+      }
+    });
+  }
+
+  function renderCompanyProfileListTable_() {
+    const body = document.getElementById('cplTableBody');
+    const table = document.getElementById('cplTable');
+    const hint = document.getElementById('cplTableHint');
+    if (!body || !table) return;
+    cplBindTableDelegationOnce_();
+
+    const filtered = cplFilteredRows_();
+    cplUpdateStats_();
+
+    if (hint) {
+      hint.textContent = filtered.length
+        ? 'Click a row to view address, coordinates, and certifications.'
+        : '';
+    }
+
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        + (cplSearch || cplPlantFilter || cplFacilityFilter
+          ? 'No profiles match the current filters.'
+          : 'No facility profiles yet. Click <strong>+ Add profile</strong> or add rows in the Facility Profile sheet.')
+        + '</td></tr>';
+      table.style.display = 'table';
+      return;
+    }
+
+    body.innerHTML = filtered.map(function(d, i) {
+      const cap = d._cplCapacity || '—';
+      const detailHtml = ''
+        + '<div class="cpl-detail-grid">'
+        + '<div class="cpl-detail-block"><div class="cpl-detail-label">Address</div><div class="cpl-detail-val">'
+        + escHtml(d._cplAddress || '—') + '</div></div>'
+        + '<div class="cpl-detail-block"><div class="cpl-detail-label">Coordinate</div><div class="cpl-detail-val">'
+        + cplMapsLinkHtml_(d._cplCoordinate) + '</div></div>'
+        + '<div class="cpl-detail-block cpl-detail-block--wide"><div class="cpl-detail-label">Certification</div>'
+        + cplCertTagsHtml_(d._cplCert) + '</div></div>';
+
+      return ''
+        + '<tr class="cpl-main-row" data-idx="' + i + '">'
+        + '<td><span class="cpl-plant-pill">' + escHtml(d._cplPlant || '—') + '</span></td>'
+        + '<td><span class="mill-name">' + escHtml(d._cplCompany || '—') + '</span></td>'
+        + '<td>' + escHtml(d._cplSite || '—') + '</td>'
+        + '<td>' + escHtml(d._cplFacility || '—') + '</td>'
+        + '<td class="cpl-td-capacity">' + escHtml(cap) + '</td>'
+        + '<td class="cpl-td-actions">'
+        + '<button type="button" class="btn-expand cpl-expand" title="View detail">▾</button>'
+        + '<button type="button" class="btn-sm btn-outline cpl-btn-edit" data-rownum="' + escAttr_(String(d._row || '')) + '">Edit</button>'
+        + '<button type="button" class="btn-sm btn-outline cpl-btn-delete" data-rownum="' + escAttr_(String(d._row || '')) + '">Del</button>'
+        + '</td></tr>'
+        + '<tr class="cpl-expand-row"><td colspan="6"><div class="cpl-detail" id="cpl-detail-' + i + '">' + detailHtml + '</div></td></tr>';
+    }).join('');
+
+    table.style.display = 'table';
+  }
+
+  function scheduleRenderCompanyProfileListTable_() {
+    if (cplRenderScheduled) return;
+    cplRenderScheduled = true;
+    requestAnimationFrame(function() {
+      cplRenderScheduled = false;
+      renderCompanyProfileListTable_();
+    });
+  }
+
+  async function loadCompanyProfileListDataImpl_(force) {
+    const loading = document.getElementById('cpl-loading');
+    const errorEl = document.getElementById('cpl-error');
+    const table = document.getElementById('cplTable');
+    if (!loading || !errorEl || !table) return;
+    try {
+      loading.style.display = 'block';
+      errorEl.style.display = 'none';
+      table.style.display = 'none';
+      const raw = await apiGet('facilityProfile');
+      cplData = (Array.isArray(raw) ? raw : []).map(prepareCplRow_);
+      cplLoaded = true;
+      cplPopulateFilters_();
+      loading.style.display = 'none';
+      scheduleRenderCompanyProfileListTable_();
+    } catch (err) {
+      loading.style.display = 'none';
+      errorEl.style.display = 'block';
+      errorEl.textContent = 'Failed to load Company Profile List: ' + ((err && err.message) ? err.message : String(err));
+      if (force) throw err;
+    }
+  }
+
+  async function loadCompanyProfileListData(force) {
+    if (cplLoaded && !force) {
+      scheduleRenderCompanyProfileListTable_();
+      return;
+    }
+    if (cplLoadPromise) return cplLoadPromise;
+    cplLoadPromise = loadCompanyProfileListDataImpl_(!!force);
+    try {
+      await cplLoadPromise;
+    } finally {
+      cplLoadPromise = null;
+    }
+  }
+
+  window.loadCompanyProfileListData = loadCompanyProfileListData;
+
+  (function bindCompanyProfileListToolbarIfPresent_() {
+    const searchEl = document.getElementById('cplSearch');
+    const clearEl = document.getElementById('cplSearchClear');
+    const plantSel = document.getElementById('cplPlantFilter');
+    const facSel = document.getElementById('cplFacilityFilter');
+    const btnRefresh = document.getElementById('btn-refresh-cpl');
+    const btnExport = document.getElementById('btn-export-cpl');
+    const btnAdd = document.getElementById('btn-add-cpl');
+    if (!searchEl || !clearEl || !btnRefresh || !btnExport || !btnAdd) return;
+
+    const debouncedRender = debounce(function() {
+      scheduleRenderCompanyProfileListTable_();
+    }, 120);
+
+    searchEl.addEventListener('input', function() {
+      cplSearch = this.value.toLowerCase().trim();
+      if (this.value) clearEl.classList.add('show');
+      else clearEl.classList.remove('show');
+      debouncedRender();
+    });
+
+    clearEl.addEventListener('click', function() {
+      searchEl.value = '';
+      cplSearch = '';
+      this.classList.remove('show');
+      if (debouncedRender.cancel) debouncedRender.cancel();
+      if (debouncedRender.flush) debouncedRender.flush();
+      else scheduleRenderCompanyProfileListTable_();
+      searchEl.focus();
+    });
+
+    if (plantSel) {
+      plantSel.addEventListener('change', function() {
+        cplPlantFilter = this.value;
+        debouncedRender();
+      });
+    }
+    if (facSel) {
+      facSel.addEventListener('change', function() {
+        cplFacilityFilter = this.value;
+        debouncedRender();
+      });
+    }
+
+    btnRefresh.addEventListener('click', function() {
+      cplLoaded = false;
+      loadCompanyProfileListData(true);
+    });
+
+    btnAdd.addEventListener('click', function() {
+      openModal('facilityProfile', CPL_FIELDS, 'add', null);
+    });
+
+    btnExport.addEventListener('click', function() {
+      const rows = cplFilteredRows_();
+      if (!rows.length) return;
+      const csv = '\uFEFF' + [CPL_EXPORT_FIELDS].concat(
+        rows.map(function(d) {
+          return CPL_EXPORT_FIELDS.map(function(f) {
+            return '"' + String(d[f] != null ? d[f] : cplPick_(d, [f])).replace(/"/g, '""') + '"';
+          });
+        })
+      ).map(function(r) { return r.join(','); }).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = 'company_profile_list.csv';
       a.click();
     });
   })();
@@ -13396,6 +13742,7 @@ function initDashboardApp() {
     if (name === 'questionnaire-monitoring' && !qmLoaded) loadQmData();
     if (name === 'eudr-potential' && !eudrLoaded) loadEudrData();
     if (name === 'contact-list-supplier') loadContactListData();
+    if (name === 'company-profile-list') loadCompanyProfileListData();
     if (name === 'no-buy-list') loadNoBuyListData();
     if (name === 'performa-facility') initPerformaFacility_();
     resetScrollToTopEverywhere();
@@ -14348,6 +14695,7 @@ function initDashboardApp() {
         await Promise.all([
           allData && allData.length ? Promise.resolve() : loadMillData(),
           ttpLoaded ? Promise.resolve() : loadTTPData(),
+          cplLoaded ? Promise.resolve() : loadCompanyProfileListData(),
         ]);
         // Load CPO + PK supplied data concurrently
         await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
@@ -14440,6 +14788,24 @@ function initDashboardApp() {
 
     function pfPdfSanitize_(val) {
       return String(val == null ? '' : val).replace(/\r?\n/g, ' ').trim() || '—';
+    }
+
+    function pfNormalizePlantKey_(val) {
+      return String(val || '').trim().toUpperCase();
+    }
+
+    /** Company Profile List rows where PLANT matches Facility Performance facility name. */
+    function pfCplRowsForPlant_(facilityKey) {
+      const key = pfNormalizePlantKey_(facilityKey);
+      if (!key) return [];
+      return (cplData || []).filter(function(row) {
+        const plant = pfNormalizePlantKey_(row._cplPlant || row['PLANT']);
+        return plant === key;
+      }).sort(function(a, b) {
+        const siteCmp = String(a._cplSite || '').localeCompare(String(b._cplSite || ''), undefined, { sensitivity: 'base' });
+        if (siteCmp !== 0) return siteCmp;
+        return String(a._cplCompany || '').localeCompare(String(b._cplCompany || ''), undefined, { sensitivity: 'base' });
+      });
     }
 
     function mountPfExportModalOnce_() {
@@ -14560,7 +14926,7 @@ function initDashboardApp() {
       }
     }
 
-    function pfConfirmExportPdf_() {
+    async function pfConfirmExportPdf_() {
       const checked = Array.from(document.querySelectorAll('#pfExportFacilityList input[type="checkbox"]:checked'));
       if (!checked.length) {
         alert('Select at least one facility to export.');
@@ -14571,11 +14937,11 @@ function initDashboardApp() {
         return { type: parts[0], facilityKey: parts.slice(1).join('::') };
       });
       pfCloseExportModal_();
-      pfGeneratePdf_(selections);
+      await pfGeneratePdf_(selections);
     }
 
     // ── PDF Export (selected facilities + company breakdown) ───────────────
-    function pfGeneratePdf_(selections) {
+    async function pfGeneratePdf_(selections) {
       const jsPDFLib = getJsPDF();
       if (!jsPDFLib) {
         alert('Library PDF belum siap. Refresh halaman lalu coba lagi.');
@@ -14594,19 +14960,24 @@ function initDashboardApp() {
       rowExportBtns.forEach(function(b) { b.disabled = true; });
 
       try {
-        const doc = new jsPDFLib({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        if (!cplLoaded) await loadCompanyProfileListData();
+
+        const doc = new jsPDFLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
-        const mL = 12;
-        const mR = 12;
-        const mFoot = 12;
+        const mL = 14;
+        const mR = 14;
+        const mFoot = 14;
         const cW = pageW - mL - mR;
 
-        const RED = [139, 26, 26];
-        const GREEN = [13, 110, 70];
-        const GRY = [110, 96, 96];
-        const GRY_LT = [140, 120, 120];
+        const BRAND = [139, 26, 26];
+        const PK_GREEN = [13, 110, 70];
+        const INK = [26, 10, 10];
+        const INK_MUTED = [110, 96, 96];
+        const INK_LIGHT = [140, 120, 120];
         const WHITE = [255, 255, 255];
+        const BG_SOFT = [252, 250, 250];
+        const BORDER = [230, 220, 220];
 
         function findGroup(type, facilityKey) {
           const groups = type === 'pk' ? (_pfAllPkGroups || []) : (_pfAllGroups || []);
@@ -14627,73 +14998,200 @@ function initDashboardApp() {
           };
         }
 
-        function drawReportCover_() {
-          doc.setFillColor.apply(doc, RED);
-          doc.rect(0, 0, pageW, 24, 'F');
-          doc.setTextColor.apply(doc, WHITE);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(14);
-          doc.text('Facility Performance Report', mL, 11);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8.5);
-          doc.text(
-            'Generated at: ' + generatedAt + '  ·  Period: ' + periodLabel + '  ·  ' + selections.length + ' facility selected',
-            mL,
-            18
-          );
+        function pfPdfTableBase_() {
+          return {
+            theme: 'grid',
+            margin: { left: mL, right: mR, bottom: mFoot + 4 },
+            tableWidth: cW,
+            styles: {
+              fontSize: 8.5,
+              cellPadding: 3,
+              textColor: INK,
+              lineColor: BORDER,
+              lineWidth: 0.2,
+              overflow: 'linebreak',
+              valign: 'middle',
+            },
+            headStyles: {
+              fontStyle: 'bold',
+              fontSize: 8.5,
+              halign: 'center',
+            },
+            alternateRowStyles: { fillColor: [255, 253, 253] },
+          };
         }
 
-        drawReportCover_();
-        let y = 30;
-
-        selections.forEach(function(sel) {
-          const isPk = sel.type === 'pk';
-          const accent = isPk ? GREEN : RED;
-          const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
-          const pctLabel = isPk ? '% PK Traceable' : '% Traceable';
-          const badge = isPk ? 'PK' : 'CPO';
-
-          const g = findGroup(sel.type, sel.facilityKey);
-          if (!g) return;
-
-          const sum = sumFn(g);
-          const facilityPct = isPk ? sum.avgPk : sum.avgCpo;
-          const companies = g.companies.slice().sort(function(a, b) {
-            return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
-          });
-
-          if (y > pageH - 40) {
-            doc.addPage();
-            y = 16;
+        function drawFooters_() {
+          const total = doc.internal.getNumberOfPages();
+          for (let p = 1; p <= total; p++) {
+            doc.setPage(p);
+            doc.setDrawColor.apply(doc, BORDER);
+            doc.setLineWidth(0.2);
+            doc.line(mL, pageH - mFoot, pageW - mR, pageH - mFoot);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor.apply(doc, INK_LIGHT);
+            doc.text('Sustainability Dashboard · Facility Performance', mL, pageH - 6);
+            doc.text('Generated ' + generatedAt, pageW / 2, pageH - 6, { align: 'center' });
+            doc.text('Page ' + p + ' of ' + total, pageW - mR, pageH - 6, { align: 'right' });
           }
+        }
 
-          doc.setFillColor.apply(doc, accent);
-          doc.rect(mL, y, cW, 8.5, 'F');
+        function drawReportHeader_(compact) {
+          const h = compact ? 20 : 30;
+          doc.setFillColor.apply(doc, BRAND);
+          doc.rect(0, 0, pageW, h, 'F');
+          doc.setFillColor(180, 40, 40);
+          doc.rect(0, h - 1.5, pageW, 1.5, 'F');
+
           doc.setTextColor.apply(doc, WHITE);
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
-          doc.text(badge + '  ' + pfPdfSanitize_(g.facility), mL + 3, y + 5.8);
+          doc.setFontSize(compact ? 11 : 15);
+          doc.text('Facility Performance Report', mL, compact ? 9 : 13);
+
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
+          doc.setFontSize(compact ? 7.5 : 9);
           doc.text(
-            pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '  ·  ' + companies.length + ' companies',
-            pageW - mR,
-            y + 5.8,
+            'Period: ' + periodLabel + '   ·   Generated: ' + generatedAt + '   ·   '
+              + selections.length + ' facilit' + (selections.length === 1 ? 'y' : 'ies'),
+            mL,
+            compact ? 15 : 22
+          );
+          return h + 8;
+        }
+
+        function ensureSpace_(y, needed) {
+          if (y + needed <= pageH - mFoot - 6) return y;
+          doc.addPage();
+          return drawReportHeader_(true);
+        }
+
+        function drawSectionTitle_(title, y, accent) {
+          y = ensureSpace_(y, 14);
+          doc.setFillColor.apply(doc, accent);
+          doc.roundedRect(mL, y, cW, 8, 1.5, 1.5, 'F');
+          doc.setTextColor.apply(doc, WHITE);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9.5);
+          doc.text(title, mL + 4, y + 5.5);
+          return y + 11;
+        }
+
+        function drawFacilityHero_(g, badge, facilityPct, pctLabel, companiesCount, y, accent) {
+          y = ensureSpace_(y, 22);
+          doc.setDrawColor.apply(doc, BORDER);
+          doc.setFillColor.apply(doc, BG_SOFT);
+          doc.setLineWidth(0.25);
+          doc.roundedRect(mL, y, cW, 18, 2, 2, 'FD');
+
+          doc.setFillColor.apply(doc, accent);
+          doc.roundedRect(mL + 4, y + 5, 20, 8, 1.5, 1.5, 'F');
+          doc.setTextColor.apply(doc, WHITE);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.text(badge, mL + 14, y + 10.5, { align: 'center' });
+
+          doc.setTextColor.apply(doc, INK);
+          doc.setFontSize(15);
+          doc.text(pfPdfSanitize_(g.facility), mL + 28, y + 11);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor.apply(doc, INK_MUTED);
+          doc.text(
+            pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '   ·   ' + companiesCount + ' companies',
+            pageW - mR - 4,
+            y + 11,
             { align: 'right' }
           );
-          y += 10;
+          return y + 22;
+        }
 
-          doc.setTextColor.apply(doc, GRY);
-          doc.setFontSize(7.5);
-          doc.setFont('helvetica', 'bold');
-          const metrics = [
-            'No Buy List: ' + (sum.nblYes > 0 ? sum.nblYes + ' Yes' : '0'),
-            'High Risk: ' + (sum.highRisk || 0),
-            'Total Grievance: ' + (sum.grievanceSum || 0),
-            pctLabel + ': ' + pfPdfSanitize_(facilityPct),
+        function drawKpiCards_(y, sum, facilityPct, pctLabel, accent) {
+          y = ensureSpace_(y, 22);
+          const items = [
+            { label: 'No Buy List', value: sum.nblYes > 0 ? String(sum.nblYes) + ' Yes' : '0' },
+            { label: 'High Risk', value: String(sum.highRisk || 0) },
+            { label: 'Total Grievance', value: String(sum.grievanceSum || 0) },
+            { label: pctLabel, value: pfPdfSanitize_(facilityPct) },
           ];
-          doc.text(metrics.join('   ·   '), mL, y);
-          y += 4;
+          const gap = 3;
+          const cardW = (cW - gap * 3) / 4;
+          const cardH = 17;
+
+          items.forEach(function(item, i) {
+            const x = mL + i * (cardW + gap);
+            doc.setDrawColor.apply(doc, BORDER);
+            doc.setFillColor.apply(doc, WHITE);
+            doc.setLineWidth(0.25);
+            doc.roundedRect(x, y, cardW, cardH, 2, 2, 'FD');
+            doc.setFillColor.apply(doc, accent);
+            doc.rect(x + 2, y + 2, cardW - 4, 0.9, 'F');
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.8);
+            doc.setTextColor.apply(doc, INK_MUTED);
+            doc.text(item.label.toUpperCase(), x + cardW / 2, y + 7, { align: 'center' });
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11.5);
+            doc.setTextColor.apply(doc, INK);
+            doc.text(item.value, x + cardW / 2, y + 13.5, { align: 'center' });
+          });
+          return y + cardH + 8;
+        }
+
+        function drawProfileSection_(profiles, startY, accent) {
+          let y = drawSectionTitle_('Facility Profile', startY, accent);
+
+          if (!profiles.length) {
+            y = ensureSpace_(y, 10);
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(8.5);
+            doc.setTextColor.apply(doc, INK_MUTED);
+            doc.text('No matching data in Company Profile List for this plant.', mL, y + 2);
+            return y + 10;
+          }
+
+          profiles.forEach(function(p, idx) {
+            const siteName = pfPdfSanitize_(p._cplSite);
+            const siteLabel = profiles.length > 1
+              ? 'Site ' + (idx + 1) + (siteName !== '—' ? ' · ' + siteName : '')
+              : (siteName !== '—' ? siteName : 'Facility details');
+
+            y = ensureSpace_(y, 48);
+            doc.autoTable(Object.assign({}, pfPdfTableBase_(), {
+              head: [[siteLabel, '']],
+              body: [
+                ['Company', pfPdfSanitize_(p._cplCompany)],
+                ['Site name', pfPdfSanitize_(p._cplSite)],
+                ['Address', pfPdfSanitize_(p._cplAddress)],
+                ['Capacity', pfPdfSanitize_(p._cplCapacity)],
+                ['Coordinate', pfPdfSanitize_(p._cplCoordinate)],
+                ['Facility type', pfPdfSanitize_(p._cplFacility)],
+                ['Certification', pfPdfSanitize_(p._cplCert)],
+              ],
+              startY: y,
+              headStyles: {
+                fillColor: accent,
+                textColor: WHITE,
+                fontStyle: 'bold',
+                halign: 'left',
+                fontSize: 9,
+              },
+              columnStyles: {
+                0: { cellWidth: 40, fontStyle: 'bold', fillColor: BG_SOFT, textColor: INK_MUTED, fontSize: 8 },
+                1: { cellWidth: cW - 40, fontSize: 9 },
+              },
+              bodyStyles: { valign: 'top' },
+            }));
+            y = doc.lastAutoTable.finalY + 6;
+          });
+          return y;
+        }
+
+        function drawCompanyTable_(companies, startY, pctLabel, accent) {
+          let y = drawSectionTitle_('Company Performance Breakdown', startY, accent);
 
           const tableHead = [[
             'Company Name',
@@ -14718,55 +15216,77 @@ function initDashboardApp() {
             ];
           });
 
-          doc.autoTable({
+          doc.autoTable(Object.assign({}, pfPdfTableBase_(), {
             head: tableHead,
             body: tableBody,
-            startY: y + 2,
-            margin: { left: mL, right: mR, bottom: mFoot + 2 },
-            tableWidth: cW,
-            styles: {
-              fontSize: 7,
-              cellPadding: 1.8,
-              textColor: [30, 30, 30],
-              overflow: 'linebreak',
-              lineColor: [235, 228, 228],
-              lineWidth: 0.1,
-            },
+            startY: y,
             headStyles: {
               fillColor: accent,
               textColor: WHITE,
               fontStyle: 'bold',
-              fontSize: 7,
-              halign: 'center',
             },
-            bodyStyles: { valign: 'middle' },
-            alternateRowStyles: { fillColor: [252, 250, 250] },
             columnStyles: {
-              0: { cellWidth: cW * 0.24, halign: 'left' },
-              1: { cellWidth: cW * 0.15, halign: 'left' },
-              2: { cellWidth: cW * 0.06, halign: 'center' },
-              3: { cellWidth: cW * 0.07, halign: 'center' },
-              4: { cellWidth: cW * 0.08, halign: 'center' },
-              5: { cellWidth: cW * 0.11, halign: 'center' },
-              6: { cellWidth: cW * 0.09, halign: 'right' },
-              7: { cellWidth: cW * 0.12, halign: 'right' },
+              0: { cellWidth: 46, halign: 'left' },
+              1: { cellWidth: 30, halign: 'left' },
+              2: { cellWidth: 10, halign: 'center' },
+              3: { cellWidth: 14, halign: 'center' },
+              4: { cellWidth: 14, halign: 'center' },
+              5: { cellWidth: 22, halign: 'center' },
+              6: { cellWidth: 16, halign: 'right' },
+              7: { cellWidth: 20, halign: 'right', fontStyle: 'bold' },
             },
-          });
+            didParseCell: function(data) {
+              if (data.section !== 'body') return;
+              if (data.column.index === 4) {
+                const v = String(data.cell.raw || '').toLowerCase();
+                if (v.includes('yes') || v.includes('nbl')) {
+                  data.cell.styles.textColor = BRAND;
+                  data.cell.styles.fontStyle = 'bold';
+                }
+              }
+              if (data.column.index === 5) {
+                const v = String(data.cell.raw || '').toLowerCase();
+                if (v.includes('high')) {
+                  data.cell.styles.textColor = BRAND;
+                  data.cell.styles.fontStyle = 'bold';
+                }
+              }
+            },
+          }));
+          return doc.lastAutoTable.finalY + 8;
+        }
 
-          y = doc.lastAutoTable.finalY + 10;
+        let y = drawReportHeader_(false);
+
+        selections.forEach(function(sel, selIdx) {
+          const isPk = sel.type === 'pk';
+          const accent = isPk ? PK_GREEN : BRAND;
+          const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
+          const pctLabel = isPk ? '% PK Traceable' : '% Traceable';
+          const badge = isPk ? 'PK' : 'CPO';
+
+          const g = findGroup(sel.type, sel.facilityKey);
+          if (!g) return;
+
+          const sum = sumFn(g);
+          const facilityPct = isPk ? sum.avgPk : sum.avgCpo;
+          const companies = g.companies.slice().sort(function(a, b) {
+            return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
+          });
+          const profiles = pfCplRowsForPlant_(g.facilityKey || g.facility);
+
+          if (selIdx > 0) {
+            doc.addPage();
+            y = drawReportHeader_(true);
+          }
+
+          y = drawFacilityHero_(g, badge, facilityPct, pctLabel, companies.length, y, accent);
+          y = drawKpiCards_(y, sum, facilityPct, pctLabel, accent);
+          y = drawProfileSection_(profiles, y, accent);
+          y = drawCompanyTable_(companies, y, pctLabel, accent);
         });
 
-        const pageCount = doc.internal.getNumberOfPages();
-        for (let p = 1; p <= pageCount; p++) {
-          doc.setPage(p);
-          doc.setFillColor(245, 240, 240);
-          doc.rect(0, pageH - 9, pageW, 9, 'F');
-          doc.setTextColor.apply(doc, GRY_LT);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(6.5);
-          doc.text('Sustainability Dashboard — Facility Performance  ·  Generated at: ' + generatedAt, mL, pageH - 4);
-          doc.text('Page ' + p + ' / ' + pageCount, pageW - mR, pageH - 4, { align: 'right' });
-        }
+        drawFooters_();
 
         const names = selections.map(function(s) {
           const g = findGroup(s.type, s.facilityKey);

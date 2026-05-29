@@ -1,0 +1,63 @@
+      <div class="panel" id="panel-company-profile-list">
+        <div class="breadcrumb">Dashboard <span>/ Company Profile List</span></div>
+        <div class="page-header">
+          <h1>Company Profile List</h1>
+          <p>Facility profiles from the <strong>Facility Profile</strong> sheet — plant, site, location, capacity, and certifications.</p>
+        </div>
+
+        <div class="stats-row cpl-stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="cpl-stat-total">—</div><div class="stat-card-label">Total sites</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="cpl-stat-plants">—</div><div class="stat-card-label">Plants</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="cpl-stat-facilities">—</div><div class="stat-card-label">Facility types</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="cpl-stat-certified">—</div><div class="stat-card-label">With certification</div></div>
+        </div>
+
+        <div class="table-card cpl-table-card">
+          <div class="table-header">
+            <h3>Facility registry</h3>
+            <div class="table-actions">
+              <button type="button" class="btn-sm btn-filled" id="btn-add-cpl">+ Add profile</button>
+              <button type="button" class="btn-sm btn-outline" id="btn-export-cpl">Export CSV</button>
+              <button type="button" class="btn-sm btn-outline" id="btn-refresh-cpl" title="Reload from sheet">Refresh</button>
+            </div>
+          </div>
+
+          <div class="search-bar">
+            <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
+            <input type="text" id="cplSearch" placeholder="Search plant, company, site, address, certification..." autocomplete="off" />
+            <button type="button" class="search-clear" id="cplSearchClear" aria-label="Clear search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="cpl-filter-bar">
+            <label class="cpl-filter-label" for="cplPlantFilter">Plant</label>
+            <select id="cplPlantFilter" class="cpl-filter-select">
+              <option value="">All plants</option>
+            </select>
+            <label class="cpl-filter-label" for="cplFacilityFilter">Facility</label>
+            <select id="cplFacilityFilter" class="cpl-filter-select">
+              <option value="">All types</option>
+            </select>
+          </div>
+
+          <div id="cpl-loading" class="cpl-loading">Loading facility profiles…</div>
+          <div id="cpl-error" class="cpl-error" style="display:none;"></div>
+
+          <div class="cpl-table-scroll">
+            <table id="cplTable" class="cpl-data-table" style="display:none;">
+              <thead>
+                <tr>
+                  <th>Plant</th>
+                  <th>Company</th>
+                  <th>Site name</th>
+                  <th>Facility</th>
+                  <th>Capacity</th>
+                  <th class="cpl-th-actions"></th>
+                </tr>
+              </thead>
+              <tbody id="cplTableBody"></tbody>
+            </table>
+          </div>
+          <p class="cpl-table-hint" id="cplTableHint">Click a row to view address, coordinates, and certifications.</p>
+        </div>
+      </div>

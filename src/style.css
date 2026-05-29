@@ -2586,6 +2586,21 @@
    /* â”€â”€ TTP: main row and expand (flat view) â”€â”€ */
    .ttp-main-row { cursor: pointer; }
    .grv-expand-row > td { padding: 0 !important; border-bottom: 1px solid rgba(74,28,28,0.05); }
+   .grv-main-row { cursor: pointer; }
+   .grv-main-row:hover td { background: rgba(139, 26, 26, 0.04); }
+   .grv-main-row.expanded td { background: rgba(139, 26, 26, 0.03); }
+   .grv-row-chevron {
+     display: inline-flex;
+     align-items: center;
+     justify-content: center;
+     width: 16px;
+     margin-right: 4px;
+     color: #9c8a8a;
+     font-size: 11px;
+     transition: transform 150ms ease;
+     vertical-align: middle;
+   }
+   .grv-main-row.expanded .grv-row-chevron { transform: rotate(90deg); color: #8b1a1a; }
    
    /* â”€â”€ Grievance / TTP detail expand panel â”€â”€ */
    .grv-detail {
@@ -2617,6 +2632,16 @@
      color: #2A1010;
      line-height: 1.5;
      word-break: break-word;
+   }
+   .grv-detail-actions {
+     grid-column: 1 / -1;
+     display: flex;
+     flex-wrap: wrap;
+     justify-content: flex-end;
+     gap: 8px;
+     padding-bottom: 10px;
+     margin-bottom: 4px;
+     border-bottom: 1px solid rgba(74, 28, 28, 0.08);
    }
    .grv-cell-action {
      max-width: 220px;
@@ -2699,6 +2724,125 @@
      font-weight: 600;
    }
    .cls-phone-link:hover { text-decoration: underline; }
+
+   /* ─── Company Profile List ─── */
+   .cpl-filter-bar {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+     gap: 8px 12px;
+     padding: 10px 16px;
+     border-bottom: 1px solid rgba(74, 28, 28, 0.06);
+     background: #fdfafa;
+   }
+   .cpl-filter-label {
+     font-size: 10px;
+     font-weight: 700;
+     text-transform: uppercase;
+     letter-spacing: 0.05em;
+     color: #9c8a8a;
+   }
+   .cpl-filter-select {
+     height: 36px;
+     min-width: 120px;
+     border: 1.5px solid #e4d8d8;
+     border-radius: 8px;
+     padding: 0 10px;
+     font-size: 13px;
+     color: #2d1515;
+     background: #faf8f8;
+   }
+   .cpl-loading,
+   .cpl-error {
+     padding: 32px 16px;
+     text-align: center;
+     font-size: 14px;
+   }
+   .cpl-error { color: #c0392b; }
+   .cpl-table-scroll { overflow-x: auto; }
+   .cpl-data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+   .cpl-table-hint {
+     margin: 0;
+     padding: 10px 16px 14px;
+     font-size: 11px;
+     color: #9c8080;
+   }
+   .cpl-plant-pill {
+     display: inline-block;
+     font-size: 11px;
+     font-weight: 700;
+     letter-spacing: 0.04em;
+     text-transform: uppercase;
+     color: #8b1a1a;
+     background: rgba(139, 26, 26, 0.1);
+     padding: 3px 9px;
+     border-radius: 999px;
+   }
+   .cpl-td-capacity { font-variant-numeric: tabular-nums; color: #5a4040; }
+   .cpl-th-actions,
+   .cpl-td-actions {
+     width: 130px;
+     text-align: right;
+     white-space: nowrap;
+   }
+   .cpl-td-actions .btn-expand,
+   .cpl-td-actions .btn-sm { margin-left: 4px; }
+   .cpl-main-row { cursor: pointer; }
+   .cpl-main-row:hover td { background: rgba(139, 26, 26, 0.04); }
+   .cpl-main-row.expanded td { background: rgba(139, 26, 26, 0.03); }
+   .cpl-expand-row > td { padding: 0 !important; border-bottom: 1px solid rgba(139, 26, 26, 0.08); }
+   .cpl-detail {
+     display: none;
+     padding: 14px 18px 16px;
+     background: #fdfafa;
+     border-top: 1px solid rgba(139, 26, 26, 0.06);
+   }
+   .cpl-detail.open { display: block; }
+   .cpl-detail-grid {
+     display: grid;
+     grid-template-columns: 1fr 1fr;
+     gap: 12px 20px;
+   }
+   @media (max-width: 720px) {
+     .cpl-detail-grid { grid-template-columns: 1fr; }
+   }
+   .cpl-detail-block--wide { grid-column: 1 / -1; }
+   .cpl-detail-label {
+     font-size: 10px;
+     font-weight: 700;
+     text-transform: uppercase;
+     letter-spacing: 0.05em;
+     color: #9c8080;
+     margin-bottom: 4px;
+   }
+   .cpl-detail-val {
+     font-size: 13px;
+     color: #2a1010;
+     line-height: 1.5;
+     word-break: break-word;
+   }
+   .cpl-map-link {
+     color: #8b1a1a;
+     font-weight: 600;
+     text-decoration: none;
+   }
+   .cpl-map-link:hover { text-decoration: underline; }
+   .cpl-cert-tags {
+     display: flex;
+     flex-wrap: wrap;
+     gap: 6px;
+   }
+   .cpl-cert-tag {
+     font-size: 11px;
+     font-weight: 500;
+     padding: 4px 10px;
+     border-radius: 999px;
+     background: rgba(139, 26, 26, 0.08);
+     color: #5a3030;
+     border: 1px solid rgba(139, 26, 26, 0.12);
+   }
+   .cpl-cert-empty { color: #9c8a8a; }
+   .cpl-btn-delete { color: #c0392b; border-color: rgba(192, 57, 43, 0.35); }
 
    /* No Buy List */
    #panel-no-buy-list .nbl-table-header {

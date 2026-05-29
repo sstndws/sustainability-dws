@@ -57,6 +57,7 @@ const SHEETS = {
   questionnaireMonitoring : 'Questionnaire Monitoring',
   eudrPotential           : 'EUDR Potential',
   eudrStatusFormula       : 'EUDR Status Formula',
+  facilityProfile         : 'Facility Profile',
 };
 
 /** Tab name for BL Monitoring (must match spreadsheet tab exactly). */
@@ -162,6 +163,18 @@ const CONTACT_SUPPLIER_HEADERS = [
   'approved_at',
   'updated_at',
   'updated_by',
+];
+
+/** Facility Profile / Company Profile List (tab: Facility Profile). */
+const FACILITY_PROFILE_HEADERS = [
+  'PLANT',
+  'COMPANY NAME',
+  'SITE NAME',
+  'ADDRESS',
+  'CAPACITY',
+  'COORDINATE',
+  'FACILITY',
+  'CERTIFICATION',
 ];
 
 const QUESTIONNAIRE_MONITORING_HEADERS = [
@@ -439,6 +452,7 @@ function doGet(e) {
       if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();
       if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
       if (sheetKey === 'eudrStatusFormula') ensureEudrStatusFormulaHeaders_();
+      if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
@@ -475,6 +489,7 @@ function doPost(e) {
     if (sheetKey === 'blMonitoring') ensureBlMonitoringHeaders_();
     if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();
     if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
+    if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
     if (action === 'upsertQuestionnaire') return respond(upsertQuestionnaireRow_(body.data || {}));
     if (action === 'syncEudrPotential') return respond(syncEudrPotentialRows_(body.mills || []));
     if (action === 'upsertEudr') return respond(upsertEudrPotentialRow_(body.data || {}));
@@ -794,6 +809,19 @@ function ensureSheetHeadersGeneric_(sheetKey, wantHeaders) {
 
 function ensureContactSupplierHeaders_() {
   return ensureSheetHeadersGeneric_('contactSupplier', CONTACT_SUPPLIER_HEADERS);
+}
+
+function ensureFacilityProfileHeaders_() {
+  return ensureSheetHeadersGeneric_('facilityProfile', FACILITY_PROFILE_HEADERS);
+}
+
+function facilityProfileRowHasContent_(obj) {
+  if (!obj) return false;
+  return !!(
+    String(obj.PLANT || '').trim() ||
+    String(obj['COMPANY NAME'] || '').trim() ||
+    String(obj['SITE NAME'] || '').trim()
+  );
 }
 
 function ensureQuestionnaireMonitoringHeaders_() {
@@ -2160,6 +2188,7 @@ function getData(sheetKey) {
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     return obj;
   }).filter(function(obj) {
+    if (sheetKey === 'facilityProfile') return facilityProfileRowHasContent_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });

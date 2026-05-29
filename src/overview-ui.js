@@ -5,6 +5,7 @@ const BG_SVG = `<svg class="ov-ld__bg-svg" viewBox="0 0 300 420" fill="none" ari
 
 const ICONS = {
   mill: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="1"/><path d="M7 10V7a2 2 0 014 0M13 10V7a2 2 0 014 0"/><line x1="12" y1="10" x2="12" y2="21"/></svg>`,
+  company: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 21h18"/><path d="M6 21V9l6-4 6 4v12"/><path d="M9 13h1"/><path d="M14 13h1"/></svg>`,
   ttp: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
   grievance: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   bl: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
@@ -21,6 +22,12 @@ const CARDS = [
     title: 'Mill Onboarding',
     desc: 'Manage and register mill profiles across the supply chain.',
     icon: 'mill',
+  },
+  {
+    panel: 'company-profile-list',
+    title: 'Company Profile List',
+    desc: 'Facility profiles — plant, site, address, capacity, coordinates, and certifications.',
+    icon: 'company',
   },
   {
     panel: 'ttm-ttp',
