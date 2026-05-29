@@ -73,6 +73,7 @@
                 <col class="pf-col-status" />
                 <col class="pf-col-num" />
                 <col class="pf-col-pct" />
+                <col class="pf-col-actions" />
               </colgroup>
               <thead>
                 <tr>
@@ -82,6 +83,7 @@
                   <th class="pf-th-center">High Risk</th>
                   <th class="pf-th-right">Total Grievance</th>
                   <th class="pf-th-right">% TRACEABLE</th>
+                  <th class="pf-th-actions">Export</th>
                 </tr>
               </thead>
               <tbody id="pfTableBody"></tbody>
@@ -110,6 +112,7 @@
                 <col class="pf-col-status" />
                 <col class="pf-col-num" />
                 <col class="pf-col-pct" />
+                <col class="pf-col-actions" />
               </colgroup>
               <thead>
                 <tr>
@@ -119,6 +122,7 @@
                   <th class="pf-th-center">High Risk</th>
                   <th class="pf-th-right">Total Grievance</th>
                   <th class="pf-th-right">% PK TRACEABLE</th>
+                  <th class="pf-th-actions">Export</th>
                 </tr>
               </thead>
               <tbody id="pfPkTableBody"></tbody>
@@ -135,7 +139,8 @@
               <button type="button" class="pf-export-modal-close" id="pfExportModalClose" aria-label="Close">✕</button>
             </div>
             <div class="pf-export-modal-body">
-              <p class="pf-export-hint">Choose product type and facilities to include. Company breakdown matches the on-screen table.</p>
+              <p class="pf-export-hint">Pilih tipe produk dan facility yang ingin diekspor. Breakdown company mengikuti filter Quarter/Year dan pencarian yang aktif.</p>
+              <p class="pf-export-meta-note">Setiap PDF menampilkan <strong>Generated at</strong> (tanggal &amp; jam) di header dan footer.</p>
               <div class="pf-export-type-row">
                 <span class="pf-export-label">Product</span>
                 <label class="pf-export-radio"><input type="radio" name="pfExportType" value="cpo" checked /> CPO (Refinery)</label>

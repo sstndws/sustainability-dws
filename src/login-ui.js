@@ -1,4 +1,5 @@
 import './login-shell.css';
+import { BRAND_TAGLINE } from './brand.js';
 
 function el(tag, className, props = {}) {
   const n = document.createElement(tag);
@@ -29,6 +30,7 @@ export function mountLoginPage(loginRoot) {
   const titles = el('div', 'login-shell__titles');
   titles.appendChild(el('span', 'login-shell__name', { textContent: 'KPNCORP' }));
   titles.appendChild(el('span', 'login-shell__sub', { textContent: 'Downstream · Admin' }));
+  titles.appendChild(el('span', 'login-shell__tagline', { textContent: BRAND_TAGLINE }));
   brand.appendChild(logoWrap);
   brand.appendChild(titles);
 

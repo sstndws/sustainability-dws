@@ -13952,6 +13952,18 @@ function initDashboardApp() {
     }
 
     function pfHandlePfTableClick_(e, body) {
+      const rowExportBtn = e.target.closest('.pf-row-export-pdf');
+      if (rowExportBtn && body.contains(rowExportBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const type = rowExportBtn.getAttribute('data-pf-type') || 'cpo';
+        const facilityKey = rowExportBtn.getAttribute('data-pf-key') || '';
+        if (facilityKey) {
+          pfGeneratePdf_([{ type: type, facilityKey: facilityKey }]);
+        }
+        return;
+      }
+
       const companyBtn = e.target.closest('.pf-company-open');
       if (companyBtn && body.contains(companyBtn)) {
         e.preventDefault();
@@ -14023,7 +14035,9 @@ function initDashboardApp() {
       if (pkCountEl) pkCountEl.textContent = filtered.length + ' KCP facility · ' + filtered.reduce(function(s,g){return s+g.companies.length;}, 0) + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">No PK data matches the current filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
+          + 'No PK data matches the current filters.'
+          + '</td></tr>';
         if (loading) loading.style.display = 'none';
         tbl.style.display = 'table';
         return;
@@ -14054,9 +14068,10 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">'  + highLabel                 + '</td>'
           + '<td class="pf-td-num">'    + grvLabel                  + '</td>'
           + '<td class="pf-td-num">'    + pfCpoPctHtml_(sum.avgPk, sum.traceSource, sum.traceNote) + '</td>'
+          + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('pk', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="6" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="7" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -14141,6 +14156,17 @@ function initDashboardApp() {
 
     function pfCountPillHtml_(n) {
       return '<span class="pf-count-pill">' + escHtml(String(n)) + '</span>';
+    }
+
+    function pfExportRowBtnHtml_(type, facilityKey) {
+      const t = type === 'pk' ? 'pk' : 'cpo';
+      return ''
+        + '<button type="button" class="pf-row-export-pdf" data-pf-type="' + escAttr_(t) + '" data-pf-key="' + escAttr_(facilityKey) + '"'
+        + ' title="Export PDF — facility ini saja" aria-label="Export PDF">'
+        + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">'
+        + '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+        + '<polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/>'
+        + '</svg></button>';
     }
 
     function pfCpoPctHtml_(v, source, note) {
@@ -14261,7 +14287,7 @@ function initDashboardApp() {
       if (scope)   scope.textContent   = filtered.length + ' facility · ' + totalCompanies + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
           + 'No data matches the current filters.'
           + '</td></tr>';
         if (loading) loading.style.display = 'none';
@@ -14296,9 +14322,10 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">' + highLabel + '</td>'
           + '<td class="pf-td-num">' + grvLabel + '</td>'
           + '<td class="pf-td-num">' + pfCpoPctHtml_(sum.avgCpo, sum.traceSource, sum.traceNote) + '</td>'
+          + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('cpo', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="6" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="7" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -14399,6 +14426,30 @@ function initDashboardApp() {
       return 'All Periods';
     }
 
+    function pfFormatGeneratedAt_() {
+      return new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    }
+
+    function pfPdfSanitize_(val) {
+      return String(val == null ? '' : val).replace(/\r?\n/g, ' ').trim() || '—';
+    }
+
+    function mountPfExportModalOnce_() {
+      const modal = document.getElementById('pf-export-modal');
+      if (!modal) return;
+      if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+      }
+    }
+
     function pfExportProductType_() {
       const r = document.querySelector('input[name="pfExportType"]:checked');
       return r ? r.value : 'cpo';
@@ -14463,6 +14514,8 @@ function initDashboardApp() {
     }
 
     function pfBindExportModalOnce_() {
+      mountPfExportModalOnce_();
+
       const exportBtn = document.getElementById('pfExportPdfBtn');
       if (exportBtn && !exportBtn._pfBound) {
         exportBtn._pfBound = true;
@@ -14524,39 +14577,36 @@ function initDashboardApp() {
     // ── PDF Export (selected facilities + company breakdown) ───────────────
     function pfGeneratePdf_(selections) {
       const jsPDFLib = getJsPDF();
-      if (!jsPDFLib) { alert('PDF library not available.'); return; }
+      if (!jsPDFLib) {
+        alert('Library PDF belum siap. Refresh halaman lalu coba lagi.');
+        return;
+      }
+      if (!selections || !selections.length) return;
 
       const btn = document.getElementById('pfExportConfirm');
       const exportBtn = document.getElementById('pfExportPdfBtn');
+      const generatedAt = pfFormatGeneratedAt_();
+      const periodLabel = pfPeriodLabel_();
+      const rowExportBtns = document.querySelectorAll('.pf-row-export-pdf');
+
       if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
       if (exportBtn) exportBtn.disabled = true;
+      rowExportBtns.forEach(function(b) { b.disabled = true; });
 
       try {
         const doc = new jsPDFLib({ orientation: 'landscape', unit: 'mm', format: 'a4' });
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
-        const mL = 12, mR = 12, cW = pageW - mL - mR;
-        const bottomMargin = 14;
+        const mL = 12;
+        const mR = 12;
+        const mFoot = 12;
+        const cW = pageW - mL - mR;
 
-        const RED     = [139, 26, 26];
-        const RED_LT  = [253, 245, 245];
-        const GREEN   = [13, 110, 70];
-        const GRN_LT  = [245, 251, 247];
-        const GRY_H   = [90, 64, 64];
-        const GRY_LBL = [140, 120, 120];
-        const BLACK   = [30, 30, 30];
-        const WHITE   = [255, 255, 255];
-
-        const exportedAt = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        const periodLabel = pfPeriodLabel_();
-        let y = 30;
-
-        function ensureSpace(need) {
-          if (y + need > pageH - bottomMargin) {
-            doc.addPage();
-            y = 14;
-          }
-        }
+        const RED = [139, 26, 26];
+        const GREEN = [13, 110, 70];
+        const GRY = [110, 96, 96];
+        const GRY_LT = [140, 120, 120];
+        const WHITE = [255, 255, 255];
 
         function findGroup(type, facilityKey) {
           const groups = type === 'pk' ? (_pfAllPkGroups || []) : (_pfAllGroups || []);
@@ -14568,7 +14618,6 @@ function initDashboardApp() {
             return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
           });
           if (!filtered) return null;
-          // Facility % from supply-weighted traceCalc (same as web); companies = filtered list
           return {
             facility: full.facility,
             facilityKey: full.facilityKey,
@@ -14578,19 +14627,33 @@ function initDashboardApp() {
           };
         }
 
-        function companyPctStr(c) {
-          return !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
+        function drawReportCover_() {
+          doc.setFillColor.apply(doc, RED);
+          doc.rect(0, 0, pageW, 24, 'F');
+          doc.setTextColor.apply(doc, WHITE);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          doc.text('Facility Performance Report', mL, 11);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.text(
+            'Generated at: ' + generatedAt + '  ·  Period: ' + periodLabel + '  ·  ' + selections.length + ' facility selected',
+            mL,
+            18
+          );
         }
 
-        function drawFacilityBlock(opt) {
-          const isPk = opt.type === 'pk';
+        drawReportCover_();
+        let y = 30;
+
+        selections.forEach(function(sel) {
+          const isPk = sel.type === 'pk';
           const accent = isPk ? GREEN : RED;
-          const accentLt = isPk ? GRN_LT : RED_LT;
           const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
-          const pctLabel = isPk ? '% PK TRACEABLE' : '% TRACEABLE';
+          const pctLabel = isPk ? '% PK Traceable' : '% Traceable';
           const badge = isPk ? 'PK' : 'CPO';
 
-          const g = findGroup(opt.type, opt.facilityKey);
+          const g = findGroup(sel.type, sel.facilityKey);
           if (!g) return;
 
           const sum = sumFn(g);
@@ -14599,132 +14662,130 @@ function initDashboardApp() {
             return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
           });
 
-          ensureSpace(28);
+          if (y > pageH - 40) {
+            doc.addPage();
+            y = 16;
+          }
+
           doc.setFillColor.apply(doc, accent);
-          doc.rect(mL, y, cW, 9, 'F');
+          doc.rect(mL, y, cW, 8.5, 'F');
           doc.setTextColor.apply(doc, WHITE);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(10);
-          doc.text(badge + '  ' + g.facility, mL + 4, y + 6);
+          doc.text(badge + '  ' + pfPdfSanitize_(g.facility), mL + 3, y + 5.8);
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8.5);
-          doc.text(pctLabel + ': ' + (facilityPct || '—') + '  |  ' + companies.length + ' companies', pageW - mR, y + 6, { align: 'right' });
-          y += 11;
+          doc.setFontSize(8);
+          doc.text(
+            pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '  ·  ' + companies.length + ' companies',
+            pageW - mR,
+            y + 5.8,
+            { align: 'right' }
+          );
+          y += 10;
 
-          // Summary metrics row
-          doc.setFillColor.apply(doc, accentLt);
-          doc.rect(mL, y, cW, 7, 'F');
-          doc.setTextColor.apply(doc, GRY_H);
+          doc.setTextColor.apply(doc, GRY);
           doc.setFontSize(7.5);
           doc.setFont('helvetica', 'bold');
           const metrics = [
             'No Buy List: ' + (sum.nblYes > 0 ? sum.nblYes + ' Yes' : '0'),
             'High Risk: ' + (sum.highRisk || 0),
             'Total Grievance: ' + (sum.grievanceSum || 0),
-            pctLabel + ': ' + (facilityPct || '—'),
+            pctLabel + ': ' + pfPdfSanitize_(facilityPct),
           ];
-          doc.text(metrics.join('   ·   '), mL + 3, y + 4.8);
-          y += 9;
+          doc.text(metrics.join('   ·   '), mL, y);
+          y += 4;
 
-          // Company table header
-          const cols = [
-            { label: 'Company Name', w: cW * 0.26, align: 'left' },
-            { label: 'Group', w: cW * 0.16, align: 'left' },
-            { label: 'Q', w: cW * 0.06, align: 'center' },
-            { label: 'Year', w: cW * 0.07, align: 'center' },
-            { label: 'NBL', w: cW * 0.08, align: 'center' },
-            { label: 'Risk', w: cW * 0.12, align: 'center' },
-            { label: 'Grievance', w: cW * 0.09, align: 'right' },
-            { label: pctLabel, w: cW * 0.12, align: 'right' },
-          ];
-          ensureSpace(8);
-          doc.setFillColor(250, 248, 248);
-          doc.rect(mL, y, cW, 5.5, 'F');
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.5);
-          let cx = mL;
-          cols.forEach(function(col) {
-            const tx = col.align === 'right' ? cx + col.w - 1.5 : col.align === 'center' ? cx + col.w / 2 : cx + 1.5;
-            doc.text(col.label.toUpperCase(), tx, y + 3.8, { align: col.align });
-            cx += col.w;
-          });
-          y += 6;
-
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7);
-          companies.forEach(function(c, idx) {
-            const rowH = 5.5;
-            ensureSpace(rowH + 2);
-            if (idx % 2 === 1) {
-              doc.setFillColor(252, 250, 250);
-              doc.rect(mL, y, cW, rowH, 'F');
-            }
-            doc.setTextColor.apply(doc, BLACK);
-            const vals = [
-              c.company,
-              c.group,
-              c.quarter,
-              c.year,
-              c.nbl,
-              c.riskLevel,
-              String(c.grievance),
-              companyPctStr(c),
+          const tableHead = [[
+            'Company Name',
+            'Group',
+            'Q',
+            'Year',
+            'NBL',
+            'Risk',
+            'Grievance',
+            pctLabel,
+          ]];
+          const tableBody = companies.map(function(c) {
+            return [
+              pfPdfSanitize_(c.company),
+              pfPdfSanitize_(c.group),
+              pfPdfSanitize_(c.quarter),
+              pfPdfSanitize_(c.year),
+              pfPdfSanitize_(c.nbl),
+              pfPdfSanitize_(c.riskLevel),
+              pfPdfSanitize_(c.grievance),
+              !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—',
             ];
-            cx = mL;
-            cols.forEach(function(col, ci) {
-              const raw = String(vals[ci] || '—');
-              const tx = col.align === 'right' ? cx + col.w - 1.5 : col.align === 'center' ? cx + col.w / 2 : cx + 1.5;
-              const lines = doc.splitTextToSize(raw, col.w - 2);
-              doc.text(lines[0] || '—', tx, y + 3.8, { align: col.align });
-              cx += col.w;
-            });
-            y += rowH;
           });
-          y += 8;
-        }
 
-        // Cover header
-        doc.setFillColor.apply(doc, RED);
-        doc.rect(0, 0, pageW, 24, 'F');
-        doc.setTextColor.apply(doc, WHITE);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(14);
-        doc.text('Facility Performance Report', mL, 11);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
-        doc.text('Exported: ' + exportedAt + '  ·  Period: ' + periodLabel + '  ·  ' + selections.length + ' facility selected', mL, 18);
+          doc.autoTable({
+            head: tableHead,
+            body: tableBody,
+            startY: y + 2,
+            margin: { left: mL, right: mR, bottom: mFoot + 2 },
+            tableWidth: cW,
+            styles: {
+              fontSize: 7,
+              cellPadding: 1.8,
+              textColor: [30, 30, 30],
+              overflow: 'linebreak',
+              lineColor: [235, 228, 228],
+              lineWidth: 0.1,
+            },
+            headStyles: {
+              fillColor: accent,
+              textColor: WHITE,
+              fontStyle: 'bold',
+              fontSize: 7,
+              halign: 'center',
+            },
+            bodyStyles: { valign: 'middle' },
+            alternateRowStyles: { fillColor: [252, 250, 250] },
+            columnStyles: {
+              0: { cellWidth: cW * 0.24, halign: 'left' },
+              1: { cellWidth: cW * 0.15, halign: 'left' },
+              2: { cellWidth: cW * 0.06, halign: 'center' },
+              3: { cellWidth: cW * 0.07, halign: 'center' },
+              4: { cellWidth: cW * 0.08, halign: 'center' },
+              5: { cellWidth: cW * 0.11, halign: 'center' },
+              6: { cellWidth: cW * 0.09, halign: 'right' },
+              7: { cellWidth: cW * 0.12, halign: 'right' },
+            },
+          });
 
-        selections.forEach(function(sel) {
-          drawFacilityBlock(sel);
+          y = doc.lastAutoTable.finalY + 10;
         });
 
         const pageCount = doc.internal.getNumberOfPages();
         for (let p = 1; p <= pageCount; p++) {
           doc.setPage(p);
           doc.setFillColor(245, 240, 240);
-          doc.rect(0, pageH - 8, pageW, 8, 'F');
-          doc.setTextColor.apply(doc, GRY_LBL);
+          doc.rect(0, pageH - 9, pageW, 9, 'F');
+          doc.setTextColor.apply(doc, GRY_LT);
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7);
-          doc.text('Sustainability Dashboard — Confidential', mL, pageH - 3);
-          doc.text('Page ' + p + ' of ' + pageCount, pageW - mR, pageH - 3, { align: 'right' });
+          doc.setFontSize(6.5);
+          doc.text('Sustainability Dashboard — Facility Performance  ·  Generated at: ' + generatedAt, mL, pageH - 4);
+          doc.text('Page ' + p + ' / ' + pageCount, pageW - mR, pageH - 4, { align: 'right' });
         }
 
         const names = selections.map(function(s) {
           const g = findGroup(s.type, s.facilityKey);
           return g ? g.facility.replace(/[^\w\-]+/g, '-').slice(0, 24) : s.facilityKey;
         });
-        const namePart = selections.length === 1
-          ? names[0]
-          : (selections.length + '-facilities');
+        const namePart = selections.length === 1 ? names[0] : (selections.length + '-facilities');
         const fname = 'Facility-Performance-' + namePart + '-' + periodLabel.replace(/\s/g, '-') + '.pdf';
         doc.save(fname);
+
+        if (typeof window.showSddToast === 'function') {
+          window.showSddToast('PDF berhasil diunduh · Generated at ' + generatedAt, 'success');
+        }
       } catch (err) {
         console.error('[PF PDF]', err);
-        alert('Export failed: ' + (err && err.message ? err.message : err));
+        alert('Export PDF gagal: ' + (err && err.message ? err.message : err));
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Generate PDF'; }
         if (exportBtn) exportBtn.disabled = false;
+        rowExportBtns.forEach(function(b) { b.disabled = false; });
       }
     }
 

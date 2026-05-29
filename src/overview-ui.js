@@ -1,4 +1,5 @@
 import './overview-landing.css';
+import { BRAND_TAGLINE } from './brand.js';
 
 const BG_SVG = `<svg class="ov-ld__bg-svg" viewBox="0 0 300 420" fill="none" aria-hidden="true"><rect x="110" y="10" width="9" height="320" fill="#5a1515"/><rect x="88" y="76" width="52" height="7" fill="#5a1515"/><rect x="65" y="95" width="94" height="195" rx="2" fill="#5a1515"/><rect x="76" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="116" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="76" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="152" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="76" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="108" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="140" y="188" width="17" height="22" rx="1" fill="#e0d5d0"/><rect x="58" y="288" width="108" height="7" fill="#5a1515"/><rect x="180" y="155" width="7" height="140" fill="#5a1515"/><rect x="163" y="177" width="40" height="6" fill="#5a1515"/><rect x="155" y="182" width="56" height="113" rx="1" fill="#5a1515"/><rect x="164" y="198" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="186" y="198" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="164" y="224" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="186" y="224" width="13" height="15" rx="1" fill="#e0d5d0"/><rect x="148" y="293" width="68" height="7" fill="#5a1515"/><line x1="38" y1="300" x2="255" y2="300" stroke="#5a1515" stroke-width="3.5"/></svg>`;
 
@@ -125,6 +126,7 @@ export function mountOverviewLanding(container) {
   header.innerHTML = `
     <p class="ov-ld__welcome" id="ovLdWelcomeLine">Welcome, there</p>
     <h2 class="ov-ld__title">Sustainability Dashboard</h2>
+    <p class="ov-ld__tagline">${BRAND_TAGLINE}</p>
     <p class="ov-ld__subtitle">Palm Oil Supply Chain Monitoring</p>
   `;
   main.appendChild(header);
