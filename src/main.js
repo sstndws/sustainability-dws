@@ -14255,6 +14255,7 @@ function initDashboardApp() {
           ttpPctNum:  ttpPctNum,
           certification: String(r['CERTIFICATION'] || '').trim(),
           coordinate: pfCompanyCoordValue_(r) || '—',
+          province: String(r['PROVINCE'] || '').trim(),
         };
 
         facilities.forEach(function(fac) {
@@ -14346,6 +14347,7 @@ function initDashboardApp() {
           ttpPctNum:  ttpPkPctNum,
           certification: String(r['CERTIFICATION'] || '').trim(),
           coordinate: pfCompanyCoordValue_(r) || '—',
+          province: String(r['PROVINCE'] || '').trim(),
         };
 
         facilities.forEach(function(fac) {
@@ -15479,6 +15481,10 @@ function initDashboardApp() {
           return { centerLat: centerLat, centerLng: centerLng, zoom: zoom };
         }
 
+        /** Render scale for crisp PDF map output (~300 DPI equivalent). */
+        const PF_MAP_HD_SCALE = 2;
+        const PF_MAP_BASE_WIDTH = 1800;
+
         function pfDrawCanvasMarkerShadow_(ctx, x, y, r) {
           ctx.beginPath();
           ctx.fillStyle = 'rgba(40, 30, 30, 0.22)';
@@ -15535,6 +15541,58 @@ function initDashboardApp() {
           ctx.textAlign = 'left';
         }
 
+        function pfFormatCoordShort_(lat, lng) {
+          return '(' + Number(lat).toFixed(2) + ', ' + Number(lng).toFixed(2) + ')';
+        }
+
+        function pfMapLegendRowText_(point) {
+          const prefix = point.kind === 'facility' ? 'F' : String(point.index || '');
+          const name = String(point.label || (point.kind === 'facility' ? 'Facility' : 'Company')).slice(0, 24);
+          const bits = [prefix + '  ' + name];
+          if (point.province) bits.push(String(point.province).slice(0, 20));
+          bits.push(pfFormatCoordShort_(point.lat, point.lng));
+          return bits.join('  ·  ');
+        }
+
+        function pfMapCoverageSummary_(points) {
+          const provinces = [];
+          points.forEach(function(p) {
+            const prov = String(p.province || '').trim();
+            if (!prov || provinces.indexOf(prov) !== -1) return;
+            provinces.push(prov);
+          });
+          if (!provinces.length) return '';
+          const shown = provinces.slice(0, 5);
+          let text = 'Areas: ' + shown.join(' · ');
+          if (provinces.length > shown.length) text += ' · +' + (provinces.length - shown.length) + ' more';
+          return text;
+        }
+
+        function pfMapLegendHeightPx_(pointCount, widthPx) {
+          const headerH = 54;
+          const rowH = 14;
+          const cols = 2;
+          const rows = Math.ceil(Math.max(1, pointCount) / cols);
+          const contentH = headerH + rows * rowH + 18;
+          const minH = Math.round(widthPx * 0.16);
+          const maxH = Math.round(widthPx * 0.42);
+          return Math.min(maxH, Math.max(minH, contentH));
+        }
+
+        function pfDrawMapPointRegionLabel_(ctx, x, y, point) {
+          const text = String(point.province || '').trim() || pfFormatCoordShort_(point.lat, point.lng);
+          const short = text.length > 20 ? text.slice(0, 18) + '…' : text;
+          const labelY = point.kind === 'facility' ? y + 24 : y + 14;
+          ctx.font = 'bold 7.5px Helvetica, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+          ctx.fillStyle = 'rgba(45, 20, 20, 0.9)';
+          ctx.strokeText(short, x, labelY);
+          ctx.fillText(short, x, labelY);
+          ctx.textAlign = 'left';
+        }
+
         function pfDrawMapLegendPanel_(ctx, points, widthPx, legendTop, legendH, accentRgb) {
           ctx.fillStyle = '#faf8f8';
           ctx.fillRect(0, legendTop, widthPx, legendH);
@@ -15557,14 +15615,29 @@ function initDashboardApp() {
           ctx.fillStyle = '#7a5a5a';
           ctx.font = '9px Helvetica, Arial, sans-serif';
           ctx.fillText('F = Facility refinery/plant   ·   1–' + companies.length + ' = Supplier company mills', padX, y);
-          y += 14;
+          y += 12;
+
+          const coverage = pfMapCoverageSummary_(points);
+          if (coverage) {
+            ctx.fillStyle = '#5a4040';
+            ctx.font = '8.5px Helvetica, Arial, sans-serif';
+            ctx.fillText(coverage, padX, y);
+            y += 12;
+          } else {
+            y += 2;
+          }
 
           const colW = (widthPx - padX * 2 - 12) / 2;
-          const rowH = 13;
+          const rowH = 14;
           const rows = [];
-          if (facility) rows.push({ kind: 'facility', text: 'F  ' + String(facility.label || 'Facility').slice(0, 38) });
+          if (facility) {
+            rows.push({
+              kind: 'facility',
+              text: pfMapLegendRowText_(Object.assign({}, facility, { label: facility.label || 'Facility' })),
+            });
+          }
           companies.forEach(function(p) {
-            rows.push({ kind: 'company', text: String(p.index) + '  ' + String(p.label || 'Company').slice(0, 36) });
+            rows.push({ kind: 'company', text: pfMapLegendRowText_(p) });
           });
 
           rows.forEach(function(row, i) {
@@ -15584,7 +15657,7 @@ function initDashboardApp() {
               ctx.fill();
             }
             ctx.fillStyle = '#2a1010';
-            ctx.font = '8.5px Helvetica, Arial, sans-serif';
+            ctx.font = '8px Helvetica, Arial, sans-serif';
             ctx.fillText(row.text, rx + 12, ry);
           });
 
@@ -15596,27 +15669,37 @@ function initDashboardApp() {
         /** One map: facility + company coordinates, auto-fit bounds, legend panel. */
         async function pfRenderPointsMapDataUrl_(points, widthPx, heightPx, accentRgb) {
           if (!Array.isArray(points) || !points.length) return '';
-          const legendH = Math.round(heightPx * 0.24);
-          const mapAreaH = heightPx - legendH;
-          const view = pfMapFitView_(points, widthPx, mapAreaH, 24);
-          const zoom = view.zoom;
+          const scale = PF_MAP_HD_SCALE;
+          const logicalW = widthPx;
+          const logicalH = heightPx;
+          const logicalLegendH = pfMapLegendHeightPx_(points.length, logicalW);
+          const logicalMapH = logicalH - logicalLegendH;
+          const view = pfMapFitView_(points, logicalW, logicalMapH, 24);
+          const tileZoom = Math.min(18, view.zoom + Math.round(Math.log2(scale)));
+
+          const canvasW = Math.round(logicalW * scale);
+          const canvasH = Math.round(logicalH * scale);
+          const legendH = Math.round(logicalLegendH * scale);
+          const mapAreaH = canvasH - legendH;
           const canvas = document.createElement('canvas');
-          canvas.width = widthPx;
-          canvas.height = heightPx;
+          canvas.width = canvasW;
+          canvas.height = canvasH;
           const ctx = canvas.getContext('2d');
           if (!ctx) return '';
 
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.fillStyle = '#f4f1f1';
-          ctx.fillRect(0, 0, widthPx, heightPx);
+          ctx.fillRect(0, 0, canvasW, canvasH);
 
-          const centerPx = pfLonLatToWorldPx_(view.centerLng, view.centerLat, zoom);
-          const topLeftX = centerPx.x - widthPx / 2;
+          const centerPx = pfLonLatToWorldPx_(view.centerLng, view.centerLat, tileZoom);
+          const topLeftX = centerPx.x - canvasW / 2;
           const topLeftY = centerPx.y - mapAreaH / 2;
           const minTx = Math.floor(topLeftX / 256) - 1;
-          const maxTx = Math.floor((topLeftX + widthPx) / 256) + 1;
+          const maxTx = Math.floor((topLeftX + canvasW) / 256) + 1;
           const minTy = Math.floor(topLeftY / 256) - 1;
           const maxTy = Math.floor((topLeftY + mapAreaH) / 256) + 1;
-          const maxTile = Math.pow(2, zoom);
+          const maxTile = Math.pow(2, tileZoom);
 
           const jobs = [];
           for (let ty = minTy; ty <= maxTy; ty++) {
@@ -15625,7 +15708,7 @@ function initDashboardApp() {
               let wrappedTx = tx;
               while (wrappedTx < 0) wrappedTx += maxTile;
               while (wrappedTx >= maxTile) wrappedTx -= maxTile;
-              jobs.push({ tx: tx, ty: ty, urls: pfTileProviders_(zoom, wrappedTx, ty) });
+              jobs.push({ tx: tx, ty: ty, urls: pfTileProviders_(tileZoom, wrappedTx, ty) });
             }
           }
           const loaded = await Promise.all(jobs.map(async function(job) {
@@ -15642,23 +15725,32 @@ function initDashboardApp() {
 
           // Subtle map frame inset (GIS dashboard feel).
           ctx.fillStyle = 'rgba(255,255,255,0.08)';
-          ctx.fillRect(0, 0, widthPx, mapAreaH);
+          ctx.fillRect(0, 0, canvasW, mapAreaH);
           ctx.strokeStyle = 'rgba(139, 26, 26, 0.15)';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(0.75, 0.75, widthPx - 1.5, mapAreaH - 1.5);
+          ctx.lineWidth = 1.5 * scale;
+          ctx.strokeRect(0.75 * scale, 0.75 * scale, canvasW - 1.5 * scale, mapAreaH - 1.5 * scale);
 
           const companies = points.filter(function(p) { return p.kind === 'company'; });
           const facility = points.find(function(p) { return p.kind === 'facility'; });
+
+          ctx.save();
+          ctx.scale(scale, scale);
           companies.forEach(function(p) {
-            const wp = pfLonLatToWorldPx_(p.lng, p.lat, zoom);
-            pfDrawCanvasMarker_(ctx, Math.round(wp.x - topLeftX), Math.round(wp.y - topLeftY), p, accentRgb);
+            const wp = pfLonLatToWorldPx_(p.lng, p.lat, tileZoom);
+            const px = Math.round((wp.x - topLeftX) / scale);
+            const py = Math.round((wp.y - topLeftY) / scale);
+            pfDrawCanvasMarker_(ctx, px, py, p, accentRgb);
+            pfDrawMapPointRegionLabel_(ctx, px, py, p);
           });
           if (facility) {
-            const wp = pfLonLatToWorldPx_(facility.lng, facility.lat, zoom);
-            pfDrawCanvasMarker_(ctx, Math.round(wp.x - topLeftX), Math.round(wp.y - topLeftY), facility, accentRgb);
+            const wp = pfLonLatToWorldPx_(facility.lng, facility.lat, tileZoom);
+            const px = Math.round((wp.x - topLeftX) / scale);
+            const py = Math.round((wp.y - topLeftY) / scale);
+            pfDrawCanvasMarker_(ctx, px, py, facility, accentRgb);
+            pfDrawMapPointRegionLabel_(ctx, px, py, facility);
           }
-
-          pfDrawMapLegendPanel_(ctx, points, widthPx, mapAreaH, legendH, accentRgb);
+          pfDrawMapLegendPanel_(ctx, points, logicalW, logicalMapH, logicalLegendH, accentRgb);
+          ctx.restore();
 
           try {
             return canvas.toDataURL('image/png');
@@ -15677,6 +15769,7 @@ function initDashboardApp() {
               lng: facCoord.lng,
               kind: 'facility',
               label: facilityName || pfPdfSanitize_(profile._cplSite) || 'Facility',
+              province: '',
             });
           }
           let idx = 0;
@@ -15690,6 +15783,7 @@ function initDashboardApp() {
               kind: 'company',
               label: c.company,
               index: idx,
+              province: String(c.province || '').trim(),
             });
           });
           return points;
@@ -15706,7 +15800,7 @@ function initDashboardApp() {
           let y = ensureSpace_(startY, sectionTitleH + mapH + 12);
           y = drawSectionTitle_('Facility Map', y, accent, true);
           const x = mL;
-          const canvasW = 1400;
+          const canvasW = PF_MAP_BASE_WIDTH;
           const canvasH = Math.round(canvasW * (mapH / mapW));
 
           doc.setDrawColor.apply(doc, BORDER);
@@ -15917,8 +16011,8 @@ function initDashboardApp() {
 
           y = drawFacilityHero_(g, badge, facilityPct, pctLabel, companies.length, y, accent);
           y = await drawProfileSection_(profiles, y, accent);
-          y = await drawUnifiedFacilityMap_(profiles, companies, g.facility, y, accent);
           y = drawKpiCards_(y, sum, facilityPct, pctLabel, accent);
+          y = await drawUnifiedFacilityMap_(profiles, companies, g.facility, y, accent);
           y = drawCompanyTable_(companies, y, pctLabel, accent);
         }
 
