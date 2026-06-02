@@ -31,7 +31,7 @@ const CARDS = [
   },
   {
     panel: 'ttm-ttp',
-    title: 'Monitoring TTM/TTP',
+    title: 'Traceability Data',
     desc: 'View and track trade monitoring data for each operational unit.',
     icon: 'ttp',
   },

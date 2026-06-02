@@ -5098,13 +5098,14 @@ function initDashboardApp() {
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
   let modalTaskKey = ''; // submission_id dari SDD yang di-add via Task List
   let allData = [];
+  let allDataRaw = [];
   let currentFilter = 'All';
   let currentSearch = '';
   let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpPkPctCol = '', ttpCategoryCol = '', ttpSearch = '';
   let ttpPkTraceVolCol = '', ttpCpoTraceVolCol = '', ttpPkTraceDenomCol = '', ttpCpoTraceDenomCol = '';
-  let ttpPeriodMode = 'overall'; // 'overall' (full year) | 'quarter'
+  let ttpPeriodMode = 'overall'; // year only
   let ttpPeriodYear = '';
-  let ttpPeriodQuarter = 'Q1';
+  let ttpPeriodQuarter = '';
   let millLoadPromise = null;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -6152,6 +6153,7 @@ function initDashboardApp() {
       table.style.display = 'none';
       const rawRows = await apiGet('mill');
       const rawData = (Array.isArray(rawRows) ? rawRows : []).map(normalizeMillApiRow);
+      allDataRaw = rawData.map(prepareMillRowPerfCache);
 
       // ── DEDUP: per Mill ID / UML ID, keep the row with most non-empty fields ──
       const dedupMap = new Map();
@@ -6174,7 +6176,7 @@ function initDashboardApp() {
       const deduped = Array.from(dedupMap.values());
       allData = rowsWithoutId.concat(deduped).map(prepareMillRowPerfCache);
       // If no IDs were found (different column name), fall back to raw
-      if (allData.length === 0 && rawData.length > 0) allData = rawData.map(prepareMillRowPerfCache);
+      if (allData.length === 0 && rawData.length > 0) allData = allDataRaw.slice();
 
       // ── SORT by Date Imported DESC for Top 5 ──
       function parseDateImported(row) {
@@ -7285,23 +7287,140 @@ function initDashboardApp() {
 
   function ttpFilterByPeriod_(rows) {
     const list = rows || [];
-    if (ttpPeriodMode === 'quarter') {
-      const wantY = String(ttpPeriodYear || '');
-      const wantQ = String(ttpPeriodQuarter || '');
-      return list.filter(function(r) {
-        return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
-      });
-    }
-    if (ttpPeriodMode === 'overall') {
-      const wantY = String(ttpPeriodYear || '');
-      if (!wantY) return list.slice();
-      return list.filter(function(r) { return ttpYearToken_(r) === wantY; });
-    }
-    return list.slice();
+    const wantY = String(ttpPeriodYear || '');
+    if (!wantY) return list.slice();
+    return list.filter(function(r) { return ttpYearToken_(r) === wantY; });
   }
 
   function ttpGetPeriodRows_() {
     return ttpFilterByPeriod_(ttpData);
+  }
+
+  function millPickField_(row, names) {
+    if (!row || typeof row !== 'object') return '';
+    const list = Array.isArray(names) ? names : [names];
+    for (let i = 0; i < list.length; i++) {
+      const v = row[list[i]];
+      if (v != null && String(v).trim() !== '') return String(v).trim();
+    }
+    const wanted = list.map(function(n) { return millHeaderNorm_(n); });
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      if (wanted.indexOf(millHeaderNorm_(k)) !== -1) {
+        const v = row[k];
+        if (v != null && String(v).trim() !== '') return String(v).trim();
+      }
+    }
+    return '';
+  }
+
+  function millSourceTypeVal_(row) {
+    return millPickField_(row, ['SOURCE TYPE', 'Source Type', 'SOURCE_TYPE']).toUpperCase();
+  }
+
+  function millProductSupplyVal_(row) {
+    return millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']).toUpperCase();
+  }
+
+  function millCoordinatesRaw_(row) {
+    return millPickField_(row, ['COORDINATES', 'Coordinates', 'Coordinate', 'COORDINATE']);
+  }
+
+  function millHasValidCoordinate_(row) {
+    const raw = millCoordinatesRaw_(row);
+    if (!raw) return false;
+    if (/^no\s*data$/i.test(raw)) return false;
+    const nums = raw.match(/-?\d+(?:[.,]\d+)?/g);
+    if (!nums || nums.length < 2) return false;
+    const lat = parseFloat(String(nums[0]).replace(',', '.'));
+    const lng = parseFloat(String(nums[1]).replace(',', '.'));
+    if (isNaN(lat) || isNaN(lng)) return false;
+    return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  }
+
+  function millSourceTypeIsMillOrTrader_(row) {
+    const st = millSourceTypeVal_(row).replace(/\s+/g, '');
+    if (!st) return false;
+    if (st === 'MILL' || st === 'TRADER') return true;
+    if (st.indexOf('MILL') !== -1) return true;
+    if (st.indexOf('TRADER') !== -1) return true;
+    return false;
+  }
+
+  function millNormalizeProductSupply_(row) {
+    const raw = millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']);
+    if (!raw) return '';
+    return String(raw)
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '')
+      .replace(/[;&/+]+/g, ',')
+      .replace(/,+/g, ',')
+      .replace(/^,|,$/g, '');
+  }
+
+  function millProductSupplyTokens_(row) {
+    const ps = millNormalizeProductSupply_(row);
+    if (!ps) return [];
+    const seen = {};
+    return ps.split(',').map(function(t) { return t.trim(); }).filter(function(t) {
+      if (!t) return false;
+      if (seen[t]) return false;
+      seen[t] = true;
+      return true;
+    });
+  }
+
+  /** CPO pool: PRODUCT SUPPLY = CPO or CPO,PK only. */
+  function millProductSupplyMatchesCpo_(row) {
+    const tokens = millProductSupplyTokens_(row);
+    if (!tokens.length) return false;
+    if (tokens.length === 1) return tokens[0] === 'CPO';
+    if (tokens.length === 2) return tokens.indexOf('CPO') !== -1 && tokens.indexOf('PK') !== -1;
+    return false;
+  }
+
+  /** PK pool: PRODUCT SUPPLY = PK or CPO,PK only. */
+  function millProductSupplyMatchesPk_(row) {
+    const tokens = millProductSupplyTokens_(row);
+    if (!tokens.length) return false;
+    if (tokens.length === 1) return tokens[0] === 'PK';
+    if (tokens.length === 2) return tokens.indexOf('CPO') !== -1 && tokens.indexOf('PK') !== -1;
+    return false;
+  }
+
+  /** All Mill Onboarding rows for selected year (uses raw rows, no dedupe). */
+  function ttpMillRowsForSelectedYear_() {
+    const wantY = String(ttpPeriodYear || '');
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : allData;
+    if (!wantY || !src || !src.length) return [];
+    return src.filter(function(row) {
+      const yTok = String(parseMillYearSort(millYearVal(row)) || millYearVal(row) || '').trim();
+      return yTok === wantY;
+    });
+  }
+
+  function ttpCalcTtmCoordinatePct_(rows, productKind) {
+    const pool = (rows || []).filter(function(row) {
+      if (!millSourceTypeIsMillOrTrader_(row)) return false;
+      if (productKind === 'cpo') return millProductSupplyMatchesCpo_(row);
+      if (productKind === 'pk') return millProductSupplyMatchesPk_(row);
+      return false;
+    });
+    const total = pool.length;
+    if (!total) return { pct: NaN, withCoord: 0, total: 0, withoutCoord: 0 };
+    let withCoord = 0;
+    pool.forEach(function(row) {
+      if (millHasValidCoordinate_(row)) withCoord++;
+    });
+    return {
+      pct: (withCoord / total) * 100,
+      withCoord: withCoord,
+      total: total,
+      withoutCoord: total - withCoord,
+    };
   }
 
   function ttpApplyTableFilters_(rows) {
@@ -7549,9 +7668,7 @@ function initDashboardApp() {
   }
 
   function ttpPeriodScopeLabel_() {
-    const y = ttpPeriodYear || '—';
-    if (ttpPeriodMode === 'overall') return 'Full year ' + y;
-    return y + ' · ' + (ttpPeriodQuarter || '—');
+    return 'Year ' + (ttpPeriodYear || '—');
   }
 
   function ttpFormatTtpTon_(n) {
@@ -7566,9 +7683,7 @@ function initDashboardApp() {
     const scope = ttpPeriodScopeLabel_();
     if (!total) return 'No data loaded';
     let line = scope + ' · ' + n.toLocaleString() + ' supplier rows';
-    if (ttpPeriodMode === 'quarter') {
-      line += ' (filtered)';
-    } else if (n < total) {
+    if (n < total) {
       line += ' · ' + total.toLocaleString() + ' total in database';
     }
     if (cpoAgg && cpoAgg.method === 'sum' && cpoAgg.sumDen > 0) {
@@ -7599,17 +7714,8 @@ function initDashboardApp() {
   function syncTtpPeriodPickersUi_() {
     const pickers = document.getElementById('ttpPeriodPickers');
     const yearWrap = document.getElementById('ttpPeriodYearWrap');
-    const quarterWrap = document.getElementById('ttpPeriodQuarterWrap');
-    const modeBtns = document.querySelectorAll('[data-ttp-period-mode]');
-    modeBtns.forEach(function(btn) {
-      btn.classList.toggle('active', btn.getAttribute('data-ttp-period-mode') === ttpPeriodMode);
-    });
-    const isQuarter = ttpPeriodMode === 'quarter';
     if (pickers) pickers.hidden = false;
     if (yearWrap) yearWrap.style.display = '';
-    if (quarterWrap) quarterWrap.style.display = isQuarter ? '' : 'none';
-    const qSel = document.getElementById('ttpPeriodQuarter');
-    if (qSel && ttpPeriodQuarter) qSel.value = ttpPeriodQuarter;
     const ySel = document.getElementById('ttpPeriodYear');
     if (ySel && ttpPeriodYear) ySel.value = ttpPeriodYear;
   }
@@ -7617,10 +7723,15 @@ function initDashboardApp() {
   function renderTtpTraceableStats_() {
     const cpoEl = document.getElementById('ttp-stat-cpo-traceable');
     const pkEl = document.getElementById('ttp-stat-pk-traceable');
+    const ttmCpoEl = document.getElementById('ttp-stat-cpo-ttm-coord');
+    const ttmPkEl = document.getElementById('ttp-stat-pk-ttm-coord');
     const metaEl = document.getElementById('ttpPeriodMeta');
     const periodRows = ttpGetPeriodRows_();
     const cpoAgg = ttpAggregateTotalTraceablePct_(periodRows, 'cpo');
     const pkAgg = ttpAggregateTotalTraceablePct_(periodRows, 'pk');
+    const millRows = ttpMillRowsForSelectedYear_();
+    const ttmCpo = ttpCalcTtmCoordinatePct_(millRows, 'cpo');
+    const ttmPk = ttpCalcTtmCoordinatePct_(millRows, 'pk');
     if (metaEl) metaEl.textContent = ttpPeriodMetaText_(periodRows, cpoAgg, pkAgg);
 
     if (cpoEl) {
@@ -7640,6 +7751,24 @@ function initDashboardApp() {
           + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
         : 'Tidak ada data PK traceable pada periode ini';
     }
+    if (ttmCpoEl) {
+      ttmCpoEl.textContent = ttpFormatTraceablePct_(ttmCpo.pct);
+      ttmCpoEl.title = ttmCpo.total
+        ? ttmCpo.withCoord + ' / ' + ttmCpo.total + ' records with valid coordinates'
+          + '\n' + ttmCpo.withoutCoord + ' NO DATA / invalid'
+          + '\nPool: SOURCE TYPE = MILL or TRADER · PRODUCT SUPPLY = CPO or CPO,PK'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' (all rows, 2-column filter only)'
+        : 'No MILL/TRADER CPO records in Mill Onboarding for this year';
+    }
+    if (ttmPkEl) {
+      ttmPkEl.textContent = ttpFormatTraceablePct_(ttmPk.pct);
+      ttmPkEl.title = ttmPk.total
+        ? ttmPk.withCoord + ' / ' + ttmPk.total + ' records with valid coordinates'
+          + '\n' + ttmPk.withoutCoord + ' NO DATA / invalid'
+          + '\nPool: SOURCE TYPE = MILL or TRADER · PRODUCT SUPPLY = PK or CPO,PK'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' (all rows, 2-column filter only)'
+        : 'No MILL/TRADER PK records in Mill Onboarding for this year';
+    }
   }
 
   function refreshTtpPeriodDashboard_() {
@@ -7655,25 +7784,10 @@ function initDashboardApp() {
     const panel = document.getElementById('panel-ttm-ttp');
     if (!panel) return;
     ttpPeriodBarBound = true;
-    panel.addEventListener('click', function(e) {
-      const btn = e.target.closest('[data-ttp-period-mode]');
-      if (!btn || !panel.contains(btn)) return;
-      const mode = btn.getAttribute('data-ttp-period-mode');
-      if (!mode || mode === ttpPeriodMode) return;
-      ttpPeriodMode = mode;
-      refreshTtpPeriodDashboard_();
-    });
     const yearSel = document.getElementById('ttpPeriodYear');
-    const qSel = document.getElementById('ttpPeriodQuarter');
     if (yearSel) {
       yearSel.addEventListener('change', function() {
         ttpPeriodYear = this.value;
-        refreshTtpPeriodDashboard_();
-      });
-    }
-    if (qSel) {
-      qSel.addEventListener('change', function() {
-        ttpPeriodQuarter = this.value;
         refreshTtpPeriodDashboard_();
       });
     }
@@ -7916,7 +8030,7 @@ function initDashboardApp() {
 
     titleEl.textContent = supplier !== '—' ? supplier : 'Supplier detail';
     const subParts = [group, company, mill].filter(function(p) { return p && p !== '—'; });
-    subEl.textContent = subParts.length ? subParts.join(' · ') : 'Monitoring TTM/TTP';
+    subEl.textContent = subParts.length ? subParts.join(' · ') : 'Traceability Data';
 
     try {
       bodyEl.innerHTML = buildTtpDetailBodyHtml_(row);
@@ -7983,6 +8097,9 @@ function initDashboardApp() {
       errorEl.style.display = 'none';
       table.style.display = 'none';
       ttpData = await apiGet('ttp');
+      await loadMillData().catch(function(err) {
+        console.warn('[TTP] Mill data unavailable for TTM coordinate KPIs:', err);
+      });
       ttpLoaded = true;
       ttpFields = ttpData.length > 0 ? Object.keys(ttpData[0]).filter(k => k !== '_row') : [];
       ttpData = ttpData.map(function(row) {
@@ -12592,7 +12709,10 @@ function initDashboardApp() {
     if (allData && allData.length) return;
     const rawRows = await apiGet('mill');
     const rawData = (Array.isArray(rawRows) ? rawRows : []).map(normalizeMillApiRow);
-    if (rawData.length) allData = rawData.map(prepareMillRowPerfCache);
+    if (rawData.length) {
+      allDataRaw = rawData.map(prepareMillRowPerfCache);
+      allData = allDataRaw.slice();
+    }
   }
 
   async function loadEudrDataImpl_(force) {
@@ -14223,9 +14343,90 @@ function initDashboardApp() {
 
     // ── END PK data pipeline ──────────────────────────────────
 
+    /** Resolve RSPO / ISPO / ISCC from mill row (blob, direct columns, or cert status fields). */
+    function pfCertNamesFromMillRow_(row) {
+      const certs = ['RSPO', 'ISPO', 'ISCC'];
+      const found = [];
+      certs.forEach(function(name) {
+        const v = eudrCertValue_(row, name);
+        if (!v) return;
+        const yn = millProfileFormatYesNo_(v);
+        if (yn === 'Yes' || v === '1') found.push(name);
+        else if (String(v).toUpperCase().indexOf(name) !== -1 && yn !== 'No') found.push(name);
+      });
+      if (found.length) return found;
+      const blob = String(pickSavedCol(row, ['CERTIFICATION', 'Certification']) || '').trim();
+      if (!blob) return [];
+      return pfParseCertParts_(blob);
+    }
+
+    function pfCertNamesFromTtpRow_(row) {
+      const items = [
+        { label: 'ISPO', patterns: ['ISPO (Y/N)', 'ISPO'] },
+        { label: 'RSPO', patterns: ['RSPO (Y/N)', 'RSPO'] },
+        { label: 'ISCC', patterns: ['ISCC (Y/N)', 'ISCC'] },
+      ];
+      const found = [];
+      items.forEach(function(it) {
+        const v = ttpRowField_(row, it.patterns);
+        if (!v || v === '—') return;
+        const yn = millProfileFormatYesNo_(v);
+        if (yn === 'Yes' || v === '1') found.push(it.label);
+      });
+      return found;
+    }
+
+    function pfBuildTtpCertLookup_() {
+      const lk = {};
+      (ttpData || []).forEach(function(r) {
+        const co = String(r['COMPANY NAME'] || r['Company Name'] || '').trim().toUpperCase();
+        if (!co) return;
+        const certs = pfCertNamesFromTtpRow_(r);
+        if (!certs.length) return;
+        if (!lk[co]) lk[co] = {};
+        certs.forEach(function(c) { lk[co][c] = true; });
+      });
+      const out = {};
+      Object.keys(lk).forEach(function(k) {
+        out[k] = Object.keys(lk[k]);
+      });
+      return out;
+    }
+
+    function pfTtpCertsForCompany_(ttpCertLookup, companyUpper) {
+      if (!companyUpper || !ttpCertLookup) return [];
+      const direct = ttpCertLookup[companyUpper];
+      if (direct && direct.length) return direct;
+      const sellerLoose = normalizeLooseKey(companyUpper);
+      if (!sellerLoose) return [];
+      let best = [];
+      Object.keys(ttpCertLookup).forEach(function(key) {
+        const certs = ttpCertLookup[key];
+        if (!certs || !certs.length) return;
+        if (normalizeLooseKey(key) === sellerLoose) {
+          best = certs;
+          return;
+        }
+        if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(key, companyUpper)) {
+          best = certs;
+        }
+      });
+      return best;
+    }
+
+    function pfMillCertificationValue_(millRow, ttpCertLookup) {
+      let names = pfCertNamesFromMillRow_(millRow);
+      if (!names.length) {
+        const coUpper = String(millRow['COMPANY NAME'] || '').trim().toUpperCase();
+        names = pfTtpCertsForCompany_(ttpCertLookup, coUpper);
+      }
+      return names.length ? names.join(', ') : '';
+    }
+
     function pfBuildRows_() {
       const millRows = pfMillRowsForBuild_();
       const ttpLookup = pfBuildTtpLookup_();
+      const ttpCertLookup = pfBuildTtpCertLookup_();
       const suppliedLookup = pfBuildSuppliedCpoLookup_(_pfSuppliedCpoData);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
 
@@ -14253,7 +14454,7 @@ function initDashboardApp() {
           riskLevel:  String(r['RESULT RISK LEVEL']   || '').trim() || '—',
           grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
           ttpPctNum:  ttpPctNum,
-          certification: String(r['CERTIFICATION'] || '').trim(),
+          certification: pfMillCertificationValue_(r, ttpCertLookup),
           coordinate: pfCompanyCoordValue_(r) || '—',
           province: String(r['PROVINCE'] || '').trim(),
         };
@@ -14314,10 +14515,9 @@ function initDashboardApp() {
     function pfBuildPkGroups_() {
       const millRows    = pfMillRowsForBuild_();
       const ttpPkLookup = pfBuildTtpPkLookup_();
+      const ttpCertLookup = pfBuildTtpCertLookup_();
       const suppliedLookup = pfBuildSuppliedPkLookup_(_pfSuppliedPkData);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
-
-
 
       const byFacility = new Map();
       millRows.forEach(function(r) {
@@ -14345,7 +14545,7 @@ function initDashboardApp() {
           riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
           grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
           ttpPctNum:  ttpPkPctNum,
-          certification: String(r['CERTIFICATION'] || '').trim(),
+          certification: pfMillCertificationValue_(r, ttpCertLookup),
           coordinate: pfCompanyCoordValue_(r) || '—',
           province: String(r['PROVINCE'] || '').trim(),
         };
@@ -14427,10 +14627,25 @@ function initDashboardApp() {
     }
 
     /** Nested detail table for PK facilities. */
+    function pfNormalizeCertPart_(part) {
+      const s = String(part || '').trim();
+      if (!s) return '';
+      const m = s.match(/^(RSPO|ISPO|ISCC)\b/i);
+      if (m) return m[1].toUpperCase();
+      return s;
+    }
+
     function pfParseCertParts_(raw) {
       const s = String(raw || '').trim();
       if (!s || s === '—') return [];
-      return s.split(/[,;|]+/).map(function(p) { return p.trim(); }).filter(Boolean);
+      const parts = s.split(/[,;|\n\r]+/).map(function(p) { return pfNormalizeCertPart_(p); }).filter(Boolean);
+      const seen = {};
+      return parts.filter(function(p) {
+        const key = p.toUpperCase();
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
     }
 
     function pfCertPillsHtml_(raw) {
@@ -15195,7 +15410,7 @@ function initDashboardApp() {
             doc.setFontSize(7);
             doc.setTextColor.apply(doc, INK_LIGHT);
             doc.text('Sustainability Dashboard · Facility Performance', mL, pageH - 6);
-            doc.text('Generated ' + generatedAt, pageW / 2, pageH - 6, { align: 'center' });
+            doc.text('copyright @sustainabilitydws', pageW / 2, pageH - 6, { align: 'center' });
             doc.text('Page ' + p + ' of ' + total, pageW - mR, pageH - 6, { align: 'right' });
           }
         }
@@ -15485,112 +15700,131 @@ function initDashboardApp() {
         const PF_MAP_HD_SCALE = 2;
         const PF_MAP_BASE_WIDTH = 1800;
 
-        function pfDrawCanvasMarkerShadow_(ctx, x, y, r) {
-          ctx.beginPath();
-          ctx.fillStyle = 'rgba(40, 30, 30, 0.22)';
-          ctx.ellipse(x + 1.5, y + r + 2, r * 0.9, r * 0.35, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        function pfDrawMapMarkerDot_(ctx, x, y, point, accentRgb) {
+          const isFac = point.kind === 'facility';
+          const r = isFac ? 8 : 7;
+          const color = isFac ? 'rgb(' + accentRgb.join(',') + ')' : '#1a5fa8';
+          const label = isFac ? 'F' : String(point.index || '');
 
-        function pfDrawCanvasMarker_(ctx, x, y, point, accentRgb) {
-          if (point.kind === 'facility') {
-            pfDrawCanvasMarkerShadow_(ctx, x, y, 14);
-            ctx.beginPath();
-            ctx.fillStyle = 'rgba(' + accentRgb.join(',') + ',0.22)';
-            ctx.arc(x, y, 18, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2.5;
-            ctx.arc(x, y - 2, 9, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
-            ctx.moveTo(x, y + 7);
-            ctx.lineTo(x - 7, y + 20);
-            ctx.lineTo(x + 7, y + 20);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 11px Helvetica, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('F', x, y + 1);
-            ctx.textAlign = 'left';
-            return;
-          }
-          const idx = point.index || 0;
-          pfDrawCanvasMarkerShadow_(ctx, x, y, 8);
           ctx.beginPath();
-          ctx.fillStyle = 'rgba(24, 92, 160, 0.2)';
-          ctx.arc(x, y, 12, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.fillStyle = '#1a5fa8';
+          ctx.fillStyle = color;
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
-          ctx.arc(x, y, 7, 0, Math.PI * 2);
+          ctx.arc(x, y, r, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 9px Helvetica, Arial, sans-serif';
+          ctx.font = 'bold ' + (isFac ? 10 : 8) + 'px Helvetica, Arial, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText(String(idx), x, y + 3);
+          ctx.fillText(label, x, y + (isFac ? 3.5 : 3));
           ctx.textAlign = 'left';
         }
 
-        function pfFormatCoordShort_(lat, lng) {
-          return '(' + Number(lat).toFixed(2) + ', ' + Number(lng).toFixed(2) + ')';
-        }
-
-        function pfMapLegendRowText_(point) {
-          const prefix = point.kind === 'facility' ? 'F' : String(point.index || '');
-          const name = String(point.label || (point.kind === 'facility' ? 'Facility' : 'Company')).slice(0, 24);
-          const bits = [prefix + '  ' + name];
-          if (point.province) bits.push(String(point.province).slice(0, 20));
-          bits.push(pfFormatCoordShort_(point.lat, point.lng));
-          return bits.join('  ·  ');
-        }
-
-        function pfMapCoverageSummary_(points) {
-          const provinces = [];
-          points.forEach(function(p) {
-            const prov = String(p.province || '').trim();
-            if (!prov || provinces.indexOf(prov) !== -1) return;
-            provinces.push(prov);
+        function pfLayoutMapMarkers_(markers, minDist, maxLead) {
+          minDist = minDist || 24;
+          maxLead = maxLead || 42;
+          markers.forEach(function(m) {
+            m.dx = m.ax;
+            m.dy = m.ay;
+            m.fixed = m.point && m.point.kind === 'facility';
           });
-          if (!provinces.length) return '';
-          const shown = provinces.slice(0, 5);
-          let text = 'Areas: ' + shown.join(' · ');
-          if (provinces.length > shown.length) text += ' · +' + (provinces.length - shown.length) + ' more';
-          return text;
+          for (let pass = 0; pass < 18; pass++) {
+            for (let i = 0; i < markers.length; i++) {
+              for (let j = i + 1; j < markers.length; j++) {
+                const a = markers[i];
+                const b = markers[j];
+                let dx = b.dx - a.dx;
+                let dy = b.dy - a.dy;
+                let dist = Math.hypot(dx, dy) || 1;
+                if (dist < minDist) {
+                  const push = (minDist - dist) / (a.fixed && b.fixed ? 1 : (a.fixed || b.fixed ? 1.2 : 2));
+                  const nx = dx / dist;
+                  const ny = dy / dist;
+                  if (!a.fixed) {
+                    a.dx -= nx * push;
+                    a.dy -= ny * push;
+                  }
+                  if (!b.fixed) {
+                    b.dx += nx * push;
+                    b.dy += ny * push;
+                  }
+                }
+              }
+            }
+            markers.forEach(function(m) {
+              if (m.fixed) {
+                m.dx = m.ax;
+                m.dy = m.ay;
+                return;
+              }
+              let dx = m.dx - m.ax;
+              let dy = m.dy - m.ay;
+              let dist = Math.hypot(dx, dy);
+              if (dist > maxLead) {
+                m.dx = m.ax + (dx / dist) * maxLead;
+                m.dy = m.ay + (dy / dist) * maxLead;
+              }
+            });
+          }
+          return markers;
         }
 
-        function pfMapLegendHeightPx_(pointCount, widthPx) {
-          const headerH = 54;
-          const rowH = 14;
+        function pfDrawMapMarkerWithLayout_(ctx, layout, point, accentRgb) {
+          const hasLead = Math.hypot(layout.dx - layout.ax, layout.dy - layout.ay) > 3;
+          if (hasLead) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(70, 55, 55, 0.45)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(layout.ax, layout.ay);
+            ctx.lineTo(layout.dx, layout.dy);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.fillStyle = point.kind === 'facility'
+              ? 'rgba(' + accentRgb.join(',') + ',0.85)'
+              : 'rgba(26, 95, 168, 0.85)';
+            ctx.arc(layout.ax, layout.ay, 2.2, 0, Math.PI * 2);
+            ctx.fill();
+            pfDrawMapMarkerDot_(ctx, layout.dx, layout.dy, point, accentRgb);
+            return;
+          }
+          pfDrawMapMarkerDot_(ctx, layout.ax, layout.ay, point, accentRgb);
+        }
+
+        function pfMapProvinceSummaryRows_(points) {
+          const companies = points.filter(function(p) { return p.kind === 'company'; });
+          const facility = points.find(function(p) { return p.kind === 'facility'; });
+          const counts = {};
+          companies.forEach(function(p) {
+            const prov = String(p.province || '').trim() || 'Unspecified region';
+            counts[prov] = (counts[prov] || 0) + 1;
+          });
+          const rows = Object.keys(counts).map(function(prov) {
+            return { province: prov, count: counts[prov] };
+          }).sort(function(a, b) {
+            if (b.count !== a.count) return b.count - a.count;
+            return a.province.localeCompare(b.province, undefined, { sensitivity: 'base' });
+          }).map(function(r) {
+            return {
+              kind: 'province',
+              text: r.province + ' · ' + r.count + ' compan' + (r.count === 1 ? 'y' : 'ies'),
+            };
+          });
+          if (facility) {
+            rows.unshift({ kind: 'facility', text: 'Facility (refinery/plant) · 1 location' });
+          }
+          return rows;
+        }
+
+        function pfMapLegendHeightPx_(points, widthPx) {
+          const summaryRows = pfMapProvinceSummaryRows_(points);
+          const headerH = 42;
+          const rowH = 13;
           const cols = 2;
-          const rows = Math.ceil(Math.max(1, pointCount) / cols);
+          const rows = Math.ceil(Math.max(1, summaryRows.length) / cols);
           const contentH = headerH + rows * rowH + 18;
-          const minH = Math.round(widthPx * 0.16);
-          const maxH = Math.round(widthPx * 0.42);
+          const minH = Math.round(widthPx * 0.12);
+          const maxH = Math.round(widthPx * 0.28);
           return Math.min(maxH, Math.max(minH, contentH));
-        }
-
-        function pfDrawMapPointRegionLabel_(ctx, x, y, point) {
-          const text = String(point.province || '').trim() || pfFormatCoordShort_(point.lat, point.lng);
-          const short = text.length > 20 ? text.slice(0, 18) + '…' : text;
-          const labelY = point.kind === 'facility' ? y + 24 : y + 14;
-          ctx.font = 'bold 7.5px Helvetica, Arial, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-          ctx.fillStyle = 'rgba(45, 20, 20, 0.9)';
-          ctx.strokeText(short, x, labelY);
-          ctx.fillText(short, x, labelY);
-          ctx.textAlign = 'left';
         }
 
         function pfDrawMapLegendPanel_(ctx, points, widthPx, legendTop, legendH, accentRgb) {
@@ -15603,61 +15837,41 @@ function initDashboardApp() {
           ctx.lineTo(widthPx, legendTop);
           ctx.stroke();
 
-          const facility = points.find(function(p) { return p.kind === 'facility'; });
           const companies = points.filter(function(p) { return p.kind === 'company'; });
+          const summaryRows = pfMapProvinceSummaryRows_(points);
           const padX = 14;
           let y = legendTop + 14;
 
           ctx.fillStyle = '#3d1818';
           ctx.font = 'bold 11px Helvetica, Arial, sans-serif';
-          ctx.fillText('LOCATIONS (' + points.length + ')', padX, y);
+          ctx.fillText('LOCATION SUMMARY', padX, y);
           y += 12;
           ctx.fillStyle = '#7a5a5a';
           ctx.font = '9px Helvetica, Arial, sans-serif';
-          ctx.fillText('F = Facility refinery/plant   ·   1–' + companies.length + ' = Supplier company mills', padX, y);
-          y += 12;
-
-          const coverage = pfMapCoverageSummary_(points);
-          if (coverage) {
-            ctx.fillStyle = '#5a4040';
-            ctx.font = '8.5px Helvetica, Arial, sans-serif';
-            ctx.fillText(coverage, padX, y);
-            y += 12;
-          } else {
-            y += 2;
-          }
+          ctx.fillText(
+            'F = Facility   ·   1–' + companies.length + ' = Company mills (match # in breakdown table)',
+            padX,
+            y
+          );
+          y += 14;
 
           const colW = (widthPx - padX * 2 - 12) / 2;
-          const rowH = 14;
-          const rows = [];
-          if (facility) {
-            rows.push({
-              kind: 'facility',
-              text: pfMapLegendRowText_(Object.assign({}, facility, { label: facility.label || 'Facility' })),
-            });
-          }
-          companies.forEach(function(p) {
-            rows.push({ kind: 'company', text: pfMapLegendRowText_(p) });
-          });
-
-          rows.forEach(function(row, i) {
+          const rowH = 13;
+          summaryRows.forEach(function(row, i) {
             const col = i % 2;
             const rowIdx = Math.floor(i / 2);
             const rx = padX + col * (colW + 12);
             const ry = y + rowIdx * rowH;
             if (row.kind === 'facility') {
               ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
-              ctx.beginPath();
-              ctx.arc(rx + 4, ry - 3, 4, 0, Math.PI * 2);
-              ctx.fill();
             } else {
               ctx.fillStyle = '#1a5fa8';
-              ctx.beginPath();
-              ctx.arc(rx + 4, ry - 3, 4, 0, Math.PI * 2);
-              ctx.fill();
             }
+            ctx.beginPath();
+            ctx.arc(rx + 4, ry - 3, 3.5, 0, Math.PI * 2);
+            ctx.fill();
             ctx.fillStyle = '#2a1010';
-            ctx.font = '8px Helvetica, Arial, sans-serif';
+            ctx.font = '8.5px Helvetica, Arial, sans-serif';
             ctx.fillText(row.text, rx + 12, ry);
           });
 
@@ -15666,13 +15880,24 @@ function initDashboardApp() {
           ctx.fillText('© OpenStreetMap contributors · © CARTO', padX, legendTop + legendH - 8);
         }
 
+        function pfAssignCompanyMapIndexes_(companies) {
+          let idx = 0;
+          return companies.map(function(c) {
+            if (!pfParseLatLng_(c.coordinate)) {
+              return Object.assign({}, c, { mapIndex: null });
+            }
+            idx += 1;
+            return Object.assign({}, c, { mapIndex: idx });
+          });
+        }
+
         /** One map: facility + company coordinates, auto-fit bounds, legend panel. */
         async function pfRenderPointsMapDataUrl_(points, widthPx, heightPx, accentRgb) {
           if (!Array.isArray(points) || !points.length) return '';
           const scale = PF_MAP_HD_SCALE;
           const logicalW = widthPx;
           const logicalH = heightPx;
-          const logicalLegendH = pfMapLegendHeightPx_(points.length, logicalW);
+          const logicalLegendH = pfMapLegendHeightPx_(points, logicalW);
           const logicalMapH = logicalH - logicalLegendH;
           const view = pfMapFitView_(points, logicalW, logicalMapH, 24);
           const tileZoom = Math.min(18, view.zoom + Math.round(Math.log2(scale)));
@@ -15732,23 +15957,30 @@ function initDashboardApp() {
 
           const companies = points.filter(function(p) { return p.kind === 'company'; });
           const facility = points.find(function(p) { return p.kind === 'facility'; });
+          const markerLayouts = [];
 
           ctx.save();
           ctx.scale(scale, scale);
           companies.forEach(function(p) {
             const wp = pfLonLatToWorldPx_(p.lng, p.lat, tileZoom);
-            const px = Math.round((wp.x - topLeftX) / scale);
-            const py = Math.round((wp.y - topLeftY) / scale);
-            pfDrawCanvasMarker_(ctx, px, py, p, accentRgb);
-            pfDrawMapPointRegionLabel_(ctx, px, py, p);
+            markerLayouts.push({
+              point: p,
+              ax: Math.round((wp.x - topLeftX) / scale),
+              ay: Math.round((wp.y - topLeftY) / scale),
+            });
           });
           if (facility) {
             const wp = pfLonLatToWorldPx_(facility.lng, facility.lat, tileZoom);
-            const px = Math.round((wp.x - topLeftX) / scale);
-            const py = Math.round((wp.y - topLeftY) / scale);
-            pfDrawCanvasMarker_(ctx, px, py, facility, accentRgb);
-            pfDrawMapPointRegionLabel_(ctx, px, py, facility);
+            markerLayouts.push({
+              point: facility,
+              ax: Math.round((wp.x - topLeftX) / scale),
+              ay: Math.round((wp.y - topLeftY) / scale),
+            });
           }
+          pfLayoutMapMarkers_(markerLayouts);
+          markerLayouts.forEach(function(layout) {
+            pfDrawMapMarkerWithLayout_(ctx, layout, layout.point, accentRgb);
+          });
           pfDrawMapLegendPanel_(ctx, points, logicalW, logicalMapH, logicalLegendH, accentRgb);
           ctx.restore();
 
@@ -15772,17 +16004,15 @@ function initDashboardApp() {
               province: '',
             });
           }
-          let idx = 0;
           companies.forEach(function(c) {
             const p = pfParseLatLng_(c.coordinate);
-            if (!p) return;
-            idx++;
+            if (!p || c.mapIndex == null) return;
             points.push({
               lat: p.lat,
               lng: p.lng,
               kind: 'company',
               label: c.company,
-              index: idx,
+              index: c.mapIndex,
               province: String(c.province || '').trim(),
             });
           });
@@ -15909,6 +16139,7 @@ function initDashboardApp() {
           let y = drawSectionTitle_('Company Performance Breakdown', startY, accent);
 
           const tableHead = [[
+            '#',
             'Company Name',
             'Group',
             'Certification',
@@ -15920,6 +16151,7 @@ function initDashboardApp() {
           ]];
           const tableBody = companies.map(function(c) {
             return [
+              c.mapIndex != null ? String(c.mapIndex) : '—',
               pfPdfSanitize_(c.company),
               pfPdfSanitize_(c.group),
               c.certification || '',
@@ -15931,7 +16163,7 @@ function initDashboardApp() {
             ];
           });
 
-          const colW = pfPdfColWidths_([18, 14, 14, 14, 8, 10, 7, 15]);
+          const colW = pfPdfColWidths_([5, 17, 13, 13, 13, 8, 9, 7, 15]);
 
           doc.autoTable(Object.assign({}, pfPdfTableBase_(), {
             head: tableHead,
@@ -15943,32 +16175,33 @@ function initDashboardApp() {
               fontStyle: 'bold',
             },
             columnStyles: {
-              0: { cellWidth: colW[0], halign: 'left' },
+              0: { cellWidth: colW[0], halign: 'center', fontStyle: 'bold' },
               1: { cellWidth: colW[1], halign: 'left' },
               2: { cellWidth: colW[2], halign: 'left' },
-              3: { cellWidth: colW[3], halign: 'left', fontSize: 7.7 },
-              4: { cellWidth: colW[4], halign: 'center' },
+              3: { cellWidth: colW[3], halign: 'left' },
+              4: { cellWidth: colW[4], halign: 'left', fontSize: 7.7 },
               5: { cellWidth: colW[5], halign: 'center' },
-              6: { cellWidth: colW[6], halign: 'right' },
-              7: { cellWidth: colW[7], halign: 'right', fontStyle: 'bold' },
+              6: { cellWidth: colW[6], halign: 'center' },
+              7: { cellWidth: colW[7], halign: 'right' },
+              8: { cellWidth: colW[8], halign: 'right', fontStyle: 'bold' },
             },
             didParseCell: function(data) {
               if (data.section !== 'body') return;
-              if (data.column.index === 2) {
+              if (data.column.index === 3) {
                 const parts = pfParseCertParts_(data.cell.raw);
                 data.cell.text = [''];
-                data.cell.styles.minCellHeight = pfEstimateCertCellHeight_(parts, colW[2]);
+                data.cell.styles.minCellHeight = pfEstimateCertCellHeight_(parts, colW[3]);
                 data.cell.styles.valign = 'middle';
                 return;
               }
-              if (data.column.index === 4) {
+              if (data.column.index === 5) {
                 const v = String(data.cell.raw || '').toLowerCase();
                 if (v.includes('yes') || v.includes('nbl')) {
                   data.cell.styles.textColor = BRAND;
                   data.cell.styles.fontStyle = 'bold';
                 }
               }
-              if (data.column.index === 5) {
+              if (data.column.index === 6) {
                 const v = String(data.cell.raw || '').toLowerCase();
                 if (v.includes('high')) {
                   data.cell.styles.textColor = BRAND;
@@ -15977,8 +16210,8 @@ function initDashboardApp() {
               }
             },
             didDrawCell: function(data) {
-              if (data.section !== 'body' || data.column.index !== 2) return;
-              pfDrawCertPillsInCell_(data.cell, pfParseCertParts_(data.row.raw[2]), accent);
+              if (data.section !== 'body' || data.column.index !== 3) return;
+              pfDrawCertPillsInCell_(data.cell, pfParseCertParts_(data.row.raw[3]), accent);
             },
           }));
           return doc.lastAutoTable.finalY + 8;
@@ -15999,9 +16232,9 @@ function initDashboardApp() {
 
           const sum = sumFn(g);
           const facilityPct = isPk ? sum.avgPk : sum.avgCpo;
-          const companies = g.companies.slice().sort(function(a, b) {
+          const companies = pfAssignCompanyMapIndexes_(g.companies.slice().sort(function(a, b) {
             return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
-          });
+          }));
           const profiles = pfCplRowsForPlant_(g.facilityKey || g.facility);
 
           if (selIdx > 0) {
@@ -16178,6 +16411,7 @@ function initDashboardApp() {
     ttpLoaded = false;
     ttpData = [];
     allData = [];
+    allDataRaw = [];
     millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
     millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
     millPdfRebuildDimPanels();
