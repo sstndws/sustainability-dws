@@ -3124,22 +3124,76 @@ function supplyMillYearTok_(row) {
   return String(row['YEAR'] || row['Year'] || row['year'] || '').trim();
 }
 
+function supplySplitFacilitiesGs_(raw) {
+  return String(raw || '').trim().split(/[,;\/]+/).map(function(f) {
+    return f.trim();
+  }).filter(function(f) { return f && !/^total$/i.test(f); });
+}
+
+function supplyNormFacilityKeyGs_(s) {
+  return supplyNormKey_(s).replace(/[^a-z0-9]/g, '');
+}
+
+function supplyNameMatchesGs_(a, b) {
+  var na = supplyNormKey_(a);
+  var nb = supplyNormKey_(b);
+  if (!na || !nb) return false;
+  return na === nb;
+}
+
+function supplyIdentityMatchesGs_(excelCo, excelMill, sheetCo, sheetMill) {
+  if (supplyNameMatchesGs_(excelCo, sheetCo) || supplyNameMatchesGs_(excelCo, sheetMill)) return true;
+  if (excelMill && (supplyNameMatchesGs_(excelMill, sheetMill) || supplyNameMatchesGs_(excelMill, sheetCo))) return true;
+  return false;
+}
+
+function supplyProductSupplyTokensGs_(raw) {
+  var ps = String(raw || '').trim().toUpperCase().replace(/\s+/g, '').replace(/[;&/+]+/g, ',').replace(/,+/g, ',').replace(/^,|,$/g, '');
+  if (!ps) return [];
+  return ps.split(',').filter(Boolean);
+}
+
+function supplyProductSupplyAllowsGs_(rawPs, supplyKind) {
+  var tokens = supplyProductSupplyTokensGs_(rawPs);
+  if (!tokens.length) return true;
+  var hasCpo = tokens.indexOf('CPO') !== -1;
+  var hasPk = tokens.indexOf('PK') !== -1;
+  if (supplyKind === 'PK') return hasPk;
+  return hasCpo;
+}
+
+function supplyFacilityMatchesGs_(plant, facRaw) {
+  var want = supplyNormFacilityKeyGs_(plant);
+  if (!want) return false;
+  var list = supplySplitFacilitiesGs_(facRaw);
+  if (!list.length) return false;
+  for (var i = 0; i < list.length; i++) {
+    if (supplyNormFacilityKeyGs_(list[i]) === want) return true;
+  }
+  return false;
+}
+
 /**
- * Find Mill Onboarding Profile row by company + group + mill (+ optional quarter/year).
+ * Find Mill Onboarding Profile row: company/mill identity + group + FACILITY NAME CPO/PK + PRODUCT SUPPLY + period.
  */
 function findMillRowForSupplySubmit_(millData, millHeaders, row) {
   var targetRow = Number(row.target_mill_row || row._mill_row || 0);
   if (targetRow >= 2) return targetRow;
 
-  var company = supplyNormKey_(row['COMPANY NAME']);
-  var group   = supplyNormKey_(row['GROUP NAME']);
-  var mill    = supplyNormKey_(row['MILL NAME'] || row['COMPANY NAME']);
-  var qWant   = supplyMillQuarterTok_(row);
-  var yWant   = supplyMillYearTok_(row);
+  var supplyKind = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase() === 'PK' ? 'PK' : 'CPO';
+  var facField = supplyKind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+  var excelCo = String(row['COMPANY NAME'] || '').trim();
+  var excelMill = String(row['MILL NAME'] || excelCo).trim();
+  var excelGroup = String(row['GROUP NAME'] || '').trim();
+  var excelPlant = String(row[facField] || row.PLANT || '').trim();
+  var qWant = supplyMillQuarterTok_(row);
+  var yWant = supplyMillYearTok_(row);
 
   var coCol = millHeaders.indexOf('COMPANY NAME');
   var grCol = millHeaders.indexOf('GROUP NAME');
   var miCol = millHeaders.indexOf('MILL NAME');
+  var facCol = millHeaders.indexOf(facField);
+  var psCol = millHeaders.indexOf('PRODUCT SUPPLY');
   var qCol  = millHeaders.indexOf('QUARTER');
   if (qCol < 0) qCol = millHeaders.indexOf('Quarter');
   var yCol  = millHeaders.indexOf('YEAR');
@@ -3147,18 +3201,16 @@ function findMillRowForSupplySubmit_(millData, millHeaders, row) {
 
   for (var r = 1; r < millData.length; r++) {
     var sheetRow = millData[r];
-    if (coCol >= 0 && supplyNormKey_(sheetRow[coCol]) !== company) continue;
-    if (grCol >= 0 && group) {
-      var sheetGroup = supplyNormKey_(sheetRow[grCol]);
-      if (sheetGroup && sheetGroup !== group) continue;
+    var sheetCo = coCol >= 0 ? String(sheetRow[coCol] || '').trim() : '';
+    var sheetMill = miCol >= 0 ? String(sheetRow[miCol] || '').trim() : '';
+    if (!supplyIdentityMatchesGs_(excelCo, excelMill, sheetCo, sheetMill)) continue;
+    if (grCol >= 0 && excelGroup) {
+      var sheetGroup = String(sheetRow[grCol] || '').trim();
+      if (sheetGroup && supplyNormKey_(sheetGroup) !== supplyNormKey_(excelGroup)) continue;
     }
-    if (miCol >= 0) {
-      var sheetMill = supplyNormKey_(sheetRow[miCol]);
-      if (sheetMill !== mill) continue;
-    }
-    if (yWant && yCol >= 0) {
-      if (String(sheetRow[yCol] || '').trim() !== yWant) continue;
-    }
+    if (facCol >= 0 && !supplyFacilityMatchesGs_(excelPlant, sheetRow[facCol])) continue;
+    if (psCol >= 0 && !supplyProductSupplyAllowsGs_(sheetRow[psCol], supplyKind)) continue;
+    if (yWant && yCol >= 0 && String(sheetRow[yCol] || '').trim() !== yWant) continue;
     if (qWant && qCol >= 0) {
       var sheetQ = String(sheetRow[qCol] || '').trim().replace(/^Q/i, '');
       if (sheetQ && sheetQ !== qWant) continue;
