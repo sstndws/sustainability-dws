@@ -3,7 +3,7 @@
         <div class="breadcrumb">Dashboard <span>/ EUDR Potential</span></div>
         <div class="page-header">
           <h1>EUDR Potential</h1>
-          <p>Kesiapan EUDR per mill — % Own Estate + Plasma dihitung dari Monitoring TTM/TTP (FFB supply).</p>
+          <p>Kesiapan EUDR per mill — % FFB by Category dihitung dari Monitoring TTM/TTP (FFB supply).</p>
         </div>
 
         <div class="stats-row eudr-stats-row">
@@ -19,7 +19,7 @@
             </button>
             <div class="eudr-formula-card-title-wrap">
               <h3>Status Formula</h3>
-              <span class="eudr-formula-inline-hint">Pass all active → Potential · auto-saved</span>
+              <span class="eudr-formula-inline-hint">Pass all active → Potential · preview lokal, klik Save untuk simpan</span>
             </div>
             <div class="table-actions eudr-formula-card-actions">
               <span class="eudr-formula-active-count" id="eudrFormulaActiveCount">—</span>
@@ -28,6 +28,11 @@
           </div>
           <div class="eudr-formula-body" id="eudrFormulaBody" hidden>
             <div class="eudr-formula-grid" id="eudrFormulaGrid" aria-label="Status formula criteria"></div>
+            <div class="eudr-formula-ffb-wrap" id="eudrFormulaFfbWrap" aria-label="FFB category formula"></div>
+            <div class="eudr-formula-foot">
+              <span class="eudr-formula-dirty-hint" id="eudrFormulaDirtyHint"></span>
+              <button type="button" class="btn-sm btn-primary" id="eudrFormulaSaveBtn" disabled>Save formula</button>
+            </div>
           </div>
         </div>
 
@@ -62,7 +67,7 @@
                   <th>Province</th>
                   <th>Supply To</th>
                   <th>Mill Capacity</th>
-                  <th>% Own Estate + Plasma</th>
+                  <th>% FFB Category</th>
                   <th>Status</th>
                 </tr>
               </thead>

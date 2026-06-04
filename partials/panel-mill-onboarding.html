@@ -69,7 +69,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
         <div>
           <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Import Supply Data</div>
-          <div style="font-size:12px;color:#9C8080;margin-top:2px;">Import Excel supply data — prefill dari Mill Registry, lalu Save as Draft atau Submit</div>
+          <div style="font-size:12px;color:#9C8080;margin-top:2px;">Import CPO/PK → Task List draft → validasi Company/Group/Mill → submit ke % Supply di Profile</div>
         </div>
         <button type="button" class="btn-sm btn-filled" id="btn-supply-import-open">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -91,7 +91,7 @@
         <div style="padding:22px 26px 16px;border-bottom:1px solid rgba(139,26,26,0.08);display:flex;align-items:center;justify-content:space-between;">
           <div>
             <div style="font-size:16px;font-weight:800;color:#1A0A0A;">Import Supply Data</div>
-            <div style="font-size:12px;color:#9C8080;margin-top:3px;">Pilih periode &amp; upload file Excel (sheet "Contoh Pengisian")</div>
+            <div style="font-size:12px;color:#9C8080;margin-top:3px;">Pilih produk (CPO/PK), periode, lalu upload Excel supply</div>
           </div>
           <button type="button" id="btn-supply-import-close" style="width:30px;height:30px;border-radius:8px;border:none;background:rgba(139,26,26,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -100,9 +100,26 @@
 
         <!-- Body -->
         <div style="padding:24px 26px;">
-          <!-- Step 1: Period -->
+          <!-- Step 1: Product type -->
           <div style="margin-bottom:20px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">1. Pilih Periode</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">1. Jenis Supply</div>
+            <div id="supply-import-type-wrap" class="supply-type-seg" role="radiogroup" aria-label="Jenis supply">
+              <label class="supply-type-seg__opt supply-type-seg__opt--active">
+                <input type="radio" name="supply-import-type" value="CPO" checked>
+                <span>CPO</span>
+                <small>→ PERCENTAGE SUPPLY CPO</small>
+              </label>
+              <label class="supply-type-seg__opt">
+                <input type="radio" name="supply-import-type" value="PK">
+                <span>PK</span>
+                <small>→ PERCENTAGE SUPPLY PK</small>
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 2: Period -->
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">2. Pilih Periode</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
               <div style="flex:1;min-width:130px;">
                 <label style="display:block;font-size:11px;font-weight:600;color:#5A4040;margin-bottom:5px;">Quarter</label>
@@ -123,13 +140,13 @@
             </div>
           </div>
 
-          <!-- Step 2: Upload -->
+          <!-- Step 3: Upload -->
           <div style="margin-bottom:20px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">2. Upload File Excel</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">3. Upload File Excel</div>
             <label id="supply-import-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed rgba(139,26,26,0.25);border-radius:12px;padding:30px 20px;cursor:pointer;transition:background 150ms;background:#fdfafa;" for="supply-import-file-input">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C05050" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
               <span style="font-size:13px;font-weight:600;color:#5A3030;">Drag &amp; drop atau klik untuk pilih file</span>
-              <span style="font-size:11px;color:#9C8080;">.xlsx · sheet "Contoh Pengisian" diperlukan</span>
+              <span style="font-size:11px;color:#9C8080;">.xlsx · sheet &quot;Contoh Pengisian&quot; atau &quot;Supplied CPO/PK …&quot;</span>
               <input type="file" id="supply-import-file-input" accept=".xlsx,.xls" style="display:none;">
             </label>
             <div id="supply-import-file-info" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(46,125,50,0.07);border:1px solid rgba(46,125,50,0.2);font-size:12px;color:#2e5d32;display:flex;align-items:center;gap:8px;">

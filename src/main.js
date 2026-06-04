@@ -3811,8 +3811,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzLn0BFjAJ9o4QHcNkE34r81lCRDEnlQetzLhV6rfGnvynw6eTp5JZIamgtGGaxI-xlLA/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzLn0BFjAJ9o4QHcNkE34r81lCRDEnlQetzLhV6rfGnvynw6eTp5JZIamgtGGaxI-xlLA';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxZGvtjlFnuhTQ7dBEOefkrlQe3AFWku9AwI_jUWQVMECnMJaoEdPFEx1D324M4PVFymw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxZGvtjlFnuhTQ7dBEOefkrlQe3AFWku9AwI_jUWQVMECnMJaoEdPFEx1D324M4PVFymw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -7792,13 +7792,52 @@ function initDashboardApp() {
       });
     }
     syncTtpPeriodPickersUi_();
+    bindTtpCategoryMixToggleOnce_();
+  }
+
+  const TTP_CATEGORY_MIX_COLLAPSED_LS = 'ttpCategoryMixCollapsed';
+
+  function isTtpCategoryMixCollapsed_() {
+    try { return localStorage.getItem(TTP_CATEGORY_MIX_COLLAPSED_LS) === '1'; } catch (e) { return false; }
+  }
+
+  function applyTtpCategoryMixCollapsedUi_() {
+    const section = document.getElementById('ttpCategoryMixSection');
+    const btn = document.getElementById('btn-ttp-category-mix-toggle');
+    if (!section) return;
+    const collapsed = isTtpCategoryMixCollapsed_();
+    section.classList.toggle('is-collapsed', collapsed);
+    if (btn) {
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const lbl = btn.querySelector('.ttp-category-mix-toggle-label');
+      if (lbl) lbl.textContent = collapsed ? 'Show' : 'Hide';
+    }
+  }
+
+  let ttpCategoryMixToggleBound = false;
+  function bindTtpCategoryMixToggleOnce_() {
+    if (ttpCategoryMixToggleBound) return;
+    const btn = document.getElementById('btn-ttp-category-mix-toggle');
+    if (!btn) return;
+    ttpCategoryMixToggleBound = true;
+    btn.addEventListener('click', function() {
+      const section = document.getElementById('ttpCategoryMixSection');
+      if (!section || section.hidden) return;
+      const collapsed = !section.classList.contains('is-collapsed');
+      section.classList.toggle('is-collapsed', collapsed);
+      try { localStorage.setItem(TTP_CATEGORY_MIX_COLLAPSED_LS, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const lbl = btn.querySelector('.ttp-category-mix-toggle-label');
+      if (lbl) lbl.textContent = collapsed ? 'Show' : 'Hide';
+    });
+    applyTtpCategoryMixCollapsedUi_();
   }
 
   function renderTtpCategoryMix_() {
     const section = document.getElementById('ttpCategoryMixSection');
     const barEl = document.getElementById('ttpCategoryMixBar');
     const gridEl = document.getElementById('ttpCategoryMixGrid');
-    const descEl = document.querySelector('.ttp-category-mix-desc');
+    const descEl = section ? section.querySelector('.ttp-category-mix-desc') : null;
     if (!section || !barEl || !gridEl) return;
 
     if (!ttpData.length) {
@@ -7831,7 +7870,8 @@ function initDashboardApp() {
         + '</div>';
     }).join('');
 
-    section.setAttribute('aria-label', 'Supplier category distribution across five categories');
+    section.setAttribute('aria-label', 'Category by traceable data across five supplier categories');
+    applyTtpCategoryMixCollapsedUi_();
   }
 
   function ttpMainTableColspan_(grouped) {
@@ -9537,7 +9577,7 @@ function initDashboardApp() {
 
   /** BL Monitoring — always hit latest GAS deploy (bypass stale Vite prebundle). */
   var BL_MONITORING_GAS_URL =
-    'https://script.google.com/macros/s/AKfycbzLn0BFjAJ9o4QHcNkE34r81lCRDEnlQetzLhV6rfGnvynw6eTp5JZIamgtGGaxI-xlLA/exec';
+    'https://script.google.com/macros/s/AKfycbxZGvtjlFnuhTQ7dBEOefkrlQe3AFWku9AwI_jUWQVMECnMJaoEdPFEx1D324M4PVFymw/exec';
 
   async function fetchBlMonitoringRows_() {
     var base = (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL)
@@ -11454,18 +11494,18 @@ function initDashboardApp() {
   const EUDR_STATUS_CRITERIA = [
     { key: 'legality', label: 'Legality = Complete (1)' },
     { key: 'millCategory', label: 'Mill Category = Integrated' },
-    { key: 'ownPlasmaFfb', label: '% Own Estate + Plasma (FFB)', hasThreshold: true, defaultThreshold: 70 },
+    { key: 'ownPlasmaFfb', label: '% FFB by Category', hasFfbConfig: true, defaultThreshold: 70 },
     { key: 'resultRiskLevel', label: 'Result Risk Level = Low' },
     { key: 'millLocation', label: 'Mill Location = APL' },
     { key: 'certification', label: 'Certification (≥ 1 certificate)' },
     { key: 'grievance', label: 'Grievance = No' },
     { key: 'ndpePolicy', label: 'NDPE Policy = Yes' },
     { key: 'noBuyList', label: 'No Buy List = No' },
-    { key: 'deforestation', label: 'Deforestation < 10 Ha' },
+    { key: 'deforestation', label: 'Deforestation', hasHaThreshold: true, defaultThreshold: 10 },
   ];
   let eudrFormulaConfig = null;
-  let eudrFormulaSaveTimer = null;
   let eudrFormulaSaving = false;
+  let eudrFormulaSavedSnapshot_ = null;
   let eudrModalMillRow = null;
   let eudrFormulaPanelBound = false;
 
@@ -11641,9 +11681,232 @@ function initDashboardApp() {
     return !isNaN(sup) && sup > 0 ? sup : 0;
   }
 
-  function eudrIsOwnOrPlasmaCategory_(rawCategory) {
-    const bucket = ttpNormalizeCategoryBucket_(rawCategory);
-    return bucket === 'own_estate' || bucket === 'plasma';
+  function eudrDefaultFfbCategoryRule_(overrides) {
+    return Object.assign({ enabled: false, operator: 'gte', threshold: 70 }, overrides || {});
+  }
+
+  function eudrDefaultFfbFormulaConfig_() {
+    const categories = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) {
+      categories[b.id] = eudrDefaultFfbCategoryRule_({
+        enabled: b.id === 'own_estate' || b.id === 'plasma',
+      });
+    });
+    return {
+      mode: 'combined',
+      combined: {
+        categories: ['own_estate', 'plasma'],
+        operator: 'gte',
+        threshold: 70,
+      },
+      categories: categories,
+    };
+  }
+
+  function eudrSnapFfbThreshold_(value) {
+    const n = parseFloat(String(value != null ? value : '').replace(',', '.'));
+    if (isNaN(n)) return 70;
+    return Math.min(100, Math.max(0, Math.round(n / 10) * 10));
+  }
+
+  function eudrMigrateLegacyFfbConfig_(input) {
+    if (!input || input.combined) return null;
+    if (input.categories && typeof input.categories === 'object' && !Array.isArray(input.categories)) {
+      return null;
+    }
+    const validIds = TTP_CATEGORY_MIX_BUCKETS.map(function(b) { return b.id; });
+    const selected = Array.isArray(input.categories)
+      ? input.categories.filter(function(id) { return validIds.indexOf(id) !== -1; })
+      : ['own_estate', 'plasma'];
+    const operator = input.operator === 'lte' ? 'lte' : 'gte';
+    const threshold = eudrSnapFfbThreshold_(input.threshold != null ? input.threshold : 70);
+    const categories = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) {
+      categories[b.id] = eudrDefaultFfbCategoryRule_({
+        enabled: selected.indexOf(b.id) !== -1,
+        operator: operator,
+        threshold: threshold,
+      });
+    });
+    return {
+      mode: input.mode === 'individual' ? 'individual' : 'combined',
+      combined: {
+        categories: selected.length ? selected.slice() : ['own_estate', 'plasma'],
+        operator: operator,
+        threshold: threshold,
+      },
+      categories: categories,
+    };
+  }
+
+  function eudrNormalizeFfbFormulaConfig_(input) {
+    const base = eudrDefaultFfbFormulaConfig_();
+    input = input || {};
+    const migrated = eudrMigrateLegacyFfbConfig_(input);
+    if (migrated) input = migrated;
+    const validIds = TTP_CATEGORY_MIX_BUCKETS.map(function(b) { return b.id; });
+    const categories = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) {
+      const src = (input.categories && input.categories[b.id]) || {};
+      categories[b.id] = {
+        enabled: !!src.enabled,
+        operator: src.operator === 'lte' ? 'lte' : 'gte',
+        threshold: eudrSnapFfbThreshold_(
+          src.threshold != null ? src.threshold : base.categories[b.id].threshold
+        ),
+      };
+    });
+    let combinedCats = Array.isArray(input.combined && input.combined.categories)
+      ? input.combined.categories.filter(function(id) { return validIds.indexOf(id) !== -1; })
+      : base.combined.categories.slice();
+    if (!combinedCats.length) combinedCats = base.combined.categories.slice();
+    const combined = {
+      categories: combinedCats,
+      operator: (input.combined && input.combined.operator) === 'lte' ? 'lte' : 'gte',
+      threshold: eudrSnapFfbThreshold_(
+        input.combined && input.combined.threshold != null
+          ? input.combined.threshold
+          : base.combined.threshold
+      ),
+    };
+    return {
+      mode: input.mode === 'individual' ? 'individual' : 'combined',
+      combined: combined,
+      categories: categories,
+    };
+  }
+
+  function eudrGetFfbFormulaConfig_(formulaCfg) {
+    formulaCfg = formulaCfg || eudrGetFormulaConfig_();
+    const merged = Object.assign({}, eudrDefaultFfbFormulaConfig_(), formulaCfg._ffbFormula || {});
+    if (formulaCfg._thresholds && formulaCfg._thresholds.ownPlasmaFfb != null) {
+      merged.combined = Object.assign({}, merged.combined || {}, {
+        threshold: formulaCfg._thresholds.ownPlasmaFfb,
+      });
+    }
+    return eudrNormalizeFfbFormulaConfig_(merged);
+  }
+
+  function eudrFfbFormulaExpectedLabel_(ffbCfg) {
+    ffbCfg = eudrNormalizeFfbFormulaConfig_(ffbCfg);
+    if (ffbCfg.mode === 'individual') {
+      const parts = TTP_CATEGORY_MIX_BUCKETS
+        .filter(function(b) { return ffbCfg.categories[b.id] && ffbCfg.categories[b.id].enabled; })
+        .map(function(b) {
+          const r = ffbCfg.categories[b.id];
+          const op = r.operator === 'lte' ? '≤' : '≥';
+          return b.label + ' ' + op + ' ' + r.threshold + '%';
+        });
+      return parts.length ? parts.join(' · ') : 'No category rule selected';
+    }
+    const combined = ffbCfg.combined;
+    const op = combined.operator === 'lte' ? '≤' : '≥';
+    const catLabels = combined.categories.map(function(id) {
+      const hit = TTP_CATEGORY_MIX_BUCKETS.find(function(b) { return b.id === id; });
+      return hit ? hit.label : id;
+    });
+    return catLabels.join(' + ') + ' ' + op + ' ' + combined.threshold + '%';
+  }
+
+  function eudrCompareFfbPct_(pct, operator, threshold) {
+    if (isNaN(pct)) return false;
+    if (operator === 'lte') return pct <= threshold + 0.001;
+    return pct + 0.001 >= threshold;
+  }
+
+  function eudrComputeFfbPctByCategory_(ttpRows) {
+    const supplyCol = typeof ttpFindSupplyCol_ === 'function' ? ttpFindSupplyCol_() : '';
+    const byCategory = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) { byCategory[b.id] = 0; });
+    let totalSum = 0;
+    (ttpRows || []).forEach(function(row) {
+      const weight = eudrParseFfbSupplyTon_(row, supplyCol);
+      if (weight <= 0) return;
+      totalSum += weight;
+      const bucket = ttpNormalizeCategoryBucket_(eudrTtpRowRawCategory_(row));
+      if (bucket && byCategory[bucket] !== undefined) byCategory[bucket] += weight;
+    });
+    const pctByCategory = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) {
+      pctByCategory[b.id] = totalSum > 0 ? (byCategory[b.id] / totalSum) * 100 : NaN;
+    });
+    return { byCategory: byCategory, pctByCategory: pctByCategory, totalSum: totalSum };
+  }
+
+  function eudrEvaluateFfbFormula_(ttpRows, ffbCfg) {
+    ffbCfg = eudrNormalizeFfbFormulaConfig_(ffbCfg);
+    const stats = eudrComputeFfbPctByCategory_(ttpRows);
+    if (stats.totalSum <= 0) {
+      return {
+        pass: false,
+        pct: NaN,
+        pctLabel: '—',
+        expected: eudrFfbFormulaExpectedLabel_(ffbCfg),
+        actual: '—',
+      };
+    }
+    if (ffbCfg.mode === 'individual') {
+      const enabledIds = TTP_CATEGORY_MIX_BUCKETS
+        .map(function(b) { return b.id; })
+        .filter(function(id) { return ffbCfg.categories[id] && ffbCfg.categories[id].enabled; });
+      if (!enabledIds.length) {
+        return {
+          pass: false,
+          pct: NaN,
+          pctLabel: '—',
+          expected: eudrFfbFormulaExpectedLabel_(ffbCfg),
+          actual: '—',
+        };
+      }
+      const parts = [];
+      let allPass = true;
+      enabledIds.forEach(function(id) {
+        const rule = ffbCfg.categories[id];
+        const pct = stats.pctByCategory[id];
+        const hit = TTP_CATEGORY_MIX_BUCKETS.find(function(b) { return b.id === id; });
+        const name = hit ? hit.label : id;
+        const pass = eudrCompareFfbPct_(pct, rule.operator, rule.threshold);
+        if (!pass) allPass = false;
+        parts.push(name + ' ' + eudrFormatFfbPctLabel_(pct));
+      });
+      return {
+        pass: allPass,
+        pct: NaN,
+        pctLabel: parts.join(' · '),
+        expected: eudrFfbFormulaExpectedLabel_(ffbCfg),
+        actual: parts.join(' · '),
+      };
+    }
+    const combined = ffbCfg.combined;
+    let selectedSum = 0;
+    combined.categories.forEach(function(id) {
+      selectedSum += stats.byCategory[id] || 0;
+    });
+    const pct = (selectedSum / stats.totalSum) * 100;
+    return {
+      pass: eudrCompareFfbPct_(pct, combined.operator, combined.threshold),
+      pct: pct,
+      pctLabel: eudrFormatFfbPctLabel_(pct),
+      expected: eudrFfbFormulaExpectedLabel_(ffbCfg),
+      actual: eudrFormatFfbPctLabel_(pct),
+    };
+  }
+
+  function eudrComputeFfbPctForEudrRow_(eudrRow, formulaCfg) {
+    const ffbCfg = eudrGetFfbFormulaConfig_(formulaCfg);
+    return eudrEvaluateFfbFormula_(eudrFindTtpRowsForEntity_(eudrRow), ffbCfg);
+  }
+
+  function eudrComputeOwnPlasmaFfbPctForEudrRow_(eudrRow) {
+    return eudrComputeFfbPctForEudrRow_(eudrRow, eudrGetFormulaConfig_());
+  }
+
+  function eudrAttachTtpMetrics_(d) {
+    const result = eudrComputeFfbPctForEudrRow_(d, eudrGetFormulaConfig_());
+    d._eudrOwnPlasmaPct = result.pct;
+    d._eudrOwnPlasmaPctLabel = result.pctLabel;
+    d._eudrFfbFormulaPass = result.pass;
+    return d;
   }
 
   function eudrFormatFfbPctLabel_(pct) {
@@ -11671,43 +11934,6 @@ function initDashboardApp() {
     });
   }
 
-  function eudrComputeOwnPlasmaFfbPct_(ttpRows) {
-    const supplyCol = typeof ttpFindSupplyCol_ === 'function' ? ttpFindSupplyCol_() : '';
-    let ownPlasmaSum = 0;
-    let totalSum = 0;
-    (ttpRows || []).forEach(function(row) {
-      const weight = eudrParseFfbSupplyTon_(row, supplyCol);
-      if (weight <= 0) return;
-      totalSum += weight;
-      if (eudrIsOwnOrPlasmaCategory_(eudrTtpRowRawCategory_(row))) {
-        ownPlasmaSum += weight;
-      }
-    });
-    if (totalSum <= 0) {
-      return { pct: NaN, pctLabel: '—', ownPlasmaSum: 0, totalSum: 0 };
-    }
-    const pct = (ownPlasmaSum / totalSum) * 100;
-    return {
-      pct: pct,
-      pctLabel: eudrFormatFfbPctLabel_(pct),
-      ownPlasmaSum: ownPlasmaSum,
-      totalSum: totalSum,
-    };
-  }
-
-  function eudrComputeOwnPlasmaFfbPctForEudrRow_(eudrRow) {
-    return eudrComputeOwnPlasmaFfbPct_(eudrFindTtpRowsForEntity_(eudrRow));
-  }
-
-  function eudrAttachTtpMetrics_(d) {
-    const result = eudrComputeOwnPlasmaFfbPctForEudrRow_(d);
-    d._eudrOwnPlasmaPct = result.pct;
-    d._eudrOwnPlasmaPctLabel = result.pctLabel;
-    d._eudrOwnPlasmaFfbSum = result.ownPlasmaSum;
-    d._eudrOwnPlasmaFfbTotal = result.totalSum;
-    return d;
-  }
-
   function eudrNormYesNoVal_(raw) {
     const s = String(raw || '').trim();
     if (!s) return '';
@@ -11733,9 +11959,29 @@ function initDashboardApp() {
   }
 
   function eudrDefaultFormulaConfig_() {
-    const out = { _thresholds: { ownPlasmaFfb: 70 } };
+    const out = {
+      _thresholds: { ownPlasmaFfb: 70, deforestation: 10 },
+      _ffbFormula: eudrDefaultFfbFormulaConfig_(),
+    };
     EUDR_STATUS_CRITERIA.forEach(function(c) { out[c.key] = true; });
     return out;
+  }
+
+  function eudrSnapDeforestationHa_(value) {
+    const n = parseFloat(String(value != null ? value : '').replace(',', '.'));
+    if (isNaN(n)) return 10;
+    return Math.min(9999, Math.max(0, Math.round(n)));
+  }
+
+  function eudrGetDeforestationThreshold_(formulaCfg) {
+    formulaCfg = formulaCfg || eudrGetFormulaConfig_();
+    const t = formulaCfg._thresholds && formulaCfg._thresholds.deforestation;
+    return eudrSnapDeforestationHa_(t != null ? t : 10);
+  }
+
+  function eudrDeforestationExpectedLabel_(ha) {
+    ha = eudrSnapDeforestationHa_(ha != null ? ha : 10);
+    return '< ' + ha + ' Ha';
   }
 
   function eudrNormalizeFormulaKey_(key) {
@@ -11744,11 +11990,18 @@ function initDashboardApp() {
   }
 
   function eudrGetOwnPlasmaThreshold_(formulaCfg) {
-    formulaCfg = formulaCfg || eudrGetFormulaConfig_();
-    const thr = formulaCfg._thresholds && formulaCfg._thresholds.ownPlasmaFfb;
-    const n = parseFloat(String(thr != null ? thr : 70).replace(',', '.'));
-    if (isNaN(n)) return 70;
-    return Math.min(100, Math.max(0, n));
+    return eudrGetFfbFormulaConfig_(formulaCfg).combined.threshold;
+  }
+
+  function eudrParseFfbFormulaConfigFromRow_(row) {
+    const raw = row && (row.CONFIG || row.config);
+    if (!raw) return null;
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return eudrNormalizeFfbFormulaConfig_(parsed);
+    } catch (_) {
+      return null;
+    }
   }
 
   function eudrParseFormulaRows_(rows) {
@@ -11761,9 +12014,26 @@ function initDashboardApp() {
       const thrRaw = r.THRESHOLD != null ? r.THRESHOLD : r.threshold;
       if (thrRaw != null && String(thrRaw).trim() !== '') {
         const n = parseFloat(String(thrRaw).replace(',', '.'));
-        if (!isNaN(n)) cfg._thresholds[key] = Math.min(100, Math.max(0, n));
+        if (!isNaN(n)) {
+          if (key === 'deforestation') cfg._thresholds[key] = eudrSnapDeforestationHa_(n);
+          else if (key === 'ownPlasmaFfb') cfg._thresholds[key] = eudrSnapFfbThreshold_(n);
+        }
+      }
+      if (key === 'ownPlasmaFfb') {
+        const parsed = eudrParseFfbFormulaConfigFromRow_(r);
+        if (parsed) {
+          cfg._ffbFormula = parsed;
+          cfg._thresholds.ownPlasmaFfb = parsed.combined.threshold;
+        }
       }
     });
+    cfg._ffbFormula = eudrNormalizeFfbFormulaConfig_(
+      Object.assign({}, cfg._ffbFormula, {
+        combined: Object.assign({}, cfg._ffbFormula.combined, {
+          threshold: cfg._thresholds.ownPlasmaFfb,
+        }),
+      })
+    );
     return cfg;
   }
 
@@ -11774,6 +12044,7 @@ function initDashboardApp() {
     } catch (err) {
       eudrFormulaConfig = eudrDefaultFormulaConfig_();
     }
+    eudrFormulaSavedSnapshot_ = eudrFormulaSnapshotKey_(eudrGetFormulaConfig_());
     return eudrFormulaConfig;
   }
 
@@ -11782,22 +12053,282 @@ function initDashboardApp() {
     const cfg = eudrFormulaConfig || {};
     const out = Object.assign({}, base, cfg);
     out._thresholds = Object.assign({}, base._thresholds, cfg._thresholds || {});
+    out._ffbFormula = eudrNormalizeFfbFormulaConfig_(
+      Object.assign({}, base._ffbFormula, cfg._ffbFormula || {}, {
+        combined: Object.assign({}, base._ffbFormula.combined, (cfg._ffbFormula || {}).combined || {}, {
+          threshold: out._thresholds.ownPlasmaFfb,
+        }),
+      })
+    );
+    out._thresholds.ownPlasmaFfb = out._ffbFormula.combined.threshold;
     return out;
   }
 
-  function eudrReadFormulaConfigFromUi_() {
-    const cfg = eudrDefaultFormulaConfig_();
-    document.querySelectorAll('#panel-eudr-potential [data-eudr-formula-key]').forEach(function(el) {
-      const key = el.getAttribute('data-eudr-formula-key');
-      if (!key) return;
-      cfg[key] = !!el.checked;
+  function eudrFfbModalRoot_() {
+    return document.getElementById('eudrFfbModalBody');
+  }
+
+  function eudrReadFfbFormulaFromUi_() {
+    const root = eudrFfbModalRoot_();
+    if (!root) return eudrGetFfbFormulaConfig_();
+    const categories = {};
+    TTP_CATEGORY_MIX_BUCKETS.forEach(function(b) {
+      const enEl = root.querySelector('[data-eudr-ffb-cat-enable="' + b.id + '"]');
+      const opEl = root.querySelector('input[name="eudrFfbOp_' + b.id + '"]:checked');
+      const thrEl = root.querySelector('[data-eudr-ffb-cat-thr="' + b.id + '"]');
+      categories[b.id] = {
+        enabled: enEl ? !!enEl.checked : false,
+        operator: opEl ? opEl.value : 'gte',
+        threshold: thrEl ? eudrSnapFfbThreshold_(thrEl.value) : 70,
+      };
     });
-    const thrEl = document.getElementById('eudrOwnPlasmaThreshold');
-    if (thrEl) {
-      const n = parseFloat(String(thrEl.value).replace(',', '.'));
-      if (!isNaN(n)) cfg._thresholds.ownPlasmaFfb = Math.min(100, Math.max(0, n));
+    const combinedCats = [];
+    root.querySelectorAll('[data-eudr-ffb-combined-cat]').forEach(function(el) {
+      if (el.checked) combinedCats.push(el.getAttribute('data-eudr-ffb-combined-cat'));
+    });
+    const modeEl = root.querySelector('input[name="eudrFfbMode"]:checked');
+    const combOpEl = root.querySelector('input[name="eudrFfbCombinedOperator"]:checked');
+    const combThrEl = root.querySelector('#eudrFfbCombinedThreshold');
+    return eudrNormalizeFfbFormulaConfig_({
+      mode: modeEl ? modeEl.value : 'combined',
+      combined: {
+        categories: combinedCats,
+        operator: combOpEl ? combOpEl.value : 'gte',
+        threshold: combThrEl ? eudrSnapFfbThreshold_(combThrEl.value) : 70,
+      },
+      categories: categories,
+    });
+  }
+
+  function eudrSyncFfbModePanels_() {
+    const root = eudrFfbModalRoot_();
+    if (!root) return;
+    const block = root.querySelector('.eudr-formula-ffb-block');
+    const modeEl = root.querySelector('input[name="eudrFfbMode"]:checked');
+    if (block && modeEl) block.setAttribute('data-ffb-mode', modeEl.value);
+    eudrSyncCombinedThresholdState_();
+  }
+
+  function eudrSyncCombinedThresholdState_() {
+    const root = eudrFfbModalRoot_();
+    if (!root) return;
+    const selected = root.querySelectorAll('[data-eudr-ffb-combined-cat]:checked').length;
+    const wrap = root.querySelector('.eudr-ffb-combined-threshold');
+    if (wrap) wrap.classList.toggle('eudr-ffb-combined-threshold--disabled', selected === 0);
+  }
+
+  function eudrUpdateFfbFormulaHint_() {
+    const hint = document.getElementById('eudrFfbFormulaHint');
+    if (!hint) return;
+    hint.textContent = eudrFfbFormulaExpectedLabel_(eudrReadFfbFormulaFromUi_());
+  }
+
+  function eudrUpdateFfbSummary_() {
+    const el = document.getElementById('eudrFfbSummary');
+    if (!el) return;
+    el.textContent = eudrFfbFormulaExpectedLabel_(eudrGetFfbFormulaConfig_());
+  }
+
+  function eudrFormulaSnapshotKey_(cfg) {
+    return eudrFormulaConfigKey_(cfg || eudrGetFormulaConfig_());
+  }
+
+  function eudrMarkFormulaDirty_() {
+    const btn = document.getElementById('eudrFormulaSaveBtn');
+    const hint = document.getElementById('eudrFormulaDirtyHint');
+    const cfg = eudrGetFormulaConfig_();
+    const dirty = eudrFormulaSavedSnapshot_ != null
+      && eudrFormulaSnapshotKey_(cfg) !== eudrFormulaSavedSnapshot_;
+    if (btn) btn.disabled = !dirty;
+    if (hint) hint.textContent = dirty ? 'Perubahan belum disimpan' : '';
+  }
+
+  function eudrEnsureFfbModalPortal_() {
+    const overlay = document.getElementById('eudrFfbModalOverlay');
+    if (overlay && overlay.parentElement !== document.body) {
+      document.body.appendChild(overlay);
     }
+    return overlay;
+  }
+
+  function eudrRenderFfbCombinedSelectRowHtml_(bucket, selected) {
+    return '<label class="eudr-ffb-cat-row eudr-ffb-cat-row--select-only'
+      + (selected ? '' : ' eudr-ffb-cat-row--inactive') + '">'
+      + '<input type="checkbox" data-eudr-ffb-combined-cat="' + escHtml(bucket.id) + '"'
+      + (selected ? ' checked' : '') + ' />'
+      + '<span>' + escHtml(bucket.label) + '</span>'
+      + '</label>';
+  }
+
+  function eudrRenderFfbCategoryRowHtml_(bucket, rule, opts) {
+    opts = opts || {};
+    rule = rule || eudrDefaultFfbCategoryRule_();
+    const variant = opts.variant === 'combined' ? 'combined' : 'individual';
+    const opGte = rule.operator !== 'lte' ? ' checked' : '';
+    const opLte = rule.operator === 'lte' ? ' checked' : '';
+    const enabled = variant === 'combined'
+      ? !!opts.selected
+      : !!rule.enabled;
+    const en = enabled ? ' checked' : '';
+    const inactive = enabled ? '' : ' eudr-ffb-cat-row--inactive';
+    const enableAttr = variant === 'combined'
+      ? 'data-eudr-ffb-combined-cat="' + escHtml(bucket.id) + '"'
+      : 'data-eudr-ffb-cat-enable="' + escHtml(bucket.id) + '"';
+    const opPrefix = variant === 'combined' ? 'eudrFfbCombOp_' : 'eudrFfbOp_';
+    const thrAttr = variant === 'combined'
+      ? 'data-eudr-ffb-combined-thr="' + escHtml(bucket.id) + '"'
+      : 'data-eudr-ffb-cat-thr="' + escHtml(bucket.id) + '"';
+    const valAttr = variant === 'combined'
+      ? 'data-eudr-ffb-combined-val="' + escHtml(bucket.id) + '"'
+      : 'data-eudr-ffb-cat-val="' + escHtml(bucket.id) + '"';
+    const stepCat = variant === 'combined'
+      ? ' data-eudr-ffb-combined-row="' + escHtml(bucket.id) + '"'
+      : ' data-eudr-ffb-cat="' + escHtml(bucket.id) + '"';
+    return '<div class="eudr-ffb-cat-row' + inactive + '">'
+      + '<label class="eudr-ffb-cat-row-enable">'
+      + '<input type="checkbox" ' + enableAttr + en + ' />'
+      + '<span>' + escHtml(bucket.label) + '</span>'
+      + '</label>'
+      + '<div class="eudr-ffb-cat-row-controls">'
+      + '<div class="eudr-ffb-segment eudr-ffb-segment--mini">'
+      + '<label><input type="radio" name="' + opPrefix + escHtml(bucket.id) + '" value="gte"' + opGte + ' /> ≥</label>'
+      + '<label><input type="radio" name="' + opPrefix + escHtml(bucket.id) + '" value="lte"' + opLte + ' /> ≤</label>'
+      + '</div>'
+      + '<div class="eudr-ffb-stepper eudr-ffb-stepper--mini">'
+      + '<button type="button" class="eudr-ffb-step-btn" data-eudr-ffb-step="-10"' + stepCat + ' aria-label="Decrease 10 percent">−</button>'
+      + '<span class="eudr-ffb-threshold-val" ' + valAttr + '>'
+      + escHtml(String(rule.threshold)) + '%</span>'
+      + '<input type="hidden" ' + thrAttr + ' value="' + escHtml(String(rule.threshold)) + '" />'
+      + '<button type="button" class="eudr-ffb-step-btn" data-eudr-ffb-step="10"' + stepCat + ' aria-label="Increase 10 percent">+</button>'
+      + '</div></div></div>';
+  }
+
+  function eudrSyncCategoryRowStates_() {
+    const root = eudrFfbModalRoot_();
+    if (!root) return;
+    root.querySelectorAll('.eudr-ffb-panel--individual [data-eudr-ffb-cat-enable]').forEach(function(el) {
+      const row = el.closest('.eudr-ffb-cat-row');
+      if (row) row.classList.toggle('eudr-ffb-cat-row--inactive', !el.checked);
+    });
+    root.querySelectorAll('.eudr-ffb-panel--combined [data-eudr-ffb-combined-cat]').forEach(function(el) {
+      const row = el.closest('.eudr-ffb-cat-row');
+      if (row) row.classList.toggle('eudr-ffb-cat-row--inactive', !el.checked);
+    });
+  }
+
+  function eudrRenderFfbFormulaModalContentHtml_(cfg) {
+    const ffb = eudrGetFfbFormulaConfig_(cfg);
+    const catRows = TTP_CATEGORY_MIX_BUCKETS.map(function(b) {
+      return eudrRenderFfbCategoryRowHtml_(b, ffb.categories[b.id], { variant: 'individual' });
+    }).join('');
+    const combinedRows = TTP_CATEGORY_MIX_BUCKETS.map(function(b) {
+      return eudrRenderFfbCombinedSelectRowHtml_(
+        b,
+        ffb.combined.categories.indexOf(b.id) !== -1
+      );
+    }).join('');
+    const modeIndividual = ffb.mode === 'individual' ? ' checked' : '';
+    const modeCombined = ffb.mode === 'combined' ? ' checked' : '';
+    const combOpGte = ffb.combined.operator !== 'lte' ? ' checked' : '';
+    const combOpLte = ffb.combined.operator === 'lte' ? ' checked' : '';
+    const combDisabled = ffb.combined.categories.length === 0 ? ' eudr-ffb-combined-threshold--disabled' : '';
+    return '<div class="eudr-formula-ffb-block" data-ffb-mode="' + escHtml(ffb.mode) + '">'
+      + '<div class="eudr-ffb-row eudr-ffb-row--mode">'
+      + '<span class="eudr-ffb-label">Mode</span>'
+      + '<div class="eudr-ffb-segment">'
+      + '<label><input type="radio" name="eudrFfbMode" value="individual"' + modeIndividual + ' /> Per category</label>'
+      + '<label><input type="radio" name="eudrFfbMode" value="combined"' + modeCombined + ' /> Combined total</label>'
+      + '</div></div>'
+      + '<div class="eudr-ffb-panel eudr-ffb-panel--individual">'
+      + '<div class="eudr-ffb-panel-title">Centang kategori dulu, lalu atur threshold masing-masing (semua aktif harus lolos)</div>'
+      + '<div class="eudr-ffb-cat-rows">' + catRows + '</div>'
+      + '</div>'
+      + '<div class="eudr-ffb-panel eudr-ffb-panel--combined">'
+      + '<div class="eudr-ffb-panel-title">1. Centang kategori yang mau di-total</div>'
+      + '<div class="eudr-ffb-cat-rows">' + combinedRows + '</div>'
+      + '<div class="eudr-ffb-combined-threshold' + combDisabled + '">'
+      + '<div class="eudr-ffb-panel-title">2. Threshold total gabungan</div>'
+      + '<div class="eudr-ffb-row eudr-ffb-row--settings">'
+      + '<div class="eudr-ffb-setting">'
+      + '<span class="eudr-ffb-label">Compare</span>'
+      + '<div class="eudr-ffb-segment">'
+      + '<label><input type="radio" name="eudrFfbCombinedOperator" value="gte"' + combOpGte + ' /> ≥</label>'
+      + '<label><input type="radio" name="eudrFfbCombinedOperator" value="lte"' + combOpLte + ' /> ≤</label>'
+      + '</div></div>'
+      + '<div class="eudr-ffb-setting">'
+      + '<span class="eudr-ffb-label">Threshold</span>'
+      + '<div class="eudr-ffb-stepper">'
+      + '<button type="button" class="eudr-ffb-step-btn" data-eudr-ffb-step="-10" data-eudr-ffb-combined="1" aria-label="Decrease 10 percent">−</button>'
+      + '<span class="eudr-ffb-threshold-val" id="eudrFfbCombinedThresholdVal">'
+      + escHtml(String(ffb.combined.threshold)) + '%</span>'
+      + '<input type="hidden" id="eudrFfbCombinedThreshold" value="' + escHtml(String(ffb.combined.threshold)) + '" />'
+      + '<button type="button" class="eudr-ffb-step-btn" data-eudr-ffb-step="10" data-eudr-ffb-combined="1" aria-label="Increase 10 percent">+</button>'
+      + '</div></div>'
+      + '</div>'
+      + '<p class="eudr-ffb-combined-help">Centang kategori di atas, lalu atur threshold total di bawah.</p>'
+      + '</div></div></div>';
+  }
+
+  function eudrRenderFfbFormulaChipHtml_(cfg, checked) {
+    const ffb = eudrGetFfbFormulaConfig_(cfg);
+    const summary = eudrFfbFormulaExpectedLabel_(ffb);
+    return '<div class="eudr-formula-ffb-card">'
+      + '<label class="eudr-formula-ffb-card-check">'
+      + '<input type="checkbox" data-eudr-formula-key="ownPlasmaFfb"' + checked + ' />'
+      + '<span class="eudr-formula-ffb-card-title">% FFB by Category</span>'
+      + '</label>'
+      + '<div class="eudr-formula-ffb-card-body">'
+      + '<span class="eudr-ffb-summary" id="eudrFfbSummary" title="' + escHtml(summary) + '">' + escHtml(summary) + '</span>'
+      + '<button type="button" class="eudr-ffb-config-btn">Configure</button>'
+      + '</div></div>';
+  }
+
+  function eudrOpenFfbModal_() {
+    const overlay = eudrEnsureFfbModalPortal_();
+    const body = document.getElementById('eudrFfbModalBody');
+    if (!overlay || !body) return;
+    body.innerHTML = eudrRenderFfbFormulaModalContentHtml_(eudrGetFormulaConfig_());
+    eudrSyncFfbModePanels_();
+    eudrSyncCategoryRowStates_();
+    eudrUpdateFfbFormulaHint_();
+    overlay.scrollTop = 0;
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('eudr-ffb-modal-open');
+  }
+
+  function eudrCloseFfbModal_() {
+    const overlay = document.getElementById('eudrFfbModalOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('eudr-ffb-modal-open');
+  }
+
+  function eudrApplyFfbModal_() {
+    const cfg = eudrGetFormulaConfig_();
+    cfg._ffbFormula = eudrReadFfbFormulaFromUi_();
+    cfg._thresholds.ownPlasmaFfb = cfg._ffbFormula.combined.threshold;
+    eudrFormulaConfig = cfg;
+    eudrCloseFfbModal_();
+    eudrUpdateFfbSummary_();
+    eudrOnFormulaCriteriaChange_();
+  }
+
+  function eudrSyncGridCheckboxesToConfig_() {
+    const cfg = eudrGetFormulaConfig_();
+    document.querySelectorAll('#eudrFormulaGrid [data-eudr-formula-key], #eudrFormulaFfbWrap [data-eudr-formula-key]').forEach(function(el) {
+      const key = el.getAttribute('data-eudr-formula-key');
+      if (key) cfg[key] = !!el.checked;
+    });
+    const defThrEl = document.getElementById('eudrDeforestationThreshold');
+    if (defThrEl) cfg._thresholds.deforestation = eudrSnapDeforestationHa_(defThrEl.value);
+    eudrFormulaConfig = cfg;
     return cfg;
+  }
+
+  function eudrReadFormulaConfigFromUi_() {
+    return eudrSyncGridCheckboxesToConfig_();
   }
 
   function eudrReadFormulaCheckboxes_() {
@@ -11812,37 +12343,56 @@ function initDashboardApp() {
     el.textContent = active + ' / ' + EUDR_STATUS_CRITERIA.length + ' active';
   }
 
+  function eudrRenderDeforestationChipHtml_(cfg, checked) {
+    const ha = eudrGetDeforestationThreshold_(cfg);
+    return '<div class="eudr-formula-chip eudr-formula-chip--ha">'
+      + '<label class="eudr-formula-chip-ha-check">'
+      + '<input type="checkbox" data-eudr-formula-key="deforestation"' + checked + ' />'
+      + '<span class="eudr-formula-chip-text">Deforestation &lt;</span>'
+      + '</label>'
+      + '<div class="eudr-ha-stepper">'
+      + '<button type="button" class="eudr-ha-step-btn" data-eudr-ha-step="-1" aria-label="Decrease 1 hectare">−</button>'
+      + '<span class="eudr-ha-threshold-val" id="eudrDeforestationHaVal">' + escHtml(String(ha)) + '</span>'
+      + '<input type="hidden" id="eudrDeforestationThreshold" value="' + escHtml(String(ha)) + '" />'
+      + '<button type="button" class="eudr-ha-step-btn" data-eudr-ha-step="1" aria-label="Increase 1 hectare">+</button>'
+      + '</div>'
+      + '<span class="eudr-formula-chip-ha-suffix">Ha</span>'
+      + '</div>';
+  }
+
   function eudrRenderFormulaPanel_() {
     const grid = document.getElementById('eudrFormulaGrid');
+    const ffbWrap = document.getElementById('eudrFormulaFfbWrap');
     if (!grid) return;
     const cfg = eudrGetFormulaConfig_();
-    grid.innerHTML = EUDR_STATUS_CRITERIA.map(function(c) {
+    grid.innerHTML = EUDR_STATUS_CRITERIA.filter(function(c) { return !c.hasFfbConfig; }).map(function(c) {
       const checked = cfg[c.key] !== false ? ' checked' : '';
-      if (c.hasThreshold) {
-        const thr = cfg._thresholds && cfg._thresholds[c.key] != null
-          ? cfg._thresholds[c.key]
-          : (c.defaultThreshold || 70);
-        return '<label class="eudr-formula-chip eudr-formula-chip--threshold">'
-          + '<input type="checkbox" data-eudr-formula-key="' + escHtml(c.key) + '"' + checked + ' />'
-          + '<span class="eudr-formula-chip-text">' + escHtml(c.label) + ' ≥</span>'
-          + '<input type="number" class="eudr-formula-threshold-input" id="eudrOwnPlasmaThreshold" '
-          + 'min="0" max="100" step="0.1" value="' + escHtml(String(thr)) + '" aria-label="Minimum percentage" />'
-          + '<span class="eudr-formula-threshold-suffix">%</span>'
-          + '</label>';
-      }
+      if (c.hasHaThreshold) return eudrRenderDeforestationChipHtml_(cfg, checked);
       return '<label class="eudr-formula-chip">'
         + '<input type="checkbox" data-eudr-formula-key="' + escHtml(c.key) + '"' + checked + ' />'
         + '<span class="eudr-formula-chip-text">' + escHtml(c.label) + '</span>'
         + '</label>';
     }).join('');
+    const ffbCrit = EUDR_STATUS_CRITERIA.find(function(c) { return c.hasFfbConfig; });
+    if (ffbWrap && ffbCrit) {
+      const checked = cfg[ffbCrit.key] !== false ? ' checked' : '';
+      ffbWrap.innerHTML = eudrRenderFfbFormulaChipHtml_(cfg, checked);
+    } else if (ffbWrap) {
+      ffbWrap.innerHTML = '';
+    }
     eudrUpdateFormulaActiveCount_();
+    eudrUpdateFfbSummary_();
     eudrBindFormulaPanelOnce_();
+    eudrBindFfbModalOnce_();
+    eudrMarkFormulaDirty_();
   }
 
   function eudrOnFormulaCriteriaChange_() {
-    eudrFormulaConfig = eudrReadFormulaConfigFromUi_();
+    eudrSyncGridCheckboxesToConfig_();
     eudrClearStatusCache_();
+    eudrRows.forEach(function(d) { eudrAttachTtpMetrics_(d); });
     eudrUpdateFormulaActiveCount_();
+    eudrUpdateFfbSummary_();
     eudrUpdateStats_();
     scheduleRenderEudrTable_();
     if (eudrEditRow) {
@@ -11854,15 +12404,81 @@ function initDashboardApp() {
           + eudrStatusBadgeHtml_(eudrGetDisplayStatus_(eudrEditRow));
       }
     }
-    eudrScheduleFormulaAutoSave_();
+    eudrMarkFormulaDirty_();
   }
 
-  function eudrScheduleFormulaAutoSave_() {
-    if (eudrFormulaSaveTimer) clearTimeout(eudrFormulaSaveTimer);
-    eudrFormulaSaveTimer = setTimeout(function() {
-      eudrFormulaSaveTimer = null;
-      eudrSaveFormulaConfig_(true);
-    }, 450);
+  function eudrIsFfbModalControl_(el) {
+    if (!el) return false;
+    const root = eudrFfbModalRoot_();
+    if (!root || !root.contains(el)) return false;
+    if (el.matches(
+      '[data-eudr-ffb-cat-enable], [data-eudr-ffb-combined-cat], input[name="eudrFfbMode"], '
+      + 'input[name="eudrFfbCombinedOperator"], input[name^="eudrFfbOp_"]'
+    )) {
+      return true;
+    }
+    return !!el.closest('.eudr-ffb-step-btn');
+  }
+
+  function eudrIsFormulaGridControl_(el) {
+    return !!(el && el.matches('#eudrFormulaGrid [data-eudr-formula-key], #eudrFormulaFfbWrap [data-eudr-formula-key]'));
+  }
+
+  function eudrApplyFfbStep_(btn) {
+    const step = parseInt(btn.getAttribute('data-eudr-ffb-step'), 10);
+    if (isNaN(step)) return;
+    const root = eudrFfbModalRoot_();
+    if (!root) return;
+    const catId = btn.getAttribute('data-eudr-ffb-cat');
+    let thrEl;
+    let valEl;
+    if (catId) {
+      thrEl = root.querySelector('[data-eudr-ffb-cat-thr="' + catId + '"]');
+      valEl = root.querySelector('[data-eudr-ffb-cat-val="' + catId + '"]');
+    } else if (btn.getAttribute('data-eudr-ffb-combined') === '1') {
+      if (root.querySelector('.eudr-ffb-combined-threshold--disabled')) return;
+      thrEl = root.querySelector('#eudrFfbCombinedThreshold');
+      valEl = root.querySelector('#eudrFfbCombinedThresholdVal');
+    }
+    if (!thrEl) return;
+    const next = eudrSnapFfbThreshold_(parseFloat(thrEl.value) + step);
+    thrEl.value = String(next);
+    if (valEl) valEl.textContent = next + '%';
+  }
+
+  function eudrBindFfbModalOnce_() {
+    if (window._eudrFfbModalBound) return;
+    window._eudrFfbModalBound = true;
+    eudrEnsureFfbModalPortal_();
+    const overlay = document.getElementById('eudrFfbModalOverlay');
+    const closeBtn = document.getElementById('eudrFfbModalClose');
+    const cancelBtn = document.getElementById('eudrFfbModalCancel');
+    const applyBtn = document.getElementById('eudrFfbModalApply');
+    if (closeBtn) closeBtn.addEventListener('click', eudrCloseFfbModal_);
+    if (cancelBtn) cancelBtn.addEventListener('click', eudrCloseFfbModal_);
+    if (applyBtn) applyBtn.addEventListener('click', eudrApplyFfbModal_);
+    if (overlay) {
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) eudrCloseFfbModal_();
+      });
+    }
+    if (overlay) {
+      overlay.addEventListener('change', function(e) {
+        if (!eudrIsFfbModalControl_(e.target)) return;
+        if (e.target.matches('input[name="eudrFfbMode"]')) eudrSyncFfbModePanels_();
+        if (e.target.matches('[data-eudr-ffb-combined-cat], [data-eudr-ffb-cat-enable]')) {
+          eudrSyncCategoryRowStates_();
+          eudrSyncCombinedThresholdState_();
+        }
+        eudrUpdateFfbFormulaHint_();
+      });
+      overlay.addEventListener('click', function(e) {
+        const btn = e.target && e.target.closest('.eudr-ffb-step-btn');
+        if (!btn || !overlay.contains(btn)) return;
+        eudrApplyFfbStep_(btn);
+        eudrUpdateFfbFormulaHint_();
+      });
+    }
   }
 
   function eudrBindFormulaPanelOnce_() {
@@ -11871,16 +12487,37 @@ function initDashboardApp() {
     if (!panel) return;
     eudrFormulaPanelBound = true;
     panel.addEventListener('change', function(e) {
-      if (!e.target) return;
-      if (e.target.matches('[data-eudr-formula-key]') || e.target.id === 'eudrOwnPlasmaThreshold') {
-        eudrOnFormulaCriteriaChange_();
+      if (!eudrIsFormulaGridControl_(e.target)) return;
+      eudrOnFormulaCriteriaChange_();
+    });
+    panel.addEventListener('click', function(e) {
+      const haBtn = e.target && e.target.closest('.eudr-ha-step-btn');
+      if (haBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const step = parseInt(haBtn.getAttribute('data-eudr-ha-step'), 10);
+        const thrEl = document.getElementById('eudrDeforestationThreshold');
+        const valEl = document.getElementById('eudrDeforestationHaVal');
+        if (thrEl && !isNaN(step)) {
+          const next = eudrSnapDeforestationHa_(parseFloat(thrEl.value) + step);
+          thrEl.value = String(next);
+          if (valEl) valEl.textContent = String(next);
+          eudrOnFormulaCriteriaChange_();
+        }
+        return;
+      }
+      if (e.target && e.target.closest('.eudr-ffb-config-btn')) {
+        e.preventDefault();
+        eudrOpenFfbModal_();
+        return;
       }
     });
-    panel.addEventListener('input', function(e) {
-      if (e.target && e.target.id === 'eudrOwnPlasmaThreshold') {
-        eudrOnFormulaCriteriaChange_();
-      }
-    });
+    const saveBtn = document.getElementById('eudrFormulaSaveBtn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        eudrSaveFormulaConfig_(false);
+      });
+    }
     const toggleBtn = document.getElementById('eudrFormulaToggle');
     const bodyEl = document.getElementById('eudrFormulaBody');
     const cardEl = document.getElementById('eudrFormulaCard');
@@ -11900,10 +12537,12 @@ function initDashboardApp() {
 
   function eudrFormulaConfigKey_(cfg) {
     cfg = cfg || eudrGetFormulaConfig_();
-    const thr = eudrGetOwnPlasmaThreshold_(cfg);
+    const ffb = eudrGetFfbFormulaConfig_(cfg);
+    const ffbKey = JSON.stringify(ffb);
     return EUDR_STATUS_CRITERIA.map(function(c) {
       var part = c.key + (cfg[c.key] !== false ? '1' : '0');
-      if (c.hasThreshold) part += '@' + thr;
+      if (c.hasFfbConfig) part += '@' + ffbKey;
+      if (c.hasHaThreshold) part += '@ha' + eudrGetDeforestationThreshold_(cfg);
       return part;
     }).join('');
   }
@@ -12022,12 +12661,9 @@ function initDashboardApp() {
       return { pass: pass, actual: v || '—', expected: 'Integrated' };
     }
     if (key === 'ownPlasmaFfb' || key === 'cpoTraceable') {
-      const threshold = eudrGetOwnPlasmaThreshold_(formulaCfg);
-      const result = eudrComputeOwnPlasmaFfbPctForEudrRow_(eudrRow);
-      const n = result.pct;
-      const pass = !isNaN(n) && n + 0.001 >= threshold;
-      const thrLabel = threshold % 1 === 0 ? String(threshold) : threshold.toFixed(1);
-      return { pass: pass, actual: result.pctLabel, expected: '≥ ' + thrLabel + '%' };
+      const ffbCfg = eudrGetFfbFormulaConfig_(formulaCfg);
+      const result = eudrEvaluateFfbFormula_(eudrFindTtpRowsForEntity_(eudrRow), ffbCfg);
+      return { pass: result.pass, actual: result.actual, expected: result.expected };
     }
     if (key === 'resultRiskLevel') {
       const v = millResolvedRiskLevelForStats_(millRow) || pickSavedCol(millRow, ['RESULT RISK LEVEL', 'Result Risk Level', 'RISK LEVEL']);
@@ -12084,12 +12720,14 @@ function initDashboardApp() {
       return { pass: !isNbl, actual: yn || v, expected: 'No' };
     }
     if (key === 'deforestation') {
+      const maxHa = eudrGetDeforestationThreshold_(formulaCfg);
+      const expected = eudrDeforestationExpectedLabel_(maxHa);
       const after2020 = eudrNormYesNoVal_(eudrSheetVal_(eudrRow, 'DEFORESTATION (AFTER 2020)'));
       if (after2020 === 'No') {
-        return { pass: true, actual: '0 Ha (After 2020: No)', expected: '< 10 Ha' };
+        return { pass: true, actual: '0 Ha (After 2020: No)', expected: expected };
       }
       if (after2020 === 'Yes') {
-        return { pass: false, actual: 'After 2020: Yes', expected: '< 10 Ha' };
+        return { pass: false, actual: 'After 2020: Yes', expected: expected };
       }
       const sources = [
         pickSavedCol(millRow, ['DEFORESTATION SPATIAL', 'Deforestation Spatial']),
@@ -12101,9 +12739,9 @@ function initDashboardApp() {
         if (ha !== null) break;
       }
       return {
-        pass: ha !== null && ha < 10,
+        pass: ha !== null && ha < maxHa,
         actual: ha !== null ? (ha + ' Ha') : (sources[0] || '—'),
-        expected: '< 10 Ha',
+        expected: expected,
       };
     }
     return { pass: false, actual: '—', expected: '—' };
@@ -12148,11 +12786,15 @@ function initDashboardApp() {
 
   async function eudrSaveFormulaConfig_(silent) {
     if (eudrFormulaSaving) return;
-    const cfg = eudrReadFormulaConfigFromUi_();
+    eudrSyncGridCheckboxesToConfig_();
+    const cfg = eudrGetFormulaConfig_();
     const criteria = EUDR_STATUS_CRITERIA.map(function(c) {
       const item = { key: c.key, enabled: cfg[c.key] !== false };
-      if (c.hasThreshold && cfg._thresholds) {
-        item.threshold = cfg._thresholds[c.key];
+      if (c.hasFfbConfig && cfg._ffbFormula) {
+        item.threshold = cfg._ffbFormula.combined.threshold;
+        item.config = cfg._ffbFormula;
+      } else if (c.hasHaThreshold && cfg._thresholds) {
+        item.threshold = eudrGetDeforestationThreshold_(cfg);
       }
       return item;
     });
@@ -12162,6 +12804,8 @@ function initDashboardApp() {
     try {
       await apiPost({ action: 'saveEudrStatusFormula', criteria: criteria });
       eudrFormulaConfig = cfg;
+      eudrFormulaSavedSnapshot_ = eudrFormulaSnapshotKey_(cfg);
+      eudrMarkFormulaDirty_();
       if (statusEl) statusEl.textContent = 'Saved';
       setTimeout(function() {
         if (statusEl && statusEl.textContent === 'Saved') statusEl.textContent = '';
@@ -12526,7 +13170,7 @@ function initDashboardApp() {
       eudrDetailFieldHtml_('Mill Category', pickSavedCol(millRow, ['MILL CATEGORY', 'Mill Category'])),
       eudrDetailFieldHtml_('Mill Capacity', capacity),
       eudrDetailFieldHtml_('Product Supply', pickSavedCol(millRow, ['PRODUCT SUPPLY', 'Product Supply'])),
-      eudrDetailFieldHtml_('% Own Estate + Plasma (FFB)', traceable || '—'),
+      eudrDetailFieldHtml_('% FFB Category (Monitoring TTM/TTP)', traceable || '—'),
       eudrDetailFieldHtml_('Result Risk Level', pickSavedCol(millRow, ['RESULT RISK LEVEL', 'Result Risk Level']), {
         html: resultRiskLevelPill(millRow['RESULT RISK LEVEL']),
       }),
@@ -12670,10 +13314,10 @@ function initDashboardApp() {
     }
     body.innerHTML = filtered.map(function(d) {
       const ownPlasmaLabel = d._eudrOwnPlasmaPctLabel || '—';
-      const thr = eudrGetOwnPlasmaThreshold_();
-      const ownPlasmaClass = !isNaN(d._eudrOwnPlasmaPct) && d._eudrOwnPlasmaPct + 0.001 >= thr
+      const ownPlasmaClass = d._eudrFfbFormulaPass === true
         ? ' eudr-ffb-pct--ok'
-        : (!isNaN(d._eudrOwnPlasmaPct) ? ' eudr-ffb-pct--low' : '');
+        : (d._eudrFfbFormulaPass === false && ownPlasmaLabel !== '—' ? ' eudr-ffb-pct--low' : '');
+      const ffbTitle = eudrFfbFormulaExpectedLabel_(eudrGetFfbFormulaConfig_());
       return '<tr class="eudr-row-clickable" data-eudr-key="' + escHtml(d._entityKey || '') + '" title="Klik untuk lihat detail">'
         + '<td><span class="mill-name">' + escHtml(d['GROUP NAME'] || '—') + '</span></td>'
         + '<td>' + escHtml(d['COMPANY NAME'] || '—') + '</td>'
@@ -12681,7 +13325,7 @@ function initDashboardApp() {
         + '<td>' + escHtml(d['PROVINCE'] || '—') + '</td>'
         + '<td class="eudr-cell-long">' + escHtml(eudrDisplayCell_(d['SUPPLY TO'])) + '</td>'
         + '<td>' + escHtml(eudrDisplayCell_(d['MILL CAPACITY'])) + '</td>'
-        + '<td class="eudr-ffb-pct-cell' + ownPlasmaClass + '" title="Own Estate + Plasma share of FFB supply (Monitoring TTM/TTP)">'
+        + '<td class="eudr-ffb-pct-cell' + ownPlasmaClass + '" title="' + escHtml(ffbTitle) + '">'
         + escHtml(ownPlasmaLabel) + '</td>'
         + '<td>' + eudrStatusCell_(eudrGetDisplayStatus_(d)) + '</td>'
         + '</tr>';
@@ -12726,7 +13370,7 @@ function initDashboardApp() {
       table.style.display = 'none';
       await ensureMillDataForEudr_();
       try { if (!ttpLoaded) await loadTTPData(); } catch (ttpErr) {
-        console.warn('[EUDR] TTP data unavailable for Own Estate + Plasma %:', ttpErr);
+        console.warn('[EUDR] TTP data unavailable for % FFB Category:', ttpErr);
       }
       await loadEudrFormulaConfig_();
       eudrClearStatusCache_();
@@ -15519,70 +16163,79 @@ function initDashboardApp() {
           return y + cardH + 8;
         }
 
-        function pfEstimateCertCellHeight_(parts, cellWidth) {
-          if (!parts.length) return 10;
-          const pillH = 5.5;
-          const pillPadX = 3;
-          const gap = 2.5;
-          const rowGap = 2;
-          const pad = 6;
-          let x = 0;
-          let rows = 1;
+        function pfCertPillWrapRows_(parts, innerWidth) {
+          if (!parts.length) return [];
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(7);
+          const rows = [];
+          let row = [];
+          let x = 0;
           parts.forEach(function(part) {
             const label = pfPdfSanitize_(part);
             if (label === '—') return;
-            const pillW = doc.getTextWidth(label) + pillPadX * 2;
-            if (x + pillW > cellWidth - pad && x > 0) {
+            const pillW = doc.getTextWidth(label) + PF_CERT_PILL_PAD_X * 2;
+            if (row.length && x + pillW > innerWidth) {
+              rows.push(row);
+              row = [];
               x = 0;
-              rows++;
             }
-            x += pillW + gap;
+            row.push({ label: label, width: pillW });
+            x += pillW + PF_CERT_PILL_GAP;
           });
-          return rows * pillH + (rows - 1) * rowGap + pad;
+          if (row.length) rows.push(row);
+          return rows;
+        }
+
+        function pfEstimateCertCellHeight_(parts, cellWidth) {
+          if (!parts.length) return 12;
+          const innerW = cellWidth - PF_CERT_CELL_PAD.left - PF_CERT_CELL_PAD.right;
+          const rows = pfCertPillWrapRows_(parts, innerW);
+          const rowCount = Math.max(1, rows.length);
+          const contentH = rowCount * PF_CERT_PILL_H + (rowCount - 1) * PF_CERT_ROW_GAP;
+          return PF_CERT_CELL_PAD.top + contentH + PF_CERT_CELL_PAD.bottom + 3;
         }
 
         function pfDrawCertPillsInCell_(cell, parts, accent) {
-          const pad = 3;
-          const pillH = 5.5;
-          const pillPadX = 3;
-          const gap = 2.5;
-          const rowGap = 2;
-          const maxX = cell.x + cell.width - pad;
-          let x = cell.x + pad;
-          let pillY = cell.y + pad;
+          const pad = PF_CERT_CELL_PAD;
+          const innerW = cell.width - pad.left - pad.right;
+          const rows = pfCertPillWrapRows_(parts, innerW);
 
-          if (!parts.length) {
+          if (!parts.length || !rows.length) {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.setTextColor.apply(doc, INK_MUTED);
-            doc.text('—', x, pillY + 3.5);
+            doc.text('—', cell.x + pad.left, cell.y + pad.top + 3.5);
             return;
           }
 
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(7);
-          parts.forEach(function(part) {
-            const label = pfPdfSanitize_(part);
-            if (label === '—') return;
-            const textW = doc.getTextWidth(label);
-            const pillW = Math.min(textW + pillPadX * 2, maxX - pad);
-
-            if (x + pillW > maxX && x > cell.x + pad) {
-              x = cell.x + pad;
-              pillY += pillH + rowGap;
-            }
-
-            doc.setFillColor(252, 247, 247);
-            doc.setDrawColor(accent[0], accent[1], accent[2]);
-            doc.setLineWidth(0.12);
-            doc.roundedRect(x, pillY, pillW, pillH, 2, 2, 'FD');
-            doc.setTextColor(90, 48, 48);
-            doc.text(label, x + pillPadX, pillY + 3.8);
-
-            x += pillW + gap;
+          let pillY = cell.y + pad.top;
+          rows.forEach(function(row) {
+            let x = cell.x + pad.left;
+            row.forEach(function(pill) {
+              const pillW = Math.min(pill.width, innerW);
+              doc.setFillColor(252, 247, 247);
+              doc.setDrawColor(accent[0], accent[1], accent[2]);
+              doc.setLineWidth(0.12);
+              doc.roundedRect(x, pillY, pillW, PF_CERT_PILL_H, 1.5, 1.5, 'FD');
+              doc.setTextColor(90, 48, 48);
+              doc.text(pill.label, x + PF_CERT_PILL_PAD_X, pillY + 3.5);
+              x += pillW + PF_CERT_PILL_GAP;
+            });
+            pillY += PF_CERT_PILL_H + PF_CERT_ROW_GAP;
           });
+        }
+
+        function pfApplyCertCellStyles_(data, parts, cellWidth) {
+          const cellW = cellWidth || data.cell.width || 0;
+          const h = pfEstimateCertCellHeight_(parts, cellW);
+          data.cell.text = [''];
+          data.cell.styles.cellPadding = PF_CERT_CELL_PAD;
+          data.cell.styles.overflow = 'hidden';
+          data.cell.styles.minCellHeight = h;
+          data.cell.styles.valign = 'middle';
+          if (!data.row.height || data.row.height < h) data.row.height = h;
         }
 
         function pfParseLatLng_(raw) {
@@ -15699,6 +16352,16 @@ function initDashboardApp() {
         /** Render scale for crisp PDF map output (~300 DPI equivalent). */
         const PF_MAP_HD_SCALE = 2;
         const PF_MAP_BASE_WIDTH = 1800;
+        /** White breathing room between map tiles and location summary panel. */
+        const PF_MAP_LEGEND_GAP = 52;
+        /** Top padding inside summary panel before title (logical px). */
+        const PF_MAP_LEGEND_PAD_TOP = 44;
+
+        const PF_CERT_CELL_PAD = { top: 5, right: 3, bottom: 5, left: 3 };
+        const PF_CERT_PILL_H = 5;
+        const PF_CERT_PILL_PAD_X = 2.5;
+        const PF_CERT_PILL_GAP = 2;
+        const PF_CERT_ROW_GAP = 3;
 
         function pfDrawMapMarkerDot_(ctx, x, y, point, accentRgb) {
           const isFac = point.kind === 'facility';
@@ -15817,50 +16480,56 @@ function initDashboardApp() {
 
         function pfMapLegendHeightPx_(points, widthPx) {
           const summaryRows = pfMapProvinceSummaryRows_(points);
-          const headerH = 42;
-          const rowH = 13;
+          const headerH = PF_MAP_LEGEND_PAD_TOP + 62;
+          const rowH = 30;
           const cols = 2;
           const rows = Math.ceil(Math.max(1, summaryRows.length) / cols);
-          const contentH = headerH + rows * rowH + 18;
-          const minH = Math.round(widthPx * 0.12);
-          const maxH = Math.round(widthPx * 0.28);
+          const contentH = PF_MAP_LEGEND_GAP + headerH + rows * rowH + 32;
+          const minH = Math.round(widthPx * 0.18);
+          const maxH = Math.round(widthPx * 0.36);
           return Math.min(maxH, Math.max(minH, contentH));
         }
 
         function pfDrawMapLegendPanel_(ctx, points, widthPx, legendTop, legendH, accentRgb) {
-          ctx.fillStyle = '#faf8f8';
-          ctx.fillRect(0, legendTop, widthPx, legendH);
-          ctx.strokeStyle = 'rgba(139, 26, 26, 0.12)';
-          ctx.lineWidth = 1;
+          // Breathing room between map tiles and summary block.
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, legendTop, widthPx, PF_MAP_LEGEND_GAP);
+          ctx.strokeStyle = 'rgba(139, 26, 26, 0.2)';
+          ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.moveTo(0, legendTop);
-          ctx.lineTo(widthPx, legendTop);
+          ctx.moveTo(0, legendTop + PF_MAP_LEGEND_GAP - 1);
+          ctx.lineTo(widthPx, legendTop + PF_MAP_LEGEND_GAP - 1);
           ctx.stroke();
+
+          const panelTop = legendTop + PF_MAP_LEGEND_GAP;
+          const panelH = legendH - PF_MAP_LEGEND_GAP;
+          ctx.fillStyle = '#faf8f8';
+          ctx.fillRect(0, panelTop, widthPx, panelH);
 
           const companies = points.filter(function(p) { return p.kind === 'company'; });
           const summaryRows = pfMapProvinceSummaryRows_(points);
-          const padX = 14;
-          let y = legendTop + 14;
+          const padX = 24;
+          let y = panelTop + PF_MAP_LEGEND_PAD_TOP;
 
           ctx.fillStyle = '#3d1818';
-          ctx.font = 'bold 11px Helvetica, Arial, sans-serif';
+          ctx.font = 'bold 26px Helvetica, Arial, sans-serif';
           ctx.fillText('LOCATION SUMMARY', padX, y);
-          y += 12;
-          ctx.fillStyle = '#7a5a5a';
-          ctx.font = '9px Helvetica, Arial, sans-serif';
+          y += 32;
+          ctx.fillStyle = '#5a4040';
+          ctx.font = '18px Helvetica, Arial, sans-serif';
           ctx.fillText(
             'F = Facility   ·   1–' + companies.length + ' = Company mills (match # in breakdown table)',
             padX,
             y
           );
-          y += 14;
+          y += 30;
 
-          const colW = (widthPx - padX * 2 - 12) / 2;
-          const rowH = 13;
+          const colW = (widthPx - padX * 2 - 16) / 2;
+          const rowH = 30;
           summaryRows.forEach(function(row, i) {
             const col = i % 2;
             const rowIdx = Math.floor(i / 2);
-            const rx = padX + col * (colW + 12);
+            const rx = padX + col * (colW + 16);
             const ry = y + rowIdx * rowH;
             if (row.kind === 'facility') {
               ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
@@ -15868,16 +16537,16 @@ function initDashboardApp() {
               ctx.fillStyle = '#1a5fa8';
             }
             ctx.beginPath();
-            ctx.arc(rx + 4, ry - 3, 3.5, 0, Math.PI * 2);
+            ctx.arc(rx + 6, ry - 2, 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#2a1010';
-            ctx.font = '8.5px Helvetica, Arial, sans-serif';
-            ctx.fillText(row.text, rx + 12, ry);
+            ctx.font = '20px Helvetica, Arial, sans-serif';
+            ctx.fillText(row.text, rx + 18, ry);
           });
 
           ctx.fillStyle = '#9c8080';
-          ctx.font = '8px Helvetica, Arial, sans-serif';
-          ctx.fillText('© OpenStreetMap contributors · © CARTO', padX, legendTop + legendH - 8);
+          ctx.font = '14px Helvetica, Arial, sans-serif';
+          ctx.fillText('© OpenStreetMap contributors · © CARTO', padX, panelTop + panelH - 12);
         }
 
         function pfAssignCompanyMapIndexes_(companies) {
@@ -16110,9 +16779,7 @@ function initDashboardApp() {
               didParseCell: function(data) {
                 if (data.section !== 'body' || data.row.raw[0] !== 'Certification') return;
                 if (data.column.index === 1) {
-                  data.cell.text = [''];
-                  data.cell.styles.minCellHeight = pfEstimateCertCellHeight_(certParts, valueColW);
-                  data.cell.styles.valign = 'middle';
+                  pfApplyCertCellStyles_(data, certParts, valueColW);
                 }
               },
               didDrawCell: function(data) {
@@ -16188,10 +16855,7 @@ function initDashboardApp() {
             didParseCell: function(data) {
               if (data.section !== 'body') return;
               if (data.column.index === 3) {
-                const parts = pfParseCertParts_(data.cell.raw);
-                data.cell.text = [''];
-                data.cell.styles.minCellHeight = pfEstimateCertCellHeight_(parts, colW[3]);
-                data.cell.styles.valign = 'middle';
+                pfApplyCertCellStyles_(data, pfParseCertParts_(data.cell.raw), colW[3]);
                 return;
               }
               if (data.column.index === 5) {
@@ -17506,6 +18170,199 @@ function initDashboardApp() {
   // ═══════════════════════════════════════════════════════════════════════════
   //  SUPPLY IMPORT — Task List (Excel → Draft → Submit to Mill)
   // ═══════════════════════════════════════════════════════════════════════════
+
+  const SUPPLY_PCT_COL_CPO = 'PERCENTAGE SUPPLY CPO';
+  const SUPPLY_PCT_COL_PK  = 'PERCENTAGE SUPPLY PK';
+
+  function supplyImportType_() {
+    const checked = document.querySelector('input[name="supply-import-type"]:checked');
+    const v = checked ? String(checked.value || '').trim().toUpperCase() : 'CPO';
+    return v === 'PK' ? 'PK' : 'CPO';
+  }
+
+  function supplyNormKey_(s) {
+    return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function supplyParseQty_(raw) {
+    if (raw == null || raw === '') return NaN;
+    if (typeof raw === 'number') return isFinite(raw) ? raw : NaN;
+    const s = String(raw).trim();
+    if (!s) return NaN;
+    const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? NaN : n;
+  }
+
+  function supplyResolveNamesFromExcel_(r) {
+    const company = String(r.COMPANY_NAME || '').trim();
+    const millRaw = String(r.MILL_NAME || '').trim();
+    const group = String(r.COMPANY_GROUP_NAME || r.EXCEL_GROUP || '').trim();
+    return {
+      company: company,
+      mill: millRaw || company,
+      group: group,
+    };
+  }
+
+  /** Match company + group + mill against Mill Onboarding Profile for period. */
+  function supplyFindMillProfileMatch_(names, quarter, year) {
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    const cn = supplyNormKey_(names.company);
+    const gn = supplyNormKey_(names.group);
+    const mn = supplyNormKey_(names.mill);
+    const qWant = String(quarter || '').trim().replace(/^Q/i, '');
+    const yWant = String(year || '').trim();
+
+    let groupMismatch = null;
+
+    for (let i = 0; i < src.length; i++) {
+      const d = src[i];
+      const dcn = supplyNormKey_(d['COMPANY NAME']);
+      const dgn = supplyNormKey_(d['GROUP NAME']);
+      const dmn = supplyNormKey_(d['MILL NAME']);
+      const dy = String(millYearVal(d) || '').trim();
+      const dq = String(millQuarterVal(d) || '').trim().replace(/^Q/i, '');
+
+      const companyOk = dcn === cn
+        || (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(d['COMPANY NAME'], names.company));
+      const millOk = dmn === mn
+        || (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(d['MILL NAME'], names.mill))
+        || (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(d['MILL NAME'], names.company));
+      if (!companyOk || !millOk) continue;
+
+      if (yWant && dy && dy !== yWant) continue;
+      if (qWant && dq && dq !== qWant && dq !== ('Q' + qWant)) continue;
+
+      if (gn && dgn && dgn !== gn
+          && !(typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(d['GROUP NAME'], names.group))) {
+        if (!groupMismatch) groupMismatch = d;
+        continue;
+      }
+      return { status: 'matched', row: d };
+    }
+    if (groupMismatch) return { status: 'group_mismatch', row: groupMismatch };
+    return { status: 'new', row: null };
+  }
+
+  function supplyCalcPercentages_(parsedRows) {
+    const byPlant = {};
+    parsedRows.forEach(function(r) {
+      const plant = String(r.PLANT || '').trim() || '_';
+      const qty = supplyParseQty_(r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG);
+      if (isNaN(qty) || qty <= 0) return;
+      if (!byPlant[plant]) byPlant[plant] = 0;
+      byPlant[plant] += qty;
+    });
+    parsedRows.forEach(function(r) {
+      const plant = String(r.PLANT || '').trim() || '_';
+      const qty = supplyParseQty_(r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG);
+      const sum = byPlant[plant] || 0;
+      if (!isNaN(qty) && qty > 0 && sum > 0) {
+        r.SUPPLY_PCT = Math.round((qty / sum) * 10000) / 100;
+      } else {
+        r.SUPPLY_PCT = '';
+      }
+    });
+    return parsedRows;
+  }
+
+  function supplyFindImportSheet_(wb, productType) {
+    const names = wb.SheetNames || [];
+    const wantPk = productType === 'PK';
+    const scored = names.map(function(n) {
+      const low = n.toLowerCase().trim();
+      let score = 0;
+      if (low.includes('contoh pengisian')) score += 50;
+      if (wantPk && low.includes('supplied pk')) score += 80;
+      if (!wantPk && low.includes('supplied cpo')) score += 80;
+      if (low.includes('supplied')) score += 20;
+      return { name: n, score: score };
+    }).filter(function(x) { return x.score > 0; })
+      .sort(function(a, b) { return b.score - a.score; });
+    if (scored.length) return scored[0].name;
+
+    for (let i = 0; i < names.length; i++) {
+      const ws = wb.Sheets[names[i]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (!rows.length) continue;
+      const scan = Math.min(rows.length, 8);
+      for (let r = 0; r < scan; r++) {
+        const headers = (rows[r] || []).map(function(h) { return String(h || '').trim().toUpperCase(); });
+        if (headers.indexOf('COMPANY NAME') >= 0 && (headers.indexOf('MILL NAME') >= 0 || headers.indexOf('PLANT') >= 0)) {
+          return names[i];
+        }
+      }
+    }
+    return null;
+  }
+
+  function supplyParseExcelRows_(ws) {
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (!rows.length) return { error: 'Sheet kosong.' };
+
+    let headerRowIdx = 0;
+    let headers = (rows[0] || []).map(function(h) { return String(h || '').trim().toUpperCase(); });
+    const scanMax = Math.min(rows.length, 12);
+    for (let i = 0; i < scanMax; i++) {
+      const candidate = (rows[i] || []).map(function(h) { return String(h || '').trim().toUpperCase(); });
+      if (candidate.indexOf('COMPANY NAME') >= 0) {
+        headerRowIdx = i;
+        headers = candidate;
+        break;
+      }
+    }
+
+    const colPlant    = headers.indexOf('PLANT');
+    const colGroup    = headers.indexOf('GROUP');
+    const colCategory = headers.indexOf('CATEGORY');
+    const colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
+    const colCoName   = headers.indexOf('COMPANY NAME');
+    const colMillName = headers.indexOf('MILL NAME');
+    const colSumQty   = headers.indexOf('SUM OF QTY KG');
+    const colTotal    = headers.indexOf('TOTAL');
+
+    if (colCoName < 0) {
+      return { error: 'Kolom COMPANY NAME tidak ditemukan.' };
+    }
+
+    const qtyCol = colSumQty >= 0 ? colSumQty : colTotal;
+    let lastPlant = '';
+    let lastGroup = '';
+    const parsed = [];
+
+    for (let ri = headerRowIdx + 1; ri < rows.length; ri++) {
+      const r = rows[ri] || [];
+      if (!r.some(function(c) { return String(c || '').trim() !== ''; })) continue;
+
+      let plant = colPlant >= 0 ? String(r[colPlant] != null ? r[colPlant] : '').trim() : '';
+      let excelGroup = colGroup >= 0 ? String(r[colGroup] != null ? r[colGroup] : '').trim() : '';
+      if (plant) lastPlant = plant;
+      else plant = lastPlant;
+      if (excelGroup) lastGroup = excelGroup;
+      else excelGroup = lastGroup;
+
+      const company = String(r[colCoName] != null ? r[colCoName] : '').trim();
+      const millName = colMillName >= 0 ? String(r[colMillName] != null ? r[colMillName] : '').trim() : '';
+      if (!company && !millName) continue;
+      if (/^total$/i.test(company) || /^total$/i.test(millName)) continue;
+
+      const qtyRaw = qtyCol >= 0 ? r[qtyCol] : '';
+      parsed.push({
+        PLANT: plant,
+        EXCEL_GROUP: excelGroup,
+        CATEGORY: colCategory >= 0 ? String(r[colCategory] != null ? r[colCategory] : '').trim() : '',
+        COMPANY_GROUP_NAME: colCoGroup >= 0 ? String(r[colCoGroup] != null ? r[colCoGroup] : '').trim() : '',
+        COMPANY_NAME: company,
+        MILL_NAME: millName,
+        SUPPLY_QTY: qtyRaw,
+        SUM_QTY_KG: qtyRaw,
+      });
+    }
+
+    if (!parsed.length) return { error: 'Tidak ada baris data yang valid.' };
+    return { rows: supplyCalcPercentages_(parsed) };
+  }
+
   (function initSupplyImport() {
     // ── Year options ─────────────────────────────────────────────────────────
     const yearSel = document.getElementById('supply-import-year');
@@ -17560,31 +18417,53 @@ function initDashboardApp() {
     if (quarterSel) quarterSel.addEventListener('change', checkProceedReady_);
     if (yearSel)    yearSel.addEventListener('change', checkProceedReady_);
 
+    const typeWrap = document.getElementById('supply-import-type-wrap');
+    if (typeWrap) {
+      typeWrap.querySelectorAll('.supply-type-seg__opt').forEach(function(lbl) {
+        lbl.addEventListener('click', function() {
+          typeWrap.querySelectorAll('.supply-type-seg__opt').forEach(function(el) {
+            el.classList.remove('supply-type-seg__opt--active');
+          });
+          lbl.classList.add('supply-type-seg__opt--active');
+          const inp = lbl.querySelector('input[name="supply-import-type"]');
+          if (inp) inp.checked = true;
+          window._supplyImportParsedRows = null;
+          resetImportModal_(true);
+          checkProceedReady_();
+        });
+      });
+    }
+
     // ── Proceed → build task list ─────────────────────────────────────────────
     const proceedBtn = document.getElementById('btn-supply-import-proceed');
     if (proceedBtn) proceedBtn.addEventListener('click', function() {
       const q = quarterSel ? quarterSel.value : '';
       const y = yearSel ? yearSel.value : '';
+      const supplyType = supplyImportType_();
       if (!q || !y || !window._supplyImportParsedRows) return;
-      buildSupplyTaskList_(window._supplyImportParsedRows, q, y);
+      buildSupplyTaskList_(window._supplyImportParsedRows, q, y, supplyType);
       closeModal();
+      const draftSection = document.getElementById('supply-draft-list');
+      if (draftSection) {
+        draftSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
 
     // ── Load existing drafts on panel open ────────────────────────────────────
     loadSupplyDraftsFromServer_();
   })();
 
-  function resetImportModal_() {
-    window._supplyImportParsedRows = null;
+  function resetImportModal_(keepType) {
+    if (!keepType) window._supplyImportParsedRows = null;
     const fileInput  = document.getElementById('supply-import-file-input');
     const fileInfo   = document.getElementById('supply-import-file-info');
     const fileError  = document.getElementById('supply-import-file-error');
     const preview    = document.getElementById('supply-import-preview-wrap');
     const proceedBtn = document.getElementById('btn-supply-import-proceed');
-    if (fileInput)   { fileInput.value = ''; }
-    if (fileInfo)    { fileInfo.style.display = 'none'; }
+    if (!keepType && fileInput) { fileInput.value = ''; }
+    if (!keepType && fileInfo)  { fileInfo.style.display = 'none'; }
     if (fileError)   { fileError.style.display = 'none'; fileError.textContent = ''; }
-    if (preview)     { preview.style.display = 'none'; }
+    if (!keepType && preview)   { preview.style.display = 'none'; }
     if (proceedBtn)  { proceedBtn.disabled = true; proceedBtn.style.opacity = '0.45'; }
   }
 
@@ -17611,66 +18490,36 @@ function initDashboardApp() {
 
     function parseSupplyFile_(f, errCb) {
       const reader = new FileReader();
+      const supplyType = supplyImportType_();
       reader.onload = function(evt) {
         try {
           const wb = XLSX.read(evt.target.result, { type: 'array' });
-          const sheetName = wb.SheetNames.find(function(n) {
-            return n.toLowerCase().trim().includes('contoh pengisian');
-          });
+          const sheetName = supplyFindImportSheet_(wb, supplyType);
           if (!sheetName) {
-            errCb('Sheet "Contoh Pengisian" tidak ditemukan. Pastikan file sudah sesuai template.');
+            errCb('Sheet supply tidak ditemukan. Gunakan template "Contoh Pengisian" atau "Supplied ' + supplyType + ' …".');
             return;
           }
-          const ws   = wb.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          if (rows.length < 2) { errCb('Sheet "Contoh Pengisian" kosong.'); return; }
-
-          const headers = rows[0].map(function(h) { return String(h || '').trim().toUpperCase(); });
-          const dataRows = rows.slice(1).filter(function(r) {
-            return r.some(function(c) { return String(c || '').trim() !== ''; });
-          });
-          if (!dataRows.length) { errCb('Tidak ada data di sheet "Contoh Pengisian".'); return; }
-
-          // Map columns
-          const colPlant    = headers.indexOf('PLANT');
-          const colCategory = headers.indexOf('CATEGORY');
-          const colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
-          const colCoName   = headers.indexOf('COMPANY NAME');
-          const colMillName = headers.indexOf('MILL NAME');
-          const colSumQty   = headers.indexOf('SUM OF QTY KG');
-
-          if (colCoName < 0 || colMillName < 0) {
-            errCb('Kolom COMPANY NAME atau MILL NAME tidak ditemukan di sheet "Contoh Pengisian".');
+          const parsed = supplyParseExcelRows_(wb.Sheets[sheetName]);
+          if (parsed.error) {
+            errCb(parsed.error);
             return;
           }
+          window._supplyImportParsedRows = parsed.rows;
+          window._supplyImportSheetName = sheetName;
 
-          window._supplyImportParsedRows = dataRows.map(function(r) {
-            return {
-              PLANT:              String(r[colPlant]    != null ? r[colPlant]    : '').trim(),
-              CATEGORY:           String(r[colCategory] != null ? r[colCategory] : '').trim(),
-              COMPANY_GROUP_NAME: String(r[colCoGroup]  != null ? r[colCoGroup]  : '').trim(),
-              COMPANY_NAME:       String(r[colCoName]   != null ? r[colCoName]   : '').trim(),
-              MILL_NAME:          String(r[colMillName] != null ? r[colMillName] : '').trim(),
-              SUM_QTY_KG:         r[colSumQty] != null ? r[colSumQty] : '',
-            };
-          }).filter(function(r) { return r.COMPANY_NAME || r.MILL_NAME; });
-
-          // Show file info
-          if (fileName) fileName.textContent = f.name;
+          if (fileName) fileName.textContent = f.name + ' · ' + sheetName;
           if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' baris';
           if (fileInfo) fileInfo.style.display = 'flex';
 
-          // Build preview table
-          buildImportPreview_(window._supplyImportParsedRows);
+          buildImportPreview_(window._supplyImportParsedRows, supplyType);
 
-          // Re-check proceed readiness
           const quarterSel = document.getElementById('supply-import-quarter');
           const yearSel    = document.getElementById('supply-import-year');
           const q = quarterSel ? quarterSel.value : '';
           const y = yearSel ? yearSel.value : '';
           const proceedBtn = document.getElementById('btn-supply-import-proceed');
           if (proceedBtn) {
-            const ready = !!(q && y);
+            const ready = !!(q && y && window._supplyImportParsedRows.length);
             proceedBtn.disabled = !ready;
             proceedBtn.style.opacity = ready ? '1' : '0.45';
             proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
@@ -17683,28 +18532,39 @@ function initDashboardApp() {
     }
   }
 
-  function buildImportPreview_(parsedRows) {
+  function buildImportPreview_(parsedRows, supplyType) {
     const wrap   = document.getElementById('supply-import-preview-wrap');
     const tHead  = document.getElementById('supply-import-preview-head');
     const tBody  = document.getElementById('supply-import-preview-body');
     if (!wrap || !tHead || !tBody) return;
+    const pctLabel = supplyType === 'PK' ? '% Supply PK' : '% Supply CPO';
 
     tHead.innerHTML = '<tr>'
-      + ['Company Name','Mill Name','Plant','Category','Supply (Kg)'].map(function(h) {
+      + ['Group','Company','Mill','Plant','Qty','Match', pctLabel].map(function(h) {
           return '<th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(h) + '</th>';
         }).join('') + '</tr>';
 
+    const quarterSel = document.getElementById('supply-import-quarter');
+    const yearSel    = document.getElementById('supply-import-year');
+    const q = quarterSel ? quarterSel.value : '';
+    const y = yearSel ? yearSel.value : '';
+
     const preview = parsedRows.slice(0, 8);
     tBody.innerHTML = preview.map(function(r, i) {
+      const names = supplyResolveNamesFromExcel_(r);
+      const match = supplyFindMillProfileMatch_(names, q, y);
+      const matchLabel = match.status === 'matched' ? '✓ Profile'
+        : (match.status === 'group_mismatch' ? '⚠ Group' : 'Baru');
+      const millDisp = names.mill || '—';
       const bg = i % 2 === 0 ? '#fff' : '#fdf9f9';
       return '<tr style="background:' + bg + ';">'
-        + [r.COMPANY_NAME, r.MILL_NAME, r.PLANT, r.CATEGORY, r.SUM_QTY_KG].map(function(v) {
-            return '<td style="padding:6px 10px;font-size:11.5px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-              + escHtml(String(v || '—')) + '</td>';
+        + [names.group, names.company, millDisp, r.PLANT, r.SUPPLY_QTY, matchLabel, r.SUPPLY_PCT].map(function(v) {
+            return '<td style="padding:6px 10px;font-size:11.5px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+              + escHtml(String(v != null && v !== '' ? v : '—')) + '</td>';
           }).join('') + '</tr>';
     }).join('');
     if (parsedRows.length > 8) {
-      tBody.innerHTML += '<tr><td colspan="5" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… dan ' + (parsedRows.length - 8) + ' baris lagi</td></tr>';
+      tBody.innerHTML += '<tr><td colspan="7" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… dan ' + (parsedRows.length - 8) + ' baris lagi</td></tr>';
     }
     wrap.style.display = 'block';
   }
@@ -17713,67 +18573,78 @@ function initDashboardApp() {
   // State: current open/editing draft batches
   window._supplyDraftBatches = window._supplyDraftBatches || [];
 
-  function buildSupplyTaskList_(parsedRows, quarter, year) {
+  function buildSupplyTaskList_(parsedRows, quarter, year, supplyType) {
     const batchId = 'batch-' + Date.now();
     const now     = new Date().toISOString();
-    const rows    = parsedRows.map(function(r, idx) {
-      // Try to find matching mill in allData
-      const match = allData.find(function(d) {
-        const cn = String(d['COMPANY NAME'] || '').trim().toLowerCase();
-        const mn = String(d['MILL NAME']    || '').trim().toLowerCase();
-        return cn === r.COMPANY_NAME.toLowerCase() && mn === r.MILL_NAME.toLowerCase();
-      });
+    const kind    = supplyType === 'PK' ? 'PK' : 'CPO';
+    const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
+    const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+
+    const rows = parsedRows.map(function(r, idx) {
+      const names = supplyResolveNamesFromExcel_(r);
+      const found = supplyFindMillProfileMatch_(names, quarter, year);
+      const profile = found.row;
 
       const draft = {
-        draft_id:    batchId + '_' + idx,
-        batch_id:    batchId,
-        status:      'draft',
-        quarter:     quarter,
-        year:        year,
-        match_status: match ? 'matched' : 'new',
-        QUARTER:     quarter,
-        YEAR:        year,
+        draft_id:       batchId + '_' + idx,
+        batch_id:       batchId,
+        status:         'draft',
+        quarter:        quarter,
+        year:           year,
+        supply_type:    kind,
+        SUPPLY_TYPE:    kind,
+        match_status:   found.status,
+        QUARTER:        quarter,
+        YEAR:           String(year),
+        SUPPLY_QTY:     r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG,
+        SUPPLY_PERCENTAGE: r.SUPPLY_PCT,
       };
+      draft[pctField] = r.SUPPLY_PCT;
+      draft[facField] = r.PLANT;
+      draft['TRADER NAME']  = r.CATEGORY;
+      draft['GROUP NAME']   = names.group || (profile ? (profile['GROUP NAME'] || '') : '');
+      draft['COMPANY NAME'] = names.company;
+      draft['MILL NAME']    = names.mill;
 
-      // Mapping: Excel → Mill columns
-      draft['FACILITY NAME CPO'] = r.PLANT;
-      draft['TRADER NAME']       = r.CATEGORY;
-      draft['GROUP NAME']        = r.COMPANY_GROUP_NAME || (match ? (match['GROUP NAME'] || '') : '');
-      draft['COMPANY NAME']      = r.COMPANY_NAME;
-      draft['MILL NAME']         = r.MILL_NAME;
-      draft['SUPPLY CPO']        = r.SUM_QTY_KG;
-
-      // Prefill all other mill fields from matched record (EXCEPT SUPPLY CPO)
-      if (match) {
-        const PREFILL_SKIP = new Set(['SUPPLY CPO', 'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME', 'FACILITY NAME CPO', 'TRADER NAME']);
-        (window.MILL_FIELDS_LIST || [
-          'COMPANY CODE','UML ID','ADDRESS','PROVINCE','COORDINATES',
-          'MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI',
-          'IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT',
-          'DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY',
-          'DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT',
-          'SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD',
-          'TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE',
-          'SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS',
-          'RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL',
-          'RESULT RISK LEVEL','FACILITY NAME PK','PRODUCT SUPPLY',
-        ]).forEach(function(f) {
+      if (profile && found.status === 'matched') {
+        draft.target_mill_row = profile._row;
+        draft._mill_row = profile._row;
+        const PREFILL_SKIP = new Set([
+          pctField, SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
+          'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
+          'FACILITY NAME CPO', 'FACILITY NAME PK', 'TRADER NAME', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
+        ]);
+        (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
           if (PREFILL_SKIP.has(f)) return;
-          if (match[f] !== undefined && match[f] !== null && String(match[f]).trim() !== '') {
-            draft[f] = match[f];
+          if (profile[f] !== undefined && profile[f] !== null && String(profile[f]).trim() !== '') {
+            draft[f] = profile[f];
           }
         });
+        draft['GROUP NAME']   = profile['GROUP NAME'] || draft['GROUP NAME'];
+        draft['COMPANY NAME'] = profile['COMPANY NAME'] || draft['COMPANY NAME'];
+        draft['MILL NAME']    = profile['MILL NAME'] || draft['MILL NAME'];
+        draft[pctField] = r.SUPPLY_PCT;
+        draft[facField] = r.PLANT || profile[facField] || '';
+      } else if (profile && found.status === 'group_mismatch') {
+        draft._profile_group_hint = profile['GROUP NAME'] || '';
       }
 
       return draft;
     });
 
-    const batch = { batch_id: batchId, quarter: quarter, year: year, rows: rows, status: 'draft', created_at: now };
+    const batch = {
+      batch_id: batchId,
+      quarter: quarter,
+      year: year,
+      supply_type: kind,
+      rows: rows,
+      status: 'draft',
+      created_at: now,
+    };
     window._supplyDraftBatches.push(batch);
     renderSupplyDraftList_();
 
-    // Auto-save draft to server
-    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: rows, meta: { quarter, year } })
+    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: rows, meta: { quarter, year, supply_type: kind } })
       .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
   }
 
@@ -17793,20 +18664,26 @@ function initDashboardApp() {
     container.innerHTML = batches.map(function(b) {
       const rowCount    = b.rows ? b.rows.length : 0;
       const matched     = b.rows ? b.rows.filter(function(r) { return r.match_status === 'matched'; }).length : 0;
-      const newCount    = b.rows ? b.rows.filter(function(r) { return r.match_status !== 'matched'; }).length : 0;
+      const warnCount   = b.rows ? b.rows.filter(function(r) { return r.match_status === 'group_mismatch'; }).length : 0;
+      const newCount    = b.rows ? b.rows.filter(function(r) { return r.match_status === 'new'; }).length : 0;
       const doneCount   = b.rows ? b.rows.filter(function(r) { return r._submitted; }).length : 0;
       const isSubmitted = b.status === 'submitted';
+      const supplyKind  = String(b.supply_type || (b.rows && b.rows[0] && b.rows[0].supply_type) || 'CPO').toUpperCase();
+      const typeBadge   = '<span class="supply-badge supply-badge--' + (supplyKind === 'PK' ? 'pk' : 'cpo') + '">' + escHtml(supplyKind) + '</span>';
       const statusBadge = isSubmitted
         ? '<span class="supply-badge supply-badge--submitted">Submitted</span>'
-        : '<span class="supply-badge supply-badge--draft">Draft</span>';
+        : '<span class="supply-badge supply-badge--draft">Draft · Task List</span>';
       const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
 
       return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
         + '<div class="supply-batch-card-head">'
         + '<div class="supply-batch-card-meta">'
         + '<span class="supply-batch-period">' + escHtml(b.quarter) + ' · ' + escHtml(b.year) + '</span>'
+        + typeBadge
         + statusBadge
-        + '<span class="supply-batch-info">' + rowCount + ' rows · ' + matched + ' matched · ' + newCount + ' new'
+        + '<span class="supply-batch-info">' + rowCount + ' rows · ' + matched + ' matched'
+        + (warnCount ? ' · ' + warnCount + ' group mismatch' : '')
+        + (newCount ? ' · ' + newCount + ' new' : '')
         + (doneCount > 0 ? ' · ' + doneCount + ' done' : '') + '</span>'
         + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
         + '</div>'
@@ -17840,13 +18717,17 @@ function initDashboardApp() {
   function renderSupplyBatchTable_(batch) {
     if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">Tidak ada baris.</p>';
     const isSubmitted = batch.status === 'submitted';
+    const supplyKind  = String(batch.supply_type || (batch.rows[0] && batch.rows[0].supply_type) || 'CPO').toUpperCase();
+    const pctKey      = supplyKind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
+    const facKey      = supplyKind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
     const SHOW_COLS = [
       ['COMPANY NAME',    'Company Name'],
       ['MILL NAME',       'Mill Name'],
       ['GROUP NAME',      'Group Name'],
-      ['TRADER NAME',     'Trader Name (Category)'],
-      ['FACILITY NAME CPO','Facility CPO (Plant)'],
-      ['SUPPLY CPO',      'Supply CPO (Kg)'],
+      ['TRADER NAME',     'Category'],
+      [facKey,            'Plant / Facility'],
+      [pctKey,            supplyKind === 'PK' ? '% Supply PK' : '% Supply CPO'],
+      ['SUPPLY_QTY',      'Qty (import)'],
       ['PROVINCE',        'Province'],
     ];
 
@@ -17860,10 +18741,15 @@ function initDashboardApp() {
 
     const body = batch.rows.map(function(row, i) {
       const isMatched  = row.match_status === 'matched';
+      const isGroupWarn = row.match_status === 'group_mismatch';
       const isRowDone  = row._submitted === true;
-      const matchBadge = isMatched
-        ? '<span style="font-size:9.5px;font-weight:700;background:rgba(46,125,50,0.12);color:#2e7d32;border-radius:4px;padding:1px 5px;margin-left:4px;">✓ Match</span>'
-        : '<span style="font-size:9.5px;font-weight:700;background:rgba(139,26,26,0.1);color:#8B1A1A;border-radius:4px;padding:1px 5px;margin-left:4px;">New</span>';
+      let matchBadge = '<span style="font-size:9.5px;font-weight:700;background:rgba(139,26,26,0.1);color:#8B1A1A;border-radius:4px;padding:1px 5px;margin-left:4px;">New</span>';
+      if (isMatched) {
+        matchBadge = '<span style="font-size:9.5px;font-weight:700;background:rgba(46,125,50,0.12);color:#2e7d32;border-radius:4px;padding:1px 5px;margin-left:4px;">✓ Profile</span>';
+      } else if (isGroupWarn) {
+        const hint = row._profile_group_hint ? (' → ' + escHtml(row._profile_group_hint)) : '';
+        matchBadge = '<span class="supply-badge supply-badge--warn" style="font-size:9.5px;margin-left:4px;">⚠ Group' + hint + '</span>';
+      }
       const cells = SHOW_COLS.map(function(c) {
         const key = c[0];
         const val = row[key] != null ? row[key] : '';
@@ -17871,7 +18757,7 @@ function initDashboardApp() {
           return '<td style="padding:7px 10px;font-size:12px;color:#1A0A0A;border-bottom:1px solid rgba(139,26,26,0.05);">'
             + escHtml(String(val || '—')) + matchBadge + '</td>';
         }
-        if (!isSubmitted && !isRowDone && (key === 'SUPPLY CPO' || key === 'FACILITY NAME CPO' || key === 'TRADER NAME' || key === 'GROUP NAME')) {
+        if (!isSubmitted && !isRowDone && (key === pctKey || key === facKey || key === 'TRADER NAME' || key === 'GROUP NAME')) {
           return '<td style="padding:4px 6px;border-bottom:1px solid rgba(139,26,26,0.05);">'
             + '<input class="supply-inline-input" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '" data-field="' + escHtml(key) + '"'
             + ' value="' + escHtml(String(val || '')) + '"'
@@ -17909,8 +18795,9 @@ function initDashboardApp() {
   function supplyBatchFooterHtml_(batchId) {
     const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
     const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
+    const supplyKind = String(batch && (batch.supply_type || (batch.rows && batch.rows[0] && batch.rows[0].supply_type)) || 'CPO').toUpperCase();
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 10px 4px;border-top:1px solid rgba(139,26,26,0.07);flex-wrap:wrap;">'
-      + '<span style="font-size:11px;color:#9C8080;">Klik <strong>Edit / Submit →</strong> atau <strong>Lengkapi →</strong> untuk review/isi data lalu Save. Atau bulk-submit semua Matched langsung.</span>'
+      + '<span style="font-size:11px;color:#9C8080;">Review di Task List draft. Submit Matched akan mengisi kolom <strong>PERCENTAGE SUPPLY ' + escHtml(supplyKind) + '</strong> di Mill Onboarding Profile (bukan baris baru).</span>'
       + '<div style="display:flex;gap:8px;">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">💾 Save as Draft</button>'
       + (matched > 0 ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-matched" data-batch="' + escHtml(batchId) + '">✓ Submit Matched (' + matched + ')</button>' : '')
@@ -17955,7 +18842,8 @@ function initDashboardApp() {
       collectInlineEdits_(bId);
       const matchedRows = (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; });
       if (!matchedRows.length) { alert('Tidak ada baris matched yang belum disubmit.'); return; }
-      if (!confirm('Submit ' + matchedRows.length + ' baris Matched ke Mill Onboarding Profile?')) return;
+      const kind = String(batch.supply_type || (matchedRows[0] && matchedRows[0].supply_type) || 'CPO').toUpperCase();
+      if (!confirm('Update ' + matchedRows.length + ' baris Matched → PERCENTAGE SUPPLY ' + kind + ' di Mill Onboarding Profile?')) return;
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
         .then(function(res) {
@@ -17964,7 +18852,9 @@ function initDashboardApp() {
           if (allDone) batch.status = 'submitted';
           renderSupplyDraftList_();
           millLoadPromise = null;
-          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris Matched berhasil di-submit.');
+          if (typeof loadMillData === 'function') loadMillData();
+          const errNote = (res.errors && res.errors.length) ? ('\nCatatan: ' + res.errors.slice(0, 3).join('; ')) : '';
+          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris berhasil di-update ke Mill Profile.' + errNote);
         })
         .catch(function(err) {
           btn.textContent = '✓ Submit Matched'; btn.disabled = false;
@@ -17986,6 +18876,7 @@ function initDashboardApp() {
           const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
           if (allDone) batch.status = 'submitted';
           millLoadPromise = null;
+          if (typeof loadMillData === 'function') loadMillData();
           renderSupplyDraftList_();
         })
         .catch(function(err) {
@@ -18064,12 +18955,16 @@ function initDashboardApp() {
           if (!batches[bid]) {
             batches[bid] = {
               batch_id:   bid,
-              quarter:    row.quarter || '',
-              year:       row.year    || '',
+              quarter:    row.quarter || row.QUARTER || '',
+              year:       row.year || row.YEAR || '',
+              supply_type: row.supply_type || row.SUPPLY_TYPE || 'CPO',
               status:     row.status  || 'draft',
               created_at: row.created_at || '',
               rows:       [],
             };
+          }
+          if (row.supply_type || row.SUPPLY_TYPE) {
+            batches[bid].supply_type = row.supply_type || row.SUPPLY_TYPE;
           }
           batches[bid].rows.push(row);
         });

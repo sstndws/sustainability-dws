@@ -114,7 +114,12 @@ const SUPPLY_DRAFT_HEADERS = [
   'draft_id', 'batch_id', 'status',        // 'draft' | 'submitted'
   'quarter', 'year',
   'created_at', 'updated_at', 'created_by',
-  'match_status',                           // 'matched' | 'new'
+  'match_status',                           // 'matched' | 'new' | 'group_mismatch'
+  'supply_type',                            // 'CPO' | 'PK'
+  'target_mill_row',
+  'SUPPLY_QTY',
+  'PERCENTAGE SUPPLY CPO',
+  'PERCENTAGE SUPPLY PK',
   // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
   'QUARTER', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
   'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
@@ -129,7 +134,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
   'RECOMMENDATION LEVEL', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
   'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK',
-  'PRODUCT SUPPLY', 'SUPPLY CPO',
+  'PRODUCT SUPPLY', 'SUPPLY CPO', 'SUPPLY PK',
 ];
 
 const NBL_HEADERS = [
@@ -214,19 +219,35 @@ const EUDR_POTENTIAL_HEADERS = [
   'UPDATED BY',
 ];
 
-const EUDR_STATUS_FORMULA_HEADERS = ['CRITERION KEY', 'ENABLED', 'LABEL', 'THRESHOLD'];
+const EUDR_STATUS_FORMULA_HEADERS = ['CRITERION KEY', 'ENABLED', 'LABEL', 'THRESHOLD', 'CONFIG'];
+
+const EUDR_FFB_FORMULA_DEFAULT_CONFIG = {
+  mode: 'combined',
+  combined: {
+    categories: ['own_estate', 'plasma'],
+    operator: 'gte',
+    threshold: 70,
+  },
+  categories: {
+    own_estate: { enabled: true, operator: 'gte', threshold: 70 },
+    external_estate: { enabled: false, operator: 'gte', threshold: 70 },
+    plasma: { enabled: true, operator: 'gte', threshold: 70 },
+    dealer: { enabled: false, operator: 'gte', threshold: 70 },
+    cooperative: { enabled: false, operator: 'gte', threshold: 70 },
+  },
+};
 
 const EUDR_STATUS_FORMULA_DEFAULTS = [
-  ['legality', 'Yes', 'Legality = Complete (1)', ''],
-  ['millCategory', 'Yes', 'Mill Category = Integrated', ''],
-  ['ownPlasmaFfb', 'Yes', '% Own Estate + Plasma (FFB)', '70'],
-  ['resultRiskLevel', 'Yes', 'Result Risk Level = Low', ''],
-  ['millLocation', 'Yes', 'Mill Location = APL', ''],
-  ['certification', 'Yes', 'Certification (at least 1 certificate)', ''],
-  ['grievance', 'Yes', 'Grievance = No', ''],
-  ['ndpePolicy', 'Yes', 'NDPE Policy = Yes', ''],
-  ['noBuyList', 'Yes', 'No Buy List = No', ''],
-  ['deforestation', 'Yes', 'Deforestation < 10 Ha', ''],
+  ['legality', 'Yes', 'Legality = Complete (1)', '', ''],
+  ['millCategory', 'Yes', 'Mill Category = Integrated', '', ''],
+  ['ownPlasmaFfb', 'Yes', '% FFB by Category', '70', JSON.stringify(EUDR_FFB_FORMULA_DEFAULT_CONFIG)],
+  ['resultRiskLevel', 'Yes', 'Result Risk Level = Low', '', ''],
+  ['millLocation', 'Yes', 'Mill Location = APL', '', ''],
+  ['certification', 'Yes', 'Certification (at least 1 certificate)', '', ''],
+  ['grievance', 'Yes', 'Grievance = No', '', ''],
+  ['ndpePolicy', 'Yes', 'NDPE Policy = Yes', '', ''],
+  ['noBuyList', 'Yes', 'No Buy List = No', '', ''],
+  ['deforestation', 'Yes', 'Deforestation (max Ha)', '10', ''],
 ];
 
 /** Identity fields merged from existing row when omitted on upsert. */
@@ -835,9 +856,21 @@ function ensureEudrPotentialHeaders_() {
 
 function ensureEudrStatusFormulaHeaders_() {
   const sheet = ensureSheetHeadersGeneric_('eudrStatusFormula', EUDR_STATUS_FORMULA_HEADERS);
+  const lastCol = sheet.getLastColumn();
+  const existing = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  const existingSet = {};
+  existing.forEach(function(h) { if (h) existingSet[h] = true; });
+  const missing = EUDR_STATUS_FORMULA_HEADERS.filter(function(h) { return !existingSet[h]; });
+  if (missing.length) {
+    const startCol = lastCol + 1;
+    sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
+  }
   if (sheet.getLastRow() <= 1) {
     const rows = EUDR_STATUS_FORMULA_DEFAULTS.map(function(r) {
-      return [r[0], r[1], r[2], r[3] != null ? String(r[3]) : ''];
+      return EUDR_STATUS_FORMULA_HEADERS.map(function(_, idx) {
+        return r[idx] != null ? String(r[idx]) : '';
+      });
     });
     if (rows.length) {
       sheet.getRange(2, 1, rows.length, EUDR_STATUS_FORMULA_HEADERS.length).setValues(rows);
@@ -858,6 +891,7 @@ function saveEudrStatusFormula_(criteria) {
   });
   const enabledMap = {};
   const thresholdMap = {};
+  const configMap = {};
   (criteria || []).forEach(function(c) {
     if (!c || !c.key) return;
     var key = String(c.key).trim();
@@ -866,6 +900,9 @@ function saveEudrStatusFormula_(criteria) {
     if (c.threshold !== undefined && c.threshold !== null && String(c.threshold).trim() !== '') {
       thresholdMap[key] = String(c.threshold).trim();
     }
+    if (c.config !== undefined && c.config !== null) {
+      configMap[key] = typeof c.config === 'string' ? c.config : JSON.stringify(c.config);
+    }
   });
   const rows = EUDR_STATUS_FORMULA_DEFAULTS.map(function(def) {
     const key = def[0];
@@ -873,7 +910,10 @@ function saveEudrStatusFormula_(criteria) {
     const thr = thresholdMap.hasOwnProperty(key)
       ? thresholdMap[key]
       : (defaultThresholdMap[key] || '');
-    return [key, enabled ? 'Yes' : 'No', labelMap[key] || def[2], thr];
+    const cfg = configMap.hasOwnProperty(key)
+      ? configMap[key]
+      : (def[4] != null ? String(def[4]) : '');
+    return [key, enabled ? 'Yes' : 'No', labelMap[key] || def[2], thr, cfg];
   });
   const last = Math.max(sheet.getLastRow(), 1);
   if (last > 1) sheet.deleteRows(2, last - 1);
@@ -3070,16 +3110,87 @@ function saveSupplyDraft_(rows, batchId, meta) {
   return { success: true, saved: saved, batch_id: batchId };
 }
 
+function supplyNormKey_(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function supplyMillQuarterTok_(row) {
+  var q = row['QUARTER'] || row['Quarter'] || row['quarter'] || '';
+  q = String(q || '').trim().replace(/^Q/i, '');
+  return q;
+}
+
+function supplyMillYearTok_(row) {
+  return String(row['YEAR'] || row['Year'] || row['year'] || '').trim();
+}
+
+/**
+ * Find Mill Onboarding Profile row by company + group + mill (+ optional quarter/year).
+ */
+function findMillRowForSupplySubmit_(millData, millHeaders, row) {
+  var targetRow = Number(row.target_mill_row || row._mill_row || 0);
+  if (targetRow >= 2) return targetRow;
+
+  var company = supplyNormKey_(row['COMPANY NAME']);
+  var group   = supplyNormKey_(row['GROUP NAME']);
+  var mill    = supplyNormKey_(row['MILL NAME'] || row['COMPANY NAME']);
+  var qWant   = supplyMillQuarterTok_(row);
+  var yWant   = supplyMillYearTok_(row);
+
+  var coCol = millHeaders.indexOf('COMPANY NAME');
+  var grCol = millHeaders.indexOf('GROUP NAME');
+  var miCol = millHeaders.indexOf('MILL NAME');
+  var qCol  = millHeaders.indexOf('QUARTER');
+  if (qCol < 0) qCol = millHeaders.indexOf('Quarter');
+  var yCol  = millHeaders.indexOf('YEAR');
+  if (yCol < 0) yCol = millHeaders.indexOf('Year');
+
+  for (var r = 1; r < millData.length; r++) {
+    var sheetRow = millData[r];
+    if (coCol >= 0 && supplyNormKey_(sheetRow[coCol]) !== company) continue;
+    if (grCol >= 0 && group) {
+      var sheetGroup = supplyNormKey_(sheetRow[grCol]);
+      if (sheetGroup && sheetGroup !== group) continue;
+    }
+    if (miCol >= 0) {
+      var sheetMill = supplyNormKey_(sheetRow[miCol]);
+      if (sheetMill !== mill) continue;
+    }
+    if (yWant && yCol >= 0) {
+      if (String(sheetRow[yCol] || '').trim() !== yWant) continue;
+    }
+    if (qWant && qCol >= 0) {
+      var sheetQ = String(sheetRow[qCol] || '').trim().replace(/^Q/i, '');
+      if (sheetQ && sheetQ !== qWant) continue;
+    }
+    return r + 1;
+  }
+  return 0;
+}
+
 function submitSupplyDraft_(batchId, rows) {
   if (!batchId) throw new Error('batch_id required');
   ensureSupplyDraftHeaders_();
 
-  // Ensure all Mill Onboarding headers exist in target sheet
-  ensureRelationalHeaders_('mill');
-
   var millSheet   = getSheet('mill');
-  // Re-read headers AFTER ensureRelationalHeaders_ so we have all columns
-  var millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
+  var millData    = millSheet.getDataRange().getValues();
+  var millHeaders = millData[0].map(function(h) { return String(h || '').trim(); });
+
+  var pctColCpo = millHeaders.indexOf('PERCENTAGE SUPPLY CPO');
+  var pctColPk  = millHeaders.indexOf('PERCENTAGE SUPPLY PK');
+  if (pctColCpo < 0) {
+    millSheet.insertColumnAfter(millSheet.getLastColumn());
+    pctColCpo = millSheet.getLastColumn() - 1;
+    millSheet.getRange(1, pctColCpo + 1).setValue('PERCENTAGE SUPPLY CPO');
+    millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
+    pctColCpo = millHeaders.indexOf('PERCENTAGE SUPPLY CPO');
+  }
+  if (pctColPk < 0) {
+    millSheet.insertColumnAfter(millSheet.getLastColumn());
+    millSheet.getRange(1, millSheet.getLastColumn()).setValue('PERCENTAGE SUPPLY PK');
+    millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
+    pctColPk = millHeaders.indexOf('PERCENTAGE SUPPLY PK');
+  }
 
   var draftSheet   = getSheet('supplyDraft');
   var draftData    = draftSheet.getDataRange().getValues();
@@ -3088,18 +3199,44 @@ function submitSupplyDraft_(batchId, rows) {
   var statusColD   = draftHeaders.indexOf('status');
   var now          = nowIso_();
   var submitted    = 0;
+  var errors       = [];
 
   rows.forEach(function(row) {
-    var millRow = millHeaders.map(function(h) {
-      // Handle Quarter/Year case variants
-      if (h === 'Quarter' || h === 'QUARTER') return row['QUARTER'] || row['quarter'] || '';
-      if (h === 'Year'    || h === 'YEAR')    return row['YEAR']    || row['year']    || '';
-      var v = row[h];
-      return (v !== undefined && v !== null) ? v : '';
-    });
-    millSheet.appendRow(millRow);
+    var matchStatus = String(row.match_status || '').trim().toLowerCase();
+    if (matchStatus !== 'matched') {
+      errors.push((row['COMPANY NAME'] || 'row') + ': bukan status Matched');
+      return;
+    }
 
-    // Mark draft row as submitted
+    var sheetRowNum = findMillRowForSupplySubmit_(millData, millHeaders, row);
+    if (!sheetRowNum) {
+      errors.push((row['COMPANY NAME'] || '') + ' / ' + (row['MILL NAME'] || '') + ': tidak ditemukan di Mill Onboarding Profile');
+      return;
+    }
+
+    var supplyType = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase();
+    var pctField   = supplyType === 'PK' ? 'PERCENTAGE SUPPLY PK' : 'PERCENTAGE SUPPLY CPO';
+    var pctVal     = row[pctField];
+    if (pctVal === undefined || pctVal === null || String(pctVal).trim() === '') {
+      pctVal = row.SUPPLY_PERCENTAGE || '';
+    }
+
+    var patch = {};
+    patch[pctField] = pctVal;
+    if (supplyType === 'PK' && row['FACILITY NAME PK']) {
+      patch['FACILITY NAME PK'] = row['FACILITY NAME PK'];
+    }
+    if (supplyType === 'CPO' && row['FACILITY NAME CPO']) {
+      patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
+    }
+
+    try {
+      updateRow('mill', sheetRowNum, patch);
+    } catch (err) {
+      errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
+      return;
+    }
+
     var draftId = String(row.draft_id || '').trim();
     if (draftId) {
       for (var r = 1; r < draftData.length; r++) {
@@ -3113,7 +3250,11 @@ function submitSupplyDraft_(batchId, rows) {
     }
     submitted++;
   });
-  return { success: true, submitted: submitted, batch_id: batchId };
+
+  if (errors.length && !submitted) {
+    throw new Error(errors.slice(0, 5).join('; '));
+  }
+  return { success: true, submitted: submitted, batch_id: batchId, errors: errors };
 }
 
 function deleteSupplyDraft_(draftId, batchId) {

@@ -6,49 +6,66 @@
           <p>Trade partner and trade point monitoring data</p>
         </div>
 
-        <div class="ttp-top-metrics">
-          <section class="ttp-period-bar" aria-label="Filter by period">
-            <div class="ttp-period-bar-inner">
-              <div class="ttp-period-pickers" id="ttpPeriodPickers">
-                <label class="ttp-period-field" id="ttpPeriodYearWrap">
-                  <span class="ttp-period-field-label">Period</span>
-                  <select id="ttpPeriodYear" class="ttp-period-select" autocomplete="off"></select>
-                </label>
+        <section class="ttp-overview" aria-label="Period and traceability overview">
+          <header class="ttp-overview__toolbar">
+            <div class="ttp-overview__period" id="ttpPeriodPickers">
+              <label class="ttp-overview__year" id="ttpPeriodYearWrap" for="ttpPeriodYear">
+                <span class="ttp-overview__year-label">Year</span>
+                <select id="ttpPeriodYear" class="ttp-overview__year-select" autocomplete="off"></select>
+              </label>
+            </div>
+            <p class="ttp-overview__meta" id="ttpPeriodMeta">—</p>
+          </header>
+
+          <div class="ttp-overview__matrix">
+            <div class="ttp-overview__matrix-head">
+              <span class="ttp-overview__axis" aria-hidden="true"></span>
+              <span class="ttp-overview__col">CPO</span>
+              <span class="ttp-overview__col">PK</span>
+            </div>
+            <div class="ttp-overview__matrix-row ttp-overview__matrix-row--ttm">
+              <div class="ttp-overview__row-label">
+                <span class="ttp-overview__row-type">TTM</span>
+                <span class="ttp-overview__row-hint">Coordinate</span>
+              </div>
+              <div class="ttp-overview__metric">
+                <span class="ttp-overview__value" id="ttp-stat-cpo-ttm-coord">—</span>
+              </div>
+              <div class="ttp-overview__metric">
+                <span class="ttp-overview__value" id="ttp-stat-pk-ttm-coord">—</span>
               </div>
             </div>
-            <p class="ttp-period-meta" id="ttpPeriodMeta">—</p>
-          </section>
-
-          <div class="ttp-kpi-grid">
-            <div class="stat-card ttp-kpi-card ttp-kpi-card--ttp-cpo">
-              <div class="stat-card-num" id="ttp-stat-cpo-traceable">—</div>
-              <div class="stat-card-label">TTP · Traceable CPO</div>
-            </div>
-            <div class="stat-card ttp-kpi-card ttp-kpi-card--ttp-pk">
-              <div class="stat-card-num" id="ttp-stat-pk-traceable">—</div>
-              <div class="stat-card-label">TTP · Traceable PK</div>
-            </div>
-            <div class="stat-card ttp-kpi-card ttp-kpi-card--ttm-cpo">
-              <div class="stat-card-num" id="ttp-stat-cpo-ttm-coord">—</div>
-              <div class="stat-card-label">TTM · Coordinate CPO</div>
-            </div>
-            <div class="stat-card ttp-kpi-card ttp-kpi-card--ttm-pk">
-              <div class="stat-card-num" id="ttp-stat-pk-ttm-coord">—</div>
-              <div class="stat-card-label">TTM · Coordinate PK</div>
+            <div class="ttp-overview__matrix-row ttp-overview__matrix-row--ttp">
+              <div class="ttp-overview__row-label">
+                <span class="ttp-overview__row-type">TTP</span>
+                <span class="ttp-overview__row-hint">Traceable</span>
+              </div>
+              <div class="ttp-overview__metric">
+                <span class="ttp-overview__value" id="ttp-stat-cpo-traceable">—</span>
+              </div>
+              <div class="ttp-overview__metric">
+                <span class="ttp-overview__value" id="ttp-stat-pk-traceable">—</span>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         <!-- Category mix — % of all records (5 supplier types) -->
-        <section class="ttp-category-mix-card" id="ttpCategoryMixSection" hidden aria-label="Supplier category distribution">
+        <section class="ttp-category-mix-card" id="ttpCategoryMixSection" hidden aria-label="Category by traceable data">
           <div class="ttp-category-mix-header">
-            <div>
-              <h2 class="ttp-category-mix-title">Category distribution</h2>
+            <div class="ttp-category-mix-header-text">
+              <h2 class="ttp-category-mix-title">Category by traceable data</h2>
               <p class="ttp-category-mix-desc">Share across the five supplier categories (rows outside these types are excluded)</p>
             </div>
+            <button type="button" class="ttp-category-mix-toggle" id="btn-ttp-category-mix-toggle" aria-expanded="true" aria-controls="ttpCategoryMixBody">
+              <span class="ttp-category-mix-toggle-label">Hide</span>
+              <svg class="ttp-category-mix-toggle-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
           </div>
-          <div class="ttp-category-mix-bar" id="ttpCategoryMixBar" role="presentation" aria-hidden="true"></div>
-          <div class="ttp-category-mix-grid" id="ttpCategoryMixGrid"></div>
+          <div class="ttp-category-mix-body" id="ttpCategoryMixBody">
+            <div class="ttp-category-mix-bar" id="ttpCategoryMixBar" role="presentation" aria-hidden="true"></div>
+            <div class="ttp-category-mix-grid" id="ttpCategoryMixGrid"></div>
+          </div>
         </section>
 
         <div class="table-card">

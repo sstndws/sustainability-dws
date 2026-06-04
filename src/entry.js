@@ -29,7 +29,7 @@ window.updateOverviewWelcome = updateOverviewWelcomeFromEmail;
 
 // Selalu pakai deployment terbaru (BL Monitoring butuh script v3-bl-monitoring)
 const SDD_LATEST_WEBAPP_URL =
-  'https://script.google.com/macros/s/AKfycbzLn0BFjAJ9o4QHcNkE34r81lCRDEnlQetzLhV6rfGnvynw6eTp5JZIamgtGGaxI-xlLA/exec';
+  'https://script.google.com/macros/s/AKfycbxZGvtjlFnuhTQ7dBEOefkrlQe3AFWku9AwI_jUWQVMECnMJaoEdPFEx1D324M4PVFymw/exec';
 try {
   localStorage.setItem('SDD_WEBAPP_URL', SDD_LATEST_WEBAPP_URL);
 } catch (e) {
