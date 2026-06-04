@@ -3811,8 +3811,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwlGzxB7AJJrlM3sQtPojctTIn2jLzj7CYvUhTzADiiqkTzTTyJjm5HGVl8QrUrxbaMDA/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwlGzxB7AJJrlM3sQtPojctTIn2jLzj7CYvUhTzADiiqkTzTTyJjm5HGVl8QrUrxbaMDA';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -9611,7 +9611,7 @@ function initDashboardApp() {
 
   /** BL Monitoring — always hit latest GAS deploy (bypass stale Vite prebundle). */
   var BL_MONITORING_GAS_URL =
-    'https://script.google.com/macros/s/AKfycbwlGzxB7AJJrlM3sQtPojctTIn2jLzj7CYvUhTzADiiqkTzTTyJjm5HGVl8QrUrxbaMDA/exec';
+    'https://script.google.com/macros/s/AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ/exec';
 
   async function fetchBlMonitoringRows_() {
     var base = (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL)
