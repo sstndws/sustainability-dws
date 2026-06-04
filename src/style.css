@@ -4877,12 +4877,13 @@
 }
 
 /* Shared column widths */
-.pf-col-facility { width: 28%; }
-.pf-col-count    { width: 9%; }
-.pf-col-status   { width: 12%; }
-.pf-col-num      { width: 11%; }
-.pf-col-pct      { width: 13%; }
-.pf-col-actions  { width: 7%; }
+.pf-col-facility { width: 24%; }
+.pf-col-count    { width: 8%; }
+.pf-col-status   { width: 10%; }
+.pf-col-num      { width: 9%; }
+.pf-col-pct      { width: 11%; }
+.pf-col-actions  { width: 6%; }
+.pf-pct-val--ispo { color: #1b5e20; font-weight: 700; }
 
 .pf-th-actions,
 .pf-td-actions {

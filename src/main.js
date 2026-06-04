@@ -15101,10 +15101,72 @@ function initDashboardApp() {
       return names.length ? names.join(', ') : '';
     }
 
+    /** Mill profile: COMPANY NAME → has ISPO certification. */
+    function pfBuildMillIspoLookup_(millRows) {
+      const lk = {};
+      (millRows || []).forEach(function(r) {
+        const co = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+        if (!co) return;
+        if (pfCertNamesFromMillRow_(r).indexOf('ISPO') >= 0) lk[co] = true;
+      });
+      return lk;
+    }
+
+    function pfCompanyHasIspo_(companyUpper, ttpCertLookup, millIspoLookup) {
+      if (!companyUpper) return false;
+      if (pfTtpCertsForCompany_(ttpCertLookup, companyUpper).indexOf('ISPO') >= 0) return true;
+      if (millIspoLookup && millIspoLookup[companyUpper]) return true;
+      const loose = normalizeLooseKey(companyUpper);
+      if (!loose || !millIspoLookup) return false;
+      const keys = Object.keys(millIspoLookup);
+      for (let i = 0; i < keys.length; i++) {
+        if (!millIspoLookup[keys[i]]) continue;
+        if (normalizeLooseKey(keys[i]) === loose) return true;
+        if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(keys[i], companyUpper)) return true;
+      }
+      return false;
+    }
+
+    /**
+     * Est. ISPO supply % = SUM(qty ISPO-certified sellers) / SUM(all sellers) per facility (Supplied CPO/PK kg).
+     */
+    function pfCalcIspoSupplyPct_(supEntry, ttpCertLookup, millIspoLookup) {
+      if (!supEntry || !supEntry.totalQty || supEntry.totalQty <= 0) return null;
+      let ispoQty = 0;
+      let ispoSellers = 0;
+      Object.keys(supEntry.sellers).forEach(function(sellerKey) {
+        const qty = supEntry.sellers[sellerKey];
+        if (!qty || qty <= 0) return;
+        if (pfCompanyHasIspo_(sellerKey, ttpCertLookup, millIspoLookup)) {
+          ispoQty += qty;
+          ispoSellers++;
+        }
+      });
+      const pct = (ispoQty / supEntry.totalQty) * 100;
+      const fmtTon = function(kg) {
+        return (kg / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+      };
+      return {
+        ispoQty: ispoQty,
+        totalQty: supEntry.totalQty,
+        ispoSellers: ispoSellers,
+        pct: pct,
+        formatted: ttpFormatCellPct_(pct),
+        note: ispoSellers + ' ISPO supplier(s) · ' + fmtTon(ispoQty) + ' / ' + fmtTon(supEntry.totalQty) + ' ton',
+      };
+    }
+
+    function pfIspoPctHtml_(calc) {
+      if (!calc || isNaN(calc.pct)) return '<span class="pf-metric-zero">—</span>';
+      const titleAttr = calc.note ? ' title="' + escHtml(calc.note) + '"' : '';
+      return '<span class="pf-pct-val pf-pct-val--ispo"' + titleAttr + '>' + escHtml(calc.formatted) + '</span>';
+    }
+
     function pfBuildRows_() {
       const millRows = pfMillRowsForBuild_();
       const ttpLookup = pfBuildTtpLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
+      const millIspoLookup = pfBuildMillIspoLookup_(millRows);
       const suppliedLookup = pfBuildSuppliedCpoLookup_(_pfSuppliedCpoData);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
 
@@ -15177,6 +15239,9 @@ function initDashboardApp() {
           };
           g.traceSource = sellerCount && sellersWithTtp < sellerCount ? 'supply-partial' : 'supply';
         }
+        g.ispoCalc = supEntry && hasSupplied
+          ? pfCalcIspoSupplyPct_(supEntry, ttpCertLookup, millIspoLookup)
+          : null;
       });
 
       return Array.from(byFacility.values())
@@ -15194,6 +15259,7 @@ function initDashboardApp() {
       const millRows    = pfMillRowsForBuild_();
       const ttpPkLookup = pfBuildTtpPkLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
+      const millIspoLookup = pfBuildMillIspoLookup_(millRows);
       const suppliedLookup = pfBuildSuppliedPkLookup_(_pfSuppliedPkData);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
 
@@ -15265,6 +15331,9 @@ function initDashboardApp() {
           };
           g.traceSource = sellerCount && sellersWithTtp < sellerCount ? 'supply-partial' : 'supply';
         }
+        g.ispoCalc = supEntry && hasSupplied
+          ? pfCalcIspoSupplyPct_(supEntry, ttpCertLookup, millIspoLookup)
+          : null;
       });
 
       return Array.from(byFacility.values())
@@ -15301,7 +15370,9 @@ function initDashboardApp() {
         avgPk     = validN > 0 ? ttpFormatCellPct_(pkSum / validN) : '—';
         traceNote = 'No Supplied PK data — avg of ' + validN + ' company TTM/TTP value(s)';
       }
-      return { nblYes, highRisk, grievanceSum, avgPk, traceSource: src, traceNote };
+      const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
+      const ispoNote = g.ispoCalc ? g.ispoCalc.note : '';
+      return { nblYes, highRisk, grievanceSum, avgPk, ispoPct: ispoPct, ispoNote: ispoNote, traceSource: src, traceNote };
     }
 
     /** Nested detail table for PK facilities. */
@@ -15434,7 +15505,7 @@ function initDashboardApp() {
       if (pkCountEl) pkCountEl.textContent = filtered.length + ' KCP facility · ' + filtered.reduce(function(s,g){return s+g.companies.length;}, 0) + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
           + 'No PK data matches the current filters.'
           + '</td></tr>';
         if (loading) loading.style.display = 'none';
@@ -15466,11 +15537,12 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">'  + nblLabel                  + '</td>'
           + '<td class="pf-td-plain">'  + highLabel                 + '</td>'
           + '<td class="pf-td-num">'    + grvLabel                  + '</td>'
+          + '<td class="pf-td-num">'    + pfIspoPctHtml_(g.ispoCalc) + '</td>'
           + '<td class="pf-td-num">'    + pfCpoPctHtml_(sum.avgPk, sum.traceSource, sum.traceNote) + '</td>'
           + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('pk', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="7" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="8" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -15530,7 +15602,19 @@ function initDashboardApp() {
         traceNote = 'No Supplied CPO data — avg of ' + validN + ' company TTM/TTP value(s)';
       }
 
-      return { nblYes, highRisk, grievanceSum, avgCpo, supQtyFmt, traceSource: src, traceNote: traceNote };
+      const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
+      const ispoNote = g.ispoCalc ? g.ispoCalc.note : '';
+      return {
+        nblYes: nblYes,
+        highRisk: highRisk,
+        grievanceSum: grievanceSum,
+        avgCpo: avgCpo,
+        supQtyFmt: supQtyFmt,
+        ispoPct: ispoPct,
+        ispoNote: ispoNote,
+        traceSource: src,
+        traceNote: traceNote,
+      };
     }
 
     function pfRiskBadge_(v) {
@@ -15624,6 +15708,7 @@ function initDashboardApp() {
           companies: companies,
           traceCalc: g.traceCalc,
           traceSource: g.traceSource,
+          ispoCalc: g.ispoCalc,
         };
       }
 
@@ -15688,7 +15773,7 @@ function initDashboardApp() {
       if (scope)   scope.textContent   = filtered.length + ' facility · ' + totalCompanies + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
           + 'No data matches the current filters.'
           + '</td></tr>';
         if (loading) loading.style.display = 'none';
@@ -15722,11 +15807,12 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">' + nblLabel + '</td>'
           + '<td class="pf-td-plain">' + highLabel + '</td>'
           + '<td class="pf-td-num">' + grvLabel + '</td>'
+          + '<td class="pf-td-num">' + pfIspoPctHtml_(g.ispoCalc) + '</td>'
           + '<td class="pf-td-num">' + pfCpoPctHtml_(sum.avgCpo, sum.traceSource, sum.traceNote) + '</td>'
           + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('cpo', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="7" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="8" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -16169,10 +16255,11 @@ function initDashboardApp() {
             { label: 'No Buy List', value: sum.nblYes > 0 ? String(sum.nblYes) + ' Yes' : '0' },
             { label: 'High Risk', value: String(sum.highRisk || 0) },
             { label: 'Total Grievance', value: String(sum.grievanceSum || 0) },
+            { label: 'Est. ISPO Supply %', value: pfPdfSanitize_(sum.ispoPct || '—') },
             { label: pctLabel, value: pfPdfSanitize_(facilityPct) },
           ];
           const gap = 3;
-          const cardW = (cW - gap * 3) / 4;
+          const cardW = (cW - gap * (items.length - 1)) / items.length;
           const cardH = 17;
 
           items.forEach(function(item, i) {
