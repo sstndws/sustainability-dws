@@ -18227,12 +18227,17 @@ function initDashboardApp() {
     return isNaN(n) ? NaN : n;
   }
 
+  /** Group from Excel col C (COMPANY GROUP NAME) or legacy GROUP column. */
+  function supplyPickExcelGroupName_(r) {
+    return String(
+      r.COMPANY_GROUP_NAME || r['COMPANY GROUP NAME'] || r.EXCEL_GROUP || r['GROUP NAME'] || r.GROUP || ''
+    ).trim();
+  }
+
   function supplyResolveNamesFromExcel_(r) {
     const company = String(r.COMPANY_NAME || r['COMPANY NAME'] || '').trim();
     const millRaw = String(r.MILL_NAME || r['MILL NAME'] || '').trim();
-    const group = String(
-      r.EXCEL_GROUP || r['GROUP NAME'] || r.COMPANY_GROUP_NAME || r['COMPANY GROUP NAME'] || ''
-    ).trim();
+    const group = supplyPickExcelGroupName_(r);
     const plant = String(r.PLANT || '').trim();
     return {
       company: company,
@@ -18446,12 +18451,18 @@ function initDashboardApp() {
     const colPlant    = headers.indexOf('PLANT');
     const colGroup    = headers.indexOf('GROUP');
     const colCategory = headers.indexOf('CATEGORY');
-    const colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
+    let colCoGroup  = headers.indexOf('COMPANY GROUP NAME');
+    if (colCoGroup < 0) colCoGroup = headers.indexOf('GROUP NAME');
     const colCoName   = headers.indexOf('COMPANY NAME');
     const colMillName = headers.indexOf('MILL NAME');
     const colSumQty   = headers.indexOf('SUM OF QTY KG');
     let colTotal = headers.indexOf('TOTAL');
     if (colTotal < 0) colTotal = headers.indexOf('GRAND TOTAL');
+    if (colTotal < 0) {
+      for (let hi = 0; hi < headers.length; hi++) {
+        if (/^TOTAL$/i.test(String(headers[hi] || '').trim())) { colTotal = hi; break; }
+      }
+    }
 
     if (colCoName < 0) {
       return { error: 'Kolom COMPANY NAME tidak ditemukan.' };
@@ -18459,7 +18470,7 @@ function initDashboardApp() {
 
     const qtyCol = colTotal >= 0 ? colTotal : colSumQty;
     let lastPlant = '';
-    let lastGroup = '';
+    let lastCoGroup = '';
     const parsed = [];
 
     for (let ri = headerRowIdx + 1; ri < rows.length; ri++) {
@@ -18467,11 +18478,13 @@ function initDashboardApp() {
       if (!r.some(function(c) { return String(c || '').trim() !== ''; })) continue;
 
       let plant = colPlant >= 0 ? String(r[colPlant] != null ? r[colPlant] : '').trim() : '';
-      let excelGroup = colGroup >= 0 ? String(r[colGroup] != null ? r[colGroup] : '').trim() : '';
+      const coGroupCell = colCoGroup >= 0 ? String(r[colCoGroup] != null ? r[colCoGroup] : '').trim() : '';
+      const legacyGroup = colGroup >= 0 ? String(r[colGroup] != null ? r[colGroup] : '').trim() : '';
+      let excelGroup = coGroupCell || legacyGroup;
       if (plant) lastPlant = plant;
       else plant = lastPlant;
-      if (excelGroup) lastGroup = excelGroup;
-      else excelGroup = lastGroup;
+      if (excelGroup) lastCoGroup = excelGroup;
+      else excelGroup = lastCoGroup;
 
       const company = String(r[colCoName] != null ? r[colCoName] : '').trim();
       const millName = colMillName >= 0 ? String(r[colMillName] != null ? r[colMillName] : '').trim() : '';
@@ -18483,7 +18496,7 @@ function initDashboardApp() {
         PLANT: plant,
         EXCEL_GROUP: excelGroup,
         CATEGORY: colCategory >= 0 ? String(r[colCategory] != null ? r[colCategory] : '').trim() : '',
-        COMPANY_GROUP_NAME: colCoGroup >= 0 ? String(r[colCoGroup] != null ? r[colCoGroup] : '').trim() : '',
+        COMPANY_GROUP_NAME: excelGroup,
         COMPANY_NAME: company,
         MILL_NAME: millName,
         SUPPLY_QTY: qtyRaw,
@@ -18763,13 +18776,29 @@ function initDashboardApp() {
             draft[f] = profile[f];
           }
         });
-        draft['GROUP NAME']   = profile['GROUP NAME'] || draft['GROUP NAME'];
-        draft['COMPANY NAME'] = profile['COMPANY NAME'] || draft['COMPANY NAME'];
-        draft['MILL NAME']    = profile['MILL NAME'] || draft['MILL NAME'];
+        draft['GROUP NAME']   = names.group || profile['GROUP NAME'] || draft['GROUP NAME'];
+        draft['COMPANY NAME'] = names.company || profile['COMPANY NAME'] || draft['COMPANY NAME'];
+        draft['MILL NAME']    = names.mill || profile['MILL NAME'] || draft['MILL NAME'];
         draft[pctField] = r.SUPPLY_PCT;
         draft[facField] = r.PLANT || profile[facField] || '';
       } else if (profile && found.status === 'group_mismatch') {
         draft._profile_group_hint = profile['GROUP NAME'] || '';
+        draft.target_mill_row = profile._row;
+        draft._mill_row = profile._row;
+        const PREFILL_SKIP2 = new Set([
+          pctField, SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
+          'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
+          'FACILITY NAME CPO', 'FACILITY NAME PK', 'TRADER NAME', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
+        ]);
+        (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+          if (PREFILL_SKIP2.has(f)) return;
+          if (profile[f] !== undefined && profile[f] !== null && String(profile[f]).trim() !== '') {
+            draft[f] = profile[f];
+          }
+        });
+        draft['GROUP NAME'] = names.group || draft['GROUP NAME'];
+        draft[pctField] = r.SUPPLY_PCT;
+        draft[facField] = r.PLANT || profile[facField] || '';
       }
 
       return draft;
@@ -18949,6 +18978,64 @@ function initDashboardApp() {
       + '</div>';
   }
 
+  /** Open mill Add modal with full profile prefill + import overrides (all fields editable). */
+  async function supplyOpenMillModalFromDraft_(draftRow, batch, bId, rowIdx) {
+    if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
+      await loadMillData();
+    }
+
+    const kind = String(batch.supply_type || draftRow.supply_type || 'CPO').toUpperCase() === 'PK' ? 'PK' : 'CPO';
+    const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
+    const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+
+    supplyRematchDraftRow_(draftRow, batch);
+
+    const prefill = {};
+    const excelLike = {
+      COMPANY_NAME: draftRow['COMPANY NAME'],
+      MILL_NAME: draftRow['MILL NAME'],
+      COMPANY_GROUP_NAME: draftRow['GROUP NAME'],
+      PLANT: draftRow[facField] || draftRow.PLANT || '',
+    };
+    const found = supplyFindMillProfileMatch_(excelLike, kind);
+    const profile = found.row;
+    if (profile && (found.status === 'matched' || found.status === 'group_mismatch')) {
+      draftRow.target_mill_row = profile._row;
+      draftRow._mill_row = profile._row;
+      draftRow.match_status = found.status;
+      (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+        if (profile[f] !== undefined && profile[f] !== null && String(profile[f]).trim() !== '') {
+          prefill[f] = profile[f];
+        }
+      });
+    }
+
+    const DRAFT_META_SKIP = new Set([
+      'draft_id', 'batch_id', 'status', 'match_status', '_submitted',
+      'created_at', 'updated_at', 'created_by', '_profile_group_hint',
+      'target_mill_row', '_mill_row', 'supply_type', 'SUPPLY_TYPE',
+      'SUPPLY_QTY', 'SUPPLY_PERCENTAGE', 'quarter', 'year',
+    ]);
+    Object.keys(draftRow).forEach(function(k) {
+      if (DRAFT_META_SKIP.has(k)) return;
+      if (draftRow[k] !== undefined && draftRow[k] !== null && String(draftRow[k]).trim() !== '') {
+        prefill[k] = draftRow[k];
+      }
+    });
+
+    if (batch.quarter) prefill['QUARTER'] = batch.quarter;
+    if (batch.year) prefill['YEAR'] = String(batch.year);
+    if (draftRow['GROUP NAME']) prefill['GROUP NAME'] = draftRow['GROUP NAME'];
+    if (draftRow['COMPANY NAME']) prefill['COMPANY NAME'] = draftRow['COMPANY NAME'];
+    if (draftRow['MILL NAME']) prefill['MILL NAME'] = draftRow['MILL NAME'];
+    if (draftRow['TRADER NAME']) prefill['TRADER NAME'] = draftRow['TRADER NAME'];
+    if (draftRow[pctField] != null && String(draftRow[pctField]).trim() !== '') prefill[pctField] = draftRow[pctField];
+    if (draftRow[facField]) prefill[facField] = draftRow[facField];
+
+    window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
+    openModal('mill', MILL_FIELDS, 'add', prefill);
+  }
+
   function handleSupplyBatchAction_(e) {
     const btn    = e.currentTarget;
     const action = btn.dataset.action;
@@ -19048,29 +19135,22 @@ function initDashboardApp() {
       return;
     }
 
-    // Open full Add New Record modal for a New (unmatched) row
     if (action === 'open-modal-row') {
       collectInlineEdits_(bId);
       const rowIdx  = parseInt(btn.dataset.row, 10);
       const draftRow = batch.rows && batch.rows[rowIdx];
       if (!draftRow) return;
-
-      // Build prefill object for the mill modal (uppercase MILL_FIELDS keys)
-      const prefill = {};
-      Object.keys(draftRow).forEach(function(k) {
-        if (k === 'draft_id' || k === 'batch_id' || k === 'status' || k === 'match_status' || k === '_submitted'
-            || k === 'created_at' || k === 'updated_at' || k === 'created_by') return;
-        if (draftRow[k] !== undefined && draftRow[k] !== null && String(draftRow[k]).trim() !== '') {
-          prefill[k] = draftRow[k];
-        }
-      });
-      // Ensure QUARTER and YEAR are set from batch meta if missing in row
-      if (!prefill['QUARTER'] && batch.quarter) prefill['QUARTER'] = batch.quarter;
-      if (!prefill['YEAR']    && batch.year)    prefill['YEAR']    = String(batch.year);
-
-      // Store context so after save we can mark draft row as submitted
-      window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
-      openModal('mill', MILL_FIELDS, 'add', prefill);
+      const label = btn.textContent;
+      btn.textContent = '…';
+      btn.disabled = true;
+      supplyOpenMillModalFromDraft_(draftRow, batch, bId, rowIdx)
+        .catch(function(err) {
+          alert('Gagal membuka form: ' + (err && err.message ? err.message : err));
+        })
+        .finally(function() {
+          btn.textContent = label;
+          btn.disabled = false;
+        });
       return;
     }
   }
