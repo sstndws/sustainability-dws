@@ -8853,6 +8853,30 @@ function initDashboardApp() {
 
   // ─── GRIEVANCE DATA ─────────────────────────────────────
   const GRV_FIELDS = ['Grievance ID','Date Received','Complainant','Grievance Source','Grievance Publisher','Grievance Category','Subject','Relationship','Grievance Subject','Grievance Subject Group','Subject ID','Grievance Description','Risk Classification','Verification Findings','Corrective Action','Preventive Action','Responsible Div./Dep.','Grievance Status','Date Closed','Action Taken','Published'];
+  /** Fields shown when a table row is expanded (edit modal still uses full GRV_FIELDS). */
+  const GRV_EXPAND_FIELDS = [
+    'Grievance ID',
+    'Date Received',
+    'Complainant',
+    'Grievance Source',
+    'Grievance Publisher',
+    'Grievance Category',
+    'Subject',
+    'Relationship',
+    'Grievance Subject',
+    'Grievance Subject Group',
+    'Subject ID',
+    'Grievance Description',
+    'Risk Classification',
+    'Verification Findings',
+    'Corrective Action',
+    'Preventive Action',
+    'Responsible Div./Dep.',
+    'Grievance Status',
+    'Date Closed',
+    'Action Taken',
+    'Published',
+  ];
   const GRV_LONG = ['Grievance Description','Verification Findings','Corrective Action','Preventive Action','Action Taken'];
   const GRV_SHORT = ['Grievance ID','Date Received','Grievance Category','Subject','Grievance Subject Group','Risk Classification','Grievance Status','Date Closed'];
 
@@ -9002,14 +9026,24 @@ function initDashboardApp() {
       return;
     }
     body.innerHTML = filtered.map((d, i) => {
-      const detailHTML = GRV_FIELDS.map(f => {
-        let val = d[f] || '—';
-        if (f === 'Date Received' || f === 'Date Closed') val = grvFormatDateDisplay_(d[f]);
-        return `
-        <div class="grv-detail-item ${GRV_LONG.includes(f) ? 'full' : ''}">
-          <div class="grv-detail-label">${f}</div>
-          <div class="grv-detail-val">${escHtml(String(val))}</div>
-        </div>`;
+      const detailHTML = GRV_EXPAND_FIELDS.map(function(f) {
+        const raw = d[f];
+        let valHtml;
+        if (f === 'Risk Classification') {
+          valHtml = raw ? riskBadge(raw) : '—';
+        } else if (f === 'Grievance Status') {
+          valHtml = raw ? statusBadgeGrv(raw) : '—';
+        } else if (f === 'Date Received' || f === 'Date Closed') {
+          valHtml = escHtml(grvFormatDateDisplay_(raw));
+        } else {
+          valHtml = escHtml(String(raw != null && String(raw).trim() !== '' ? raw : '—'));
+        }
+        const fullCls = GRV_LONG.includes(f) ? ' full' : '';
+        return ''
+          + '<div class="grv-detail-item' + fullCls + '">'
+          + '<div class="grv-detail-label">' + escHtml(f) + '</div>'
+          + '<div class="grv-detail-val">' + valHtml + '</div>'
+          + '</div>';
       }).join('');
       const rowJson = JSON.stringify(d).replace(/'/g, '&#39;');
       return `
