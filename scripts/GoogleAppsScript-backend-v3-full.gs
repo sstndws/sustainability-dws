@@ -2182,6 +2182,12 @@ function mirrorMillQuarterYearOnRead_(obj) {
   });
 }
 
+/** SUPPLY CPO/PK: use stored numeric value (getValues), not display string — avoids "66,000" vs "66.000" ambiguity. */
+function millSupplyUsesRawNumber_(header) {
+  var u = String(header || '').trim().toUpperCase();
+  return u === 'SUPPLY CPO' || u === 'SUPPLY PK';
+}
+
 function getData(sheetKey) {
   const sheet = getSheet(sheetKey);
   const range = sheet.getDataRange();
@@ -2225,7 +2231,15 @@ function getData(sheetKey) {
       return obj;
     }
     obj = { _row: headerRowNum + i + 1 };
-    headers.forEach(function(h, j) { obj[h] = sourceRow[j]; });
+    headers.forEach(function(h, j) {
+      var rawVal = row[j];
+      if (sheetKey === 'mill' && millSupplyUsesRawNumber_(h)
+          && typeof rawVal === 'number' && !isNaN(rawVal)) {
+        obj[h] = rawVal;
+      } else {
+        obj[h] = sourceRow[j];
+      }
+    });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     return obj;
   }).filter(function(obj) {

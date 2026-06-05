@@ -3811,8 +3811,8 @@ import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyAe-dlXJUd-qU-EMneMSMGIQvIR77j558UItFba39rJYsy25_GPDqAwCx68jr49CWfRA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyAe-dlXJUd-qU-EMneMSMGIQvIR77j558UItFba39rJYsy25_GPDqAwCx68jr49CWfRA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -3825,16 +3825,38 @@ function sddUrlUsesCurrentDeployment_(url) {
   return String(url || '').indexOf(SDD_WEBAPP_DEPLOYMENT_ID) !== -1;
 }
 
+/** Local dev (127.0.0.1 / localhost): route GAS via Vite proxy to avoid CORS/adblock. */
+function sddIsLocalDevHost_() {
+  if (typeof location === 'undefined') return false;
+  var h = String(location.hostname || '').toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1';
+}
+
+function sddBuildGasExecUrl_(deploymentId) {
+  var id = String(deploymentId || SDD_WEBAPP_DEPLOYMENT_ID || '').trim();
+  if (!id) return SDD_DEFAULT_WEBAPP_URL;
+  if (sddIsLocalDevHost_()) {
+    return '/gas-api/macros/s/' + id + '/exec';
+  }
+  return 'https://script.google.com/macros/s/' + id + '/exec';
+}
+
 function getSddApiUrl() {
   if (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL) {
-    return normalizeSddWebAppUrl_(window.SDD_LATEST_WEBAPP_URL) || SDD_DEFAULT_WEBAPP_URL;
+    var latest = normalizeSddWebAppUrl_(window.SDD_LATEST_WEBAPP_URL);
+    if (latest && sddUrlUsesCurrentDeployment_(latest)) {
+      return sddIsLocalDevHost_() ? sddBuildGasExecUrl_(SDD_WEBAPP_DEPLOYMENT_ID) : latest;
+    }
   }
   if (typeof window !== 'undefined' && window.SDD_WEBAPP_URL) {
     var w = normalizeSddWebAppUrl_(window.SDD_WEBAPP_URL);
-    if (w && sddUrlUsesCurrentDeployment_(w)) return w;
+    if (w && sddUrlUsesCurrentDeployment_(w)) {
+      return sddIsLocalDevHost_() ? sddBuildGasExecUrl_(SDD_WEBAPP_DEPLOYMENT_ID) : w;
+    }
   }
+  var def = sddBuildGasExecUrl_(SDD_WEBAPP_DEPLOYMENT_ID);
   try { localStorage.setItem('SDD_WEBAPP_URL', SDD_DEFAULT_WEBAPP_URL); } catch (e) { /* ignore */ }
-  return SDD_DEFAULT_WEBAPP_URL;
+  return def;
 }
 
 /** Ping Apps Script deployment (checks blMonitoring support). */
@@ -3968,30 +3990,46 @@ async function apiGet(sheet, opts) {
   var params = new URLSearchParams({ action: 'getAll', sheet: sheet });
   if (sheet === 'sdd') params.set('_ts', String(Date.now()));
   var fullUrl = url + '?' + params.toString();
-  var controller = new AbortController();
-  var tid = setTimeout(function () { controller.abort(); }, 45000);
+  var maxAttempts = 3;
   var res;
-  try {
-    res = await fetch(fullUrl, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-      redirect: 'follow',
-      signal: controller.signal
-    });
-  } catch (e) {
-    clearTimeout(tid);
-    var ename = e && e.name;
-    var emsg = (e && e.message) || String(e);
+  var lastErr;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    var controller = new AbortController();
+    var tid = setTimeout(function () { controller.abort(); }, 60000);
+    try {
+      res = await fetch(fullUrl, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+      lastErr = null;
+      break;
+    } catch (e) {
+      clearTimeout(tid);
+      lastErr = e;
+      if (attempt < maxAttempts) {
+        await new Promise(function(r) { setTimeout(r, 800 * attempt); });
+        continue;
+      }
+    }
+  }
+  if (lastErr) {
+    var ename = lastErr && lastErr.name;
+    var emsg = (lastErr && lastErr.message) || String(lastErr);
     if (ename === 'AbortError') {
-      throw new Error('GET timeout (45s). Periksa jaringan atau URL Apps Script (SDD_WEBAPP_URL).');
+      throw new Error('GET timeout (60s). Periksa jaringan atau URL Apps Script (SDD_WEBAPP_URL).');
     }
     if (emsg.indexOf('Failed to fetch') !== -1 || ename === 'TypeError') {
-      throw new Error('GET gagal (jaringan/CORS/adblock). Pastikan halaman di http://localhost atau https, dan URL Web App benar.');
+      var hint = sddIsLocalDevHost_()
+        ? ' Stop semua npm run dev, jalankan ulang npm run dev, buka URL di terminal (proxy /gas-api).'
+        : ' Pastikan URL Web App benar dan deployment Apps Script "Anyone" dapat diakses.';
+      throw new Error('GET gagal (jaringan/CORS/adblock).' + hint);
     }
     throw new Error('GET failed: ' + emsg);
   }
-  clearTimeout(tid);
   var text = await res.text();
   var data;
   try {
@@ -7318,6 +7356,27 @@ function initDashboardApp() {
     return '';
   }
 
+  /** Like millPickField_ but preserves numeric API values (SUPPLY CPO/PK). */
+  function millPickRawField_(row, names) {
+    if (!row || typeof row !== 'object') return null;
+    const list = Array.isArray(names) ? names : [names];
+    for (let i = 0; i < list.length; i++) {
+      const v = row[list[i]];
+      if (v != null && (typeof v === 'number' ? isFinite(v) : String(v).trim() !== '')) return v;
+    }
+    const wanted = list.map(function(n) { return millHeaderNorm_(n); });
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      if (wanted.indexOf(millHeaderNorm_(k)) !== -1) {
+        const v = row[k];
+        if (v != null && (typeof v === 'number' ? isFinite(v) : String(v).trim() !== '')) return v;
+      }
+    }
+    return null;
+  }
+
   function millSourceTypeVal_(row) {
     return millPickField_(row, ['SOURCE TYPE', 'Source Type', 'SOURCE_TYPE']).toUpperCase();
   }
@@ -7336,9 +7395,20 @@ function initDashboardApp() {
     return /^(no\s*data|n\/a|na|none|null|-+|—+)$/i.test(s);
   }
 
+  function millNormalizeCoordinateText_(raw) {
+    let s = String(raw || '').trim();
+    if (!s || millCoordIsNoDataText_(s)) return '';
+    // "- 2. 1344439, 111. 1825" → "-2.1344439,111.1825"
+    s = s.replace(/-\s+(?=\d)/g, '-');
+    s = s.replace(/(\d)\s+\./g, '$1.');
+    s = s.replace(/\.\s+(\d)/g, '.$1');
+    s = s.replace(/,\s+/g, ',').replace(/\s+,/g, ',');
+    return s;
+  }
+
   function millParseCoordinatePair_(raw) {
-    const s = String(raw || '').trim();
-    if (!s || millCoordIsNoDataText_(s)) return null;
+    const s = millNormalizeCoordinateText_(raw);
+    if (!s) return null;
     const nums = s.match(/-?\d+(?:[.,]\d+)?/g);
     if (!nums || nums.length < 2) return null;
     const lat = parseFloat(String(nums[0]).replace(',', '.'));
@@ -7376,21 +7446,44 @@ function initDashboardApp() {
     return st === 'MILL' || st === 'TRADER' || st === 'REFINERY';
   }
 
-  /** Parse tonnage from SUPPLY CPO / SUPPLY PK (Indonesian "214.552" → 214552). */
+  /**
+   * Parse tonnage from SUPPLY CPO / SUPPLY PK.
+   * Indonesian thousands: "66.000" / "214.552" → 66000 / 214552
+   * US thousands: "66,000" / "12,900" → 66000 / 12900
+   * API numeric from getValues() is used as-is.
+   */
   function millParseSupplyQty_(raw) {
     if (raw == null || raw === '') return 0;
-    const n = ttpParseNumber_(raw);
+    if (typeof raw === 'number' && isFinite(raw)) return raw < 0 ? 0 : raw;
+
+    let s = String(raw).trim().replace(/%/g, '').replace(/\s/g, '');
+    if (!s || s === '—' || s === '-') return 0;
+
+    if (/^\d{1,3}(,\d{3})+$/.test(s)) {
+      const n = parseFloat(s.replace(/,/g, ''));
+      return isNaN(n) || n < 0 ? 0 : n;
+    }
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      const n = parseFloat(s.replace(/\./g, ''));
+      return isNaN(n) || n < 0 ? 0 : n;
+    }
+    if (/,/.test(s) && /,\d{1,2}$/.test(s) && !/,\d{3}(,|$)/.test(s)) {
+      const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+      return isNaN(n) || n < 0 ? 0 : n;
+    }
+
+    const n = parseFloat(s.replace(/,/g, ''));
     return isNaN(n) || n < 0 ? 0 : n;
   }
 
   /** Column AT — SUPPLY CPO only (no fallback to other columns). */
   function millSupplyCpoQty_(row) {
-    return millParseSupplyQty_(millPickField_(row, ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']));
+    return millParseSupplyQty_(millPickRawField_(row, ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']));
   }
 
   /** Column AV — SUPPLY PK only (no fallback to other columns). */
   function millSupplyPkQty_(row) {
-    return millParseSupplyQty_(millPickField_(row, ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']));
+    return millParseSupplyQty_(millPickRawField_(row, ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']));
   }
 
   function millNormalizeProductSupply_(row) {
@@ -7417,9 +7510,13 @@ function initDashboardApp() {
     });
   }
 
-  /** CPO pool: PRODUCT SUPPLY contains CPO token (CPO, CPO,PK, etc.). */
+  /**
+   * CPO pool: PRODUCT SUPPLY contains CPO, or PRODUCT SUPPLY kosong tapi SUPPLY CPO (AT) > 0.
+   * Contoh: ENERGI UNGGUL PERSADA — AT=18.000, PRODUCT SUPPLY blank, koordinat No Data.
+   */
   function millProductSupplyMatchesCpo_(row) {
-    return millProductSupplyTokens_(row).indexOf('CPO') !== -1;
+    if (millProductSupplyTokens_(row).indexOf('CPO') !== -1) return true;
+    return !millNormalizeProductSupply_(row) && millSupplyCpoQty_(row) > 0;
   }
 
   /** PK pool: PRODUCT SUPPLY contains PK token (PK, CPO,PK, etc.). */
@@ -7474,6 +7571,7 @@ function initDashboardApp() {
     let supplyNoData = 0;
     let rowsTraceable = 0;
     let rowsNoData = 0;
+    const nodataRows = [];
 
     pool.forEach(function(row) {
       const qty = qtyFn(row);
@@ -7484,8 +7582,18 @@ function initDashboardApp() {
       } else {
         supplyNoData += qty;
         rowsNoData++;
+        nodataRows.push({
+          row: row,
+          qty: qty,
+          label: String(
+            row['COMPANY NAME'] || row['TRADER NAME'] || row['MILL NAME'] || '—'
+          ).trim(),
+          sourceType: millSourceTypeVal_(row),
+        });
       }
     });
+
+    nodataRows.sort(function(a, b) { return b.qty - a.qty; });
 
     return {
       pct: supplyTotal > 0 ? (supplyTraceable / supplyTotal) * 100 : NaN,
@@ -7495,7 +7603,25 @@ function initDashboardApp() {
       rowsTraceable: rowsTraceable,
       rowsTotal: pool.length,
       rowsNoData: rowsNoData,
+      nodataRows: nodataRows,
     };
+  }
+
+  function ttpFormatTtmNodataBreakdown_(ttmAgg, productKind) {
+    const rows = (ttmAgg && ttmAgg.nodataRows) || [];
+    if (!rows.length) return '';
+    const qtyLabel = productKind === 'pk' ? 'SUPPLY PK' : 'SUPPLY CPO';
+    const lines = rows.slice(0, 12).map(function(item) {
+      return '  · ' + item.label
+        + ' [' + item.sourceType + '] '
+        + ttpFormatTtpTon_(item.qty) + ' ton';
+    });
+    let text = '\n' + qtyLabel + ' NO DATA (top ' + Math.min(rows.length, 12) + '):';
+    text += '\n' + lines.join('\n');
+    if (rows.length > 12) {
+      text += '\n  · … +' + (rows.length - 12) + ' baris lainnya';
+    }
+    return text;
   }
 
   function ttpApplyTableFilters_(rows) {
@@ -7839,7 +7965,8 @@ function initDashboardApp() {
           + '\nTraceable : ' + ttpFormatTtpTon_(ttmCpo.supplyTraceable) + ' ton (' + ttmCpo.rowsTraceable + ' baris)'
           + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmCpo.supplyNoData) + ' ton (' + ttmCpo.rowsNoData + ' baris)'
           + '\nTotal pool: ' + ttpFormatTtpTon_(ttmCpo.supplyTotal) + ' ton (' + ttmCpo.rowsTotal + ' baris)'
-          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO'
+          + ttpFormatTtmNodataBreakdown_(ttmCpo, 'cpo')
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO (atau SUPPLY CPO > 0 jika PRODUCT SUPPLY kosong)'
           + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
       } else {
         ttmCpoEl.title = 'Tidak ada data CPO (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
@@ -7853,6 +7980,7 @@ function initDashboardApp() {
           + '\nTraceable : ' + ttpFormatTtpTon_(ttmPk.supplyTraceable) + ' ton (' + ttmPk.rowsTraceable + ' baris)'
           + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmPk.supplyNoData) + ' ton (' + ttmPk.rowsNoData + ' baris)'
           + '\nTotal pool: ' + ttpFormatTtpTon_(ttmPk.supplyTotal) + ' ton (' + ttmPk.rowsTotal + ' baris)'
+          + ttpFormatTtmNodataBreakdown_(ttmPk, 'pk')
           + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains PK'
           + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
       } else {
@@ -8283,7 +8411,16 @@ function initDashboardApp() {
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
-      errorEl.textContent = 'Gagal memuat data: ' + err.message;
+      errorEl.innerHTML = '<span>' + escHtml('Gagal memuat data: ' + err.message) + '</span>'
+        + ' <button type="button" class="btn btn-sm" id="ttp-retry-load" style="margin-left:8px;">Coba lagi</button>';
+      const retryBtn = document.getElementById('ttp-retry-load');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', function() {
+          ttpLoadPromise = null;
+          ttpLoaded = false;
+          loadTTPData();
+        });
+      }
       const mixSection = document.getElementById('ttpCategoryMixSection');
       if (mixSection) mixSection.hidden = true;
     }
@@ -9745,13 +9882,8 @@ function initDashboardApp() {
     });
   }
 
-  /** BL Monitoring — always hit latest GAS deploy (bypass stale Vite prebundle). */
-  var BL_MONITORING_GAS_URL =
-    'https://script.google.com/macros/s/AKfycbzNdCwijEaubcpPTgxRBdxvIem0SJVddUFViUX1DNCHfVvX-i66JNdYDZ2AE137bVvHlQ/exec';
-
   async function fetchBlMonitoringRows_() {
-    var base = (typeof window !== 'undefined' && window.SDD_LATEST_WEBAPP_URL)
-      || BL_MONITORING_GAS_URL;
+    var base = (typeof getSddApiUrl === 'function' ? getSddApiUrl() : SDD_DEFAULT_WEBAPP_URL);
     var fullUrl = base + '?action=getAll&sheet=blMonitoring&_ts=' + Date.now();
     var res = await fetch(fullUrl, {
       method: 'GET',
@@ -9786,7 +9918,7 @@ function initDashboardApp() {
       loading.style.display = 'block';
       errorEl.style.display = 'none';
       table.style.display = 'none';
-      try { localStorage.setItem('SDD_WEBAPP_URL', BL_MONITORING_GAS_URL); } catch (e) { /* ignore */ }
+      try { localStorage.setItem('SDD_WEBAPP_URL', SDD_DEFAULT_WEBAPP_URL); } catch (e) { /* ignore */ }
       blData = await fetchBlMonitoringRows_();
       blData = sortBlRowsByReceivedDesc_((blData || []).map(prepareBlRow_));
       blLoaded = true;
@@ -14734,6 +14866,194 @@ function initDashboardApp() {
       ).trim();
     }
 
+    /** Loose facility key — "KCP BTG" ↔ "KCP - BTG". */
+    function pfNormalizeFacilityKey_(val) {
+      return String(val || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    function pfFindSuppliedPlantEntry_(lookup, facilityKey) {
+      if (!lookup || !facilityKey) return null;
+      if (lookup[facilityKey]) return { key: facilityKey, entry: lookup[facilityKey] };
+      const want = pfNormalizeFacilityKey_(facilityKey);
+      const keys = Object.keys(lookup);
+      for (let i = 0; i < keys.length; i++) {
+        if (pfNormalizeFacilityKey_(keys[i]) === want) {
+          return { key: keys[i], entry: lookup[keys[i]] };
+        }
+      }
+      return null;
+    }
+
+    function pfCompanyListHasSeller_(companies, sellerUpper) {
+      if (!sellerUpper) return false;
+      return (companies || []).some(function(c) {
+        if (c.companyKey === sellerUpper) return true;
+        if (normalizeLooseKey(c.companyKey) === normalizeLooseKey(sellerUpper)) return true;
+        if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(c.company, sellerUpper)) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    function pfAllMillRowsForLookup_() {
+      return (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    }
+
+    function pfSellerMatchesCompany_(sellerUpper, companyName) {
+      const co = String(companyName || '').trim().toUpperCase();
+      if (!co || !sellerUpper) return false;
+      if (co === sellerUpper) return true;
+      if (normalizeLooseKey(co) === normalizeLooseKey(sellerUpper)) return true;
+      if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(co, sellerUpper)) {
+        return true;
+      }
+      return false;
+    }
+
+    function pfPickBestMillRowMatch_(matches) {
+      if (!matches || !matches.length) return null;
+      if (matches.length === 1) return matches[0];
+      let best = matches[0];
+      matches.forEach(function(r) {
+        const skNew = pfMillRowPeriodSortKey_(r);
+        const skOld = pfMillRowPeriodSortKey_(best);
+        if (skNew > skOld) best = r;
+        else if (skNew === skOld && (r._row || 0) > (best._row || 0)) best = r;
+      });
+      return best;
+    }
+
+    function pfFindMillRowInList_(sellerUpper, rows) {
+      if (!sellerUpper) return null;
+      const matches = [];
+      (rows || []).forEach(function(r) {
+        if (pfSellerMatchesCompany_(sellerUpper, r['COMPANY NAME'])) matches.push(r);
+      });
+      return pfPickBestMillRowMatch_(matches);
+    }
+
+    /** Match seller → Mill Onboarding row (period-scoped first, then full registry). */
+    function pfFindMillRowForSeller_(sellerUpper, millRows) {
+      if (!sellerUpper) return null;
+      const scoped = pfFindMillRowInList_(sellerUpper, millRows);
+      if (scoped) return scoped;
+      return pfFindMillRowInList_(sellerUpper, pfAllMillRowsForLookup_());
+    }
+
+    function pfResolveCompanyMillRow_(c) {
+      if (!c) return null;
+      if (c.millRowNum) return c.millRowNum;
+      const key = String(c.companyKey || c.company || '').trim().toUpperCase();
+      if (!key) return null;
+      const hit = pfFindMillRowForSeller_(key, pfMillRowsForBuild_());
+      return hit ? hit._row : null;
+    }
+
+    function pfSellerDisplayName_(sellerUpper, suppliedRows) {
+      const rows = suppliedRows || [];
+      for (let i = 0; i < rows.length; i++) {
+        const s = String(rows[i]['SELLER'] || '').trim();
+        if (s && s.toUpperCase() === sellerUpper) return s;
+      }
+      return sellerUpper;
+    }
+
+    function pfBuildPkCompanyFromMillRow_(r, ttpPkLookup, ttpCertLookup) {
+      const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+      const pkEntry = ttpPkLookup[coUpper];
+      const ttpPkPctNum = pkEntry ? (pkEntry.sum / pkEntry.count) : NaN;
+      return {
+        quarter:    pfFormatQuarter_(millQuarterVal(r)),
+        year:       String(millYearVal(r) || '').trim() || '—',
+        quarterRaw: millQuarterVal(r),
+        yearRaw:    millYearVal(r),
+        millRowNum: r._row,
+        company:    String(r['COMPANY NAME'] || '').trim() || '—',
+        companyKey: coUpper,
+        group:      String(r['GROUP NAME'] || '').trim() || '—',
+        nbl:        String(r['BUYER NO BUY LIST'] || '').trim() || '—',
+        riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
+        grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
+        ttpPctNum:  ttpPkPctNum,
+        certification: pfMillCertificationValue_(r, ttpCertLookup),
+        coordinate: pfCompanyCoordValue_(r) || '—',
+        province: String(r['PROVINCE'] || '').trim(),
+      };
+    }
+
+    /**
+     * Add Supplied PK sellers to facility company list even without coordinates
+     * or Mill Onboarding FACILITY NAME PK link.
+     */
+    function pfMergeSuppliedPkSellers_(byFacility, suppliedLookup, millRows, ttpPkLookup, ttpCertLookup, suppliedRows) {
+      const period = pfGetPeriodFilters_();
+      const qRaw = period.q || '';
+      const yRaw = period.y || '';
+      const plantLabels = {};
+      (suppliedRows || []).forEach(function(r) {
+        const plantRaw = String(r['PLANT'] || '').trim();
+        if (!pfIsValidFacilityName_(plantRaw)) return;
+        const norm = pfNormalizeFacilityKey_(plantRaw);
+        if (!plantLabels[norm]) plantLabels[norm] = plantRaw;
+      });
+
+      Object.keys(suppliedLookup).forEach(function(plantKey) {
+        const norm = pfNormalizeFacilityKey_(plantKey);
+        const display = plantLabels[norm] || plantKey;
+        let group = null;
+        byFacility.forEach(function(g, key) {
+          if (pfNormalizeFacilityKey_(key) === norm) group = g;
+        });
+        if (!group) {
+          const facKey = display.trim().toUpperCase();
+          group = { facility: display, facilityKey: facKey, companies: [] };
+          byFacility.set(facKey, group);
+        }
+        const supEntry = suppliedLookup[plantKey];
+        if (!supEntry || !supEntry.sellers) return;
+        Object.keys(supEntry.sellers).forEach(function(sellerKey) {
+          if (!sellerKey) return;
+          const millHit = pfFindMillRowForSeller_(sellerKey, millRows);
+          if (pfCompanyListHasSeller_(group.companies, sellerKey)) {
+            if (millHit) {
+              group.companies = group.companies.map(function(c) {
+                if (!pfSellerMatchesCompany_(sellerKey, c.companyKey) && !pfSellerMatchesCompany_(sellerKey, c.company)) {
+                  return c;
+                }
+                return pfBuildPkCompanyFromMillRow_(millHit, ttpPkLookup, ttpCertLookup);
+              });
+            }
+            return;
+          }
+          if (millHit) {
+            group.companies.push(pfBuildPkCompanyFromMillRow_(millHit, ttpPkLookup, ttpCertLookup));
+            return;
+          }
+          const pct = pfTtpPkPctForSeller_(ttpPkLookup, sellerKey);
+          const certs = pfTtpCertsForCompany_(ttpCertLookup, sellerKey);
+          group.companies.push({
+            quarter: qRaw ? ('Q' + qRaw) : '—',
+            year: yRaw || '—',
+            quarterRaw: qRaw,
+            yearRaw: yRaw,
+            millRowNum: null,
+            company: pfSellerDisplayName_(sellerKey, suppliedRows),
+            companyKey: sellerKey,
+            group: '—',
+            nbl: '—',
+            riskLevel: '—',
+            grievance: '—',
+            ttpPctNum: !isNaN(pct) ? pct : NaN,
+            certification: certs.length ? certs.join(', ') : '',
+            coordinate: '—',
+            province: '',
+            fromSuppliedOnly: true,
+          });
+        });
+      });
+    }
+
     function pfQuarterMatchesFilter_(rowQ, filterQ) {
       if (!filterQ) return true;
       return String(parseMillQuarterSort(rowQ) || '') === String(filterQ);
@@ -15408,27 +15728,7 @@ function initDashboardApp() {
           .filter(function(s) { return s && pfIsValidFacilityName_(s); });
         if (!facilities.length) return;
 
-        const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
-        const pkEntry = ttpPkLookup[coUpper];
-        const ttpPkPctNum = pkEntry ? (pkEntry.sum / pkEntry.count) : NaN;
-
-        const company = {
-          quarter:    pfFormatQuarter_(millQuarterVal(r)),
-          year:       String(millYearVal(r) || '').trim() || '—',
-          quarterRaw: millQuarterVal(r),
-          yearRaw:    millYearVal(r),
-          millRowNum: r._row,
-          company:    String(r['COMPANY NAME']      || '').trim() || '—',
-          companyKey: coUpper,
-          group:      String(r['GROUP NAME']        || '').trim() || '—',
-          nbl:        String(r['BUYER NO BUY LIST'] || '').trim() || '—',
-          riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
-          grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
-          ttpPctNum:  ttpPkPctNum,
-          certification: pfMillCertificationValue_(r, ttpCertLookup),
-          coordinate: pfCompanyCoordValue_(r) || '—',
-          province: String(r['PROVINCE'] || '').trim(),
-        };
+        const company = pfBuildPkCompanyFromMillRow_(r, ttpPkLookup, ttpCertLookup);
 
         facilities.forEach(function(fac) {
           const key = fac.trim().toUpperCase();
@@ -15439,9 +15739,13 @@ function initDashboardApp() {
         });
       });
 
+      // Include Supplied PK sellers even without coordinates / FACILITY NAME PK link
+      pfMergeSuppliedPkSellers_(byFacility, suppliedLookup, millRows, ttpPkLookup, ttpCertLookup, _pfSuppliedPkData);
+
       // Calculate % PK traceable per facility
       byFacility.forEach(function(g) {
-        const supEntry = suppliedLookup[g.facilityKey];
+        const supHit = pfFindSuppliedPlantEntry_(suppliedLookup, g.facilityKey);
+        const supEntry = supHit ? supHit.entry : null;
         if (!supEntry || !hasSupplied) {
           g.traceCalc   = null;
           g.traceSource = 'ttp-fallback';
@@ -15542,7 +15846,10 @@ function initDashboardApp() {
     }
 
     function pfCompanyCellHtml_(c) {
-      const rowNum = c && c.millRowNum ? c.millRowNum : '';
+      const rowNum = pfResolveCompanyMillRow_(c);
+      if (!rowNum) {
+        return '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>';
+      }
       return ''
         + '<td class="pf-td-company">'
         + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="Lihat profil mill">'
@@ -15555,7 +15862,8 @@ function initDashboardApp() {
       if (!num) return;
       try {
         if (!allData || !allData.length) await loadMillData();
-        const row = (allData || []).find(function(r) { return r._row === num; });
+        const src = pfAllMillRowsForLookup_();
+        const row = src.find(function(r) { return r._row === num; });
         if (!row) {
           alert('Profil mill tidak ditemukan di Mill Registry.');
           return;

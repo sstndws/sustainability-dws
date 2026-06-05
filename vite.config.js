@@ -18,6 +18,19 @@ export default defineConfig({
     headers: {
       'Cache-Control': 'no-store',
     },
+    // Proxy Apps Script di dev — hindari CORS/adblock saat fetch dari 127.0.0.1
+    proxy: {
+      '/gas-api': {
+        target: 'https://script.google.com',
+        changeOrigin: true,
+        secure: true,
+        timeout: 120000,
+        proxyTimeout: 120000,
+        rewrite: function(path) {
+          return path.replace(/^\/gas-api/, '');
+        },
+      },
+    },
   },
 
   preview: {
