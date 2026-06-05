@@ -5327,6 +5327,8 @@ function initDashboardApp() {
 
     if (sheet === 'mill') {
       buildMillForm(data);
+    } else if (sheet === 'grievance') {
+      buildGrvForm(data);
     } else {
       grid.className = 'modal-form-grid';
       grid.innerHTML = fields.map(f => {
@@ -7328,16 +7330,32 @@ function initDashboardApp() {
     return millPickField_(row, ['COORDINATES', 'Coordinates', 'Coordinate', 'COORDINATE']);
   }
 
-  function millHasValidCoordinate_(row) {
-    const raw = millCoordinatesRaw_(row);
-    if (!raw) return false;
-    if (/^no\s*data$/i.test(raw)) return false;
-    const nums = raw.match(/-?\d+(?:[.,]\d+)?/g);
-    if (!nums || nums.length < 2) return false;
+  function millCoordIsNoDataText_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return true;
+    return /^(no\s*data|n\/a|na|none|null|-+|—+)$/i.test(s);
+  }
+
+  function millParseCoordinatePair_(raw) {
+    const s = String(raw || '').trim();
+    if (!s || millCoordIsNoDataText_(s)) return null;
+    const nums = s.match(/-?\d+(?:[.,]\d+)?/g);
+    if (!nums || nums.length < 2) return null;
     const lat = parseFloat(String(nums[0]).replace(',', '.'));
     const lng = parseFloat(String(nums[1]).replace(',', '.'));
-    if (isNaN(lat) || isNaN(lng)) return false;
-    return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    if (isNaN(lat) || isNaN(lng)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    if (lat === 0 && lng === 0) return null;
+    return { lat: lat, lng: lng };
+  }
+
+  function millHasValidCoordinate_(row) {
+    const combined = millCoordinatesRaw_(row);
+    if (millParseCoordinatePair_(combined)) return true;
+    const lat = millPickField_(row, ['LATITUDE', 'Latitude', 'LAT']);
+    const lng = millPickField_(row, ['LONGITUDE', 'Longitude', 'LONG']);
+    if (lat && lng) return !!millParseCoordinatePair_(lat + ';' + lng);
+    return false;
   }
 
   function millSourceTypeIsMillOrTrader_(row) {
@@ -7347,6 +7365,32 @@ function initDashboardApp() {
     if (st.indexOf('MILL') !== -1) return true;
     if (st.indexOf('TRADER') !== -1) return true;
     return false;
+  }
+
+  /**
+   * TTM pool eligibility: SOURCE TYPE = MILL, TRADER, or REFINERY — never KCP.
+   */
+  function millSourceTypeIsForTtm_(row) {
+    const st = millSourceTypeVal_(row).replace(/\s+/g, '');
+    if (!st || st === 'KCP') return false;
+    return st === 'MILL' || st === 'TRADER' || st === 'REFINERY';
+  }
+
+  /** Parse tonnage from SUPPLY CPO / SUPPLY PK (Indonesian "214.552" → 214552). */
+  function millParseSupplyQty_(raw) {
+    if (raw == null || raw === '') return 0;
+    const n = ttpParseNumber_(raw);
+    return isNaN(n) || n < 0 ? 0 : n;
+  }
+
+  /** Column AT — SUPPLY CPO only (no fallback to other columns). */
+  function millSupplyCpoQty_(row) {
+    return millParseSupplyQty_(millPickField_(row, ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']));
+  }
+
+  /** Column AV — SUPPLY PK only (no fallback to other columns). */
+  function millSupplyPkQty_(row) {
+    return millParseSupplyQty_(millPickField_(row, ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']));
   }
 
   function millNormalizeProductSupply_(row) {
@@ -7373,25 +7417,17 @@ function initDashboardApp() {
     });
   }
 
-  /** CPO pool: PRODUCT SUPPLY = CPO or CPO,PK only. */
+  /** CPO pool: PRODUCT SUPPLY contains CPO token (CPO, CPO,PK, etc.). */
   function millProductSupplyMatchesCpo_(row) {
-    const tokens = millProductSupplyTokens_(row);
-    if (!tokens.length) return false;
-    if (tokens.length === 1) return tokens[0] === 'CPO';
-    if (tokens.length === 2) return tokens.indexOf('CPO') !== -1 && tokens.indexOf('PK') !== -1;
-    return false;
+    return millProductSupplyTokens_(row).indexOf('CPO') !== -1;
   }
 
-  /** PK pool: PRODUCT SUPPLY = PK or CPO,PK only. */
+  /** PK pool: PRODUCT SUPPLY contains PK token (PK, CPO,PK, etc.). */
   function millProductSupplyMatchesPk_(row) {
-    const tokens = millProductSupplyTokens_(row);
-    if (!tokens.length) return false;
-    if (tokens.length === 1) return tokens[0] === 'PK';
-    if (tokens.length === 2) return tokens.indexOf('CPO') !== -1 && tokens.indexOf('PK') !== -1;
-    return false;
+    return millProductSupplyTokens_(row).indexOf('PK') !== -1;
   }
 
-  /** All Mill Onboarding rows for selected year (uses raw rows, no dedupe). */
+  /** All Mill Onboarding rows for selected year (all quarters, raw rows, no dedupe). */
   function ttpMillRowsForSelectedYear_() {
     const wantY = String(ttpPeriodYear || '');
     const src = (allDataRaw && allDataRaw.length) ? allDataRaw : allData;
@@ -7402,24 +7438,63 @@ function initDashboardApp() {
     });
   }
 
+  /**
+   * TTM supply-weighted traceability.
+   *
+   * Pool: SOURCE TYPE = MILL / TRADER / REFINERY (KCP excluded).
+   * CPO pool: PRODUCT SUPPLY contains "CPO" token.
+   * PK  pool: PRODUCT SUPPLY contains "PK"  token.
+   *
+   * Formula:
+   *   TTM % = SUM(supply of rows WITH valid coordinate)
+   *         ÷ SUM(supply of ALL rows in pool)  × 100
+   *
+   * "NO DATA" = coordinate column empty, "no data", or invalid lat/lng.
+   *
+   * Returns { pct, supplyTraceable, supplyTotal, rowsTraceable, rowsTotal,
+   *           rowsNoData, supplyNoData }
+   */
   function ttpCalcTtmCoordinatePct_(rows, productKind) {
+    const qtyFn = productKind === 'pk' ? millSupplyPkQty_ : millSupplyCpoQty_;
+
     const pool = (rows || []).filter(function(row) {
-      if (!millSourceTypeIsMillOrTrader_(row)) return false;
-      if (productKind === 'cpo') return millProductSupplyMatchesCpo_(row);
-      if (productKind === 'pk') return millProductSupplyMatchesPk_(row);
-      return false;
+      if (!millSourceTypeIsForTtm_(row)) return false;
+      if (productKind === 'cpo' && !millProductSupplyMatchesCpo_(row)) return false;
+      if (productKind === 'pk' && !millProductSupplyMatchesPk_(row)) return false;
+      return qtyFn(row) > 0;
     });
-    const total = pool.length;
-    if (!total) return { pct: NaN, withCoord: 0, total: 0, withoutCoord: 0 };
-    let withCoord = 0;
+
+    if (!pool.length) {
+      return { pct: NaN, supplyTraceable: 0, supplyTotal: 0,
+               rowsTraceable: 0, rowsTotal: 0, rowsNoData: 0, supplyNoData: 0 };
+    }
+
+    let supplyTotal = 0;
+    let supplyTraceable = 0;
+    let supplyNoData = 0;
+    let rowsTraceable = 0;
+    let rowsNoData = 0;
+
     pool.forEach(function(row) {
-      if (millHasValidCoordinate_(row)) withCoord++;
+      const qty = qtyFn(row);
+      supplyTotal += qty;
+      if (millHasValidCoordinate_(row)) {
+        supplyTraceable += qty;
+        rowsTraceable++;
+      } else {
+        supplyNoData += qty;
+        rowsNoData++;
+      }
     });
+
     return {
-      pct: (withCoord / total) * 100,
-      withCoord: withCoord,
-      total: total,
-      withoutCoord: total - withCoord,
+      pct: supplyTotal > 0 ? (supplyTraceable / supplyTotal) * 100 : NaN,
+      supplyTraceable: supplyTraceable,
+      supplyTotal: supplyTotal,
+      supplyNoData: supplyNoData,
+      rowsTraceable: rowsTraceable,
+      rowsTotal: pool.length,
+      rowsNoData: rowsNoData,
     };
   }
 
@@ -7667,6 +7742,13 @@ function initDashboardApp() {
     return (Math.round(n * 10) / 10).toFixed(1) + '%';
   }
 
+  /** TTM card: 2 decimal places to match spreadsheet (e.g. 94.13%, 97.46%). */
+  function ttpFormatTtmPct_(n) {
+    if (isNaN(n)) return '—';
+    if (n > 0 && n < 0.005) return '<0.01%';
+    return (Math.round(n * 100) / 100).toFixed(2) + '%';
+  }
+
   function ttpPeriodScopeLabel_() {
     return 'Year ' + (ttpPeriodYear || '—');
   }
@@ -7750,22 +7832,32 @@ function initDashboardApp() {
         : 'Tidak ada data PK traceable pada periode ini';
     }
     if (ttmCpoEl) {
-      ttmCpoEl.textContent = ttpFormatTraceablePct_(ttmCpo.pct);
-      ttmCpoEl.title = ttmCpo.total
-        ? ttmCpo.withCoord + ' / ' + ttmCpo.total + ' records with valid coordinates'
-          + '\n' + ttmCpo.withoutCoord + ' NO DATA / invalid'
-          + '\nPool: SOURCE TYPE = MILL or TRADER · PRODUCT SUPPLY = CPO or CPO,PK'
-          + '\nYear ' + (ttpPeriodYear || '—') + ' (all rows, 2-column filter only)'
-        : 'No MILL/TRADER CPO records in Mill Onboarding for this year';
+      ttmCpoEl.textContent = ttpFormatTtmPct_(ttmCpo.pct);
+      if (ttmCpo.rowsTotal) {
+        ttmCpoEl.title = 'TTM CPO · ' + (ttpPeriodYear || '—')
+          + '\nRumus: SUM(SUPPLY CPO baris traceable) ÷ SUM(SUPPLY CPO seluruh pool)'
+          + '\nTraceable : ' + ttpFormatTtpTon_(ttmCpo.supplyTraceable) + ' ton (' + ttmCpo.rowsTraceable + ' baris)'
+          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmCpo.supplyNoData) + ' ton (' + ttmCpo.rowsNoData + ' baris)'
+          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmCpo.supplyTotal) + ' ton (' + ttmCpo.rowsTotal + ' baris)'
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
+      } else {
+        ttmCpoEl.title = 'Tidak ada data CPO (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
+      }
     }
     if (ttmPkEl) {
-      ttmPkEl.textContent = ttpFormatTraceablePct_(ttmPk.pct);
-      ttmPkEl.title = ttmPk.total
-        ? ttmPk.withCoord + ' / ' + ttmPk.total + ' records with valid coordinates'
-          + '\n' + ttmPk.withoutCoord + ' NO DATA / invalid'
-          + '\nPool: SOURCE TYPE = MILL or TRADER · PRODUCT SUPPLY = PK or CPO,PK'
-          + '\nYear ' + (ttpPeriodYear || '—') + ' (all rows, 2-column filter only)'
-        : 'No MILL/TRADER PK records in Mill Onboarding for this year';
+      ttmPkEl.textContent = ttpFormatTtmPct_(ttmPk.pct);
+      if (ttmPk.rowsTotal) {
+        ttmPkEl.title = 'TTM PK · ' + (ttpPeriodYear || '—')
+          + '\nRumus: SUM(SUPPLY PK baris traceable) ÷ SUM(SUPPLY PK seluruh pool)'
+          + '\nTraceable : ' + ttpFormatTtpTon_(ttmPk.supplyTraceable) + ' ton (' + ttmPk.rowsTraceable + ' baris)'
+          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmPk.supplyNoData) + ' ton (' + ttmPk.rowsNoData + ' baris)'
+          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmPk.supplyTotal) + ' ton (' + ttmPk.rowsTotal + ' baris)'
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains PK'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
+      } else {
+        ttmPkEl.title = 'Tidak ada data PK (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
+      }
     }
   }
 
@@ -8876,7 +8968,53 @@ function initDashboardApp() {
     'Published',
   ];
   const GRV_LONG = ['Grievance Description','Verification Findings','Corrective Action','Preventive Action','Action Taken'];
+  const GRV_TEXTAREA_FIELDS = ['Grievance Description','Verification Findings','Corrective Action','Preventive Action'];
   const GRV_SHORT = ['Grievance ID','Date Received','Grievance Category','Subject','Grievance Subject Group','Risk Classification','Grievance Status','Date Closed'];
+  /** Dropdown options aligned with Grievance Monitoring spreadsheet data validation. */
+  const GRV_DROPDOWN_FIELDS = {
+    'Grievance Source': ['Int.(Employee)', 'Int.(Contractor)', 'Ext.(Customer)', 'Ext.(Stakeholder)'],
+    'Grievance Category': ['No Buy List', 'Deforestation', 'Social', 'Environment', 'Labour', 'OHS', 'Compliance', 'Ethic'],
+    'Subject': ['Operational', 'Supplier', 'Contractor'],
+    'Relationship': ['Direct', 'Indirect'],
+    'Risk Classification': ['Low', 'Medium', 'High'],
+    'Grievance Status': ['Closed', 'Open', 'Invalid'],
+    'Action Taken': ['None', 'Monitoring', 'Suspended'],
+    'Published': ['Yes', 'No'],
+  };
+
+  function grvDropdownOptions_(field, currentVal) {
+    const opts = (GRV_DROPDOWN_FIELDS[field] || []).slice();
+    const v = String(currentVal || '').trim();
+    if (v && opts.indexOf(v) === -1) opts.unshift(v);
+    return opts;
+  }
+
+  function buildGrvForm(data) {
+    const grid = document.getElementById('modalFormGrid');
+    if (!grid) return;
+    grid.className = 'modal-form-grid';
+    let html = '';
+    GRV_FIELDS.forEach(function(f) {
+      const val = data ? (data[f] || '') : '';
+      const isFull = GRV_TEXTAREA_FIELDS.includes(f) || f === 'Subject ID';
+      if (GRV_DROPDOWN_FIELDS[f]) {
+        const isYesNo = f === 'Published';
+        html += buildCustomSelect(f, grvDropdownOptions_(f, val), val, isYesNo, isFull);
+      } else if (GRV_TEXTAREA_FIELDS.includes(f)) {
+        html += '<div class="form-field full">'
+          + '<label>' + escHtml(f) + '</label>'
+          + '<textarea data-field="' + escHtml(f) + '" rows="3" placeholder="' + escHtml(f) + '">'
+          + escHtml(String(val)) + '</textarea></div>';
+      } else {
+        html += '<div class="form-field' + (isFull ? ' full' : '') + '">'
+          + '<label>' + escHtml(f) + '</label>'
+          + '<input type="text" data-field="' + escHtml(f) + '" value="' + escHtml(String(val)) + '" placeholder="' + escHtml(f) + '">'
+          + '</div>';
+      }
+    });
+    grid.innerHTML = html;
+    initCustomSelects(grid);
+  }
 
   let grvData = [], grvLoaded = false, grvSearch = '';
   let grvTableDelegationBound = false;
@@ -15930,8 +16068,9 @@ function initDashboardApp() {
       return String(val == null ? '' : val).replace(/\r?\n/g, ' ').trim() || '—';
     }
 
+    /** Loose plant key — ignores spaces, dashes, punctuation (e.g. "KCP - PURA" ↔ "KCP PURA"). */
     function pfNormalizePlantKey_(val) {
-      return String(val || '').trim().toUpperCase();
+      return String(val || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
     /** Company Profile List rows where PLANT matches Facility Performance facility name. */
