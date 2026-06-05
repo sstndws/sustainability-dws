@@ -7519,9 +7519,13 @@ function initDashboardApp() {
     return !millNormalizeProductSupply_(row) && millSupplyCpoQty_(row) > 0;
   }
 
-  /** PK pool: PRODUCT SUPPLY contains PK token (PK, CPO,PK, etc.). */
+  /**
+   * PK pool: PRODUCT SUPPLY contains PK, or PRODUCT SUPPLY kosong tapi SUPPLY PK (AV) > 0.
+   * Contoh: SAWIT MAKMUR SEJAHTERA — AV=100, PRODUCT SUPPLY blank.
+   */
   function millProductSupplyMatchesPk_(row) {
-    return millProductSupplyTokens_(row).indexOf('PK') !== -1;
+    if (millProductSupplyTokens_(row).indexOf('PK') !== -1) return true;
+    return !millNormalizeProductSupply_(row) && millSupplyPkQty_(row) > 0;
   }
 
   /** All Mill Onboarding rows for selected year (all quarters, raw rows, no dedupe). */
@@ -7557,7 +7561,8 @@ function initDashboardApp() {
     const pool = (rows || []).filter(function(row) {
       if (!millSourceTypeIsForTtm_(row)) return false;
       if (productKind === 'cpo' && !millProductSupplyMatchesCpo_(row)) return false;
-      if (productKind === 'pk' && !millProductSupplyMatchesPk_(row)) return false;
+      // PK TTM: jumlah seluruh baris tahun dengan kolom AV (SUPPLY PK) > 0, bukan per quarter.
+      if (productKind === 'pk' && millSupplyPkQty_(row) <= 0) return false;
       return qtyFn(row) > 0;
     });
 
@@ -7981,8 +7986,8 @@ function initDashboardApp() {
           + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmPk.supplyNoData) + ' ton (' + ttmPk.rowsNoData + ' baris)'
           + '\nTotal pool: ' + ttpFormatTtpTon_(ttmPk.supplyTotal) + ' ton (' + ttmPk.rowsTotal + ' baris)'
           + ttpFormatTtmNodataBreakdown_(ttmPk, 'pk')
-          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains PK'
-          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · SUM kolom SUPPLY PK (AV) > 0'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters (jumlah 1 tahun, bukan per quarter)';
       } else {
         ttmPkEl.title = 'Tidak ada data PK (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
       }
