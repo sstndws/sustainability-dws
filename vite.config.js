@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import htmlInclude from './vite-plugins/html-include.js';
+import { gasProxyApiPlugin } from './vite-plugins/gas-proxy-api.js';
 
 export default defineConfig({
-  plugins: [htmlInclude()],
+  plugins: [htmlInclude(), gasProxyApiPlugin()],
 
   esbuild: {
     legalComments: 'none',

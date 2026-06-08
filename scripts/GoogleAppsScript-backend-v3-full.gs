@@ -455,11 +455,89 @@ const TTP_MONITORING_PRESERVE_KEYS = [
 ];
 
 // ═══════════════════════════════════════════════════════════
+//  API SECURITY (set Script property API_SECRET — min 32 random chars)
+// ═══════════════════════════════════════════════════════════
+
+function getApiSecret_() {
+  return String(PropertiesService.getScriptProperties().getProperty('API_SECRET') || '').trim();
+}
+
+function extractApiToken_(e, body) {
+  if (e && e.parameter && e.parameter.token) return String(e.parameter.token).trim();
+  if (body && body.token) return String(body.token).trim();
+  return '';
+}
+
+function extractActor_(e, body) {
+  if (body && body._actor) return String(body._actor).trim();
+  if (e && e.parameter && e.parameter._actor) return String(e.parameter._actor).trim();
+  try { return Session.getActiveUser().getEmail() || 'system'; } catch (err) { return 'system'; }
+}
+
+function assertApiAuth_(e, body) {
+  const secret = getApiSecret_();
+  if (!secret) {
+    throw new Error('API_SECRET not configured in Script Properties. Set before production use.');
+  }
+  const token = extractApiToken_(e, body);
+  if (!token || token !== secret) {
+    throw new Error('Unauthorized');
+  }
+}
+
+function assertRateLimit_(actor) {
+  const key = 'rl:' + String(actor || 'anon').slice(0, 120);
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get(key);
+  const count = raw ? parseInt(raw, 10) + 1 : 1;
+  if (count > 150) throw new Error('Rate limit exceeded — try again in a minute');
+  cache.put(key, String(count), 60);
+}
+
+var MRD_WRITE_ACTIONS_ = {
+  add: 1, update: 1, delete: 1, bulkDelete: 1, bulkUpsertSDD: 1,
+  insertSDD: 1, updateSDD: 1, upsertSDD: 1,
+  createSubmission: 1, updateSubmission: 1, setSubmissionStatus: 1, deleteSubmission: 1,
+  saveSupplyDraft: 1, submitSupplyDraft: 1, deleteSupplyDraft: 1,
+  addTtpBatch: 1, upsertQuestionnaire: 1, syncEudrPotential: 1, upsertEudr: 1,
+  saveEudrStatusFormula: 1,
+};
+
+function auditLog_(verb, action, sheetKey, actor, detail) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) return;
+    const tab = 'AUDIT_LOG';
+    let sh = ss.getSheetByName(tab);
+    if (!sh) {
+      sh = ss.insertSheet(tab);
+      sh.appendRow(['timestamp', 'verb', 'action', 'sheet', 'actor', 'detail']);
+      sh.setFrozenRows(1);
+    }
+    const detailStr = String(detail || '');
+    sh.appendRow([
+      nowIso_(),
+      String(verb || ''),
+      String(action || ''),
+      String(sheetKey || ''),
+      String(actor || 'system'),
+      detailStr.length > 800 ? detailStr.slice(0, 800) : detailStr,
+    ]);
+  } catch (err) {
+    console.warn('[auditLog_]', err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  ENTRY POINTS
 // ═══════════════════════════════════════════════════════════
 
 function doGet(e) {
   try {
+    assertApiAuth_(e, null);
+    const actor = extractActor_(e, null);
+    assertRateLimit_(actor);
+
     const action   = (e && e.parameter && e.parameter.action)  || '';
     const sheetKey = (e && e.parameter && e.parameter.sheet)   || '';
 
@@ -505,8 +583,20 @@ function doGet(e) {
 function doPost(e) {
   try {
     const body     = parsePostBody_(e);
+    assertApiAuth_(e, body);
+    const actor = extractActor_(e, body);
+    assertRateLimit_(actor);
+
     const action   = body.action   || '';
     const sheetKey = body.sheet    || '';
+
+    if (MRD_WRITE_ACTIONS_[action]) {
+      auditLog_('POST', action, sheetKey, actor, JSON.stringify({
+        row: body.row,
+        rows_count: Array.isArray(body.rows) ? body.rows.length : undefined,
+        submission_id: (body.payload && body.payload.submission_id) || body.submission_id,
+      }));
+    }
 
     if (sheetKey === 'blMonitoring') ensureBlMonitoringHeaders_();
     if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();

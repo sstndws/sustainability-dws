@@ -27,16 +27,21 @@ mountLoginPage(document.getElementById('login'));
 mountOverviewLanding(document.getElementById('overview-root'));
 window.updateOverviewWelcome = updateOverviewWelcomeFromEmail;
 
-// Selalu pakai deployment terbaru (BL Monitoring butuh script v3-bl-monitoring)
-const SDD_LATEST_WEBAPP_URL =
-  'https://script.google.com/macros/s/AKfycbw0KAsUZIf3S9jPznxxkBp1fcTpvpbKJcDgtxRSMxudDsHFtqNokx-WJbXKR1haHzh8Ww/exec';
-try {
-  localStorage.setItem('SDD_WEBAPP_URL', SDD_LATEST_WEBAPP_URL);
-} catch (e) {
-  /* private mode / blocked storage */
+const SECURE_GAS = import.meta.env.VITE_SECURE_GAS === 'true';
+window.SDD_SECURE_MODE = SECURE_GAS;
+
+if (!SECURE_GAS) {
+  // Dev / legacy only — production must use VITE_SECURE_GAS=true (no GAS URL in browser).
+  const SDD_LATEST_WEBAPP_URL =
+    'https://script.google.com/macros/s/AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg/exec';
+  try {
+    localStorage.setItem('SDD_WEBAPP_URL', SDD_LATEST_WEBAPP_URL);
+  } catch (e) {
+    /* private mode / blocked storage */
+  }
+  window.SDD_LATEST_WEBAPP_URL = SDD_LATEST_WEBAPP_URL;
+  window.SDD_WEBAPP_URL = SDD_LATEST_WEBAPP_URL;
 }
-window.SDD_LATEST_WEBAPP_URL = SDD_LATEST_WEBAPP_URL;
-window.SDD_WEBAPP_URL = SDD_LATEST_WEBAPP_URL;
 
 import('./main.js')
   .then(() => import('./modals.js'))

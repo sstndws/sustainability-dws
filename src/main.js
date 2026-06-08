@@ -3,6 +3,7 @@ import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
 import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
+import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -3812,8 +3813,8 @@ import { initMonthlyReport_ } from './monthly-report-ui.js';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw0KAsUZIf3S9jPznxxkBp1fcTpvpbKJcDgtxRSMxudDsHFtqNokx-WJbXKR1haHzh8Ww/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw0KAsUZIf3S9jPznxxkBp1fcTpvpbKJcDgtxRSMxudDsHFtqNokx-WJbXKR1haHzh8Ww';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -3986,6 +3987,13 @@ function normalizeGetArray(data) {
 }
 
 async function apiGet(sheet, opts) {
+  if (isSecureGasEnabled()) {
+    var secParams = { action: 'getAll', sheet: sheet };
+    if (sheet === 'sdd') secParams._ts = String(Date.now());
+    var secData = await gasSecureRequest_({ method: 'GET', params: secParams });
+    return normalizeGetArray(secData);
+  }
+
   var url = (opts && opts.baseUrl) ? normalizeSddWebAppUrl_(opts.baseUrl) : getSddApiUrl();
   if (!url) url = SDD_DEFAULT_WEBAPP_URL;
   var params = new URLSearchParams({ action: 'getAll', sheet: sheet });
@@ -4051,11 +4059,15 @@ async function apiGet(sheet, opts) {
 }
 
 async function apiPost(body, opts) {
+  var timeoutMs = (opts && opts.timeoutMs) ? Number(opts.timeoutMs) : 120000;
+  if (isSecureGasEnabled()) {
+    return gasSecureRequest_({ method: 'POST', body: body, timeoutMs: timeoutMs });
+  }
+
   var url = (opts && opts.baseUrl) ? normalizeSddWebAppUrl_(opts.baseUrl) : getSddApiUrl();
   if (!url) url = SDD_DEFAULT_WEBAPP_URL;
   var payload = JSON.stringify(body);
-  var timeoutMs = (opts && opts.timeoutMs) ? Number(opts.timeoutMs) : 120000;
-  console.log('📤 API POST →', url, body);
+  if (!isSecureGasEnabled()) console.log('📤 API POST →', url, body);
   var controller = new AbortController();
   var tid = setTimeout(function() { controller.abort(); }, timeoutMs);
   var res;
@@ -4154,6 +4166,12 @@ async function apiDeleteSubmission(payload) {
  * @param {Object} params  additional URL params, e.g. { sheet: 'SUPPLIED CPO Q1 2026' }
  */
 async function apiGetAction_(action, params) {
+  if (isSecureGasEnabled()) {
+    return gasSecureRequest_({
+      method: 'GET',
+      params: Object.assign({ action: action, _ts: String(Date.now()) }, params || {}),
+    });
+  }
   var url = getSddApiUrl();
   var qp = new URLSearchParams(Object.assign({ action: action }, params || {}));
   qp.set('_ts', String(Date.now()));
@@ -4170,6 +4188,13 @@ async function apiGetAction_(action, params) {
 }
 
 async function apiGetSubmissionById(submissionId) {
+  var data;
+  if (isSecureGasEnabled()) {
+    data = await gasSecureRequest_({
+      method: 'GET',
+      params: { action: 'getSubmissionById', submission_id: String(submissionId) },
+    });
+  } else {
   var url = getSddApiUrl();
   var params = new URLSearchParams({
     action: 'getSubmissionById',
@@ -4179,9 +4204,9 @@ async function apiGetSubmissionById(submissionId) {
     method: 'GET', mode: 'cors', credentials: 'omit', redirect: 'follow'
   });
   var text = await res.text();
-  var data;
   try { data = text ? JSON.parse(text) : {}; } catch (e) {
     throw new Error('getSubmissionById: non-JSON response. ' + text.slice(0, 180));
+  }
   }
   if (data && data.error) throw new Error(data.error);
   return data; // { success, main, mills, ffb_rows }
@@ -4194,6 +4219,12 @@ window.apiGetSubmissionById = apiGetSubmissionById;
  * Returns { success, total, page, page_size, data: [mainRow, ...] }
  */
 async function apiListSubmissions(params) {
+  if (isSecureGasEnabled()) {
+    return gasSecureRequest_({
+      method: 'GET',
+      params: Object.assign({ action: 'listSubmissions', _ts: String(Date.now()) }, params || {}),
+    });
+  }
   var url = getSddApiUrl();
   var qp = Object.assign({ action: 'listSubmissions', _ts: String(Date.now()) }, params || {});
   var res = await fetch(url + '?' + new URLSearchParams(qp).toString(), {
@@ -5071,8 +5102,12 @@ function initDashboardApp() {
   })();
 
   console.log('🚀 Sustainability Dashboard loaded and connected to Google Sheets backend');
-  console.log('ℹ️ SDD Apps Script URL:', typeof getSddApiUrl === 'function' ? getSddApiUrl() : '(n/a)');
-  console.log('ℹ️ To use your own deployment: localStorage.setItem("SDD_WEBAPP_URL", "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec")');
+  if (isSecureGasEnabled()) {
+    console.log('🔒 Secure GAS mode: API via /api/gas-proxy (JWT required). GAS URL not exposed to browser.');
+  } else {
+    console.log('ℹ️ SDD Apps Script URL:', typeof getSddApiUrl === 'function' ? getSddApiUrl() : '(n/a)');
+    console.warn('⚠️ Dev/insecure mode — set VITE_SECURE_GAS=true in production.');
+  }
   migrateSddApiUrlToLatest_().then(function(url) {
     console.log('ℹ️ SDD Apps Script URL (after migrate check):', url);
   }).catch(function() { /* ignore */ });
@@ -10582,27 +10617,7 @@ function initDashboardApp() {
   }
 
   async function fetchBlMonitoringRows_() {
-    var base = (typeof getSddApiUrl === 'function' ? getSddApiUrl() : SDD_DEFAULT_WEBAPP_URL);
-    var fullUrl = base + '?action=getAll&sheet=blMonitoring&_ts=' + Date.now();
-    var res = await fetch(fullUrl, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-      redirect: 'follow',
-      cache: 'no-store',
-    });
-    var text = await res.text();
-    var data;
-    try {
-      data = text ? JSON.parse(text) : [];
-    } catch (parseErr) {
-      throw new Error('BL GET: invalid JSON. HTTP ' + res.status + '. ' + text.slice(0, 160));
-    }
-    if (!res.ok) throw new Error((data && data.error) || ('BL GET failed: HTTP ' + res.status));
-    if (data && typeof data === 'object' && !Array.isArray(data) && data.error) {
-      throw new Error(data.error);
-    }
-    return normalizeGetArray(data);
+    return apiGet('blMonitoring');
   }
 
   async function loadBlDataImpl_() {
@@ -10617,7 +10632,9 @@ function initDashboardApp() {
       loading.style.display = 'block';
       errorEl.style.display = 'none';
       table.style.display = 'none';
-      try { localStorage.setItem('SDD_WEBAPP_URL', SDD_DEFAULT_WEBAPP_URL); } catch (e) { /* ignore */ }
+      if (!isSecureGasEnabled()) {
+        try { localStorage.setItem('SDD_WEBAPP_URL', SDD_DEFAULT_WEBAPP_URL); } catch (e) { /* ignore */ }
+      }
       blData = await fetchBlMonitoringRows_();
       blData = sortBlRowsByReceivedDesc_((blData || []).map(prepareBlRow_));
       blLoaded = true;
@@ -18202,6 +18219,56 @@ function initDashboardApp() {
       }
     }
 
+    function pfFilterGroupsByYear_(groups, yearFilter) {
+      if (!yearFilter) return groups || [];
+      return (groups || []).map(function(g) {
+        const companies = (g.companies || []).filter(function(c) {
+          return pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yearFilter);
+        });
+        return Object.assign({}, g, { companies: companies });
+      }).filter(function(g) { return g.companies && g.companies.length > 0; });
+    }
+
+    window.mrdPreparePfDataForReport_ = async function() {
+      if (!cplLoaded) await loadCompanyProfileListData();
+      await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
+    };
+
+    window.mrdGetFacilityBundlesForReport_ = function(yearFilter) {
+      const ySel = document.getElementById('pfYearSel');
+      const qSel = document.getElementById('pfQuarterSel');
+      const prevY = ySel ? ySel.value : '';
+      const prevQ = qSel ? qSel.value : '';
+      if (ySel && yearFilter) ySel.value = yearFilter;
+      if (qSel) qSel.value = '';
+      const cpoGroups = pfFilterGroupsByYear_(pfApplyFilters_(pfBuildRows_()), yearFilter);
+      const pkGroups = pfFilterGroupsByYear_(pfApplyFilters_(pfBuildPkGroups_()), yearFilter);
+      if (ySel) ySel.value = prevY;
+      if (qSel) qSel.value = prevQ;
+      const bundles = [];
+      cpoGroups.forEach(function(g) {
+        bundles.push({
+          type: 'cpo',
+          facility: g.facility,
+          facilityKey: g.facilityKey,
+          companies: g.companies || [],
+          summary: pfGroupSummary_(g),
+          profiles: pfCplRowsForPlant_(g.facilityKey || g.facility),
+        });
+      });
+      pkGroups.forEach(function(g) {
+        bundles.push({
+          type: 'pk',
+          facility: g.facility,
+          facilityKey: g.facilityKey,
+          companies: g.companies || [],
+          summary: pfPkGroupSummary_(g),
+          profiles: pfCplRowsForPlant_(g.facilityKey || g.facility),
+        });
+      });
+      return bundles;
+    };
+
   })();
   // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 
@@ -18284,17 +18351,23 @@ function initDashboardApp() {
       return;
     }
 
-    // Demo account fallback (no Supabase env).
+    if (requireSupabaseAuth_()) {
+      if (err) {
+        err.textContent = 'Autentikasi wajib. Hubungi admin untuk akun Supabase.';
+        err.style.display = 'block';
+      }
+      return;
+    }
+
+    // Demo account fallback — local dev only when secure mode OFF.
     const isStaffDemo =
       emailNorm === 'trace123@gmail.com' &&
       (passCompact === 'trace123!' || passCompact === 'trace123');
     if (isStaffDemo) {
       await finalizeSuccessfulLogin_(emailRaw, 'STAFF');
-    } else {
-      if (err) {
-        err.textContent = 'Invalid credentials. Please try again.';
-        err.style.display = 'block';
-      }
+    } else if (err) {
+      err.textContent = 'Invalid credentials. Please try again.';
+      err.style.display = 'block';
     }
   }
 
@@ -20564,6 +20637,24 @@ function initDashboardApp() {
           return info;
         },
         buildFacilitySummary: mrdBuildFacilitySummary_,
+        getJsPDF: getJsPDF,
+        preparePdfExport: async function() {
+          await this.ensureCoreData();
+          if (typeof window.mrdPreparePfDataForReport_ === 'function') {
+            await window.mrdPreparePfDataForReport_();
+          }
+          let eudr = _mrdEudrCache;
+          if (!eudr) {
+            try { eudr = await this.fetchEudrPotential(); } catch (_) { eudr = []; }
+          }
+          return { eudr: eudr || [] };
+        },
+        getFacilityBundles: function(year) {
+          if (typeof window.mrdGetFacilityBundlesForReport_ === 'function') {
+            return window.mrdGetFacilityBundlesForReport_(year);
+          }
+          return [];
+        },
         fetchEudrPotential: async function() {
           if (_mrdEudrCache) return _mrdEudrCache;
           await ensureMillDataForEudr_();
