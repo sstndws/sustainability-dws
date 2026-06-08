@@ -2,6 +2,7 @@ import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
 import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
+import { initMonthlyReport_ } from './monthly-report-ui.js';
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -5147,6 +5148,7 @@ function initDashboardApp() {
   let ttpExpandedMills_ = new Set();
   let ttpModalAddContext = null;
   let ttpScrollToMillAfterRender_ = '';
+  let ttpLocationCascadeCache_ = null;
   let millLoadPromise = null;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -5462,6 +5464,12 @@ function initDashboardApp() {
       } else if (modalMode === 'add') {
         await apiPost({ action: 'add', sheet: modalSheet, data });
       } else {
+        if (modalSheet === 'ttp') {
+          const villages = ttpCollectDealerVillages_();
+          const villageCol = ttpPickField_(['VILLAGE']);
+          if (!villages.length) throw new Error('Village wajib diisi.');
+          if (villageCol) data[villageCol] = villages[0];
+        }
         await apiPost({ action: 'update', sheet: modalSheet, row: modalRow, data });
       }
       closeModal();
@@ -8208,8 +8216,7 @@ function initDashboardApp() {
 
   const TTP_MODAL_SELECT_KEYS_ = new Set([
     'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'COMPANY CODE', 'UML ID',
-    'FFB SUPPLIER GROUP NAME', 'PROVINCE', 'DISTRICT', 'SUBDISTRICT', 'SUB DISTRICT',
-    'VILLAGE', 'LEGALITAS', 'YEAR', 'QUARTER',
+    'YEAR', 'QUARTER',
   ]);
 
   function ttpModalFieldType_(field) {
@@ -8217,8 +8224,79 @@ function initDashboardApp() {
     if (TTP_MODAL_HIDDEN_KEYS_.has(key)) return 'hidden';
     if (key === 'CATEGORY' || (key.includes('CATEGORY') && !key.includes('MILL'))) return 'category';
     if (key === 'ISPO (Y/N)' || key === 'RSPO (Y/N)' || key === 'ISCC (Y/N)') return 'yn';
+    if (key === 'SUBDISTRICT' || key === 'SUB DISTRICT') return 'subdistrict';
+    if (key === 'DISTRICT') return 'district-auto';
+    if (key === 'PROVINCE') return 'province-auto';
+    if (key === 'LEGALITAS') return 'legalitas';
     if (TTP_MODAL_SELECT_KEYS_.has(key)) return 'select';
     return 'text';
+  }
+
+  function ttpBuildLocationCascade_() {
+    if (ttpLocationCascadeCache_) return ttpLocationCascadeCache_;
+    const villageCol = ttpPickField_(['VILLAGE']);
+    const subCol = ttpPickField_(['SUBDISTRICT', 'SUB DISTRICT']);
+    const distCol = ttpPickField_(['DISTRICT']);
+    const provCol = ttpPickField_(['PROVINCE']);
+    const byVillage = Object.create(null);
+    const bySub = Object.create(null);
+    (ttpData || []).forEach(function(row) {
+      const v = villageCol ? String(row[villageCol] || '').trim() : '';
+      const s = subCol ? String(row[subCol] || '').trim() : '';
+      const d = distCol ? String(row[distCol] || '').trim() : '';
+      const p = provCol ? String(row[provCol] || '').trim() : '';
+      if (v && s) {
+        if (!byVillage[v]) byVillage[v] = Object.create(null);
+        byVillage[v][s] = true;
+      }
+      if (s) {
+        if (!bySub[s]) bySub[s] = { district: '', province: '' };
+        if (d && !bySub[s].district) bySub[s].district = d;
+        if (p && !bySub[s].province) bySub[s].province = p;
+      }
+    });
+    ttpLocationCascadeCache_ = { byVillage: byVillage, bySub: bySub, subCol: subCol, distCol: distCol, provCol: provCol };
+    return ttpLocationCascadeCache_;
+  }
+
+  function ttpGetSubdistrictsForVillage_(village) {
+    const cascade = ttpBuildLocationCascade_();
+    const v = String(village || '').trim();
+    if (v && cascade.byVillage[v]) {
+      return Object.keys(cascade.byVillage[v]).sort(function(a, b) { return a.localeCompare(b); });
+    }
+    if (cascade.subCol) return getUniqueValuesForCol(cascade.subCol).slice();
+    return [];
+  }
+
+  function ttpGetDistrictProvinceForSub_(sub) {
+    const cascade = ttpBuildLocationCascade_();
+    const s = String(sub || '').trim();
+    if (!s || !cascade.bySub[s]) return { district: '', province: '' };
+    return { district: cascade.bySub[s].district || '', province: cascade.bySub[s].province || '' };
+  }
+
+  function ttpModalLegalitasOptions_(currentVal) {
+    const col = ttpPickField_(['LEGALITAS']);
+    const seen = Object.create(null);
+    const out = [];
+    (ttpData || []).forEach(function(row) {
+      const v = col ? String(row[col] || '').trim() : '';
+      if (!v) return;
+      const k = v.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(v);
+    });
+    out.sort(function(a, b) { return a.localeCompare(b); });
+    const cv = String(currentVal || '').trim();
+    if (cv && !seen[cv.toLowerCase()]) out.unshift(cv);
+    return out;
+  }
+
+  function ttpIsFfbSupplyToMillField_(field) {
+    const k = normalizeTtpHeaderKey_(field);
+    return k.includes('FFB SUPPLY') && k.includes('MILL');
   }
 
   function ttpModalDropdownOptions_(field, currentVal) {
@@ -8281,7 +8359,8 @@ function initDashboardApp() {
       if (supplier.length) out.push({ title: 'Supplier & Location', fields: supplier });
       if (supply.length) out.push({ title: 'Certification & Supply', fields: supply });
     }
-    if (other.length) out.push({ title: 'Other', fields: other });
+    const ffbSupplyOnly = other.filter(ttpIsFfbSupplyToMillField_);
+    if (ffbSupplyOnly.length) out.push({ title: 'Supply', fields: ffbSupplyOnly });
     return out.length ? out : [{ title: 'TTP Record', fields: fields }];
   }
 
@@ -8303,6 +8382,45 @@ function initDashboardApp() {
     return /^dealer$/i.test(String(value || '').trim());
   }
 
+  function ttpModalSubdistrictHtml_(field, val, village) {
+    const opts = ttpGetSubdistrictsForVillage_(village);
+    const sel = String(val || '').trim();
+    let optHtml = '<option value="">— Pilih —</option>';
+    opts.forEach(function(o) {
+      optHtml += '<option value="' + escHtml(o) + '"' + (o === sel ? ' selected' : '') + '>' + escHtml(o) + '</option>';
+    });
+    if (sel && opts.indexOf(sel) === -1) {
+      optHtml += '<option value="' + escHtml(sel) + '" selected>' + escHtml(sel) + '</option>';
+    }
+    return '<div class="form-field" data-ttp-subdistrict-wrap="1">'
+      + '<label>' + escHtml(field) + '</label>'
+      + '<select data-field="' + escHtml(field) + '" data-ttp-subdistrict="1" class="ttp-loc-select">' + optHtml + '</select>'
+      + '</div>';
+  }
+
+  function ttpModalAutoLocHtml_(field, val, role) {
+    const display = val ? String(val) : '—';
+    return '<div class="form-field ttp-form-field-locked" data-ttp-' + role + '-wrap="1">'
+      + '<label>' + escHtml(field) + '</label>'
+      + '<div class="ttp-locked-val ttp-auto-loc-val">' + escHtml(display) + '</div>'
+      + '<input type="hidden" data-field="' + escHtml(field) + '" value="' + escHtml(String(val || '')) + '">'
+      + '</div>';
+  }
+
+  function ttpModalLegalitasHtml_(field, val) {
+    const opts = ttpModalLegalitasOptions_(val);
+    const sel = String(val || '').trim();
+    let optHtml = '<option value="">— Pilih —</option>';
+    opts.forEach(function(o) {
+      const short = o.length > 40 ? o.slice(0, 37) + '…' : o;
+      optHtml += '<option value="' + escHtml(o) + '"' + (o === sel ? ' selected' : '') + ' title="' + escHtml(o) + '">' + escHtml(short) + '</option>';
+    });
+    return '<div class="form-field">'
+      + '<label>' + escHtml(field) + '</label>'
+      + '<select data-field="' + escHtml(field) + '" class="ttp-legalitas-select">' + optHtml + '</select>'
+      + '</div>';
+  }
+
   function ttpModalFieldHtml_(field, data) {
     const val = data ? (data[field] || '') : '';
     if (ttpModalIsFieldLocked_(field, data)) {
@@ -8314,6 +8432,16 @@ function initDashboardApp() {
     let html = '';
     if (type === 'yn') {
       html = buildYnSelect(field, val, isFull);
+    } else if (type === 'subdistrict') {
+      const villageCol = ttpPickField_(['VILLAGE']);
+      const village = villageCol && data ? (data[villageCol] || '') : '';
+      html = ttpModalSubdistrictHtml_(field, val, village);
+    } else if (type === 'district-auto') {
+      html = ttpModalAutoLocHtml_(field, val, 'district');
+    } else if (type === 'province-auto') {
+      html = ttpModalAutoLocHtml_(field, val, 'province');
+    } else if (type === 'legalitas') {
+      html = ttpModalLegalitasHtml_(field, val);
     } else if (type === 'category' || type === 'select') {
       html = buildCustomSelect(field, ttpModalDropdownOptions_(field, val), String(val), false, isFull);
     } else {
@@ -8328,18 +8456,18 @@ function initDashboardApp() {
     return html;
   }
 
-  function ttpDealerVillagesPanelHtml_(rowCount) {
-    const count = Math.max(1, rowCount || 2);
+  function ttpDealerVillagesPanelHtml_(rowCount, firstValue) {
+    const count = Math.max(1, rowCount || 1);
     let rowsHtml = '';
     for (let i = 0; i < count; i++) {
-      rowsHtml += ttpDealerVillageRowHtml_('');
+      rowsHtml += ttpDealerVillageRowHtml_(i === 0 ? (firstValue || '') : '');
     }
     return ''
-      + '<div class="form-field full ttp-dealer-villages-panel-wrap" id="ttpDealerVillagesPanel" hidden>'
+      + '<div class="form-field full ttp-dealer-villages-panel-wrap" id="ttpDealerVillagesPanel">'
       + '<label>Village</label>'
-      + '<p class="ttp-dealer-villages-desc">Isi nama village (ketik manual). Satu village = satu baris data. Lat/Long hanya di baris pertama.</p>'
+      + '<p class="ttp-dealer-villages-desc" id="ttpDealerVillagesDesc">Ketik nama village.</p>'
       + '<div class="ttp-dealer-villages-list" id="ttpDealerVillagesList">' + rowsHtml + '</div>'
-      + '<button type="button" class="btn-sm btn-outline-warm" id="ttpDealerAddVillage">+ Tambah village</button>'
+      + '<button type="button" class="btn-sm btn-outline-warm" id="ttpDealerAddVillage" hidden>+ Tambah village</button>'
       + '</div>';
   }
 
@@ -8374,15 +8502,23 @@ function initDashboardApp() {
     const panel = document.getElementById('ttpDealerVillagesPanel');
     if (!panel || !grid) return;
     const isDealer = ttpIsDealerCategory_(ttpReadCategoryValue_(grid));
-    panel.hidden = !isDealer;
-    grid.querySelectorAll('[data-ttp-village-field="1"]').forEach(function(el) {
-      el.hidden = isDealer;
+    const addBtn = document.getElementById('ttpDealerAddVillage');
+    const desc = document.getElementById('ttpDealerVillagesDesc');
+    if (addBtn) addBtn.hidden = !isDealer;
+    if (desc) {
+      desc.textContent = isDealer
+        ? 'Isi nama village (ketik manual). Satu village = satu baris data. Lat/Long hanya di baris pertama.'
+        : 'Ketik nama village.';
+    }
+    panel.querySelectorAll('.ttp-dealer-village-rm').forEach(function(btn) {
+      btn.hidden = !isDealer;
     });
-    if (isDealer) {
-      const list = document.getElementById('ttpDealerVillagesList');
-      if (list && !list.querySelector('.ttp-dealer-village-row')) {
-        list.innerHTML = ttpDealerVillageRowHtml_('') + ttpDealerVillageRowHtml_('');
-      }
+    const list = document.getElementById('ttpDealerVillagesList');
+    if (!isDealer && list) {
+      const rows = list.querySelectorAll('.ttp-dealer-village-row');
+      for (let i = 1; i < rows.length; i++) rows[i].remove();
+    } else if (isDealer && list && !list.querySelector('.ttp-dealer-village-row')) {
+      list.innerHTML = ttpDealerVillageRowHtml_('') + ttpDealerVillageRowHtml_('');
     }
   }
 
@@ -8425,12 +8561,12 @@ function initDashboardApp() {
     const latCol = ttpPickField_(['LAT', 'LATITUDE']);
     const longCol = ttpPickField_(['LONG', 'LONGITUDE']);
     const category = categoryCol ? data[categoryCol] : '';
-    if (!ttpIsDealerCategory_(category)) return null;
-
     const villages = ttpCollectDealerVillages_();
     if (!villages.length) {
-      throw new Error('Dealer category requires at least one village.');
+      throw new Error('Village wajib diisi.');
     }
+    if (villageCol) data[villageCol] = villages[0];
+    if (!ttpIsDealerCategory_(category)) return null;
 
     return villages.map(function(village, idx) {
       const row = Object.assign({}, data);
@@ -8455,12 +8591,15 @@ function initDashboardApp() {
     const categoryCol = ttpPickField_(['CATEGORY']);
     const catVal = categoryCol && data ? (data[categoryCol] || '') : '';
     const dealerActive = ttpIsDealerCategory_(catVal);
+    const villageCol = ttpPickField_(['VILLAGE']);
+    const villageVal = villageCol && data ? (data[villageCol] || '') : '';
     sections.forEach(function(sec) {
       html += '<div class="mill-form-section"><div class="mill-form-section-title">' + escHtml(sec.title) + '</div><div class="mill-form-grid">';
       sec.fields.forEach(function(f) {
+        if (normalizeTtpHeaderKey_(f) === 'VILLAGE') return;
         html += ttpModalFieldHtml_(f, data);
         if (sec.title === 'Supplier & Location' && categoryCol && f === categoryCol) {
-          html += ttpDealerVillagesPanelHtml_(dealerActive ? 2 : 1);
+          html += ttpDealerVillagesPanelHtml_(dealerActive ? 2 : 1, villageVal);
         }
       });
       html += '</div></div>';
@@ -8474,6 +8613,82 @@ function initDashboardApp() {
       }
     }
     bindTtpModalDealerUi_(grid);
+    bindTtpModalLocationCascade_(grid);
+  }
+
+  function ttpModalVillageValue_(grid) {
+    const list = document.getElementById('ttpDealerVillagesList');
+    if (list) {
+      const first = list.querySelector('.ttp-dealer-village-inp');
+      if (first) return String(first.value || '').trim();
+    }
+    const villageCol = ttpPickField_(['VILLAGE']);
+    if (!villageCol || !grid) return '';
+    const wrap = grid.querySelector('[data-ttp-village-field="1"]');
+    const inp = wrap ? wrap.querySelector('[data-field="' + villageCol.replace(/"/g, '\\"') + '"]') : null;
+    return inp ? String(inp.value || '').trim() : '';
+  }
+
+  function ttpRefreshSubdistrictOptions_(grid, keepValue) {
+    const subCol = ttpPickField_(['SUBDISTRICT', 'SUB DISTRICT']);
+    if (!subCol || !grid) return;
+    const subSel = grid.querySelector('[data-ttp-subdistrict="1"]');
+    if (!subSel) return;
+    const prev = keepValue ? String(subSel.value || '').trim() : '';
+    const village = ttpModalVillageValue_(grid);
+    const opts = ttpGetSubdistrictsForVillage_(village);
+    let html = '<option value="">— Pilih —</option>';
+    opts.forEach(function(o) {
+      html += '<option value="' + escHtml(o) + '">' + escHtml(o) + '</option>';
+    });
+    subSel.innerHTML = html;
+    if (prev && opts.indexOf(prev) !== -1) subSel.value = prev;
+    ttpApplyDistrictProvince_(grid, subSel.value);
+  }
+
+  function ttpApplyDistrictProvince_(grid, sub) {
+    const hit = ttpGetDistrictProvinceForSub_(sub);
+    const distCol = ttpPickField_(['DISTRICT']);
+    const provCol = ttpPickField_(['PROVINCE']);
+    [
+      { col: distCol, role: 'district', val: hit.district },
+      { col: provCol, role: 'province', val: hit.province },
+    ].forEach(function(item) {
+      if (!item.col) return;
+      const wrap = grid.querySelector('[data-ttp-' + item.role + '-wrap="1"]');
+      if (!wrap) return;
+      const hidden = wrap.querySelector('[data-field="' + item.col.replace(/"/g, '\\"') + '"]');
+      const display = wrap.querySelector('.ttp-auto-loc-val');
+      if (hidden) hidden.value = item.val || '';
+      if (display) display.textContent = item.val || '—';
+    });
+  }
+
+  function bindTtpModalLocationCascade_(grid) {
+    if (!grid) return;
+    const subSel = grid.querySelector('[data-ttp-subdistrict="1"]');
+    if (subSel) ttpApplyDistrictProvince_(grid, subSel.value);
+
+    if (grid.dataset.ttpLocationUiBound === '1') return;
+    grid.dataset.ttpLocationUiBound = '1';
+
+    grid.addEventListener('input', function(e) {
+      if (e.target.matches('.ttp-dealer-village-inp')) {
+        ttpRefreshSubdistrictOptions_(grid, false);
+        return;
+      }
+      const villageCol = ttpPickField_(['VILLAGE']);
+      if (!villageCol) return;
+      const inp = e.target.closest('[data-field="' + villageCol.replace(/"/g, '\\"') + '"]');
+      if (inp && grid.contains(inp)) {
+        ttpRefreshSubdistrictOptions_(grid, false);
+      }
+    });
+    grid.addEventListener('change', function(e) {
+      if (e.target.matches('[data-ttp-subdistrict="1"]')) {
+        ttpApplyDistrictProvince_(grid, e.target.value);
+      }
+    });
   }
 
   function ttpBuildAddPrefill_(ctx, sampleRow) {
@@ -8865,6 +9080,7 @@ function initDashboardApp() {
       ttpSelectedCompanies = null;
       ttpColFilterMode = 'ttm';
       ttpFieldSectionsCache = null;
+      ttpLocationCascadeCache_ = null;
       buildCompanyDropdown();
       buildColumnModePanel();
       document.getElementById('btn-export-ttp-xlsx').disabled = false;
@@ -15296,6 +15512,7 @@ function initDashboardApp() {
     if (name === 'company-profile-list') loadCompanyProfileListData();
     if (name === 'no-buy-list') loadNoBuyListData();
     if (name === 'performa-facility') initPerformaFacility_();
+    if (name === 'monthly-report-detail') initMonthlyReportDetail_();
     resetScrollToTopEverywhere();
   }
   // expose globally for onclick handlers
@@ -20254,6 +20471,157 @@ function initDashboardApp() {
     _fatal.appendChild(_box);
     document.body.appendChild(_fatal);
   }
+
+  // ─── MONTHLY REPORT (DETAIL) ───────────────────────────────────────────────
+  let _mrdInited = false;
+  let _mrdEudrCache = null;
+
+  function mrdBuildFacilitySummary_(mills, ttpRows) {
+    function splitFacilities(raw) {
+      return String(raw || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+    }
+    function avgTtpPct(companyKey) {
+      let sum = 0;
+      let n = 0;
+      (ttpRows || []).forEach(function(r) {
+        const co = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+        if (co !== companyKey) return;
+        ['% CPO TRACEABLE', '% PK TRACEABLE'].forEach(function(col) {
+          if (r[col] == null || r[col] === '') return;
+          const v = parseFloat(String(r[col]).replace('%', '').replace(',', '.'));
+          if (!isNaN(v)) { sum += v; n++; }
+        });
+      });
+      return n ? (Math.round((sum / n) * 10) / 10) + '%' : '—';
+    }
+    function buildForColumn(colName) {
+      const map = new Map();
+      (mills || []).forEach(function(r) {
+        splitFacilities(r[colName]).forEach(function(fac) {
+          const key = fac.toUpperCase();
+          if (!map.has(key)) {
+            map.set(key, { facility: fac, companies: 0, highRisk: 0, nbl: 0, grievance: 0, coKeys: new Set() });
+          }
+          const g = map.get(key);
+          const coKey = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+          if (coKey && !g.coKeys.has(coKey)) {
+            g.coKeys.add(coKey);
+            g.companies++;
+          }
+          if ((millResolvedRiskLevelForStats_(r) || '').toLowerCase().includes('high')) g.highRisk++;
+          if (millIsNblYes_(r['BUYER NO BUY LIST'])) g.nbl++;
+          const grv = parseFloat(String(r['TOTAL GRIEVANCES'] || '').replace(',', '.'));
+          if (!isNaN(grv) && grv > 0) g.grievance++;
+        });
+      });
+      return Array.from(map.values()).map(function(g) {
+        const coList = Array.from(g.coKeys);
+        const trace = coList.length === 1 ? avgTtpPct(coList[0]) : '—';
+        return {
+          facility: g.facility,
+          companies: String(g.companies),
+          highRisk: String(g.highRisk),
+          nbl: String(g.nbl),
+          grievance: String(g.grievance),
+          tracePct: trace,
+        };
+      }).sort(function(a, b) { return a.facility.localeCompare(b.facility); });
+    }
+    return {
+      cpo: buildForColumn('FACILITY NAME CPO'),
+      pk: buildForColumn('FACILITY NAME PK'),
+    };
+  }
+
+  function initMonthlyReportDetail_() {
+    if (!_mrdInited) {
+      _mrdInited = true;
+      initMonthlyReport_({
+        escHtml: escHtml,
+        millYearVal: millYearVal,
+        millQuarterVal: millQuarterVal,
+        millIsNblYes_: millIsNblYes_,
+        millResolvedRiskLevel: millResolvedRiskLevelForStats_,
+        getMillData: function() { return allData; },
+        getTtpData: function() { return ttpData; },
+        getTtpFields: function() { return ttpFields; },
+        getGrvData: function() { return grvData; },
+        getNblRegistry: function() { return nblRegistryData; },
+        getNblUnilever: function() { return nblUnileverData; },
+        ensureMillData: async function() {
+          if (!allData.length) await loadMillData();
+        },
+        ensureSupplementalData: async function() {
+          const tasks = [];
+          if (!ttpLoaded) tasks.push(loadTTPData());
+          if (!grvLoaded) tasks.push(loadGrvData());
+          if (!nblRegistryLoaded && !nblRegistryData.length) tasks.push(loadNoBuyListData());
+          if (tasks.length) await Promise.all(tasks);
+        },
+        ensureCoreData: async function() {
+          await this.ensureMillData();
+          await this.ensureSupplementalData();
+        },
+        fetchSddList: async function() {
+          if (window._scrSavedRowsByKey) {
+            const cached = Object.values(window._scrSavedRowsByKey);
+            if (cached.length) return cached;
+          }
+          const res = await apiListSubmissions({ page_size: 100 });
+          return (res && Array.isArray(res.data)) ? res.data : [];
+        },
+        ensureNblLists: async function() {
+          if (nblRegistryData.length || nblUnileverData.length) {
+            return { registry: nblRegistryData, unilever: nblUnileverData };
+          }
+          return ensureNblListsForCheck_();
+        },
+        clearEudrCache: function() { _mrdEudrCache = null; },
+        resolveNblBy: function(row, lists) {
+          const matches = millNblSourceMatchesForRow_(row, lists || { registry: [], unilever: [] });
+          const info = millNblByInfoFromMatches_(matches);
+          info.matches = matches;
+          return info;
+        },
+        buildFacilitySummary: mrdBuildFacilitySummary_,
+        fetchEudrPotential: async function() {
+          if (_mrdEudrCache) return _mrdEudrCache;
+          await ensureMillDataForEudr_();
+          if (!ttpLoaded) {
+            try { await loadTTPData(); } catch (ttpErr) {
+              console.warn('[MRD] TTP unavailable for EUDR:', ttpErr);
+            }
+          }
+          await loadEudrFormulaConfig_();
+          const mills = eudrBuildMillRegistry_();
+          var raw = [];
+          try { raw = await apiGet('eudrPotential'); } catch (getErr) {
+            console.warn('[MRD] EUDR sheet:', getErr);
+          }
+          const rows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
+          const millMap = new Map();
+          (allData || []).forEach(function(m) {
+            millMap.set(eudrEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME']), m);
+          });
+          const out = [];
+          rows.forEach(function(eudrRow) {
+            const key = eudrRow._entityKey || eudrEntityKey_(eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME']);
+            const millRow = millMap.get(key) || null;
+            if (eudrComputeStatus_(millRow, eudrRow).status !== 'Potential') return;
+            out.push({
+              row: eudrRow,
+              search: [eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'], eudrRow['PROVINCE'], eudrRow['SUPPLY TO']].join(' ').toLowerCase(),
+            });
+          });
+          _mrdEudrCache = out;
+          return out;
+        },
+      });
+    } else if (typeof window.refreshMonthlyReport_ === 'function') {
+      window.refreshMonthlyReport_();
+    }
+  }
+  window.initMonthlyReportDetail_ = initMonthlyReportDetail_;
 
 }
 

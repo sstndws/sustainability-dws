@@ -1,0 +1,56 @@
+      <div class="panel" id="panel-monthly-report-detail">
+        <div class="breadcrumb">Dashboard <span>/ Monthly Report (Detail)</span></div>
+        <div class="page-header">
+          <h1>Monthly Report (Detail)</h1>
+          <p>Ringkasan compliance bulanan — SDD, mill, traceability, grievance, NBL, facility performance, dan EUDR potential.</p>
+        </div>
+
+        <div class="pf-period-bar mrd-period-bar">
+          <div class="pf-period-toolbar">
+            <span class="pf-filter-label">Period</span>
+            <div class="pf-period-fields">
+              <div class="pf-period-group">
+                <label class="pf-period-label" for="mrdYearSel">Year</label>
+                <select id="mrdYearSel" class="pf-period-select">
+                  <option value="2026">2026</option>
+                  <option value="2025" selected>2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+              <div class="pf-period-group">
+                <label class="pf-period-label" for="mrdMonthSel">Month</label>
+                <select id="mrdMonthSel" class="pf-period-select">
+                  <option value="">All months</option>
+                  <option value="1">Jan</option>
+                  <option value="2">Feb</option>
+                  <option value="3">Mar</option>
+                  <option value="4">Apr</option>
+                  <option value="5">May</option>
+                  <option value="6">Jun</option>
+                  <option value="7">Jul</option>
+                  <option value="8">Aug</option>
+                  <option value="9">Sep</option>
+                  <option value="10">Oct</option>
+                  <option value="11">Nov</option>
+                  <option value="12">Dec</option>
+                </select>
+              </div>
+            </div>
+            <div class="mrd-toolbar-search-wrap">
+              <input type="search" id="mrdSearch" class="pf-search mrd-search" placeholder="Find across all sections…" autocomplete="off" />
+            </div>
+            <div class="pf-period-actions">
+              <button type="button" class="pf-reset-btn" id="mrdBtnRefresh" title="Reload data">Refresh</button>
+            </div>
+          </div>
+          <span class="pf-scope-text mrd-scope-text" id="mrdScopeText">Siap — pilih periode atau refresh untuk memuat data.</span>
+        </div>
+
+        <div id="mrdLoading" class="mrd-loading">Loading report data…</div>
+        <div id="mrdError" class="mrd-error" hidden></div>
+
+        <div id="mrdContent" class="mrd-content" hidden>
+          <div class="mrd-kpi-row stats-row" id="mrdKpiRow"></div>
+          <div class="mrd-sections" id="mrdSections"></div>
+        </div>
+      </div>
