@@ -1,8 +1,7 @@
-      <div class="panel" id="panel-monthly-report-detail">
-        <div class="breadcrumb">Dashboard <span>/ Monthly Report (Detail)</span></div>
-        <div class="page-header">
-          <h1>Monthly Report (Detail)</h1>
-          <p>Ringkasan compliance bulanan — SDD, mill, traceability, grievance, NBL, facility performance, dan EUDR potential.</p>
+      <div class="panel mrd-panel" id="panel-monthly-report-detail">
+        <div class="breadcrumb">Dashboard <span>/ Monthly Report</span></div>
+        <div class="page-header mrd-page-header">
+          <h1>Monthly Report</h1>
         </div>
 
         <div class="pf-period-bar mrd-period-bar">
@@ -39,17 +38,18 @@
             <div class="mrd-toolbar-search-wrap">
               <input type="search" id="mrdSearch" class="pf-search mrd-search" placeholder="Find across all sections…" autocomplete="off" />
             </div>
-            <div class="pf-period-actions">
+            <div class="pf-period-actions mrd-period-actions">
+              <button type="button" class="pf-export-btn mrd-export-btn" id="mrdBtnExport" title="Export semua section ke Excel">Export Excel</button>
               <button type="button" class="pf-reset-btn" id="mrdBtnRefresh" title="Reload data">Refresh</button>
             </div>
           </div>
           <span class="pf-scope-text mrd-scope-text" id="mrdScopeText">Siap — pilih periode atau refresh untuk memuat data.</span>
         </div>
 
-        <div id="mrdLoading" class="mrd-loading">Loading report data…</div>
+        <div id="mrdLoading" class="mrd-loading" hidden>Loading report data…</div>
         <div id="mrdError" class="mrd-error" hidden></div>
 
-        <div id="mrdContent" class="mrd-content" hidden>
+        <div id="mrdContent" class="mrd-content">
           <div class="mrd-kpi-row stats-row" id="mrdKpiRow"></div>
           <div class="mrd-sections" id="mrdSections"></div>
         </div>

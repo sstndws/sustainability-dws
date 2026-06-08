@@ -20449,29 +20449,6 @@ function initDashboardApp() {
   window.sddExportPdf = sddExportPdf;
   // ─── END SDD PDF EXPORT ──────────────────────────────────────────────────
 
-  } catch (bootErr) {
-    console.error('[initDashboardApp]', bootErr);
-    var _fatal = document.createElement('div');
-    _fatal.setAttribute('role', 'alert');
-    _fatal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#e8ddd8;z-index:2147483647;font:15px/1.5 system-ui,sans-serif;color:#2a0e0e;';
-    var _box = document.createElement('div');
-    _box.style.cssText = 'max-width:420px;background:#fff;border-radius:16px;padding:24px;box-shadow:0 16px 48px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.06)';
-    var _t = document.createElement('strong');
-    _t.textContent = 'Startup error';
-    var _p = document.createElement('p');
-    _p.style.cssText = 'margin:12px 0 0;color:#6a4a4a';
-    _p.textContent = String(bootErr && bootErr.message ? bootErr.message : bootErr);
-    var _hint = document.createElement('p');
-    _hint.style.cssText = 'margin:12px 0 0;font-size:13px;color:#9a7070';
-    _hint.textContent =
-      'Jalankan npm run dev di folder sustain-dashboard, lalu buka URL di terminal (biasanya http://127.0.0.1:5340 — ikuti baris Local jika port lain). Jangan membuka file index.html langsung dari Finder.';
-    _box.appendChild(_t);
-    _box.appendChild(_p);
-    _box.appendChild(_hint);
-    _fatal.appendChild(_box);
-    document.body.appendChild(_fatal);
-  }
-
   // ─── MONTHLY REPORT (DETAIL) ───────────────────────────────────────────────
   let _mrdInited = false;
   let _mrdEudrCache = null;
@@ -20534,8 +20511,11 @@ function initDashboardApp() {
   }
 
   function initMonthlyReportDetail_() {
-    if (!_mrdInited) {
-      _mrdInited = true;
+    if (_mrdInited) {
+      if (typeof window.refreshMonthlyReport_ === 'function') window.refreshMonthlyReport_();
+      return;
+    }
+    try {
       initMonthlyReport_({
         escHtml: escHtml,
         millYearVal: millYearVal,
@@ -20617,11 +20597,44 @@ function initDashboardApp() {
           return out;
         },
       });
-    } else if (typeof window.refreshMonthlyReport_ === 'function') {
-      window.refreshMonthlyReport_();
+      _mrdInited = true;
+    } catch (mrdErr) {
+      console.error('[MRD] init failed:', mrdErr);
+      var mrdErrEl = document.getElementById('mrdError');
+      var mrdLoadEl = document.getElementById('mrdLoading');
+      var mrdContentEl = document.getElementById('mrdContent');
+      if (mrdLoadEl) mrdLoadEl.hidden = true;
+      if (mrdContentEl) mrdContentEl.hidden = false;
+      if (mrdErrEl) {
+        mrdErrEl.hidden = false;
+        mrdErrEl.textContent = 'Gagal inisialisasi report: ' + (mrdErr && mrdErr.message ? mrdErr.message : String(mrdErr));
+      }
     }
   }
   window.initMonthlyReportDetail_ = initMonthlyReportDetail_;
+
+  } catch (bootErr) {
+    console.error('[initDashboardApp]', bootErr);
+    var _fatal = document.createElement('div');
+    _fatal.setAttribute('role', 'alert');
+    _fatal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#e8ddd8;z-index:2147483647;font:15px/1.5 system-ui,sans-serif;color:#2a0e0e;';
+    var _box = document.createElement('div');
+    _box.style.cssText = 'max-width:420px;background:#fff;border-radius:16px;padding:24px;box-shadow:0 16px 48px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.06)';
+    var _t = document.createElement('strong');
+    _t.textContent = 'Startup error';
+    var _p = document.createElement('p');
+    _p.style.cssText = 'margin:12px 0 0;color:#6a4a4a';
+    _p.textContent = String(bootErr && bootErr.message ? bootErr.message : bootErr);
+    var _hint = document.createElement('p');
+    _hint.style.cssText = 'margin:12px 0 0;font-size:13px;color:#9a7070';
+    _hint.textContent =
+      'Jalankan npm run dev di folder sustain-dashboard, lalu buka URL di terminal (biasanya http://127.0.0.1:5340 — ikuti baris Local jika port lain). Jangan membuka file index.html langsung dari Finder.';
+    _box.appendChild(_t);
+    _box.appendChild(_p);
+    _box.appendChild(_hint);
+    _fatal.appendChild(_box);
+    document.body.appendChild(_fatal);
+  }
 
 }
 

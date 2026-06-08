@@ -153,6 +153,148 @@ function limitNote(total, limit) {
   return '<p class="mrd-limit-note">Menampilkan ' + limit + ' dari ' + total + ' baris — gunakan search untuk mempersempit.</p>';
 }
 
+function mrdCell(v) {
+  if (v === undefined || v === null) return '';
+  return String(v).trim();
+}
+
+function mrdMonthLabel() {
+  const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return _month ? monthNames[parseInt(_month, 10)] : 'All months';
+}
+
+function mrdAppendSheet_(wb, name, headers, rows) {
+  const XLSX = window.XLSX;
+  if (!XLSX || !rows.length) return;
+  const ws = XLSX.utils.aoa_to_sheet([headers].concat(rows));
+  ws['!cols'] = headers.map(function(h) {
+    return { wch: Math.min(Math.max(String(h).length + 2, 10), 36) };
+  });
+  let sheetName = String(name || 'Sheet').replace(/[\\/*?:\[\]]/g, ' ').trim().slice(0, 31) || 'Sheet';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+}
+
+function exportMonthlyReport_() {
+  if (!_snapshot) {
+    alert('Data belum dimuat — tunggu sebentar lalu coba lagi.');
+    return;
+  }
+  const XLSX = window.XLSX;
+  if (!XLSX) {
+    alert('Library Excel tidak tersedia.');
+    return;
+  }
+  const s = _snapshot;
+  const wb = XLSX.utils.book_new();
+  const stats = s.stats || {};
+
+  mrdAppendSheet_(wb, 'Summary', ['Metric', 'Value'], [
+    ['Period', (_year || 'All') + ' · ' + mrdMonthLabel()],
+    ['Search filter', _search || '(none)'],
+    ['Exported at', new Date().toLocaleString('id-ID')],
+    ['SDD Submitted', stats.sddSubmitted],
+    ['SDD Draft', stats.sddDraft],
+    ['Total Mills', stats.totalMills],
+    ['Total Groups', stats.totalGroups],
+    ['High Risk', stats.highRisk],
+    ['NBL Mills', stats.nblMills],
+    ['Empty Traceability', stats.emptyTraceMills],
+    ['Grievances', stats.grievances],
+    ['NBL Entries', stats.nblEntries],
+    ['EUDR Potential', stats.eudrPotential],
+  ]);
+
+  const sddRows = (s.sdd || []).filter(function(r) {
+    return matchesSearch([
+      r['SCR - Screening Status'], r['Group Name'], r['Grup Name'], r['Mill Name'],
+      r.supplier_type, r.updated_at,
+    ].join(' ').toLowerCase());
+  }).map(function(r) {
+    return [
+      mrdCell(r['SCR - Screening Status']),
+      mrdCell(r.supplier_type || r['Supplier Type']),
+      mrdCell(r['Group Name'] || r['Grup Name']),
+      mrdCell(r['Mill Name']),
+      mrdCell(r.updated_at || r['SCR - Last Updated']).slice(0, 10),
+    ];
+  });
+  mrdAppendSheet_(wb, 'SDD', ['Status', 'Type', 'Group', 'Mill', 'Updated'], sddRows);
+
+  const millRows = (s.mills || []).filter(function(item) { return matchesSearch(item.search); }).map(function(item) {
+    const r = item.row;
+    return [
+      mrdCell(r['GROUP NAME']), mrdCell(r['COMPANY NAME']), mrdCell(r['MILL NAME']),
+      mrdCell(item.risk), isNblYes(item.nbl) ? 'Yes' : mrdCell(item.nbl),
+      mrdCell(r['PROVINCE']), mrdCell(r['SUPPLIER STATUS']), mrdCell(r['CERTIFICATION']),
+      mrdCell(r['TOTAL GRIEVANCES']), mrdCell(r['FACILITY NAME CPO']), mrdCell(r['FACILITY NAME PK']),
+      mrdCell(item.nblBy),
+    ];
+  });
+  mrdAppendSheet_(wb, 'Mill Onboarding', [
+    'Group', 'Company', 'Mill', 'Risk', 'NBL', 'Province', 'Supplier Status', 'Certification',
+    'Total Grievances', 'Facility CPO', 'Facility PK', 'NBL By',
+  ], millRows);
+
+  const traceRows = (s.emptyMills || []).filter(function(item) {
+    return matchesSearch([
+      item.millRow['GROUP NAME'], item.millRow['COMPANY NAME'], item.millRow['MILL NAME'],
+    ].join(' ').toLowerCase());
+  }).map(function(item) {
+    const r = item.millRow;
+    return [mrdCell(r['GROUP NAME']), mrdCell(r['COMPANY NAME']), mrdCell(r['MILL NAME']), 'Kosong'];
+  });
+  mrdAppendSheet_(wb, 'Traceability Empty', ['Group', 'Company', 'Mill', 'Status'], traceRows);
+
+  const grvRows = (s.grv || []).filter(function(item) { return matchesSearch(item.search); }).map(function(item) {
+    const r = item.row;
+    return [
+      mrdCell(r['Grievance ID']), mrdCell(r['Date Received']), mrdCell(r['Complainant']),
+      mrdCell(r['Grievance Category']), mrdCell(r['Subject']), mrdCell(r['Risk Classification']),
+      mrdCell(r['Grievance Status']), mrdCell(r['Grievance Description']),
+    ];
+  });
+  mrdAppendSheet_(wb, 'Grievance', [
+    'ID', 'Date Received', 'Complainant', 'Category', 'Subject', 'Risk', 'Status', 'Description',
+  ], grvRows);
+
+  const nblRows = (s.nblAll || []).filter(function(item) { return matchesSearch(item.search); }).map(function(r) {
+    return [mrdCell(r.source), mrdCell(r.riser), mrdCell(r.group), mrdCell(r.company)];
+  });
+  mrdAppendSheet_(wb, 'No Buy List', ['Source', 'Riser', 'Group', 'Company'], nblRows);
+
+  const facCpo = (s.facility && s.facility.cpo || []).filter(function(g) {
+    return matchesSearch([g.facility, g.companies, g.tracePct].join(' ').toLowerCase());
+  }).map(function(g) {
+    return [mrdCell(g.facility), mrdCell(g.companies), mrdCell(g.highRisk), mrdCell(g.nbl), mrdCell(g.grievance), mrdCell(g.tracePct)];
+  });
+  mrdAppendSheet_(wb, 'Facility CPO', ['Facility', 'Companies', 'High Risk', 'NBL', 'Grievance', '% Traceable'], facCpo);
+
+  const facPk = (s.facility && s.facility.pk || []).filter(function(g) {
+    return matchesSearch([g.facility, g.companies, g.tracePct].join(' ').toLowerCase());
+  }).map(function(g) {
+    return [mrdCell(g.facility), mrdCell(g.companies), mrdCell(g.highRisk), mrdCell(g.nbl), mrdCell(g.grievance), mrdCell(g.tracePct)];
+  });
+  mrdAppendSheet_(wb, 'Facility PK', ['Facility', 'Companies', 'High Risk', 'NBL', 'Grievance', '% Traceable'], facPk);
+
+  const eudrRows = (s.eudrPotential || []).filter(function(item) { return matchesSearch(item.search); }).map(function(item) {
+    const r = item.row;
+    return [
+      'Potential', mrdCell(r['GROUP NAME']), mrdCell(r['COMPANY NAME']), mrdCell(r['MILL NAME']),
+      mrdCell(r['PROVINCE']), mrdCell(r['SUPPLY TO']),
+    ];
+  });
+  if (eudrRows.length) {
+    mrdAppendSheet_(wb, 'EUDR Potential', ['Status', 'Group', 'Company', 'Mill', 'Province', 'Supply To'], eudrRows);
+  }
+
+  if (!wb.SheetNames.length) {
+    alert('Tidak ada data untuk di-export.');
+    return;
+  }
+  const fileLabel = (_year || 'all') + (_month ? '_' + mrdMonthLabel() : '');
+  XLSX.writeFile(wb, 'monthly_report_' + fileLabel.replace(/\s+/g, '_') + '.xlsx');
+}
+
 function buildSnapshotSync(opts) {
   opts = opts || {};
   const millData = (_deps.getMillData() || []);
@@ -553,6 +695,9 @@ function renderFacilitySection(facility) {
 
 function renderEudrSection(rows, loading) {
   if (loading) return '<p class="mrd-empty mrd-empty--loading">Memuat EUDR Potential…</p>';
+  if (!rows.length && !_eudrPending) {
+    return '<p class="mrd-empty">Klik section header untuk memuat data EUDR Potential.</p>';
+  }
   const filtered = rows.filter(function(item) { return matchesSearch(item.search); }).slice(0, MRD_ROW_LIMIT);
   const cols = [
     { label: 'Status', always: true, render: function() { return statusPill('Potential', 'eudr'); } },
@@ -574,14 +719,15 @@ function renderAll() {
   const sections = document.getElementById('mrdSections');
   if (!sections) return;
   const s = _snapshot;
+  const stats = s.stats || {};
   let html = '';
-  html += sectionHtml('sdd', 'Supplier Due Diligence', 'Progress — submitted / draft', renderSddSection(s.sdd, s.sddLoading), '01');
-  html += sectionHtml('mill', 'Mill Onboarding', 'Mills, groups, high risk & NBL (expand untuk detail)', renderMillSection(s.mills), '02');
-  html += sectionHtml('trace', 'Traceability Data ' + _year, 'Mill tanpa supplier — expand per mill', renderTraceSection(s.emptyMills, s.ttpByMill), '03');
-  html += sectionHtml('grv', 'Grievance Monitoring', 'Tabel + detail expand', renderGrvSection(s.grv), '04');
-  html += sectionHtml('nbl', 'No Buy List', 'Registry + Unilever', renderNblSection(s.nblAll), '05');
-  html += sectionHtml('facility', 'Facility Performance', 'Ringkasan CPO & PK', renderFacilitySection(s.facility), '06');
-  html += sectionHtml('eudr', 'EUDR Potential', 'Hanya status Potential (formula umum)', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
+  html += sectionHtml('sdd', 'Supplier Due Diligence', stats.sddSubmitted + ' submitted · ' + stats.sddDraft + ' draft', renderSddSection(s.sdd, s.sddLoading), '01');
+  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + stats.highRisk + ' high risk', renderMillSection(s.mills), '02');
+  html += sectionHtml('trace', 'Traceability ' + _year, stats.emptyTraceMills + ' mill kosong', renderTraceSection(s.emptyMills, s.ttpByMill), '03');
+  html += sectionHtml('grv', 'Grievance', stats.grievances + ' in period', renderGrvSection(s.grv), '04');
+  html += sectionHtml('nbl', 'No Buy List', stats.nblEntries + ' entries', renderNblSection(s.nblAll), '05');
+  html += sectionHtml('facility', 'Facility Performance', 'CPO & PK summary', renderFacilitySection(s.facility), '06');
+  html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential · expand to load', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
   sections.innerHTML = html;
 }
 
@@ -695,16 +841,23 @@ async function loadAndRender() {
   const errEl = document.getElementById('mrdError');
   if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
 
-  // Selalu tampilkan UI dari cache memori — jangan blokir menunggu network
-  _snapshot = rebuildSnapshot_({ eudrLoading: _eudrPending });
-  setUiLoading(false);
-  renderAll();
-  updateScopeText('memuat data…');
+  try {
+    // Selalu tampilkan UI dari cache memori — jangan blokir menunggu network
+    _snapshot = rebuildSnapshot_({ eudrLoading: false });
+    renderAll();
+    updateScopeText('memuat data…');
+  } catch (err) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = 'Gagal render report: ' + (err && err.message ? err.message : String(err));
+    }
+  } finally {
+    setUiLoading(false);
+  }
 
   loadMillInBackground(gen);
   loadSupplementalInBackground(gen);
   loadSddInBackground(gen);
-  loadEudrInBackground(gen);
 }
 
 async function resolveMillNblOnExpand(cacheKey, row) {
@@ -776,14 +929,20 @@ function bindOnce() {
     loadAndRender();
   });
 
+  document.getElementById('mrdBtnExport')?.addEventListener('click', function() {
+    exportMonthlyReport_();
+  });
+
   panel.addEventListener('click', function(e) {
     const toggleSec = e.target.closest('[data-mrd-toggle]');
     if (toggleSec) {
       const id = toggleSec.getAttribute('data-mrd-toggle');
       const key = id + ':closed';
-      if (_expanded.has(key)) _expanded.delete(key);
+      const wasClosed = _expanded.has(key);
+      if (wasClosed) _expanded.delete(key);
       else _expanded.add(key);
       renderAll();
+      if (!wasClosed && id === 'eudr') loadEudrInBackground(_loadGen);
       return;
     }
     const expBtn = e.target.closest('[data-mrd-expand-btn]');
@@ -808,9 +967,13 @@ function bindOnce() {
   });
 }
 
+const MRD_SECTION_IDS = ['sdd', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
+
 export function initMonthlyReport_(deps) {
   _deps = deps;
+  MRD_SECTION_IDS.forEach(function(id) { _expanded.add(id + ':closed'); });
   window.refreshMonthlyReport_ = function() { loadAndRender(); };
+  window.exportMonthlyReport_ = exportMonthlyReport_;
   bindOnce();
   loadAndRender();
 }
