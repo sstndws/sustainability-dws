@@ -3813,8 +3813,8 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzkndMJOo6cHN7enYsAE-voYMYc9gWP1CPgs1EL_Uoc1R-GCaOfLuvGtol6EVBYQq_5NA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzkndMJOo6cHN7enYsAE-voYMYc9gWP1CPgs1EL_Uoc1R-GCaOfLuvGtol6EVBYQq_5NA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
