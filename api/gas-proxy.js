@@ -1,12 +1,9 @@
 /**
- * Vercel serverless — sole bridge to Google Apps Script in secure mode.
- * Env (Project Settings, NOT VITE_*): GAS_WEBAPP_URL, GAS_API_SECRET,
- * VITE_SUPABASE_URL (or SUPABASE_URL), VITE_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY).
+ * Vercel serverless — menyembunyikan URL GAS dari browser.
+ * Tanpa Supabase. Cukup set di Vercel: GAS_WEBAPP_URL (+ opsional GAS_API_SECRET).
  */
-import { createClient } from '@supabase/supabase-js';
-
-function env_(key, alt) {
-  return process.env[key] || process.env[alt] || '';
+function env_(key) {
+  return process.env[key] || '';
 }
 
 function parseBody_(req) {
@@ -17,12 +14,22 @@ function parseBody_(req) {
   return req.body;
 }
 
+function isSameSiteRequest_(req) {
+  const host = String(req.headers.host || '').toLowerCase();
+  const origin = String(req.headers.origin || '').toLowerCase();
+  const referer = String(req.headers.referer || '').toLowerCase();
+  if (!host) return false;
+  if (origin && origin.indexOf(host) !== -1) return true;
+  if (referer && referer.indexOf(host) !== -1) return true;
+  return !origin && !referer;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(204).end();
   }
 
@@ -30,45 +37,30 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const gasUrl = env_('GAS_WEBAPP_URL');
+  if (!isSameSiteRequest_(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const gasUrl = env_('GAS_WEBAPP_URL')
+    || 'https://script.google.com/macros/s/AKfycbySEk9JzO9xe6dSKhXhtP-J3oRiBHW1e6MTgQuNit-AK5VDHAtnolaIoFAGD7_6S_PQBg/exec';
   const gasSecret = env_('GAS_API_SECRET');
-  const supabaseUrl = env_('VITE_SUPABASE_URL', 'SUPABASE_URL');
-  const supabaseAnon = env_('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY');
 
-  if (!gasUrl || !gasSecret || !supabaseUrl || !supabaseAnon) {
-    console.error('[gas-proxy] Missing server env configuration');
-    return res.status(500).json({ error: 'Server security not configured' });
-  }
-
-  const authHeader = String(req.headers.authorization || '');
-  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  if (!jwt) {
-    return res.status(401).json({ error: 'Unauthorized — login required' });
-  }
-
-  const supabase = createClient(supabaseUrl.trim(), supabaseAnon.trim(), {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
-  if (userErr || !userData || !userData.user) {
-    return res.status(401).json({ error: 'Invalid or expired session' });
-  }
-
-  const actor = userData.user.email || userData.user.id || 'unknown';
   const payload = parseBody_(req);
   const method = String(payload.method || 'GET').toUpperCase();
+  const actor = 'vercel-proxy';
 
   try {
     if (method === 'GET') {
-      const params = Object.assign({}, payload.params || {}, {
-        token: gasSecret,
-        _actor: actor,
-      });
+      const params = Object.assign({}, payload.params || {});
+      if (gasSecret) {
+        params.token = gasSecret;
+        params._actor = actor;
+      }
       const fullUrl = gasUrl + '?' + new URLSearchParams(params).toString();
       const gasRes = await fetch(fullUrl, {
         method: 'GET',
         redirect: 'follow',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json' },
       });
       const text = await gasRes.text();
       res.status(gasRes.status);
@@ -77,10 +69,11 @@ export default async function handler(req, res) {
     }
 
     if (method === 'POST') {
-      const body = Object.assign({}, payload.body || {}, {
-        token: gasSecret,
-        _actor: actor,
-      });
+      const body = Object.assign({}, payload.body || {});
+      if (gasSecret) {
+        body.token = gasSecret;
+        body._actor = actor;
+      }
       const gasRes = await fetch(gasUrl, {
         method: 'POST',
         redirect: 'follow',

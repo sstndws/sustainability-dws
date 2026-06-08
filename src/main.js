@@ -18351,15 +18351,7 @@ function initDashboardApp() {
       return;
     }
 
-    if (requireSupabaseAuth_()) {
-      if (err) {
-        err.textContent = 'Autentikasi wajib. Hubungi admin untuk akun Supabase.';
-        err.style.display = 'block';
-      }
-      return;
-    }
-
-    // Demo account fallback — local dev only when secure mode OFF.
+    // Demo account fallback — jika Supabase tidak dikonfigurasi.
     const isStaffDemo =
       emailNorm === 'trace123@gmail.com' &&
       (passCompact === 'trace123!' || passCompact === 'trace123');

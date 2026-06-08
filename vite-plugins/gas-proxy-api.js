@@ -1,8 +1,7 @@
 /**
- * Dev-only mirror of /api/gas-proxy (Vercel) when VITE_SECURE_GAS=true.
+ * Dev mirror of /api/gas-proxy — tanpa Supabase.
  */
 import { loadEnv } from 'vite';
-import { createClient } from '@supabase/supabase-js';
 
 function readJsonBody_(req) {
   return new Promise(function(resolve, reject) {
@@ -23,22 +22,13 @@ export function gasProxyApiPlugin() {
         if (!req.url || req.url.split('?')[0] !== '/api/gas-proxy') return next();
 
         const env = loadEnv(server.config.mode, process.cwd(), '');
-        if (env.VITE_SECURE_GAS !== 'true') {
-          res.statusCode = 503;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'VITE_SECURE_GAS not enabled' }));
-          return;
-        }
-
         const gasUrl = env.GAS_WEBAPP_URL;
-        const gasSecret = env.GAS_API_SECRET;
-        const supabaseUrl = env.VITE_SUPABASE_URL;
-        const supabaseAnon = env.VITE_SUPABASE_ANON_KEY;
+        const gasSecret = env.GAS_API_SECRET || '';
 
-        if (!gasUrl || !gasSecret || !supabaseUrl || !supabaseAnon) {
+        if (!gasUrl) {
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing GAS_WEBAPP_URL / GAS_API_SECRET in .env.local' }));
+          res.end(JSON.stringify({ error: 'Set GAS_WEBAPP_URL in .env.local' }));
           return;
         }
 
@@ -56,32 +46,12 @@ export function gasProxyApiPlugin() {
         }
 
         try {
-          const auth = String(req.headers.authorization || '');
-          const jwt = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-          if (!jwt) {
-            res.statusCode = 401;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'Unauthorized' }));
-            return;
-          }
-
-          const supabase = createClient(supabaseUrl, supabaseAnon, {
-            auth: { persistSession: false, autoRefreshToken: false },
-          });
-          const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
-          if (userErr || !userData || !userData.user) {
-            res.statusCode = 401;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'Invalid session' }));
-            return;
-          }
-
-          const actor = userData.user.email || userData.user.id || 'unknown';
           const payload = await readJsonBody_(req);
           const method = String(payload.method || 'GET').toUpperCase();
 
           if (method === 'GET') {
-            const params = Object.assign({}, payload.params || {}, { token: gasSecret, _actor: actor });
+            const params = Object.assign({}, payload.params || {});
+            if (gasSecret) params.token = gasSecret;
             const fullUrl = gasUrl + '?' + new URLSearchParams(params).toString();
             const gasRes = await fetch(fullUrl, { method: 'GET', redirect: 'follow' });
             const text = await gasRes.text();
@@ -91,7 +61,8 @@ export function gasProxyApiPlugin() {
             return;
           }
 
-          const body = Object.assign({}, payload.body || {}, { token: gasSecret, _actor: actor });
+          const body = Object.assign({}, payload.body || {});
+          if (gasSecret) body.token = gasSecret;
           const gasRes = await fetch(gasUrl, {
             method: 'POST',
             redirect: 'follow',

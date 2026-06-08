@@ -476,9 +476,9 @@ function extractActor_(e, body) {
 
 function assertApiAuth_(e, body) {
   const secret = getApiSecret_();
-  if (!secret) {
-    throw new Error('API_SECRET not configured in Script Properties. Set before production use.');
-  }
+  // Belum set API_SECRET di Script Properties → mode kompatibel (dashboard tetap jalan).
+  // Set API_SECRET + GAS_API_SECRET di Vercel untuk mengaktifkan proteksi penuh.
+  if (!secret) return;
   const token = extractApiToken_(e, body);
   if (!token || token !== secret) {
     throw new Error('Unauthorized');
