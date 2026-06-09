@@ -3827,10 +3827,6 @@
    .form-field > input:focus,
    .form-field > textarea:focus,
    .form-field > select:focus { border-color: #8B1A1A; }
-   .form-field > input[type="date"].grv-form-date {
-     min-height: 36px;
-     color-scheme: light;
-   }
    
    /* â”€â”€ Mill form sections â”€â”€ */
    .mill-form-section {
@@ -6004,13 +6000,130 @@ body.qm-form-open { overflow: hidden; }
   font-weight: 600;
   color: #5A3030;
 }
-.qm-form-date-field input[type="date"] {
-  padding: 9px 11px;
-  border: 1px solid rgba(74, 28, 28, 0.12);
-  border-radius: 8px;
+.qm-form-date-field.dash-date-field > label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5A3030;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Shared DD/MM/YYYY date field (locale-independent) ── */
+.dash-date-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.dash-date-text {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1.5px solid rgba(139,26,26,0.18);
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-radius: 8px 0 0 8px;
   font-size: 13px;
+  color: #1A0A0A;
+  background: #fff;
+  outline: none;
+  transition: border-color 150ms;
   font-family: inherit;
+}
+.dash-date-text:focus { border-color: #8B1A1A; }
+.dash-date-text.dash-date-invalid {
+  border-color: #c53030 !important;
+}
+.dash-date-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+  border: 1.5px solid rgba(139,26,26,0.18);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: #fdf8f8;
+  color: #8B1A1A;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms;
+}
+.dash-date-trigger:hover {
+  background: rgba(139,26,26,0.06);
+  border-color: rgba(139,26,26,0.35);
+}
+.dash-date-trigger:focus {
+  outline: none;
+  border-color: #8B1A1A;
+}
+.dash-date-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1200;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid rgba(139,26,26,0.14);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(74, 28, 28, 0.14);
+}
+.dash-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.dash-cal-title {
+  font-size: 13px;
+  font-weight: 700;
   color: #4A1C1C;
+}
+.dash-cal-nav {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(139,26,26,0.12);
+  border-radius: 8px;
+  background: #fff;
+  color: #8B1A1A;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dash-cal-nav:hover { background: rgba(139,26,26,0.05); }
+.dash-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.dash-cal-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #8B6060;
+  text-transform: uppercase;
+}
+.dash-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.dash-cal-day {
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  color: #4A1C1C;
+  cursor: pointer;
+}
+.dash-cal-day.empty { pointer-events: none; }
+.dash-cal-day:hover:not(.empty) { background: rgba(139,26,26,0.08); }
+.dash-cal-day.today { font-weight: 700; color: #8B1A1A; }
+.dash-cal-day.selected {
+  background: #8B1A1A;
+  color: #fff;
 }
 
 /* ── EUDR Potential ── */
