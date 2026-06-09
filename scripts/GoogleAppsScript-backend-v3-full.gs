@@ -2505,7 +2505,7 @@ function getSheet(sheetKey) {
   const ss   = SpreadsheetApp.getActiveSpreadsheet();
   const name = resolveSheetTabName_(sheetKey);
   if (!name) {
-    throw new Error('Sheet key not found: ' + sheetKey + '. Pastikan tab "' + BL_MONITORING_TAB + '" ada di spreadsheet, lalu deploy ulang Apps Script (v3-bl-monitoring).');
+    throw new Error('Sheet key not found: ' + sheetKey + '. Ensure the "' + BL_MONITORING_TAB + '" tab exists in the spreadsheet, then redeploy Apps Script (v3-bl-monitoring).');
   }
   let sheet = ss.getSheetByName(name) || findSheetTabFuzzy_(ss, name);
   if (!sheet) {

@@ -11,7 +11,8 @@ export default defineConfig({
 
   // ── Dev server — port khusus sustain-dashboard (hindari bentrok app lain di :5173) ──
   server: {
-    host: '127.0.0.1',
+    // true = listen on all interfaces so both http://localhost:5340 and http://127.0.0.1:5340 work
+    host: true,
     port: 5340,
     strictPort: false,
     open: true,
@@ -35,7 +36,7 @@ export default defineConfig({
   },
 
   preview: {
-    host: '127.0.0.1',
+    host: true,
     port: 4173,
     strictPort: true,
     open: true,

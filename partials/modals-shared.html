@@ -92,7 +92,7 @@
     <div class="bl-form-head">
       <div>
         <h2 id="blFormTitle">Add Bill of Lading</h2>
-        <p class="bl-form-sub" id="blFormSubtitle">Isi data BL, lalu pilih baris Monitoring TTM/TTP. Tiap baris bisa ditambah sebagai TTM saja atau TTM + TTP.</p>
+        <p class="bl-form-sub" id="blFormSubtitle">Enter BL data, then select Monitoring TTM/TTP rows. Each row can be added as TTM only or TTM + TTP.</p>
       </div>
       <button type="button" class="bl-form-close" id="blFormClose" aria-label="Close">✕</button>
     </div>
@@ -103,7 +103,7 @@
       </section>
       <section class="bl-form-section">
         <h3 class="bl-form-section-title">Link TTM / TTP</h3>
-        <p class="bl-form-section-desc" id="blPickerPeriodLabel">Memuat periode Monitoring…</p>
+        <p class="bl-form-section-desc" id="blPickerPeriodLabel">Loading monitoring period…</p>
         <div class="bl-picker-wrap">
           <div class="bl-picker-search">
             <input type="text" id="blTtmSearch" placeholder="Cari company, UML ID, supplier, desa..." autocomplete="off" />
@@ -113,7 +113,7 @@
         </div>
       </section>
       <section class="bl-form-section bl-ttp-auto-section">
-        <h3 class="bl-form-section-title">TTP terpilih <span class="bl-form-hint">Hanya baris yang dipilih dengan opsi TTM + TTP</span></h3>
+        <h3 class="bl-form-section-title">Selected TTP <span class="bl-form-hint">Only rows selected with the TTM + TTP option</span></h3>
         <div class="bl-picker-wrap bl-picker-wrap--readonly">
           <div class="bl-picker-selected" id="blTtpSelected"></div>
         </div>
@@ -155,7 +155,7 @@
       <button type="button" class="pf-export-modal-close" id="blExportModalClose" aria-label="Close">✕</button>
     </div>
     <div class="pf-export-modal-body">
-      <p class="pf-export-hint">Pilih kolom yang ingin disertakan di file Excel. Urutan baris mengikuti tabel (Received Date terbaru di atas).</p>
+      <p class="pf-export-hint">Select columns to include in the Excel file. Row order follows the table (most recent Received Date first).</p>
       <div class="pf-export-facility-toolbar">
         <span class="pf-export-label">Columns</span>
         <button type="button" class="pf-export-link-btn" id="blExportColAll">Select all</button>
@@ -180,11 +180,11 @@
       <button type="button" class="pf-export-modal-close" id="qmExportModalClose" aria-label="Close">✕</button>
     </div>
     <div class="pf-export-modal-body">
-      <p class="pf-export-hint" id="qmExportHint">Pilih baris dan kolom untuk file Excel. Header sheet menggunakan gaya dashboard.</p>
+      <p class="pf-export-hint" id="qmExportHint">Select rows and columns for the Excel file. Sheet headers use the dashboard style.</p>
       <div class="pf-export-type-row">
         <span class="pf-export-label">Rows</span>
-        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="all" checked /> Semua baris (sesuai filter pencarian)</label>
-        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="selected" /> Baris tercentang saja</label>
+        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="all" checked /> All rows (matching search filter)</label>
+        <label class="pf-export-radio"><input type="radio" name="qmExportScope" value="selected" /> Checked rows only</label>
       </div>
       <div class="pf-export-facility-toolbar">
         <span class="pf-export-label">Columns</span>

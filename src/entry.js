@@ -20,12 +20,9 @@ import * as XLSX from 'xlsx-js-style';
 window.XLSX = XLSX;
 
 import { mountLoginPage } from './login-ui.js';
-import { mountOverviewLanding, updateOverviewWelcomeFromEmail } from './overview-ui.js';
 
 // Synchronous — must run before main.js binds #btn-login-submit (no async gap before dynamic import).
 mountLoginPage(document.getElementById('login'));
-mountOverviewLanding(document.getElementById('overview-root'));
-window.updateOverviewWelcome = updateOverviewWelcomeFromEmail;
 
 const SECURE_GAS = import.meta.env.VITE_SECURE_GAS === 'true';
 window.SDD_SECURE_MODE = SECURE_GAS;
@@ -50,6 +47,6 @@ import('./main.js')
     var d = document.createElement('div');
     d.setAttribute('role', 'alert');
     d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#fef2f2;z-index:2147483647;font:14px system-ui,sans-serif;color:#991b1b;';
-    d.textContent = 'Gagal memuat skrip aplikasi: ' + (err && err.message ? err.message : String(err));
+    d.textContent = 'Failed to load application script: ' + (err && err.message ? err.message : String(err));
     document.body.appendChild(d);
   });

@@ -24,7 +24,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
     if (!supplierType) {
       event.target.value = '';
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Pilih supplier type dulu (MILL / KCP / TRADER) sebelum import Excel.', 'error');
+        window.showSddToast('Select supplier type (MILL / KCP / TRADER) before importing Excel.', 'error');
       }
       return;
     }
@@ -1403,9 +1403,9 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
         + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
         + '<label for="noteBossDecision" style="font-size:11px;font-weight:700;color:#8B1A1A;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;">Approver Note <span style="font-weight:400;color:#9C8080;text-transform:none;letter-spacing:0;">(optional — saved with Draft / Submit)</span></label>'
         + '</div>'
-        + '<textarea id="noteBossDecision" rows="3" placeholder="Tulis catatan untuk approver di sini..." style="width:100%;min-height:80px;border:1px solid rgba(139,26,26,0.18);border-radius:10px;padding:11px 14px;font-size:13px;color:#1A0A0A;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box;font-family:Inter,sans-serif;background:#fff;box-shadow:0 1px 4px rgba(139,26,26,0.06);"></textarea>'
+        + '<textarea id="noteBossDecision" rows="3" placeholder="Enter a note for the approver here..." style="width:100%;min-height:80px;border:1px solid rgba(139,26,26,0.18);border-radius:10px;padding:11px 14px;font-size:13px;color:#1A0A0A;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box;font-family:Inter,sans-serif;background:#fff;box-shadow:0 1px 4px rgba(139,26,26,0.06);"></textarea>'
         + '<div id="sdd-staff-decision-wrap" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed rgba(139,26,26,0.22);">'
-        + '<div style="font-size:11px;font-weight:700;color:#8B1A1A;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px;">Keputusan screening</div>'
+        + '<div style="font-size:11px;font-weight:700;color:#8B1A1A;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px;">Screening decision</div>'
         + '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">'
         + '<span id="sdd-staff-decision-badge" style="font-size:12px;font-weight:600;color:#5F4A48;min-height:1.2em;flex:1;min-width:140px;">Decision: —</span>'
         + '<button type="button" id="sdd-approver-approve" disabled style="padding:8px 16px;border-radius:8px;border:none;background:#047857;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;opacity:0.5;">Approve</button>'
@@ -1723,7 +1723,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       if (val==='Yes'||val==='Complete') cls += ' scr-sel-yes';
       else if (val==='No'||val==='Non Complete') cls += ' scr-sel-no';
       return `<select id="${id}" class="${cls}">
-        <option value="">— Pilih —</option>
+        <option value="">— Select —</option>
         ${opts.map(v=>`<option${val===v?' selected':''}>${v}</option>`).join('')}
       </select>`;
     }
@@ -1778,15 +1778,15 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       <div style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8B1A1A;margin-bottom:12px;padding:6px 12px;background:rgba(139,26,26,0.07);border-radius:6px;">A. Company Checking</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 20px;margin-bottom:18px;">
         <div class="scr-field"><div class="scr-lbl">List Group by Owners</div>
-          <textarea id="scr-owners" class="scr-ta" rows="2" placeholder="Isi nama group/owners...">${s.owners||''}</textarea></div>
+          <textarea id="scr-owners" class="scr-ta" rows="2" placeholder="Enter group/owners names...">${s.owners||''}</textarea></div>
         <div class="scr-field"><div class="scr-lbl">Previous News</div>
-          <textarea id="scr-news" class="scr-ta" rows="2" placeholder="Isi berita terdahulu...">${s.news||''}</textarea></div>
+          <textarea id="scr-news" class="scr-ta" rows="2" placeholder="Enter prior news...">${s.news||''}</textarea></div>
         <div class="scr-field"><div class="scr-lbl">Supply To</div>
-          <textarea id="scr-supplyto" class="scr-ta" rows="2" placeholder="Isi supply to...">${s.supplyto||''}</textarea></div>
+          <textarea id="scr-supplyto" class="scr-ta" rows="2" placeholder="Enter supply to...">${s.supplyto||''}</textarea></div>
         <div class="scr-field"><div class="scr-lbl">Legality</div>
           ${sel('scr-legality',['Complete','Non Complete'],s.legality||'')}</div>
         <div class="scr-field"><div class="scr-lbl">Certification</div>
-          <textarea id="scr-cert" class="scr-ta" rows="2" placeholder="Isi sertifikasi...">${s.cert||''}</textarea></div>
+          <textarea id="scr-cert" class="scr-ta" rows="2" placeholder="Enter certifications...">${s.cert||''}</textarea></div>
       </div>
 
       <hr style="border:none;border-top:1.5px solid rgba(139,26,26,0.09);margin:18px 0;">
@@ -1818,7 +1818,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
           </tr></thead>
           <tbody id="scr-grv-tbody">${grvRows.map(r=>grvRowHtml(r)).join('')}</tbody>
         </table></div>
-        <button type="button" class="scr-add-btn" id="scr-grv-add" title="Maksimal ${SCR_GRV_PRI_MAX_ROWS} baris">+ Add Row</button>
+        <button type="button" class="scr-add-btn" id="scr-grv-add" title="Maximum ${SCR_GRV_PRI_MAX_ROWS} rows">+ Add Row</button>
       </div>
 
       <div id="scr-pri-wrap" style="display:${priYN==='Yes'?'block':'none'};margin-bottom:14px;">
@@ -1836,7 +1836,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
           </tr></thead>
           <tbody id="scr-pri-tbody">${priRows.map(r=>priRowHtml(r)).join('')}</tbody>
         </table></div>
-        <button type="button" class="scr-add-btn" id="scr-pri-add" title="Maksimal ${SCR_GRV_PRI_MAX_ROWS} baris">+ Add Row</button>
+        <button type="button" class="scr-add-btn" id="scr-pri-add" title="Maximum ${SCR_GRV_PRI_MAX_ROWS} rows">+ Add Row</button>
       </div>
     </div>
 
@@ -1915,7 +1915,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       b.style.opacity = '1';
       b.style.cursor = 'pointer';
       b.style.filter = '';
-      b.title = 'Keputusan ini menentukan masuk/tidaknya ke Task List Mill Onboarding.';
+      b.title = 'This decision determines whether the record enters the Mill Onboarding task list.';
     });
     _syncDecisionBadge();
   };
@@ -2436,7 +2436,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
     const holder = document.getElementById('scr-saved-list-wrap');
     if (!holder) return;
     if (!entries.length) {
-      holder.innerHTML = '<div style="padding:20px 0;color:#A09090;font-size:12.5px;text-align:center;letter-spacing:0.01em;">Tidak ada screening tersimpan.</div>';
+      holder.innerHTML = '<div style="padding:20px 0;color:#A09090;font-size:12.5px;text-align:center;letter-spacing:0.01em;">No saved screenings.</div>';
       return;
     }
 
@@ -3138,7 +3138,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       if (!tb) return;
       if (tb.querySelectorAll('tr').length >= SCR_GRV_PRI_MAX_ROWS) {
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Maksimal ' + SCR_GRV_PRI_MAX_ROWS + ' baris grievance.', 'warning');
+          window.showSddToast('Maximum ' + SCR_GRV_PRI_MAX_ROWS + ' grievance rows.', 'warning');
         }
         return;
       }
@@ -3149,7 +3149,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       if (!tb) return;
       if (tb.querySelectorAll('tr').length >= SCR_GRV_PRI_MAX_ROWS) {
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Maksimal ' + SCR_GRV_PRI_MAX_ROWS + ' baris PRI.', 'warning');
+          window.showSddToast('Maximum ' + SCR_GRV_PRI_MAX_ROWS + ' PRI rows.', 'warning');
         }
         return;
       }
@@ -3245,7 +3245,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       var sid = window._sddSubmissionId || window._scrLoadedKey || null;
       if (!sid) {
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Submission ID tidak ditemukan untuk cancel.', 'error');
+          window.showSddToast('Submission ID not found for cancel.', 'error');
         }
         return;
       }
@@ -3256,7 +3256,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       if (window._loadedPrimarySddRow) window._loadedPrimarySddRow['SCR - Screening Status'] = 'Draft';
       if (window._scrData) window._scrData.status = 'Draft';
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Status dikembalikan ke Draft. Form bisa diedit lagi.', 'success');
+        window.showSddToast('Status reverted to Draft. The form can be edited again.', 'success');
       }
       await refreshSavedScreeningListGlobal(sid);
       // Full reload so traceability sheet re-renders "Start Screening" (not "View Screening").
@@ -3295,14 +3295,14 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
         if (cancelBtn) {
           cancelBtn.style.display = '';
           cancelBtn.onclick = async function() {
-            if (!confirm('Ubah status Submitted menjadi Draft?')) return;
+            if (!confirm('Change status from Submitted to Draft?')) return;
             cancelBtn.disabled = true;
             var oldText = cancelBtn.textContent;
             cancelBtn.textContent = 'Saving...';
             try {
               await cancelSubmittedToDraft();
             } catch (e) {
-              if (typeof window.showSddToast === 'function') window.showSddToast('Cancel to Draft gagal: ' + (e.message || e), 'error');
+              if (typeof window.showSddToast === 'function') window.showSddToast('Cancel to Draft failed: ' + (e.message || e), 'error');
             } finally {
               cancelBtn.disabled = false;
               cancelBtn.textContent = oldText;
@@ -3678,19 +3678,19 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
       });
 
       if (status === 'delete') {
-        if (!confirm('Yakin ingin delete data screening ini?')) return;
+        if (!confirm('Are you sure you want to delete this screening data?')) return;
         // ── DELETE via relational deleteSubmission API ──
         const sidToDelete = window._sddSubmissionId || window._scrLoadedKey || null;
         if (!sidToDelete) {
           if (typeof window.showSddToast === 'function') {
-            window.showSddToast('Tidak ada submission_id. Muat screening tersimpan dulu, lalu hapus.', 'error');
+            window.showSddToast('No submission_id. Load a saved screening first, then delete.', 'error');
           }
           return;
         }
         try {
           await apiDeleteSubmission({ submission_id: sidToDelete });
         } catch (e) {
-          if (typeof window.showSddToast === 'function') window.showSddToast('Delete gagal: ' + (e.message || e), 'error');
+          if (typeof window.showSddToast === 'function') window.showSddToast('Delete failed: ' + (e.message || e), 'error');
           return;
         }
         await refreshSavedScreeningListGlobal('');
@@ -3707,9 +3707,9 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
         } else {
           fillFormFromScrData({ grvRows: [{}], priRows: [{}], attachments: [] }, 'reset', null, '');
         }
-        if (typeof window.showSddToast === 'function') window.showSddToast('Data screening berhasil dihapus.', 'success');
+        if (typeof window.showSddToast === 'function') window.showSddToast('Screening data deleted successfully.', 'success');
         if (typeof window.showSddNotification === 'function') {
-          window.showSddNotification('Delete Success', 'Data screening berhasil dihapus.', 'success');
+          window.showSddNotification('Delete Success', 'Screening data deleted successfully.', 'success');
         }
         return;
       }
@@ -3728,11 +3728,11 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
         var savedSid = (apiResult && apiResult.submission_id)
           ? String(apiResult.submission_id)
           : (window._sddSubmissionId ? String(window._sddSubmissionId) : '');
-        var okMsg = 'Data berhasil disimpan ke Google Sheets sebagai ' + scrData.status + '.';
+        var okMsg = 'Data saved to Google Sheets as ' + scrData.status + '.';
         if (savedSid) okMsg += ' Submission ID: ' + savedSid + '.';
-        if (importedCount > 0) okMsg += ' ' + importedCount + ' baris tersinkron.';
+        if (importedCount > 0) okMsg += ' ' + importedCount + ' rows synchronized.';
         if (typeof window.showSddToast === 'function') window.showSddToast(okMsg, 'success');
-        if (typeof window.showSddNotification === 'function') window.showSddNotification('Tersimpan', okMsg, 'success');
+        if (typeof window.showSddNotification === 'function') window.showSddNotification('Saved', okMsg, 'success');
 
         // ── POST-SAVE: Refresh list dan load ulang jika submit ──
         // Jika status=submit dan ada savedSid, load ulang form TANPA reset state dulu
@@ -3782,7 +3782,7 @@ import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './g
             window.exitSavedScrModeGlobal(true);
           } else {
             const holder = document.getElementById('supplierExcelData');
-            if (holder) holder.innerHTML = '<p style="color:#9C8080;font-size:13px;padding:16px;">Data berhasil disimpan. Pilih dari list di atas untuk melanjutkan edit, atau import Excel baru.</p>';
+            if (holder) holder.innerHTML = '<p style="color:#9C8080;font-size:13px;padding:16px;">Data saved successfully. Select from the list above to continue editing, or import a new Excel file.</p>';
           }
         }
       } catch (e) {
@@ -3896,10 +3896,6 @@ async function migrateSddApiUrlToLatest_() {
   var pingDef = await sddPingApiUrl_(def);
   if (pingDef && pingDef.blMonitoring) {
     try { localStorage.setItem('SDD_WEBAPP_URL', def); } catch (e) { /* ignore */ }
-    if (typeof window.showSddToast === 'function') {
-      window.showSddToast('URL Apps Script diperbarui ke deployment terbaru.', 'success');
-    }
-    console.warn('[SDD] API URL migrated to latest deployment (BL Monitoring enabled).');
     return def;
   }
   return current;
@@ -4029,13 +4025,13 @@ async function apiGet(sheet, opts) {
     var ename = lastErr && lastErr.name;
     var emsg = (lastErr && lastErr.message) || String(lastErr);
     if (ename === 'AbortError') {
-      throw new Error('GET timeout (60s). Periksa jaringan atau URL Apps Script (SDD_WEBAPP_URL).');
+      throw new Error('GET timeout (60s). Check your network or the Apps Script URL (SDD_WEBAPP_URL).');
     }
     if (emsg.indexOf('Failed to fetch') !== -1 || ename === 'TypeError') {
       var hint = sddIsLocalDevHost_()
-        ? ' Stop semua npm run dev, jalankan ulang npm run dev, buka URL di terminal (proxy /gas-api).'
-        : ' Pastikan URL Web App benar dan deployment Apps Script "Anyone" dapat diakses.';
-      throw new Error('GET gagal (jaringan/CORS/adblock).' + hint);
+        ? ' Stop all npm run dev processes, restart npm run dev, and open the URL shown in the terminal (proxy /gas-api).'
+        : ' Ensure the Web App URL is correct and the Apps Script deployment is set to "Anyone".';
+      throw new Error('GET failed (network/CORS/adblock).' + hint);
     }
     throw new Error('GET failed: ' + emsg);
   }
@@ -4087,7 +4083,7 @@ async function apiPost(body, opts) {
     var ename = e && e.name;
     var emsg = (e && e.message) || String(e);
     if (ename === 'AbortError') {
-      throw new Error('POST timeout (' + Math.round(timeoutMs / 1000) + 's). Coba lagi atau kurangi data sync.');
+      throw new Error('POST timeout (' + Math.round(timeoutMs / 1000) + 's). Try again or reduce the sync payload.');
     }
     throw new Error('POST failed: ' + emsg);
   }
@@ -4272,7 +4268,7 @@ function _syncDecisionBadge() {
   var raw = _readCurrentDecisionRaw();
   badge.textContent = raw
     ? 'Decision: ' + _normalizeDecisionLabel(raw)
-    : 'Decision: — (pilih tombol di bawah)';
+    : 'Decision: — (select a button below)';
 }
 
 function _refreshDecisionChromeForDraft() {
@@ -4285,7 +4281,7 @@ function _refreshDecisionChromeForDraft() {
     b.style.opacity = '0.5';
     b.style.cursor = 'not-allowed';
     b.style.filter = '';
-    b.title = 'Tombol keputusan aktif setelah status Submitted.';
+    b.title = 'Decision buttons are active after status is Submitted.';
   });
   var nb = document.getElementById('noteBossDecision');
   if (nb) {
@@ -4316,7 +4312,7 @@ window._submitSddApproverDecision = function(statusSdd) {
   ).trim().toLowerCase();
   if (scrSt !== 'submitted') {
     if (typeof window.showSddToast === 'function') {
-      window.showSddToast('Keputusan Approve / On Hold / Reject baru bisa dipilih setelah Submit.', 'info');
+      window.showSddToast('Approve / On Hold / Reject can only be selected after Submit.', 'info');
     }
     return;
   }
@@ -4383,18 +4379,18 @@ window._submitSddApproverDecision = function(statusSdd) {
         if (typeof window.showSddToast === 'function') {
           var normToast = _normalizeDecisionLabel(statusSdd);
           var extraCls = normToast === 'APPROVED'
-            ? ' Kontak Sustainability PIC disimpan ke Contact List Supplier.'
+            ? ' Sustainability PIC contact saved to Contact List Supplier.'
             : '';
           var ttpSync = window._lastTtpSyncResult;
           if (normToast === 'APPROVED' && ttpSync) {
             if (ttpSync.synced) {
-              extraCls += ' Monitoring TTM/TTP: ' + String(ttpSync.inserted || 0) + ' baru, '
-                + String(ttpSync.updated || 0) + ' diperbarui.';
+              extraCls += ' Monitoring TTM/TTP: ' + String(ttpSync.inserted || 0) + ' new, '
+                + String(ttpSync.updated || 0) + ' updated.';
             } else if (ttpSync.skipped && ttpSync.reason === 'no_ffb_rows') {
-              extraCls += ' Monitoring TTM/TTP: tidak ada baris FFB di traceability.';
+              extraCls += ' Monitoring TTM/TTP: no FFB rows in traceability.';
             }
           }
-          window.showSddToast('Keputusan Submitted disimpan: ' + statusSdd + ' (SID: ' + sid + ').' + extraCls, 'success');
+          window.showSddToast('Submitted decision saved: ' + statusSdd + ' (SID: ' + sid + ').' + extraCls, 'success');
         }
       })
       .catch(function(e) {
@@ -4403,17 +4399,17 @@ window._submitSddApproverDecision = function(statusSdd) {
         if (saveErr) {
           saveErr.style.display = 'block';
           saveErr.style.color = '#dc2626';
-          saveErr.textContent = '✗ Decision save failed untuk Submission ID: ' + sid;
+          saveErr.textContent = '✗ Decision save failed for Submission ID: ' + sid;
         }
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Gagal menyimpan keputusan Submitted: ' + msg, 'error');
+          window.showSddToast('Failed to save Submitted decision: ' + msg, 'error');
         }
       });
     return;
   }
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
-      'Keputusan: ' + statusSdd + '. Disimpan ke server saat Save Draft atau Submit.',
+      'Decision: ' + statusSdd + '. Saved to server on Save Draft or Submit.',
       'info'
     );
   }
@@ -4731,7 +4727,7 @@ async function handleFinalSave(scrData) {
 
   if (!isLoadedSaved) {
     // ── FIRST SAVE: createSubmission ──
-    if (typeof window.showSddToast === 'function') window.showSddToast('Menyimpan submission baru…', 'info');
+    if (typeof window.showSddToast === 'function') window.showSddToast('Saving new submission…', 'info');
     finalResult = await apiCreateSubmission({
       main     : merged,
       mills    : millRows.length  ? millRows  : undefined,
@@ -4748,7 +4744,7 @@ async function handleFinalSave(scrData) {
     syncedRows = (finalResult && (Number(finalResult.mills_inserted || 0) + Number(finalResult.ffb_inserted || 0))) || 0;
   } else {
     // ── SUBSEQUENT SAVE: updateSubmission (partial — only present keys overwritten) ──
-    if (typeof window.showSddToast === 'function') window.showSddToast('Memperbarui submission…', 'info');
+    if (typeof window.showSddToast === 'function') window.showSddToast('Updating submission…', 'info');
     finalResult = await apiUpdateSubmission({
       submission_id : existingSid,
       main          : merged,
@@ -5102,15 +5098,16 @@ function initDashboardApp() {
   })();
 
   console.log('🚀 Sustainability Dashboard loaded and connected to Google Sheets backend');
+  if (sddIsLocalDevHost_()) {
+    var devPort = location.port || '5340';
+    console.log('🌐 Local dev: http://localhost:' + devPort + ' (or http://127.0.0.1:' + devPort + ')');
+  }
   if (isSecureGasEnabled()) {
     console.log('🔒 Secure GAS mode: API via /api/gas-proxy (JWT required). GAS URL not exposed to browser.');
   } else {
     console.log('ℹ️ SDD Apps Script URL:', typeof getSddApiUrl === 'function' ? getSddApiUrl() : '(n/a)');
     console.warn('⚠️ Dev/insecure mode — set VITE_SECURE_GAS=true in production.');
   }
-  migrateSddApiUrlToLatest_().then(function(url) {
-    console.log('ℹ️ SDD Apps Script URL (after migrate check):', url);
-  }).catch(function() { /* ignore */ });
   if (location.protocol === 'file:') {
     console.warn('⚠️ Page is file:// — saving to Google Sheets will not work until you open this HTML via http(s) (e.g. Live Server).');
   }
@@ -5146,7 +5143,7 @@ function initDashboardApp() {
     supplierExcelFileEl.addEventListener('click', function() {
       if (!getCurrentSddSupplierType()) {
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Pilih supplier type dulu sebelum pilih file Excel.', 'error');
+          window.showSddToast('Select supplier type before choosing an Excel file.', 'error');
         }
         return;
       }
@@ -5272,16 +5269,16 @@ function initDashboardApp() {
       const dotHtml = currentVal ? `<span class="cs-yn-dot"></span>` : '';
       triggerInner = currentVal
         ? `${dotHtml}<span class="cs-value">${currentVal}</span>`
-        : `<span class="cs-placeholder">— Pilih —</span>`;
+        : `<span class="cs-placeholder">— Select —</span>`;
       optionsHtml = `
-        <div class="cs-option cs-option-placeholder" data-val="">— Pilih —</div>
+        <div class="cs-option cs-option-placeholder" data-val="">— Select —</div>
         <div class="cs-option cs-yes${currentVal==='Yes'?' selected':''}" data-val="Yes"><span class="cs-yn-dot"></span>${checkSvg}Yes</div>
         <div class="cs-option cs-no${currentVal==='No'?' selected':''}" data-val="No"><span class="cs-yn-dot"></span>${checkSvg}No</div>`;
     } else {
       triggerInner = currentVal
         ? `<span class="cs-value">${currentVal}</span>`
-        : `<span class="cs-placeholder">— Pilih —</span>`;
-      optionsHtml = `<div class="cs-option cs-option-placeholder" data-val="">— Pilih —</div>`
+        : `<span class="cs-placeholder">— Select —</span>`;
+      optionsHtml = `<div class="cs-option cs-option-placeholder" data-val="">— Select —</div>`
         + options.map(o => `<div class="cs-option${currentVal===o?' selected':''}" data-val="${o}">${checkSvg}${o}</div>`).join('');
     }
 
@@ -5305,9 +5302,9 @@ function initDashboardApp() {
 
     const triggerInner = val
       ? '<span class="cs-yn-dot"></span><span class="cs-value">' + escHtml(val) + '</span>'
-      : '<span class="cs-placeholder">— Pilih —</span>';
+      : '<span class="cs-placeholder">— Select —</span>';
     const optionsHtml = ''
-      + '<div class="cs-option cs-option-placeholder" data-val="">— Pilih —</div>'
+      + '<div class="cs-option cs-option-placeholder" data-val="">— Select —</div>'
       + '<div class="cs-option cs-yes' + (val === 'Y' ? ' selected' : '') + '" data-val="Y"><span class="cs-yn-dot"></span>' + checkSvg + 'Y</div>'
       + '<div class="cs-option cs-no' + (val === 'N' ? ' selected' : '') + '" data-val="N"><span class="cs-yn-dot"></span>' + checkSvg + 'N</div>';
 
@@ -5344,7 +5341,7 @@ function initDashboardApp() {
           // update trigger display
           const arrowSvg = trigger.querySelector('.cs-arrow').outerHTML;
           if (!val) {
-            trigger.innerHTML = `<span class="cs-placeholder">— Pilih —</span>${arrowSvg}`;
+            trigger.innerHTML = `<span class="cs-placeholder">— Select —</span>${arrowSvg}`;
           } else if (isYesNo) {
             trigger.innerHTML = `<span class="cs-yn-dot"></span><span class="cs-value">${val}</span>${arrowSvg}`;
           } else {
@@ -5469,7 +5466,7 @@ function initDashboardApp() {
     const modalOverlay = document.getElementById('modalOverlay');
     const modalSave = document.getElementById('modalSave');
     if (!modalClose || !modalCancel || !modalOverlay || !modalSave) {
-      console.error('[dashboard] Modal nodes missing (modalClose / modalCancel / modalOverlay / modalSave). Pastikan `npm run dev` dari folder sustain-dashboard (bukan buka file HTML mentah).');
+      console.error('[dashboard] Modal nodes missing (modalClose / modalCancel / modalOverlay / modalSave). Run `npm run dev` from the sustain-dashboard folder (do not open raw HTML files).');
       return;
     }
     modalClose.addEventListener('click', closeModal);
@@ -5502,7 +5499,7 @@ function initDashboardApp() {
         if (modalSheet === 'ttp') {
           const villages = ttpCollectDealerVillages_();
           const villageCol = ttpPickField_(['VILLAGE']);
-          if (!villages.length) throw new Error('Village wajib diisi.');
+          if (!villages.length) throw new Error('Village is required.');
           if (villageCol) data[villageCol] = villages[0];
         }
         await apiPost({ action: 'update', sheet: modalSheet, row: modalRow, data });
@@ -5983,7 +5980,7 @@ function initDashboardApp() {
     const el = document.getElementById('millPdfExportScopeText');
     if (!el) return;
     if (!allData.length) {
-      el.textContent = 'Muat data mill terlebih dahulu';
+      el.textContent = 'Load mill data first';
       return;
     }
     const pdfN = getMillRowsForPdfExport().length;
@@ -6100,18 +6097,18 @@ function initDashboardApp() {
     };
     const rows = getMillRowsForPdfExport();
     if (!rows.length) {
-      toastErr('Tidak ada baris untuk diekspor. Sesuaikan chip, pencarian, filter registry, atau filter kolom.');
+      toastErr('No rows to export. Adjust chips, search, registry filters, or column filters.');
       return;
     }
     const cols = MILL_PDF_EXPORT_COLS.filter(function(c) { return millPdfColSelected.has(c.key); });
     if (!cols.length) {
-      toastErr('Pilih minimal satu kolom di menu Kolom PDF.');
+      toastErr('Select at least one column in the PDF Columns menu.');
       return;
     }
 
     const btn = document.getElementById('btn-mill-export-pdf');
     const prevHtml = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Menghasilkan…'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Generating…'; }
 
     try {
       const nblLists = await ensureNblListsForCheck_();
@@ -6128,7 +6125,7 @@ function initDashboardApp() {
       doc.setFontSize(9);
       doc.setTextColor.apply(doc, GRY);
       const stamp = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      doc.text('Diekspor: ' + stamp + ' · ' + rows.length + ' baris', 14, 20);
+      doc.text('Exported: ' + stamp + ' · ' + rows.length + ' rows', 14, 20);
 
       const body = rows.map(function(row) {
         return cols.map(function(c) {
@@ -6160,9 +6157,9 @@ function initDashboardApp() {
 
       const fname = 'Mill-Registry-' + new Date().toISOString().slice(0, 10) + '.pdf';
       doc.save(fname);
-      if (typeof window.showSddToast === 'function') window.showSddToast('PDF berhasil diunduh.', 'success');
+      if (typeof window.showSddToast === 'function') window.showSddToast('PDF downloaded successfully.', 'success');
     } catch (err) {
-      toastErr('Export PDF gagal: ' + (err.message || err));
+      toastErr('PDF export failed: ' + (err.message || err));
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = prevHtml; }
     }
@@ -6239,7 +6236,7 @@ function initDashboardApp() {
       if (millPdfColSelected.size === 0) {
         millPdfColSelected.add(k);
         t.checked = true;
-        if (typeof window.showSddToast === 'function') window.showSddToast('Minimal satu kolom harus dipilih.', 'warning');
+        if (typeof window.showSddToast === 'function') window.showSddToast('At least one column must be selected.', 'warning');
       }
     });
 
@@ -6372,7 +6369,7 @@ function initDashboardApp() {
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
-      errorEl.textContent = 'Gagal memuat data: ' + err.message;
+      errorEl.textContent = 'Failed to load data: ' + err.message;
     }
   }
 
@@ -6468,7 +6465,7 @@ function initDashboardApp() {
     body.innerHTML = sorted.length === 0
       ? `<tr><td colspan="11" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
       : sorted.map((d, i) => `
-        <tr class="mill-row-clickable" data-idx="${i}" title="Klik untuk lihat detail lengkap">
+        <tr class="mill-row-clickable" data-idx="${i}" title="Click to view full details">
           <td>${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
           <td>${d['GROUP NAME'] || '—'}</td>
           <td>${d['COMPANY NAME'] || '—'}</td>
@@ -6989,7 +6986,7 @@ function initDashboardApp() {
       else alert(msg);
     };
     if (!row) {
-      toastErr('Data mill tidak ditemukan untuk diekspor.');
+      toastErr('Mill data not found for export.');
       return;
     }
     const prevTxt = btn ? btn.textContent : '';
@@ -7105,9 +7102,9 @@ function initDashboardApp() {
       const safeName = title.replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'Mill-Profile';
       const fileName = safeName + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
       doc.save(fileName);
-      if (typeof window.showSddToast === 'function') window.showSddToast('PDF berhasil diunduh.', 'success');
+      if (typeof window.showSddToast === 'function') window.showSddToast('PDF downloaded successfully.', 'success');
     } catch (e) {
-      toastErr('Export PDF gagal: ' + (e && e.message ? e.message : e));
+      toastErr('PDF export failed: ' + (e && e.message ? e.message : e));
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = prevTxt || 'Export PDF'; }
     }
@@ -7753,7 +7750,7 @@ function initDashboardApp() {
     let text = '\n' + qtyLabel + ' NO DATA (top ' + Math.min(rows.length, 12) + '):';
     text += '\n' + lines.join('\n');
     if (rows.length > 12) {
-      text += '\n  · … +' + (rows.length - 12) + ' baris lainnya';
+      text += '\n  · … +' + (rows.length - 12) + ' more rows';
     }
     return text;
   }
@@ -8085,8 +8082,8 @@ function initDashboardApp() {
         ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
           + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
-          + '\nBandingkan dengan total kolom CPO Traceable & CPO SUPPLY to REFINERY di sheet (periode sama).'
-        : 'Tidak ada data CPO traceable pada periode ini';
+          + '\nCompare with total CPO Traceable & CPO SUPPLY to REFINERY columns in the sheet (same period).'
+        : 'No CPO traceable data for this period';
     }
     if (pkEl) {
       pkEl.textContent = ttpFormatTraceablePct_(pkAgg.value);
@@ -8094,36 +8091,36 @@ function initDashboardApp() {
         ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ')'
           + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
-        : 'Tidak ada data PK traceable pada periode ini';
+        : 'No PK traceable data for this period';
     }
     if (ttmCpoEl) {
       ttmCpoEl.textContent = ttpFormatTtmPct_(ttmCpo.pct);
       if (ttmCpo.rowsTotal) {
         ttmCpoEl.title = 'TTM CPO · ' + (ttpPeriodYear || '—')
-          + '\nRumus: SUM(SUPPLY CPO baris traceable) ÷ SUM(SUPPLY CPO seluruh pool)'
-          + '\nTraceable : ' + ttpFormatTtpTon_(ttmCpo.supplyTraceable) + ' ton (' + ttmCpo.rowsTraceable + ' baris)'
-          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmCpo.supplyNoData) + ' ton (' + ttmCpo.rowsNoData + ' baris)'
-          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmCpo.supplyTotal) + ' ton (' + ttmCpo.rowsTotal + ' baris)'
+          + '\nFormula: SUM(traceable CPO supply rows) ÷ SUM(entire CPO supply pool)'
+          + '\nTraceable : ' + ttpFormatTtpTon_(ttmCpo.supplyTraceable) + ' ton (' + ttmCpo.rowsTraceable + ' rows)'
+          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmCpo.supplyNoData) + ' ton (' + ttmCpo.rowsNoData + ' rows)'
+          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmCpo.supplyTotal) + ' ton (' + ttmCpo.rowsTotal + ' rows)'
           + ttpFormatTtmNodataBreakdown_(ttmCpo, 'cpo')
           + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO (atau SUPPLY CPO > 0 jika PRODUCT SUPPLY kosong)'
           + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
       } else {
-        ttmCpoEl.title = 'Tidak ada data CPO (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
+        ttmCpoEl.title = 'No CPO data (MILL/TRADER/REFINERY) in Mill Onboarding for this year';
       }
     }
     if (ttmPkEl) {
       ttmPkEl.textContent = ttpFormatTtmPct_(ttmPk.pct);
       if (ttmPk.rowsTotal) {
         ttmPkEl.title = 'TTM PK · ' + (ttpPeriodYear || '—')
-          + '\nRumus: SUM(SUPPLY PK baris traceable) ÷ SUM(SUPPLY PK seluruh pool)'
-          + '\nTraceable : ' + ttpFormatTtpTon_(ttmPk.supplyTraceable) + ' ton (' + ttmPk.rowsTraceable + ' baris)'
-          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmPk.supplyNoData) + ' ton (' + ttmPk.rowsNoData + ' baris)'
-          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmPk.supplyTotal) + ' ton (' + ttmPk.rowsTotal + ' baris)'
+          + '\nFormula: SUM(traceable PK supply rows) ÷ SUM(entire PK supply pool)'
+          + '\nTraceable : ' + ttpFormatTtpTon_(ttmPk.supplyTraceable) + ' ton (' + ttmPk.rowsTraceable + ' rows)'
+          + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmPk.supplyNoData) + ' ton (' + ttmPk.rowsNoData + ' rows)'
+          + '\nTotal pool: ' + ttpFormatTtpTon_(ttmPk.supplyTotal) + ' ton (' + ttmPk.rowsTotal + ' rows)'
           + ttpFormatTtmNodataBreakdown_(ttmPk, 'pk')
-          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · SUM kolom SUPPLY PK (AV) > 0'
-          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters (jumlah 1 tahun, bukan per quarter)';
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · SUM SUPPLY PK column (AV) > 0'
+          + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters (full-year total, not per quarter)';
       } else {
-        ttmPkEl.title = 'Tidak ada data PK (MILL/TRADER/REFINERY) di Mill Onboarding untuk tahun ini';
+        ttmPkEl.title = 'No PK data (MILL/TRADER/REFINERY) in Mill Onboarding for this year';
       }
     }
   }
@@ -8420,7 +8417,7 @@ function initDashboardApp() {
   function ttpModalSubdistrictHtml_(field, val, village) {
     const opts = ttpGetSubdistrictsForVillage_(village);
     const sel = String(val || '').trim();
-    let optHtml = '<option value="">— Pilih —</option>';
+    let optHtml = '<option value="">— Select —</option>';
     opts.forEach(function(o) {
       optHtml += '<option value="' + escHtml(o) + '"' + (o === sel ? ' selected' : '') + '>' + escHtml(o) + '</option>';
     });
@@ -8445,7 +8442,7 @@ function initDashboardApp() {
   function ttpModalLegalitasHtml_(field, val) {
     const opts = ttpModalLegalitasOptions_(val);
     const sel = String(val || '').trim();
-    let optHtml = '<option value="">— Pilih —</option>';
+    let optHtml = '<option value="">— Select —</option>';
     opts.forEach(function(o) {
       const short = o.length > 40 ? o.slice(0, 37) + '…' : o;
       optHtml += '<option value="' + escHtml(o) + '"' + (o === sel ? ' selected' : '') + ' title="' + escHtml(o) + '">' + escHtml(short) + '</option>';
@@ -8500,7 +8497,7 @@ function initDashboardApp() {
     return ''
       + '<div class="form-field full ttp-dealer-villages-panel-wrap" id="ttpDealerVillagesPanel">'
       + '<label>Village</label>'
-      + '<p class="ttp-dealer-villages-desc" id="ttpDealerVillagesDesc">Ketik nama village.</p>'
+      + '<p class="ttp-dealer-villages-desc" id="ttpDealerVillagesDesc">Type village name.</p>'
       + '<div class="ttp-dealer-villages-list" id="ttpDealerVillagesList">' + rowsHtml + '</div>'
       + '<button type="button" class="btn-sm btn-outline-warm" id="ttpDealerAddVillage" hidden>+ Tambah village</button>'
       + '</div>';
@@ -8511,7 +8508,7 @@ function initDashboardApp() {
       + '<div class="ttp-dealer-village-row">'
       + '<input type="text" class="ttp-dealer-village-inp" value="' + escHtml(String(value || '')) + '"'
       + ' placeholder="Nama village" autocomplete="off">'
-      + '<button type="button" class="ttp-dealer-village-rm" title="Hapus">×</button>'
+      + '<button type="button" class="ttp-dealer-village-rm" title="Remove">×</button>'
       + '</div>';
   }
 
@@ -8542,8 +8539,8 @@ function initDashboardApp() {
     if (addBtn) addBtn.hidden = !isDealer;
     if (desc) {
       desc.textContent = isDealer
-        ? 'Isi nama village (ketik manual). Satu village = satu baris data. Lat/Long hanya di baris pertama.'
-        : 'Ketik nama village.';
+        ? 'Enter village name (type manually). One village = one data row. Lat/Long only on the first row.'
+        : 'Type village name.';
     }
     panel.querySelectorAll('.ttp-dealer-village-rm').forEach(function(btn) {
       btn.hidden = !isDealer;
@@ -8598,7 +8595,7 @@ function initDashboardApp() {
     const category = categoryCol ? data[categoryCol] : '';
     const villages = ttpCollectDealerVillages_();
     if (!villages.length) {
-      throw new Error('Village wajib diisi.');
+      throw new Error('Village is required.');
     }
     if (villageCol) data[villageCol] = villages[0];
     if (!ttpIsDealerCategory_(category)) return null;
@@ -8672,7 +8669,7 @@ function initDashboardApp() {
     const prev = keepValue ? String(subSel.value || '').trim() : '';
     const village = ttpModalVillageValue_(grid);
     const opts = ttpGetSubdistrictsForVillage_(village);
-    let html = '<option value="">— Pilih —</option>';
+    let html = '<option value="">— Select —</option>';
     opts.forEach(function(o) {
       html += '<option value="' + escHtml(o) + '">' + escHtml(o) + '</option>';
     });
@@ -8959,7 +8956,7 @@ function initDashboardApp() {
   function mountTtpDetailOverlayOnce_() {
     const overlay = document.getElementById('ttpDetailOverlay');
     if (!overlay) {
-      console.warn('[TTP] #ttpDetailOverlay tidak ditemukan — cek partials/modals-shared.html di index.html.');
+      console.warn('[TTP] #ttpDetailOverlay not found — check partials/modals-shared.html in index.html.');
       return null;
     }
     if (overlay.parentElement !== document.body) {
@@ -9007,8 +9004,8 @@ function initDashboardApp() {
     try {
       bodyEl.innerHTML = buildTtpDetailBodyHtml_(row);
     } catch (err) {
-      console.error('[TTP] Gagal render detail supplier', err, row);
-      bodyEl.innerHTML = '<p class="ttp-detail-error">Gagal memuat detail. Muat ulang halaman (Ctrl+Shift+R).</p>';
+      console.error('[TTP] Failed to render supplier detail', err, row);
+      bodyEl.innerHTML = '<p class="ttp-detail-error">Failed to load detail. Reload the page (Ctrl+Shift+R).</p>';
     }
 
     document.body.classList.add('ttp-detail-open');
@@ -9126,8 +9123,8 @@ function initDashboardApp() {
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
-      errorEl.innerHTML = '<span>' + escHtml('Gagal memuat data: ' + err.message) + '</span>'
-        + ' <button type="button" class="btn btn-sm" id="ttp-retry-load" style="margin-left:8px;">Coba lagi</button>';
+      errorEl.innerHTML = '<span>' + escHtml('Failed to load data: ' + err.message) + '</span>'
+        + ' <button type="button" class="btn btn-sm" id="ttp-retry-load" style="margin-left:8px;">Try again</button>';
       const retryBtn = document.getElementById('ttp-retry-load');
       if (retryBtn) {
         retryBtn.addEventListener('click', function() {
@@ -9440,7 +9437,7 @@ function initDashboardApp() {
 
       const rowsToExport = ttpApplyTableFilters_(ttpData);
 
-      if (!rowsToExport.length) { alert('Tidak ada data untuk di-export.'); return; }
+      if (!rowsToExport.length) { alert('No data to export.'); return; }
 
       if (typeof XLSX === 'undefined') {
         const script = document.createElement('script');
@@ -9544,7 +9541,7 @@ function initDashboardApp() {
     const list = document.getElementById('ttpCompanyList');
     if (!list) return;
     const filtered = query ? companies.filter(c => c.toLowerCase().includes(query)) : companies;
-    if (!filtered.length) { list.innerHTML = '<div class="ttp-dropdown-empty">Tidak ditemukan</div>'; return; }
+    if (!filtered.length) { list.innerHTML = '<div class="ttp-dropdown-empty">Not found</div>'; return; }
     list.innerHTML = filtered.map(c => {
       const checked = ttpSelectedCompanies && ttpSelectedCompanies.has(c) ? 'checked' : '';
       const id = 'ttp-co-' + btoa(encodeURIComponent(c)).replace(/[^a-zA-Z0-9]/g,'').substring(0,16);
@@ -9697,7 +9694,7 @@ function initDashboardApp() {
         + '<input type="radio" name="ttpColMode" value="' + m.id + '"' + checked + '>'
         + '<span class="ttp-col-mode-opt-body">'
         + '<span class="ttp-col-mode-opt-title">' + escHtml(m.label) + '</span>'
-        + '<span class="ttp-col-mode-opt-desc">' + escHtml(m.desc) + ' · ' + m.cols.length + ' kolom</span>'
+        + '<span class="ttp-col-mode-opt-desc">' + escHtml(m.desc) + ' · ' + m.cols.length + ' columns</span>'
         + '</span>'
         + '</label>';
     }).join('');
@@ -9993,7 +9990,7 @@ function initDashboardApp() {
     } catch(err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
-      errorEl.textContent = 'Gagal memuat data: ' + err.message;
+      errorEl.textContent = 'Failed to load data: ' + err.message;
     }
   }
 
@@ -10329,10 +10326,10 @@ function initDashboardApp() {
     var el = document.getElementById('blPickerPeriodLabel');
     if (!el) return;
     if (!blPeriodYear || !blPeriodQuarter) {
-      el.textContent = 'Periode Monitoring: semua data (quarter tidak terdeteksi)';
+      el.textContent = 'Monitoring period: all data (quarter not detected)';
       return;
     }
-    el.textContent = 'Periode Monitoring otomatis: ' + blPeriodQuarter + ' ' + blPeriodYear;
+    el.textContent = 'Monitoring period (auto): ' + blPeriodQuarter + ' ' + blPeriodYear;
   }
 
   function blFilterMonitoringByPeriod_(rows) {
@@ -10648,11 +10645,11 @@ function initDashboardApp() {
       var blMsg = err.message || String(err);
       var apiUsed = typeof getSddApiUrl === 'function' ? getSddApiUrl() : '';
       if (/blMonitoring|BL Monitoring|Sheet key not found/i.test(blMsg)) {
-        blMsg += ' — Browser masih pakai URL Apps Script lama. Buka Console (F12), jalankan: localStorage.setItem("SDD_WEBAPP_URL","' + SDD_DEFAULT_WEBAPP_URL + '"); location.reload();';
+        blMsg += '';
       }
       if (apiUsed) blMsg += ' [URL: ' + apiUsed.slice(0, 72) + '…]';
-      errorEl.innerHTML = '<p>' + escHtml('Gagal memuat data: ' + blMsg) + '</p>'
-        + '<p style="margin-top:12px;"><button type="button" class="btn-sm btn-filled" id="btn-bl-reset-api-url">Reset URL Apps Script</button></p>';
+      errorEl.innerHTML = '<p>' + escHtml('Failed to load data: ' + blMsg) + '</p>'
+        + '<p style="margin-top:12px;"><button type="button" class="btn-sm btn-filled" id="btn-bl-reset-api-url">Retry</button></p>';
       var resetBtn = document.getElementById('btn-bl-reset-api-url');
       if (resetBtn) {
         resetBtn.addEventListener('click', function() {
@@ -10815,7 +10812,7 @@ function initDashboardApp() {
 
   function openBlExportModal_(targetRow) {
     if (!blData.length && !targetRow) {
-      alert('Belum ada data BL untuk diexport.');
+      alert('No BL data to export yet.');
       return;
     }
     const modal = mountBlExportModal_();
@@ -10845,7 +10842,7 @@ function initDashboardApp() {
   function confirmBlExport_() {
     const colDefs = blReadExportColSelection_();
     if (!colDefs.length) {
-      alert('Pilih minimal satu kolom.');
+      alert('Select at least one column.');
       return;
     }
     if (blExportTargetRow) {
@@ -10902,8 +10899,8 @@ function initDashboardApp() {
     if (!el) return;
     if (!items.length) {
       const emptyMsg = type === 'ttp'
-        ? 'Belum ada — otomatis muncul saat Anda pilih baris TTM/TTP di atas'
-        : 'Belum ada yang dipilih';
+        ? 'None yet — appears automatically when you select TTM/TTP rows above'
+        : 'Nothing selected yet';
       el.innerHTML = '<span class="bl-picker-empty" style="padding:0;border:none;background:transparent;">' + escHtml(emptyMsg) + '</span>';
       return;
     }
@@ -10936,7 +10933,7 @@ function initDashboardApp() {
     if (!panel) return;
     const items = filterBlRowResults_(query);
     if (!items.length) {
-      panel.innerHTML = '<div class="bl-picker-empty">Tidak ada baris ditemukan</div>';
+      panel.innerHTML = '<div class="bl-picker-empty">No rows found</div>';
       panel.classList.add('open');
       return;
     }
@@ -11006,7 +11003,7 @@ function initDashboardApp() {
     const btn = document.getElementById('blFormSave');
     const fields = readBlFormFields_();
     if (!String(fields['BL NO.'] || '').trim()) {
-      alert('BL NO. wajib diisi.');
+      alert('BL NO. is required.');
       return;
     }
     const payload = Object.assign({}, fields);
@@ -11035,7 +11032,7 @@ function initDashboardApp() {
 
   function buildBlLinkedTableHtml_(cols, rows) {
     if (!rows || !rows.length) {
-      return '<div class="bl-linked-empty">Tidak ada data terhubung</div>';
+      return '<div class="bl-linked-empty">No linked data</div>';
     }
     const head = cols.map(function(c) { return '<th>' + escHtml(c.label) + '</th>'; }).join('');
     const body = rows.map(function(row) {
@@ -11990,7 +11987,7 @@ function initDashboardApp() {
     }
     const defs = colDefs || getQmExportColDefs_();
     if (!defs.length) {
-      alert('Pilih minimal satu kolom untuk export.');
+      alert('Select at least one column to export.');
       return;
     }
     const headers = defs.map(function(c) { return c.header; });
@@ -12083,9 +12080,9 @@ function initDashboardApp() {
     const filtered = qmGetFilteredRows_();
     const sel = filtered.filter(function(d) { return qmSelectedKeys.has(d._entityKey); }).length;
     hint.textContent = 'Export '
-      + filtered.length + ' baris terfilter'
-      + (sel ? (' · ' + sel + ' tercentang') : '')
-      + '. Pilih kolom dan baris (semua atau tercentang).';
+      + filtered.length + ' filtered rows'
+      + (sel ? (' · ' + sel + ' checked') : '')
+      + '. Select columns and rows (all or checked).';
   }
 
   function mountQmExportModal_() {
@@ -12098,7 +12095,7 @@ function initDashboardApp() {
   function openQmExportModal_() {
     const filtered = qmGetFilteredRows_();
     if (!filtered.length) {
-      alert('Belum ada data untuk diexport.');
+      alert('No data to export yet.');
       return;
     }
     const modal = mountQmExportModal_();
@@ -12125,7 +12122,7 @@ function initDashboardApp() {
   function confirmQmExport_() {
     const colDefs = qmReadExportColSelection_();
     if (!colDefs.length) {
-      alert('Pilih minimal satu kolom.');
+      alert('Select at least one column.');
       return;
     }
     const scope = document.querySelector('#qm-export-modal input[name="qmExportScope"]:checked');
@@ -12134,7 +12131,7 @@ function initDashboardApp() {
     if (mode === 'selected') {
       rows = rows.filter(function(d) { return qmSelectedKeys.has(d._entityKey); });
       if (!rows.length) {
-        alert('Centang minimal satu baris di tabel, atau pilih "Semua baris".');
+        alert('Check at least one row in the table, or choose "All rows".');
         return;
       }
     }
@@ -12173,7 +12170,7 @@ function initDashboardApp() {
     body.innerHTML = filtered.map(function(d) {
       const key = d._entityKey || '';
       const checked = qmSelectedKeys.has(key) ? ' checked' : '';
-      return '<tr class="qm-row-clickable" data-qm-key="' + escHtml(key) + '" title="Klik untuk edit status & progress">'
+      return '<tr class="qm-row-clickable" data-qm-key="' + escHtml(key) + '" title="Click to edit status & progress">'
         + '<td class="qm-check-col"><input type="checkbox" class="qm-row-check" data-qm-key="' + escHtml(key) + '"' + checked + ' aria-label="Select row" /></td>'
         + '<td><span class="mill-name">' + escHtml(d['GROUP NAME'] || '—') + '</span></td>'
         + '<td>' + escHtml(d['COMPANY NAME'] || '—') + '</td>'
@@ -12362,7 +12359,7 @@ function initDashboardApp() {
       errorEl.style.display = 'block';
       const msg = (err && err.message) ? err.message : String(err);
       if (/questionnaireMonitoring|Questionnaire Monitoring|Sheet key not found/i.test(msg)) {
-        errorEl.innerHTML = 'Tab <strong>Questionnaire Monitoring</strong> belum ada di spreadsheet. Tab akan dibuat otomatis saat save pertama — pastikan Apps Script sudah di-deploy ulang, lalu refresh.';
+        errorEl.innerHTML = 'The <strong>Questionnaire Monitoring</strong> tab does not exist in the spreadsheet yet. It will be created automatically on first save — redeploy Apps Script, then refresh.';
       } else {
         errorEl.textContent = 'Failed to load Questionnaire Monitoring: ' + msg;
       }
@@ -13158,7 +13155,7 @@ function initDashboardApp() {
     const dirty = eudrFormulaSavedSnapshot_ != null
       && eudrFormulaSnapshotKey_(cfg) !== eudrFormulaSavedSnapshot_;
     if (btn) btn.disabled = !dirty;
-    if (hint) hint.textContent = dirty ? 'Perubahan belum disimpan' : '';
+    if (hint) hint.textContent = dirty ? 'Unsaved changes' : '';
   }
 
   function eudrEnsureFfbModalPortal_() {
@@ -13258,11 +13255,11 @@ function initDashboardApp() {
       + '<label><input type="radio" name="eudrFfbMode" value="combined"' + modeCombined + ' /> Combined total</label>'
       + '</div></div>'
       + '<div class="eudr-ffb-panel eudr-ffb-panel--individual">'
-      + '<div class="eudr-ffb-panel-title">Centang kategori dulu, lalu atur threshold masing-masing (semua aktif harus lolos)</div>'
+      + '<div class="eudr-ffb-panel-title">Check categories first, then set each threshold (all active must pass)</div>'
       + '<div class="eudr-ffb-cat-rows">' + catRows + '</div>'
       + '</div>'
       + '<div class="eudr-ffb-panel eudr-ffb-panel--combined">'
-      + '<div class="eudr-ffb-panel-title">1. Centang kategori yang mau di-total</div>'
+      + '<div class="eudr-ffb-panel-title">1. Check categories to include in the total</div>'
       + '<div class="eudr-ffb-cat-rows">' + combinedRows + '</div>'
       + '<div class="eudr-ffb-combined-threshold' + combDisabled + '">'
       + '<div class="eudr-ffb-panel-title">2. Threshold total gabungan</div>'
@@ -13283,7 +13280,7 @@ function initDashboardApp() {
       + '<button type="button" class="eudr-ffb-step-btn" data-eudr-ffb-step="10" data-eudr-ffb-combined="1" aria-label="Increase 10 percent">+</button>'
       + '</div></div>'
       + '</div>'
-      + '<p class="eudr-ffb-combined-help">Centang kategori di atas, lalu atur threshold total di bawah.</p>'
+      + '<p class="eudr-ffb-combined-help">Check categories above, then set the combined threshold below.</p>'
       + '</div></div></div>';
   }
 
@@ -13874,7 +13871,7 @@ function initDashboardApp() {
     return ''
       + '<section class="eudr-detail-section eudr-detail-section--assessment">'
       + '<h3 class="eudr-detail-section-title">EUDR Assessment (saved to sheet)</h3>'
-      + '<p class="eudr-assessment-hint">Isi field di bawah lalu klik <strong>Save to Sheet</strong>. Status dihitung dari formula global di halaman utama.</p>'
+      + '<p class="eudr-assessment-hint">Fill in the fields below, then click <strong>Save to Sheet</strong>. Status is calculated from the global formula on the main page.</p>'
       + '<div class="eudr-assessment-form">'
       + yesNoHtml
       + irfHtml
@@ -14336,7 +14333,7 @@ function initDashboardApp() {
         ? ' eudr-ffb-pct--ok'
         : (d._eudrFfbFormulaPass === false && ownPlasmaLabel !== '—' ? ' eudr-ffb-pct--low' : '');
       const ffbTitle = eudrFfbFormulaExpectedLabel_(eudrGetFfbFormulaConfig_());
-      return '<tr class="eudr-row-clickable" data-eudr-key="' + escHtml(d._entityKey || '') + '" title="Klik untuk lihat detail">'
+      return '<tr class="eudr-row-clickable" data-eudr-key="' + escHtml(d._entityKey || '') + '" title="Click to view details">'
         + '<td><span class="mill-name">' + escHtml(d['GROUP NAME'] || '—') + '</span></td>'
         + '<td>' + escHtml(d['COMPANY NAME'] || '—') + '</td>'
         + '<td>' + escHtml(d['MILL NAME'] || '—') + '<div class="mill-id">' + escHtml(d['UML ID'] || '') + '</div></td>'
@@ -14414,7 +14411,7 @@ function initDashboardApp() {
       errorEl.style.display = 'block';
       const msg = (err && err.message) ? err.message : String(err);
       if (/eudrPotential|EUDR Potential|Sheet key not found/i.test(msg)) {
-        errorEl.innerHTML = 'Tab <strong>EUDR Potential</strong> belum ada di spreadsheet. Tab akan dibuat otomatis saat sync pertama — pastikan Apps Script sudah di-deploy ulang, lalu refresh.';
+        errorEl.innerHTML = 'The <strong>EUDR Potential</strong> tab does not exist in the spreadsheet yet. It will be created automatically on first sync — redeploy Apps Script, then refresh.';
       } else {
         errorEl.textContent = 'Failed to load EUDR Potential: ' + msg;
       }
@@ -15393,7 +15390,7 @@ function initDashboardApp() {
     var primary = getSddPrimaryForNblCheck_();
     if (!primary.company && !primary.group && !primary.mill) {
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Import Excel dulu — Group Name, Company Name, dan Mill Name diperlukan untuk Check NBL.', 'error');
+        window.showSddToast('Import Excel first — Group Name, Company Name, and Mill Name are required for Check NBL.', 'error');
       }
       return;
     }
@@ -15534,6 +15531,12 @@ function initDashboardApp() {
   }
   // expose globally for onclick handlers
   window.switchPanel = switchPanel;
+
+  const DEFAULT_PANEL = 'monthly-report-detail';
+  function applyDefaultPanel_() {
+    switchPanel(DEFAULT_PANEL);
+  }
+  applyDefaultPanel_();
 
   // ─── PERFORMA FACILITY ────────────────────────────────────────────────────────
   (function setupPerformaFacility_() {
@@ -16569,7 +16572,7 @@ function initDashboardApp() {
       }
       return ''
         + '<td class="pf-td-company">'
-        + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="Lihat profil mill">'
+        + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="View mill profile">'
         + '<span class="mill-name">' + escHtml(c.company) + '</span>'
         + '</button></td>';
     }
@@ -16582,12 +16585,12 @@ function initDashboardApp() {
         const src = pfAllMillRowsForLookup_();
         const row = src.find(function(r) { return r._row === num; });
         if (!row) {
-          alert('Profil mill tidak ditemukan di Mill Registry.');
+          alert('Mill profile not found in Mill Registry.');
           return;
         }
         openMillProfile(row);
       } catch (err) {
-        alert('Gagal membuka profil mill: ' + (err && err.message ? err.message : err));
+        alert('Failed to open mill profile: ' + (err && err.message ? err.message : err));
       }
     }
 
@@ -16632,7 +16635,7 @@ function initDashboardApp() {
       }).join('');
       return '<div class="pf-detail-wrap pf-detail-wrap--pk">'
         + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span>'
-        + '<span class="pf-detail-hint">Klik nama company untuk profil mill</span></div>'
+        + '<span class="pf-detail-hint">Click company name for mill profile</span></div>'
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-group"/><col class="pf-ncol-company"/><col class="pf-ncol-cert"/>'
         + '<col class="pf-ncol-status"/><col class="pf-ncol-status"/>'
@@ -16842,7 +16845,7 @@ function initDashboardApp() {
       }).join('');
       return '<div class="pf-detail-wrap">'
         + '<div class="pf-detail-label">Company breakdown <span class="pf-detail-count">' + companies.length + '</span>'
-        + '<span class="pf-detail-hint">Klik nama company untuk profil mill</span></div>'
+        + '<span class="pf-detail-hint">Click company name for mill profile</span></div>'
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-group" /><col class="pf-ncol-company" /><col class="pf-ncol-cert" />'
         + '<col class="pf-ncol-status" /><col class="pf-ncol-status" />'
@@ -17248,7 +17251,7 @@ function initDashboardApp() {
     async function pfGeneratePdf_(selections) {
       const jsPDFLib = getJsPDF();
       if (!jsPDFLib) {
-        alert('Library PDF belum siap. Refresh halaman lalu coba lagi.');
+        alert('PDF library is not ready. Refresh the page and try again.');
         return;
       }
       if (!selections || !selections.length) return;
@@ -17265,6 +17268,9 @@ function initDashboardApp() {
 
       try {
         if (!cplLoaded) await loadCompanyProfileListData();
+        await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
+        _pfAllGroups = pfBuildRows_();
+        _pfAllPkGroups = pfBuildPkGroups_();
 
         const doc = new jsPDFLib({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageW = doc.internal.pageSize.getWidth();
@@ -17299,6 +17305,7 @@ function initDashboardApp() {
             companies: filtered.companies,
             traceCalc: full.traceCalc,
             traceSource: full.traceSource,
+            ispoCalc: full.ispoCalc,
           };
         }
 
@@ -18207,11 +18214,11 @@ function initDashboardApp() {
         doc.save(fname);
 
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('PDF berhasil diunduh · Generated at ' + generatedAt, 'success');
+          window.showSddToast('PDF downloaded successfully · Generated at ' + generatedAt, 'success');
         }
       } catch (err) {
         console.error('[PF PDF]', err);
-        alert('Export PDF gagal: ' + (err && err.message ? err.message : err));
+        alert('PDF export failed: ' + (err && err.message ? err.message : err));
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Generate PDF'; }
         if (exportBtn) exportBtn.disabled = false;
@@ -18294,9 +18301,8 @@ function initDashboardApp() {
     var avatar = document.getElementById('userAvatar');
     if (dashUser) dashUser.textContent = displayEmail;
     if (avatar) avatar.textContent = (displayEmail || '?').charAt(0).toUpperCase();
-    if (typeof window.updateOverviewWelcome === 'function') window.updateOverviewWelcome(displayEmail);
     showPage('dashboard');
-    if (typeof switchPanel === 'function') switchPanel('overview');
+    applyDefaultPanel_();
     var sbNav = document.getElementById('mainSidebar');
     if (sbNav) sbNav.classList.remove('expanded');
     try {
@@ -18436,7 +18442,7 @@ function initDashboardApp() {
     window._scrSavedGroupsByKey  = {};
     window._sddAllRowsCache      = null;
     supplierWorkbook             = null;
-    if (typeof switchPanel === 'function') switchPanel('overview');
+    applyDefaultPanel_();
     showPage('login');
   }
 
@@ -18466,9 +18472,7 @@ function initDashboardApp() {
   });
 
   document.querySelectorAll('.nav-soon-back').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      switchPanel('overview');
-    });
+    btn.addEventListener('click', applyDefaultPanel_);
   });
 
   // ─── SIDEBAR TOGGLE ─────────────────────────────────────
@@ -18707,7 +18711,7 @@ function initDashboardApp() {
     ).trim().toLowerCase();
     if (!status || (status !== 'submitted' && status !== 'draft')) {
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Load screening record terlebih dahulu sebelum export PDF.', 'error');
+        window.showSddToast('Load a screening record first before exporting PDF.', 'error');
       }
       return;
     }
@@ -19483,11 +19487,11 @@ function initDashboardApp() {
       // ─── SAVE ────────────────────────────────────────────────────────────
       var safeName = supplierName.replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_').slice(0, 40);
       doc.save('SDD_' + (safeName || 'Report') + '_' + exportedAt.replace(/ /g, '-') + '.pdf');
-      if (typeof window.showSddToast === 'function') window.showSddToast('PDF berhasil di-generate ✓', 'success');
+      if (typeof window.showSddToast === 'function') window.showSddToast('PDF generated successfully ✓', 'success');
 
     } catch (pdfErr) {
       console.error('[sddExportPdf]', pdfErr);
-      if (typeof window.showSddToast === 'function') window.showSddToast('Gagal generate PDF: ' + (pdfErr.message || pdfErr), 'error');
+      if (typeof window.showSddToast === 'function') window.showSddToast('Failed to generate PDF: ' + (pdfErr.message || pdfErr), 'error');
     } finally {
       if (pdfBtn) {
         pdfBtn.disabled = false;
@@ -19745,7 +19749,7 @@ function initDashboardApp() {
     }
 
     if (colCoName < 0) {
-      return { error: 'Kolom COMPANY NAME tidak ditemukan.' };
+      return { error: 'COMPANY NAME column not found.' };
     }
 
     const qtyCol = colTotal >= 0 ? colTotal : colSumQty;
@@ -19784,7 +19788,7 @@ function initDashboardApp() {
       });
     }
 
-    if (!parsed.length) return { error: 'Tidak ada baris data yang valid.' };
+    if (!parsed.length) return { error: 'No valid data rows.' };
     return { rows: supplyCalcPercentages_(parsed) };
   }
 
@@ -19876,7 +19880,7 @@ function initDashboardApp() {
           if (draftSection) draftSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         })
         .catch(function(err) {
-          alert('Gagal membuat task list: ' + (err && err.message ? err.message : err));
+          alert('Failed to create task list: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
           proceedBtn.disabled = false;
@@ -19932,7 +19936,7 @@ function initDashboardApp() {
           const wb = XLSX.read(evt.target.result, { type: 'array' });
           const sheetName = supplyFindImportSheet_(wb, supplyType);
           if (!sheetName) {
-            errCb('Sheet supply tidak ditemukan. Gunakan template "Contoh Pengisian" atau "Supplied ' + supplyType + ' …".');
+            errCb('Supply sheet not found. Use the "Contoh Pengisian" template or "Supplied ' + supplyType + ' …".');
             return;
           }
           const parsed = supplyParseExcelRows_(wb.Sheets[sheetName]);
@@ -19944,7 +19948,7 @@ function initDashboardApp() {
           window._supplyImportSheetName = sheetName;
 
           if (fileName) fileName.textContent = f.name + ' · ' + sheetName;
-          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' baris';
+          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' rows';
           if (fileInfo) fileInfo.style.display = 'flex';
 
           buildImportPreview_(window._supplyImportParsedRows, supplyType);
@@ -19961,7 +19965,7 @@ function initDashboardApp() {
             proceedBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
           }
         } catch (ex) {
-          errCb('Gagal membaca file: ' + ex.message);
+          errCb('Failed to read file: ' + ex.message);
         }
       };
       reader.readAsArrayBuffer(f);
@@ -19996,7 +20000,7 @@ function initDashboardApp() {
           }).join('') + '</tr>';
     }).join('');
     if (parsedRows.length > 8) {
-      tBody.innerHTML += '<tr><td colspan="7" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… dan ' + (parsedRows.length - 8) + ' baris lagi</td></tr>';
+      tBody.innerHTML += '<tr><td colspan="7" style="padding:8px 10px;font-size:11px;color:#9C8080;text-align:center;">… and ' + (parsedRows.length - 8) + ' more rows</td></tr>';
     }
     wrap.style.display = 'block';
   }
@@ -20142,7 +20146,7 @@ function initDashboardApp() {
         + '<div class="supply-batch-actions">'
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--expand" data-batch="' + escHtml(b.batch_id) + '">Lihat / Edit</button>' : '')
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '">↻ Re-match</button>' : '')
-        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Hapus</button>'
+        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Delete</button>'
         + '</div>'
         + '</div>'
         + '<div class="supply-batch-table-wrap" id="supply-batch-table-' + escHtml(b.batch_id) + '" style="display:none;">'
@@ -20168,7 +20172,7 @@ function initDashboardApp() {
   }
 
   function renderSupplyBatchTable_(batch) {
-    if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">Tidak ada baris.</p>';
+    if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">No rows.</p>';
     const isSubmitted = batch.status === 'submitted';
     const supplyKind  = String(batch.supply_type || (batch.rows[0] && batch.rows[0].supply_type) || 'CPO').toUpperCase();
     const pctKey      = supplyKind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
@@ -20250,7 +20254,7 @@ function initDashboardApp() {
     const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
     const supplyKind = String(batch && (batch.supply_type || (batch.rows && batch.rows[0] && batch.rows[0].supply_type)) || 'CPO').toUpperCase();
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 10px 4px;border-top:1px solid rgba(139,26,26,0.07);flex-wrap:wrap;">'
-      + '<span style="font-size:11px;color:#9C8080;">Review di Task List draft. Submit Matched mengisi <strong>PERCENTAGE SUPPLY ' + escHtml(supplyKind) + '</strong> pada baris Mill Profile yang <strong>COMPANY NAME</strong>-nya cocok dengan Excel.</span>'
+      + '<span style="font-size:11px;color:#9C8080;">Review in Task List draft. Submit Matched fills <strong>PERCENTAGE SUPPLY ' + escHtml(supplyKind) + '</strong> on Mill Profile rows whose <strong>COMPANY NAME</strong> matches Excel.</span>'
       + '<div style="display:flex;gap:8px;">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">💾 Save as Draft</button>'
       + (matched > 0 ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-matched" data-batch="' + escHtml(batchId) + '">✓ Submit Matched (' + matched + ')</button>' : '')
@@ -20332,7 +20336,7 @@ function initDashboardApp() {
       };
       if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
         loadMillData().then(rematchWork).catch(function(err) {
-          alert('Gagal memuat Mill Profile: ' + err.message);
+          alert('Failed to load Mill Profile: ' + err.message);
         }).finally(function() { btn.disabled = false; });
       } else {
         rematchWork();
@@ -20342,7 +20346,7 @@ function initDashboardApp() {
     }
 
     if (action === 'delete-batch') {
-      if (!confirm('Hapus draft batch ' + batch.quarter + ' ' + batch.year + '? Tidak bisa dibatalkan.')) return;
+      if (!confirm('Delete draft batch ' + batch.quarter + ' ' + batch.year + '? This cannot be undone.')) return;
       window._supplyDraftBatches = window._supplyDraftBatches.filter(function(b) { return b.batch_id !== bId; });
       renderSupplyDraftList_();
       apiPost({ action: 'deleteSupplyDraft', batch_id: bId })
@@ -20353,15 +20357,15 @@ function initDashboardApp() {
     if (action === 'save-draft') {
       // Collect inline edits
       collectInlineEdits_(bId);
-      btn.textContent = 'Menyimpan…'; btn.disabled = true;
+      btn.textContent = 'Saving…'; btn.disabled = true;
       apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: {} })
         .then(function() {
-          btn.textContent = '✓ Tersimpan';
+          btn.textContent = '✓ Saved';
           setTimeout(function() { btn.textContent = '💾 Save as Draft'; btn.disabled = false; }, 2000);
         })
         .catch(function(err) {
           btn.textContent = '💾 Save as Draft'; btn.disabled = false;
-          alert('Gagal menyimpan: ' + err.message);
+          alert('Failed to save: ' + err.message);
         });
       return;
     }
@@ -20370,9 +20374,9 @@ function initDashboardApp() {
     if (action === 'submit-matched') {
       collectInlineEdits_(bId);
       const matchedRows = (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; });
-      if (!matchedRows.length) { alert('Tidak ada baris matched yang belum disubmit.'); return; }
+      if (!matchedRows.length) { alert('No matched rows pending submission.'); return; }
       const kind = String(batch.supply_type || (matchedRows[0] && matchedRows[0].supply_type) || 'CPO').toUpperCase();
-      if (!confirm('Update ' + matchedRows.length + ' baris Matched → PERCENTAGE SUPPLY ' + kind + ' di Mill Onboarding Profile?')) return;
+      if (!confirm('Update ' + matchedRows.length + ' Matched rows → PERCENTAGE SUPPLY ' + kind + ' in Mill Onboarding Profile?')) return;
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
         .then(function(res) {
@@ -20382,12 +20386,12 @@ function initDashboardApp() {
           renderSupplyDraftList_();
           millLoadPromise = null;
           if (typeof loadMillData === 'function') loadMillData();
-          const errNote = (res.errors && res.errors.length) ? ('\nCatatan: ' + res.errors.slice(0, 3).join('; ')) : '';
-          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris berhasil di-update ke Mill Profile.' + errNote);
+          const errNote = (res.errors && res.errors.length) ? ('\nNote: ' + res.errors.slice(0, 3).join('; ')) : '';
+          alert('✓ ' + (res.submitted || matchedRows.length) + ' rows updated in Mill Profile.' + errNote);
         })
         .catch(function(err) {
           btn.textContent = '✓ Submit Matched'; btn.disabled = false;
-          alert('Gagal submit: ' + err.message);
+          alert('Submit failed: ' + err.message);
         });
       return;
     }
@@ -20410,7 +20414,7 @@ function initDashboardApp() {
         })
         .catch(function(err) {
           btn.textContent = 'Submit'; btn.disabled = false;
-          alert('Gagal submit: ' + err.message);
+          alert('Submit failed: ' + err.message);
         });
       return;
     }
@@ -20425,7 +20429,7 @@ function initDashboardApp() {
       btn.disabled = true;
       supplyOpenMillModalFromDraft_(draftRow, batch, bId, rowIdx)
         .catch(function(err) {
-          alert('Gagal membuka form: ' + (err && err.message ? err.message : err));
+          alert('Failed to open form: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
           btn.textContent = label;
@@ -20690,7 +20694,7 @@ function initDashboardApp() {
       if (mrdContentEl) mrdContentEl.hidden = false;
       if (mrdErrEl) {
         mrdErrEl.hidden = false;
-        mrdErrEl.textContent = 'Gagal inisialisasi report: ' + (mrdErr && mrdErr.message ? mrdErr.message : String(mrdErr));
+        mrdErrEl.textContent = 'Failed to initialize report: ' + (mrdErr && mrdErr.message ? mrdErr.message : String(mrdErr));
       }
     }
   }
@@ -20711,7 +20715,7 @@ function initDashboardApp() {
     var _hint = document.createElement('p');
     _hint.style.cssText = 'margin:12px 0 0;font-size:13px;color:#9a7070';
     _hint.textContent =
-      'Jalankan npm run dev di folder sustain-dashboard, lalu buka URL di terminal (biasanya http://127.0.0.1:5340 — ikuti baris Local jika port lain). Jangan membuka file index.html langsung dari Finder.';
+      'Run npm run dev in the sustain-dashboard folder, then open the URL shown in the terminal (usually http://127.0.0.1:5340 — follow the Local line if the port differs). Do not open index.html directly from Finder.';
     _box.appendChild(_t);
     _box.appendChild(_p);
     _box.appendChild(_hint);

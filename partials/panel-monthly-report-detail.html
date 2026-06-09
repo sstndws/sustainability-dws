@@ -1,4 +1,4 @@
-      <div class="panel mrd-panel" id="panel-monthly-report-detail">
+      <div class="panel mrd-panel active" id="panel-monthly-report-detail">
         <div class="breadcrumb">Dashboard <span>/ Monthly Report</span></div>
         <div class="page-header mrd-page-header">
           <h1>Monthly Report</h1>
@@ -39,11 +39,11 @@
               <input type="search" id="mrdSearch" class="pf-search mrd-search" placeholder="Find across all sections…" autocomplete="off" />
             </div>
             <div class="pf-period-actions mrd-period-actions">
-              <button type="button" class="pf-export-btn mrd-export-btn" id="mrdBtnExport" title="Export laporan lengkap ke PDF">Export PDF</button>
+              <button type="button" class="pf-export-btn mrd-export-btn" id="mrdBtnExport" title="Export report to PDF">Export PDF</button>
               <button type="button" class="pf-reset-btn" id="mrdBtnRefresh" title="Reload data">Refresh</button>
             </div>
           </div>
-          <span class="pf-scope-text mrd-scope-text" id="mrdScopeText">Siap — pilih periode atau refresh untuk memuat data.</span>
+          <span class="pf-scope-text mrd-scope-text" id="mrdScopeText">Ready — select a period or refresh to load data.</span>
         </div>
 
         <div id="mrdLoading" class="mrd-loading" hidden>Loading report data…</div>
@@ -52,5 +52,35 @@
         <div id="mrdContent" class="mrd-content">
           <div class="mrd-kpi-row stats-row" id="mrdKpiRow"></div>
           <div class="mrd-sections" id="mrdSections"></div>
+        </div>
+
+        <!-- Export PDF modal -->
+        <div id="mrd-export-modal" class="pf-export-modal mrd-export-modal" style="display:none;" aria-hidden="true">
+          <div class="pf-export-modal-backdrop" id="mrdExportModalBackdrop"></div>
+          <div class="pf-export-modal-dialog" role="dialog" aria-labelledby="mrdExportModalTitle">
+            <div class="pf-export-modal-head">
+              <h3 id="mrdExportModalTitle">Export Monthly Report</h3>
+              <button type="button" class="pf-export-modal-close" id="mrdExportModalClose" aria-label="Close">✕</button>
+            </div>
+            <div class="pf-export-modal-body">
+              <p class="pf-export-hint">Choose detail level and sections. Content flows continuously — no table of contents, no blank pages.</p>
+              <p class="pf-export-meta-note"><strong>Summary</strong> = main tables + facility company breakdown (no map). <strong>Full</strong> = expanded row details and facility profiles.</p>
+              <div class="pf-export-type-row">
+                <span class="pf-export-label">Detail</span>
+                <label class="pf-export-radio"><input type="radio" name="mrdExportDetail" value="summary" checked /> Summary</label>
+                <label class="pf-export-radio"><input type="radio" name="mrdExportDetail" value="full" /> Full</label>
+              </div>
+              <div class="pf-export-facility-toolbar">
+                <span class="pf-export-label">Sections</span>
+                <button type="button" class="pf-export-link-btn" id="mrdExportSelectAll">Select all</button>
+                <button type="button" class="pf-export-link-btn" id="mrdExportSelectNone">Clear</button>
+              </div>
+              <div id="mrdExportSectionList" class="pf-export-facility-list mrd-export-section-list"></div>
+            </div>
+            <div class="pf-export-modal-foot">
+              <button type="button" class="pf-btn pf-btn--ghost" id="mrdExportCancel">Cancel</button>
+              <button type="button" class="pf-btn pf-btn--primary" id="mrdExportConfirm">Generate PDF</button>
+            </div>
+          </div>
         </div>
       </div>

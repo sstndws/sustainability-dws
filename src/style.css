@@ -6902,6 +6902,9 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   align-items: center;
   gap: 8px;
 }
+.mrd-export-modal { z-index: 9080; }
+.mrd-export-section-item span { flex: 1; }
+
 #panel-monthly-report-detail .mrd-export-btn {
   height: 32px;
   padding: 0 12px;

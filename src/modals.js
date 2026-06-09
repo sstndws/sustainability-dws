@@ -50,7 +50,7 @@ window.openViewScreeningPopup = async function() {
       mills   = (res && res.mills) ? res.mills : [];
       ffbRows = (res && res.ffb_rows) ? res.ffb_rows : [];
     } catch (e) {
-      body.innerHTML = '<div style="padding:18px;color:#991b1b;font-size:13px;">Gagal memuat data: ' + (e.message || e) + '</div>';
+      body.innerHTML = '<div style="padding:18px;color:#991b1b;font-size:13px;">Failed to load data: ' + (e.message || e) + '</div>';
       return;
     }
   }
@@ -91,7 +91,7 @@ window.openViewScreeningPopup = async function() {
       html += section('Mill Screening — ' + millName, inner);
     });
   } else {
-    html += '<div style="color:#9C8080;font-size:13px;margin-bottom:14px;padding:12px 16px;background:#f9fafb;border-radius:8px;">Tidak ada data Mill List untuk submission ini.</div>';
+    html += '<div style="color:#9C8080;font-size:13px;margin-bottom:14px;padding:12px 16px;background:#f9fafb;border-radius:8px;">No Mill List data for this submission.</div>';
   }
 
   if (ffbRows.length) {
@@ -118,10 +118,10 @@ window.openViewScreeningPopup = async function() {
       html += section('FFB Screening — ' + supplierName, inner);
     });
   } else {
-    html += '<div style="color:#9C8080;font-size:13px;padding:12px 16px;background:#f9fafb;border-radius:8px;">Tidak ada data FFB Supplier untuk submission ini.</div>';
+    html += '<div style="color:#9C8080;font-size:13px;padding:12px 16px;background:#f9fafb;border-radius:8px;">No FFB Supplier data for this submission.</div>';
   }
 
-  body.innerHTML = html || '<div style="color:#9C8080;font-size:13px;padding:12px;">Tidak ada data screening.</div>';
+  body.innerHTML = html || '<div style="color:#9C8080;font-size:13px;padding:12px;">No screening data.</div>';
 };
 
 // ── TYPE SELECTOR ──────────────────────────────────────────────
@@ -154,7 +154,7 @@ window.tmlSelectTypeCard = function(t) {
 };
 
 window.tmlTypeNext = function() {
-  if (!window._tmlScreeningType) { alert('Pilih jenis screening terlebih dahulu.'); return; }
+  if (!window._tmlScreeningType) { alert('Select screening type first.'); return; }
   document.getElementById('tml-type-overlay').style.display = 'none';
   if (window._tmlScreeningType === 'traceability') {
     window._openTmlMillPicker();
@@ -168,7 +168,7 @@ window._openTmlMillPicker = function() {
   const mills = window._tmlMillNames || [];
   const list = document.getElementById('tml-mill-list');
   if (!mills.length) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:#9C8080;font-size:13px;">Tidak ada data mill. Silakan import Excel dengan data traceability terlebih dahulu.</div>';
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:#9C8080;font-size:13px;">No mill data. Import an Excel file with traceability data first.</div>';
   } else {
     list.innerHTML = mills.map((m, i) => {
       const statusNote = window._tmlScreeningData[m] ? ' <span style="color:#8B1A1A;font-size:12px;font-weight:600;">(' + window._tmlScreeningData[m].status + ')</span>' : '';
@@ -182,7 +182,7 @@ window._openTmlMillPicker = function() {
 };
 
 window.openTmlScreeningForm = function() {
-  if (!window._tmlSelectedMill) { alert('Pilih Mill terlebih dahulu.'); return; }
+  if (!window._tmlSelectedMill) { alert('Select a Mill first.'); return; }
   document.getElementById('tml-pick-overlay').style.display = 'none';
   document.getElementById('tml-form-mill-label').textContent = 'Mill: ' + window._tmlSelectedMill;
   document.getElementById('tml-form-status').textContent = '';
@@ -328,7 +328,7 @@ window.tmlToggleHa = function(cb, haId) {
 window.saveTmlScreening = function() {
   const mill = window._tmlSelectedMill;
   if (!mill) {
-    alert('Pilih Mill terlebih dahulu.');
+    alert('Select a Mill first.');
     return;
   }
 
@@ -363,7 +363,7 @@ window.saveTmlScreening = function() {
   document.getElementById('tml-form-overlay').style.display = 'none';
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
-      'Tersimpan sementara. Klik Save as Draft di form utama untuk kirim ke Sheets.',
+      'Saved temporarily. Click Save as Draft on the main form to send to Sheets.',
       'success'
     );
   }
@@ -375,12 +375,12 @@ window.saveTmlScreening = function() {
  */
 window.deleteTmlScreening = function() {
   const mill = window._tmlSelectedMill;
-  if (!mill) { alert('Pilih Mill terlebih dahulu.'); return; }
-  if (!confirm('Apakah yakin ingin menghapus screening untuk "' + mill + '"?')) return;
+  if (!mill) { alert('Select a Mill first.'); return; }
+  if (!confirm('Are you sure you want to delete screening for "' + mill + '"?')) return;
   if (window._tmlScreeningData) delete window._tmlScreeningData[mill];
   document.getElementById('tml-form-overlay').style.display = 'none';
   if (typeof window.showSddToast === 'function') {
-    window.showSddToast('Screening TML untuk "' + mill + '" dihapus dari memori.', 'info');
+    window.showSddToast('TML screening for "' + mill + '" removed from memory.', 'info');
   }
 };
 
@@ -389,7 +389,7 @@ window._openFfbSupplierPicker = function() {
   const suppliers = window._ffbSupplierNames || [];
   const list = document.getElementById('ffb-supplier-list');
   if (!suppliers.length) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:#9C8080;font-size:13px;">Tidak ada data supplier. Silakan import Excel dengan data FFB Supplier List terlebih dahulu.</div>';
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:#9C8080;font-size:13px;">No supplier data. Import an Excel file with FFB Supplier List data first.</div>';
   } else {
     list.innerHTML = suppliers.map(s => {
       const statusNote = window._ffbScreeningData[s] ? ' <span style="color:#8B1A1A;font-size:12px;font-weight:600;">(' + window._ffbScreeningData[s].status + ')</span>' : '';
@@ -403,7 +403,7 @@ window._openFfbSupplierPicker = function() {
 };
 
 window.openFfbScreeningForm = function() {
-  if (!window._ffbSelectedSupplier) { alert('Pilih Supplier terlebih dahulu.'); return; }
+  if (!window._ffbSelectedSupplier) { alert('Select a Supplier first.'); return; }
   document.getElementById('ffb-pick-overlay').style.display = 'none';
   document.getElementById('ffb-form-supplier-label').textContent = 'Supplier: ' + window._ffbSelectedSupplier;
   document.getElementById('ffb-form-status').textContent = '';
@@ -560,7 +560,7 @@ window.ffbToggleHa = function(cb, haId) {
 window.saveFfbScreening = function() {
   const supplier = window._ffbSelectedSupplier;
   if (!supplier) {
-    alert('Pilih supplier terlebih dahulu.');
+    alert('Select a supplier first.');
     return;
   }
 
@@ -601,7 +601,7 @@ window.saveFfbScreening = function() {
   document.getElementById('ffb-form-overlay').style.display = 'none';
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
-      'Tersimpan sementara. Klik Save as Draft di form utama untuk kirim ke Sheets.',
+      'Saved temporarily. Click Save as Draft on the main form to send to Sheets.',
       'success'
     );
   }
@@ -613,11 +613,11 @@ window.saveFfbScreening = function() {
  */
 window.deleteFfbScreening = function() {
   const supplier = window._ffbSelectedSupplier;
-  if (!supplier) { alert('Pilih supplier terlebih dahulu.'); return; }
-  if (!confirm('Apakah yakin ingin menghapus screening FFB untuk "' + supplier + '"?')) return;
+  if (!supplier) { alert('Select a supplier first.'); return; }
+  if (!confirm('Are you sure you want to delete FFB screening for "' + supplier + '"?')) return;
   if (window._ffbScreeningData) delete window._ffbScreeningData[supplier];
   document.getElementById('ffb-form-overlay').style.display = 'none';
   if (typeof window.showSddToast === 'function') {
-    window.showSddToast('Screening FFB untuk "' + supplier + '" dihapus dari memori.', 'info');
+    window.showSddToast('FFB screening for "' + supplier + '" removed from memory.', 'info');
   }
 };

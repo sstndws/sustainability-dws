@@ -2,7 +2,7 @@
  * Monthly Report (Detail) — read-only compliance snapshot (fast, in-memory first).
  */
 
-import { buildMonthlyReportPdf_ } from './monthly-report-pdf.js';
+import { buildMonthlyReportPdf_, MRD_PDF_SECTIONS } from './monthly-report-pdf.js';
 
 const MRD_ROW_LIMIT = 200;
 const MRD_SDD_LIMIT = 150;
@@ -114,7 +114,7 @@ function filterColumns(columns, rows) {
 
 function renderSmartTable(columns, rows, opts) {
   opts = opts || {};
-  if (!rows.length) return opts.empty || '<p class="mrd-empty">Tidak ada data.</p>';
+  if (!rows.length) return opts.empty || '<p class="mrd-empty">No data.</p>';
   const active = filterColumns(columns, rows);
   const colCount = active.length;
   let html = (opts.note || '') + '<div class="table-scroll mrd-table-scroll"><table class="mrd-table"><thead><tr>';
@@ -152,7 +152,7 @@ function sectionHtml(id, title, desc, bodyHtml, num) {
 
 function limitNote(total, limit) {
   if (total <= limit) return '';
-  return '<p class="mrd-limit-note">Menampilkan ' + limit + ' dari ' + total + ' baris — gunakan search untuk mempersempit.</p>';
+  return '<p class="mrd-limit-note">Showing ' + limit + ' of ' + total + ' rows — use search to narrow results.</p>';
 }
 
 function filterForExport_(list, searchFn) {
@@ -176,17 +176,88 @@ async function resolveAllNblForExport_(mills) {
   return out;
 }
 
-async function exportMonthlyReport_() {
+function mrdExportDefaultSections_() {
+  return MRD_PDF_SECTIONS.map(function(s) { return s.id; }).filter(function(id) {
+    if (id === 'kpi') return true;
+    return !_expanded.has(id + ':closed');
+  });
+}
+
+function mrdMountExportModal_() {
+  const modal = document.getElementById('mrd-export-modal');
+  if (!modal) return;
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
+  }
+}
+
+function mrdRefreshExportSectionList_() {
+  const listEl = document.getElementById('mrdExportSectionList');
+  if (!listEl) return;
+  const defaults = new Set(mrdExportDefaultSections_());
+  listEl.innerHTML = MRD_PDF_SECTIONS.map(function(sec) {
+    const checked = defaults.has(sec.id) ? ' checked' : '';
+    return '<label class="pf-export-facility-item mrd-export-section-item">'
+      + '<input type="checkbox" name="mrdExportSection" value="' + esc(sec.id) + '"' + checked + ' />'
+      + '<span>' + esc(sec.label) + '</span>'
+      + '</label>';
+  }).join('');
+}
+
+function mrdOpenExportModal_() {
   if (!_snapshot) {
-    alert('Data belum dimuat — tunggu sebentar lalu coba lagi.');
+    alert('Data not loaded yet — wait a moment and try again.');
     return;
   }
   if (!_deps.getJsPDF) {
-    alert('Library PDF belum siap.');
+    alert('PDF library is not ready.');
+    return;
+  }
+  const modal = document.getElementById('mrd-export-modal');
+  if (!modal) return;
+  mrdRefreshExportSectionList_();
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function mrdCloseExportModal_() {
+  const modal = document.getElementById('mrd-export-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function mrdExportDetailLevel_() {
+  const r = document.querySelector('input[name="mrdExportDetail"]:checked');
+  return r && r.value === 'full' ? 'full' : 'summary';
+}
+
+function mrdExportSelectedSections_() {
+  const boxes = document.querySelectorAll('input[name="mrdExportSection"]:checked');
+  const sections = Array.from(boxes).map(function(el) { return el.value; });
+  if (!sections.length) return null;
+  const order = MRD_PDF_SECTIONS.map(function(s) { return s.id; });
+  return order.filter(function(id) { return sections.indexOf(id) !== -1; });
+}
+
+async function exportMonthlyReport_(exportOpts) {
+  exportOpts = exportOpts || {};
+  if (!_snapshot) {
+    alert('Data not loaded yet — wait a moment and try again.');
+    return;
+  }
+  if (!_deps.getJsPDF) {
+    alert('PDF library is not ready.');
     return;
   }
 
-  const btn = document.getElementById('mrdBtnExport');
+  const sections = exportOpts.sections;
+  if (!sections || !sections.length) {
+    alert('Select at least one section to export.');
+    return;
+  }
+
+  const btn = document.getElementById('mrdExportConfirm') || document.getElementById('mrdBtnExport');
   const prevTxt = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
 
@@ -225,6 +296,8 @@ async function exportMonthlyReport_() {
       getJsPDF: _deps.getJsPDF,
       year: _year,
       month: _month,
+      detailLevel: exportOpts.detailLevel || 'summary',
+      sections: sections,
       data: {
         stats: s.stats,
         sdd: filterForExport_(s.sdd, function(r) {
@@ -248,13 +321,62 @@ async function exportMonthlyReport_() {
     });
 
     if (typeof window.showSddToast === 'function') {
-      window.showSddToast('PDF Monthly Report berhasil diunduh.', 'success');
+      window.showSddToast('PDF Monthly Report downloaded successfully.', 'success');
     }
   } catch (err) {
     console.error('[MRD PDF]', err);
-    alert('Export PDF gagal: ' + (err && err.message ? err.message : String(err)));
+    alert('PDF export failed: ' + (err && err.message ? err.message : String(err)));
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = prevTxt || 'Export PDF'; }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevTxt || (btn.id === 'mrdExportConfirm' ? 'Generate PDF' : 'Export PDF');
+    }
+  }
+}
+
+function mrdBindExportModalOnce_() {
+  mrdMountExportModal_();
+
+  const closeIds = ['mrdExportModalClose', 'mrdExportCancel', 'mrdExportModalBackdrop'];
+  closeIds.forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el && !el._mrdExportBound) {
+      el._mrdExportBound = true;
+      el.addEventListener('click', mrdCloseExportModal_);
+    }
+  });
+
+  const selectAll = document.getElementById('mrdExportSelectAll');
+  if (selectAll && !selectAll._mrdExportBound) {
+    selectAll._mrdExportBound = true;
+    selectAll.addEventListener('click', function() {
+      document.querySelectorAll('input[name="mrdExportSection"]').forEach(function(el) { el.checked = true; });
+    });
+  }
+
+  const selectNone = document.getElementById('mrdExportSelectNone');
+  if (selectNone && !selectNone._mrdExportBound) {
+    selectNone._mrdExportBound = true;
+    selectNone.addEventListener('click', function() {
+      document.querySelectorAll('input[name="mrdExportSection"]').forEach(function(el) { el.checked = false; });
+    });
+  }
+
+  const confirm = document.getElementById('mrdExportConfirm');
+  if (confirm && !confirm._mrdExportBound) {
+    confirm._mrdExportBound = true;
+    confirm.addEventListener('click', async function() {
+      const sections = mrdExportSelectedSections_();
+      if (!sections) {
+        alert('Select at least one section to export.');
+        return;
+      }
+      mrdCloseExportModal_();
+      await exportMonthlyReport_({
+        detailLevel: mrdExportDetailLevel_(),
+        sections: sections,
+      });
+    });
   }
 }
 
@@ -420,7 +542,7 @@ function renderKpis(stats) {
     { n: stats.sddSubmitted, l: 'SDD Submitted', s: stats.sddDraft + ' draft' },
     { n: stats.totalMills, l: 'Total Mills', s: stats.totalGroups + ' groups' },
     { n: stats.highRisk, l: 'High Risk', s: stats.nblMills + ' NBL mills', hot: true },
-    { n: stats.emptyTraceMills, l: 'Empty Traceability', s: 'mills tanpa supplier' },
+    { n: stats.emptyTraceMills, l: 'Empty Traceability', s: 'mills without suppliers' },
     { n: stats.grievances, l: 'Grievances', s: 'in period' },
     { n: stats.eudrPotential, l: 'EUDR Potential', s: 'by formula' },
   ];
@@ -433,7 +555,7 @@ function renderKpis(stats) {
 }
 
 function renderSddSection(data, loading) {
-  if (loading) return '<p class="mrd-empty mrd-empty--loading">Memuat Supplier Due Diligence…</p>';
+  if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading Supplier Due Diligence…</p>';
   const rows = data.filter(function(r) {
     return matchesSearch([
       r['SCR - Screening Status'], r['Group Name'], r['Grup Name'], r['Mill Name'],
@@ -448,7 +570,7 @@ function renderSddSection(data, loading) {
     { label: 'Updated', raw: function(r) { return String(r.updated_at || r['SCR - Last Updated'] || '').slice(0, 10); } },
   ];
   return renderSmartTable(cols, rows, {
-    empty: '<p class="mrd-empty">Belum ada data SDD untuk periode ini.</p>',
+    empty: '<p class="mrd-empty">No SDD data for this period yet.</p>',
     note: limitNote(data.length, MRD_SDD_LIMIT),
   });
 }
@@ -485,7 +607,7 @@ function renderMillSection(rows) {
     { label: 'Province', raw: function(row) { return row._render.r['PROVINCE']; } },
   ];
   return renderSmartTable(cols, tableRows, {
-    empty: '<p class="mrd-empty">Tidak ada mill untuk periode ini.</p>',
+    empty: '<p class="mrd-empty">No mills for this period.</p>',
     note: limitNote(filtered.length, MRD_ROW_LIMIT),
   });
 }
@@ -507,7 +629,7 @@ function renderMillDetailHtml_(item, r) {
     });
     html += '</ul>';
   } else if (isNblYes(item.nbl) && !item.nblBy) {
-    html += '<p class="mrd-detail-note">NBL source — klik expand lagi jika belum muncul.</p>';
+    html += '<p class="mrd-detail-note">NBL source — click expand again if it has not appeared.</p>';
   }
   if (isHighRisk(item.risk)) {
     html += '<p class="mrd-detail-note mrd-detail-note--risk">High risk supplier — review mitigation plan.</p>';
@@ -535,8 +657,8 @@ function renderTraceSection(emptyMills, ttpByMill) {
     const out = { _render: { r: r, expId: expId, isExp: isExp, millName: millName, subRows: subRows } };
     out._after = isExp
       ? '<tr class="mrd-detail-row"><td colspan="99"><div class="mrd-detail-panel mrd-detail-panel--trace">'
-        + '<p class="mrd-detail-note">Belum ada supplier FFB (tahun ' + esc(_year) + ').'
-        + (subRows.length ? ' · ' + subRows.length + ' baris TTP tanpa supplier.' : '')
+        + '<p class="mrd-detail-note">No FFB supplier yet (year ' + esc(_year) + ').'
+        + (subRows.length ? ' · ' + subRows.length + ' TTP rows without supplier.' : '')
         + '</p></div></td></tr>'
       : '';
     return out;
@@ -550,10 +672,10 @@ function renderTraceSection(emptyMills, ttpByMill) {
     { label: 'Group', raw: function(row) { return row._render.r['GROUP NAME']; } },
     { label: 'Company', raw: function(row) { return row._render.r['COMPANY NAME']; } },
     { label: 'Mill', raw: function(row) { return row._render.millName; } },
-    { label: 'Status', always: true, render: function() { return '<span class="mrd-pill mrd-pill--warn">Kosong</span>'; } },
+    { label: 'Status', always: true, render: function() { return '<span class="mrd-pill mrd-pill--warn">Empty</span>'; } },
   ];
   return renderSmartTable(cols, tableRows, {
-    empty: '<p class="mrd-empty mrd-empty--ok">Semua mill sudah punya data supplier untuk ' + esc(_year) + '.</p>',
+    empty: '<p class="mrd-empty mrd-empty--ok">All mills already have supplier data for ' + esc(_year) + '.</p>',
     note: limitNote(emptyMills.length, MRD_ROW_LIMIT),
   });
 }
@@ -610,7 +732,7 @@ function renderGrvSection(rows) {
     };
   }));
   return renderSmartTable(cols, tableRows, {
-    empty: '<p class="mrd-empty">Tidak ada grievance untuk periode ini.</p>',
+    empty: '<p class="mrd-empty">No grievances for this period.</p>',
     note: limitNote(rows.length, MRD_ROW_LIMIT),
   });
 }
@@ -624,7 +746,7 @@ function renderNblSection(rows) {
     { label: 'Company', raw: function(r) { return r.company; } },
   ];
   return renderSmartTable(cols, filtered, {
-    empty: '<p class="mrd-empty">Tidak ada entri NBL.</p>',
+    empty: '<p class="mrd-empty">No NBL entries.</p>',
     note: limitNote(rows.length, MRD_ROW_LIMIT),
   });
 }
@@ -643,7 +765,7 @@ function renderFacilitySection(facility) {
       { label: '% Traceable', hasData: function(g) { return !isZeroish(g.tracePct); }, raw: function(g) { return g.tracePct; }, tdCls: 'mrd-td-pct' },
     ];
     const table = renderSmartTable(cols, visible, {
-      empty: '<p class="mrd-empty">Tidak ada data ' + esc(title) + '.</p>',
+      empty: '<p class="mrd-empty">No ' + esc(title) + ' data.</p>',
       note: limitNote(groups.length, MRD_ROW_LIMIT),
     });
     return '<div class="mrd-facility-block mrd-facility-block--' + accent + '"><div class="mrd-facility-title">' + esc(title) + '</div>' + table + '</div>';
@@ -651,15 +773,15 @@ function renderFacilitySection(facility) {
   const cpo = renderBlock('CPO Facility Performance', facility.cpo, 'cpo');
   const pk = renderBlock('PK Facility Performance', facility.pk, 'pk');
   if (cpo.indexOf('mrd-empty') !== -1 && pk.indexOf('mrd-empty') !== -1) {
-    return '<p class="mrd-empty">Tidak ada data facility performance.</p>';
+    return '<p class="mrd-empty">No facility performance data.</p>';
   }
   return cpo + pk;
 }
 
 function renderEudrSection(rows, loading) {
-  if (loading) return '<p class="mrd-empty mrd-empty--loading">Memuat EUDR Potential…</p>';
+  if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading EUDR Potential…</p>';
   if (!rows.length && !_eudrPending) {
-    return '<p class="mrd-empty">Klik section header untuk memuat data EUDR Potential.</p>';
+    return '<p class="mrd-empty">Click the section header to load EUDR Potential data.</p>';
   }
   const filtered = rows.filter(function(item) { return matchesSearch(item.search); }).slice(0, MRD_ROW_LIMIT);
   const cols = [
@@ -671,7 +793,7 @@ function renderEudrSection(rows, loading) {
     { label: 'Supply To', raw: function(item) { return item.row['SUPPLY TO']; } },
   ];
   return renderSmartTable(cols, filtered, {
-    empty: '<p class="mrd-empty">Tidak ada mill berstatus Potential.</p>',
+    empty: '<p class="mrd-empty">No mills with Potential status.</p>',
     note: limitNote(rows.length, MRD_ROW_LIMIT),
   });
 }
@@ -776,7 +898,7 @@ async function loadSupplementalInBackground(gen) {
     updateScopeText();
   } catch (err) {
     if (gen !== _loadGen) return;
-    updateScopeText('data tambahan: timeout — refresh untuk coba lagi');
+    updateScopeText('supplemental data: timeout — refresh to try again');
   }
 }
 
@@ -795,7 +917,7 @@ async function loadSddInBackground(gen) {
     if (gen !== _loadGen) return;
     _snapshot = rebuildSnapshot_({ sddLoading: false });
     renderAll();
-    updateScopeText('SDD: ' + (err && err.message ? err.message : 'gagal memuat'));
+    updateScopeText('SDD: ' + (err && err.message ? err.message : 'failed to load'));
   }
 }
 
@@ -808,11 +930,11 @@ async function loadAndRender() {
     // Selalu tampilkan UI dari cache memori — jangan blokir menunggu network
     _snapshot = rebuildSnapshot_({ eudrLoading: false });
     renderAll();
-    updateScopeText('memuat data…');
+    updateScopeText('loading data…');
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
-      errEl.textContent = 'Gagal render report: ' + (err && err.message ? err.message : String(err));
+      errEl.textContent = 'Failed to render report: ' + (err && err.message ? err.message : String(err));
     }
   } finally {
     setUiLoading(false);
@@ -892,9 +1014,8 @@ function bindOnce() {
     loadAndRender();
   });
 
-  document.getElementById('mrdBtnExport')?.addEventListener('click', function() {
-    exportMonthlyReport_();
-  });
+  document.getElementById('mrdBtnExport')?.addEventListener('click', mrdOpenExportModal_);
+  mrdBindExportModalOnce_();
 
   panel.addEventListener('click', function(e) {
     const toggleSec = e.target.closest('[data-mrd-toggle]');

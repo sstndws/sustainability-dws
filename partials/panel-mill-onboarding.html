@@ -1,5 +1,5 @@
 <!-- ── MILL ONBOARDING PANEL ── -->
-<div class="panel active" id="panel-mill-onboarding">
+<div class="panel" id="panel-mill-onboarding">
   <div class="breadcrumb">Dashboard <span>/ Mill Onboarding</span></div>
   <div class="page-header">
     <h1>Mill Onboarding</h1>
@@ -54,14 +54,14 @@
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
       <div>
         <div style="font-size:14px;font-weight:700;color:#1A0A0A;">Submitted Supplier Screenings</div>
-        <div style="font-size:12px;color:#9C8080;margin-top:2px;">Screenings yang sudah disubmit — klik untuk tambah ke Mill Registry</div>
+        <div style="font-size:12px;color:#9C8080;margin-top:2px;">Submitted screenings — click to add to Mill Registry</div>
       </div>
       <span id="mill-task-count" style="font-size:12px;font-weight:700;color:#8B1A1A;background:rgba(139,26,26,0.08);padding:4px 12px;border-radius:999px;">— entries</span>
     </div>
     <div id="mill-task-list-body" style="display:flex;flex-direction:column;gap:8px;"></div>
     <div id="mill-task-empty" style="display:none;padding:40px;text-align:center;color:#9C8080;font-size:14px;">
-      Belum ada submitted screening yang tersedia.<br>
-      <span style="font-size:12px;">Submit screening di Supplier Due Diligence terlebih dahulu.</span>
+      No submitted screenings available yet.<br>
+      <span style="font-size:12px;">Submit a screening in Supplier Due Diligence first.</span>
     </div>
 
     <!-- ── Supply Import (new) ── -->
@@ -78,7 +78,7 @@
       </div>
       <div id="supply-draft-list" style="display:flex;flex-direction:column;gap:10px;"></div>
       <div id="supply-draft-empty" style="display:none;padding:32px;text-align:center;color:#9C8080;font-size:13px;">
-        Belum ada draft import. Klik <strong>Import Supply Excel</strong> untuk mulai.
+        No import draft yet. Click <strong>Import Supply Excel</strong> to start.
       </div>
     </div>
   </div>
@@ -91,7 +91,7 @@
         <div style="padding:22px 26px 16px;border-bottom:1px solid rgba(139,26,26,0.08);display:flex;align-items:center;justify-content:space-between;">
           <div>
             <div style="font-size:16px;font-weight:800;color:#1A0A0A;">Import Supply Data</div>
-            <div style="font-size:12px;color:#9C8080;margin-top:3px;">Pilih produk (CPO/PK), periode, lalu upload Excel supply</div>
+            <div style="font-size:12px;color:#9C8080;margin-top:3px;">Select product (CPO/PK), period, then upload supply Excel</div>
           </div>
           <button type="button" id="btn-supply-import-close" style="width:30px;height:30px;border-radius:8px;border:none;background:rgba(139,26,26,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -119,12 +119,12 @@
 
           <!-- Step 2: Period -->
           <div style="margin-bottom:20px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">2. Pilih Periode</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">2. Select Period</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
               <div style="flex:1;min-width:130px;">
                 <label style="display:block;font-size:11px;font-weight:600;color:#5A4040;margin-bottom:5px;">Quarter</label>
                 <select id="supply-import-quarter" style="width:100%;height:36px;border:1.5px solid rgba(139,26,26,0.2);border-radius:8px;padding:0 10px;font-size:13px;font-weight:600;color:#1A0A0A;background:#fff;">
-                  <option value="">— Pilih Quarter —</option>
+                  <option value="">— Select Quarter —</option>
                   <option value="Q1">Q1 (Jan–Mar)</option>
                   <option value="Q2">Q2 (Apr–Jun)</option>
                   <option value="Q3">Q3 (Jul–Sep)</option>
@@ -134,7 +134,7 @@
               <div style="flex:1;min-width:130px;">
                 <label style="display:block;font-size:11px;font-weight:600;color:#5A4040;margin-bottom:5px;">Year</label>
                 <select id="supply-import-year" style="width:100%;height:36px;border:1.5px solid rgba(139,26,26,0.2);border-radius:8px;padding:0 10px;font-size:13px;font-weight:600;color:#1A0A0A;background:#fff;" id="supply-import-year">
-                  <option value="">— Pilih Year —</option>
+                  <option value="">— Select Year —</option>
                 </select>
               </div>
             </div>
@@ -145,7 +145,7 @@
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#8B1A1A;margin-bottom:10px;">3. Upload File Excel</div>
             <label id="supply-import-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed rgba(139,26,26,0.25);border-radius:12px;padding:30px 20px;cursor:pointer;transition:background 150ms;background:#fdfafa;" for="supply-import-file-input">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C05050" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
-              <span style="font-size:13px;font-weight:600;color:#5A3030;">Drag &amp; drop atau klik untuk pilih file</span>
+              <span style="font-size:13px;font-weight:600;color:#5A3030;">Drag &amp; drop or click to choose a file</span>
               <span style="font-size:11px;color:#9C8080;">.xlsx · sheet &quot;Contoh Pengisian&quot; atau &quot;Supplied CPO/PK …&quot;</span>
               <input type="file" id="supply-import-file-input" accept=".xlsx,.xls" style="display:none;">
             </label>
@@ -206,10 +206,10 @@
           <div class="ttp-dropdown-head">
             <span class="ttp-dropdown-title">Nilai di tabel &amp; PDF</span>
             <div class="ttp-dropdown-actions">
-              <button type="button" id="millPdfDimResetAll">Reset semua</button>
+              <button type="button" id="millPdfDimResetAll">Reset all</button>
             </div>
           </div>
-          <p class="mill-pdf-toolbar-hint">Kosongkan semua centang pada satu dimensi = tidak membatasi dimensi itu. Mempengaruhi baris yang tampil di tabel registry dan baris yang diekspor ke PDF. Kombinasi dengan chip NBL / Non-NBL, filter kolom header, dan kotak pencarian di atas.</p>
+          <p class="mill-pdf-toolbar-hint">Clearing all checkboxes in one dimension = no limit on that dimension. Affects rows shown in the registry table and rows exported to PDF. Combines with NBL / Non-NBL chips, header column filters, and the search box above.</p>
           <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="quarter">
             <div class="mill-pdf-dim-head">
               <span>Quarter</span>
@@ -255,9 +255,9 @@
           Columns PDF
           <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
-        <div class="ttp-dropdown-panel" id="millPdfColsPanel" role="region" aria-label="Pilih kolom PDF">
+        <div class="ttp-dropdown-panel" id="millPdfColsPanel" role="region" aria-label="Select PDF columns">
           <div class="ttp-dropdown-head">
-            <span class="ttp-dropdown-title">Kolom di PDF</span>
+            <span class="ttp-dropdown-title">PDF columns</span>
             <div class="ttp-dropdown-actions">
               <button type="button" id="millPdfColAll">Semua</button>
               <button type="button" id="millPdfColDefault">Default</button>
@@ -266,7 +266,7 @@
           <div class="ttp-dropdown-list" id="millPdfColList"></div>
         </div>
       </div>
-      <button type="button" class="ttp-btn-export-xlsx mill-pdf-export-btn" id="btn-mill-export-pdf" title="Ekspor baris yang memenuhi filter ke PDF">
+      <button type="button" class="ttp-btn-export-xlsx mill-pdf-export-btn" id="btn-mill-export-pdf" title="Export filtered rows to PDF">
         <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h4M10 16h7"/></svg></span>
         Export PDF
       </button>

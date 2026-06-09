@@ -7,7 +7,7 @@
       <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Start Screening</div>
       <button onclick="document.getElementById('tml-type-overlay').style.display='none'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
-    <div style="font-size:13px;color:#9C8080;margin-bottom:24px;">Pilih jenis screening yang akan dilakukan</div>
+    <div style="font-size:13px;color:#9C8080;margin-bottom:24px;">Select the type of screening to perform</div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
       <label id="type-card-trace" onclick="window._tmlScreeningType='traceability';window.tmlSelectTypeCard('trace')" style="display:flex;align-items:flex-start;gap:14px;cursor:pointer;padding:16px 18px;border-radius:10px;border:1.5px solid rgba(74,28,28,0.15);transition:all 0.18s;position:relative;">
         <div style="width:38px;height:38px;border-radius:8px;background:rgba(139,26,26,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -47,7 +47,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div>
         <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Screening Traceability</div>
-        <div style="font-size:13px;color:#9C8080;margin-top:3px;">Pilih Mill yang akan di-screening. Draft/Submitted akan ditandai dan bisa dibuka kembali.</div>
+        <div style="font-size:13px;color:#9C8080;margin-top:3px;">Select a Mill to screen. Draft/Submitted entries will be marked and can be reopened.</div>
       </div>
       <button onclick="document.getElementById('tml-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
@@ -65,7 +65,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div>
         <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Screening FFB Supplier List</div>
-        <div style="font-size:13px;color:#9C8080;margin-top:3px;">Pilih Supplier yang akan di-screening. Draft/Submitted akan ditandai dan bisa dibuka kembali.</div>
+        <div style="font-size:13px;color:#9C8080;margin-top:3px;">Select a Supplier to screen. Draft/Submitted entries will be marked and can be reopened.</div>
       </div>
       <button onclick="document.getElementById('ffb-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
@@ -191,12 +191,12 @@
     </div>
 
     <div style="font-size:11px;color:#9C8080;margin-bottom:12px;padding:8px 12px;background:rgba(74,28,28,0.04);border-radius:6px;border-left:2px solid rgba(74,28,28,0.2);">
-      💡 Data screening akan dikirim ke Sheets saat Anda klik <strong>Save as Draft / Submit</strong> di form utama.
+      💡 Screening data will be sent to Sheets when you click <strong>Save as Draft / Submit</strong> on the main form.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
       <button onclick="document.getElementById('tml-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.deleteTmlScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#EF4444;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Delete</button>
-      <button onclick="window.saveTmlScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Simpan &amp; Kembali</button>
+      <button onclick="window.saveTmlScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Save &amp; Back</button>
     </div>
   </div>
 </div>
@@ -358,12 +358,12 @@
     </div>
 
     <div style="font-size:11px;color:#9C8080;margin-bottom:12px;padding:8px 12px;background:rgba(74,28,28,0.04);border-radius:6px;border-left:2px solid rgba(74,28,28,0.2);">
-      💡 Data screening akan dikirim ke Sheets saat Anda klik <strong>Save as Draft / Submit</strong> di form utama.
+      💡 Screening data will be sent to Sheets when you click <strong>Save as Draft / Submit</strong> on the main form.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
       <button onclick="document.getElementById('ffb-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.deleteFfbScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#EF4444;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Delete</button>
-      <button onclick="window.saveFfbScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Simpan &amp; Kembali</button>
+      <button onclick="window.saveFfbScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Save &amp; Back</button>
     </div>
   </div>
 </div>
