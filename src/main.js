@@ -15532,7 +15532,7 @@ function initDashboardApp() {
   // expose globally for onclick handlers
   window.switchPanel = switchPanel;
 
-  const DEFAULT_PANEL = 'monthly-report-detail';
+  const DEFAULT_PANEL = 'overview';
   function applyDefaultPanel_() {
     switchPanel(DEFAULT_PANEL);
   }
@@ -18300,6 +18300,7 @@ function initDashboardApp() {
     var avatar = document.getElementById('userAvatar');
     if (dashUser) dashUser.textContent = displayEmail;
     if (avatar) avatar.textContent = (displayEmail || '?').charAt(0).toUpperCase();
+    if (typeof window.updateOverviewWelcome === 'function') window.updateOverviewWelcome(displayEmail);
     showPage('dashboard');
     applyDefaultPanel_();
     var sbNav = document.getElementById('mainSidebar');

@@ -20,9 +20,12 @@ import * as XLSX from 'xlsx-js-style';
 window.XLSX = XLSX;
 
 import { mountLoginPage } from './login-ui.js';
+import { mountOverviewLanding, updateOverviewWelcomeFromEmail } from './overview-ui.js';
 
 // Synchronous — must run before main.js binds #btn-login-submit (no async gap before dynamic import).
 mountLoginPage(document.getElementById('login'));
+mountOverviewLanding(document.getElementById('overview-root'));
+window.updateOverviewWelcome = updateOverviewWelcomeFromEmail;
 
 const SECURE_GAS = import.meta.env.VITE_SECURE_GAS === 'true';
 window.SDD_SECURE_MODE = SECURE_GAS;
