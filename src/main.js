@@ -15536,7 +15536,6 @@ function initDashboardApp() {
   function applyDefaultPanel_() {
     switchPanel(DEFAULT_PANEL);
   }
-  applyDefaultPanel_();
 
   // ─── PERFORMA FACILITY ────────────────────────────────────────────────────────
   (function setupPerformaFacility_() {
@@ -20699,6 +20698,8 @@ function initDashboardApp() {
     }
   }
   window.initMonthlyReportDetail_ = initMonthlyReportDetail_;
+
+  applyDefaultPanel_();
 
   } catch (bootErr) {
     console.error('[initDashboardApp]', bootErr);
