@@ -3821,8 +3821,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzkndMJOo6cHN7enYsAE-voYMYc9gWP1CPgs1EL_Uoc1R-GCaOfLuvGtol6EVBYQq_5NA/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzkndMJOo6cHN7enYsAE-voYMYc9gWP1CPgs1EL_Uoc1R-GCaOfLuvGtol6EVBYQq_5NA';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyP7VTghEAEdEDRLJuaI3n2Dy2tZDG31M1kkk0za6yxz9EEJ45_7-S2BKjfqw66lInyEQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyP7VTghEAEdEDRLJuaI3n2Dy2tZDG31M1kkk0za6yxz9EEJ45_7-S2BKjfqw66lInyEQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -10335,16 +10335,39 @@ function initDashboardApp() {
   })();
 
   // ─── BL MONITORING ──────────────────────────────────────
-  const BL_FORM_FIELDS = [
-    'NO', 'LOADING PORT', 'NATION', 'BUYER', 'NATION (BUYER)',
-    'BL NO.', 'RECEIVED DATE', 'SENT TO REVIEW (DATE)', 'SEND TO EXIM (DATE)',
-    'BL DATE', 'VESSEL', 'COMODITY', 'VOLUME (TON)', 'REQUEST TYPE', 'STATUS',
+  const BL_RECORD_TYPE_FIELD = 'RECORD TYPE';
+  const BL_TYPE_SHIPPING = 'Shipping';
+  const BL_TYPE_DECLARATION = 'Declaration';
+  const BL_SHIPPING_FORM_FIELDS = [
+    'LOADING PORT', 'NATION', 'BUYER', 'NATION (BUYER)',
+    'TOTAL BL', 'BL NO.',
+    'RECEIVED DATE', 'SENT TO REVIEW (DATE)', 'SEND TO EXIM (DATE)', 'BL DATE',
+    'VESSEL', 'COMODITY', 'VOLUME (TON)', 'REQUEST TYPE', 'STATUS',
   ];
-  const BL_FIELD_LABELS = {
-    'NATION': 'NATION (Loading Port)',
-    'NATION (BUYER)': 'NATION (Buyer)',
+  const BL_DECL_FORM_FIELDS = [
+    'BUYER', 'RECEIVED DATE', 'SENT TO REQUESTER', 'PERIOD',
+    'COMMODITY SUPPLY', 'VOLUME (TON)', 'REQUEST TYPE', 'STATUS',
+  ];
+  const BL_SHIPPING_FIELD_LABELS = {
+    'NATION': 'Nation (Loading Port)',
+    'NATION (BUYER)': 'Nation (Buyer)',
+    'TOTAL BL': 'Total BL',
   };
+  const BL_DECL_FIELD_LABELS = {
+    'REQUEST TYPE': 'Requested Type',
+    'VOLUME (TON)': 'Volume',
+    'COMMODITY SUPPLY': 'Commodity Supply',
+    'SENT TO REQUESTER': 'Sent to Requester',
+  };
+  const BL_DATE_FIELDS = new Set([
+    'RECEIVED DATE', 'SENT TO REVIEW (DATE)', 'SEND TO EXIM (DATE)', 'BL DATE', 'SENT TO REQUESTER',
+  ]);
+  const BL_COMODITY_BASE_OPTIONS = [
+    'CPO', 'PK', 'Crude Palm Oil', 'Palm Kernel', 'Palm Kernel Oil', 'Palm Oil', 'CPO & PK',
+  ];
+  const BL_FIELD_LABELS = Object.assign({}, BL_SHIPPING_FIELD_LABELS, BL_DECL_FIELD_LABELS);
   const BL_EXPORT_COLUMN_DEFS = [
+    { id: 'total_bl', label: 'Total BL', header: 'TOTAL BL', field: 'TOTAL BL' },
     { id: 'loading_port', label: 'Loading Port', header: 'LOADING PORT', field: 'LOADING PORT' },
     { id: 'nation_loading', label: 'Nation (Loading Port)', header: 'NATION', field: 'NATION' },
     { id: 'buyer', label: 'Buyer', header: 'BUYER', field: 'BUYER' },
@@ -10359,6 +10382,9 @@ function initDashboardApp() {
     { id: 'volume', label: 'Volume (Ton)', header: 'VOLUME (TON)', field: 'VOLUME (TON)' },
     { id: 'request_type', label: 'Request Type', header: 'REQUEST TYPE', field: 'REQUEST TYPE' },
     { id: 'status', label: 'Status', header: 'STATUS', field: 'STATUS' },
+    { id: 'sent_requester', label: 'Sent to Requester', header: 'SENT TO REQUESTER', field: 'SENT TO REQUESTER' },
+    { id: 'period', label: 'Period', header: 'PERIOD', field: 'PERIOD' },
+    { id: 'commodity_supply', label: 'Commodity Supply', header: 'COMMODITY SUPPLY', field: 'COMMODITY SUPPLY' },
     { id: 'ttm', label: 'TTM', header: 'TTM', kind: 'ttm' },
     { id: 'ttp', label: 'TTP', header: 'TTP', kind: 'ttp' },
   ];
@@ -10368,15 +10394,41 @@ function initDashboardApp() {
     { label: 'Nation (Port)', minWidth: 100, cell: function(d) { return escHtml(d['NATION'] || '—'); } },
     { label: 'Buyer', minWidth: 120, cell: function(d) { return escHtml(d['BUYER'] || '—'); } },
     { label: 'Nation (Buyer)', minWidth: 100, cell: function(d) { return escHtml(d['NATION (BUYER)'] || '—'); } },
-    { label: 'BL No.', minWidth: 160, cell: function(d) { return '<span class="mill-id">' + escHtml(d['BL NO.'] || '—') + '</span>'; } },
-    { label: 'Received', minWidth: 100, cell: function(d) { return escHtml(d['RECEIVED DATE'] || '—'); } },
-    { label: 'Sent Review', minWidth: 100, cell: function(d) { return escHtml(d['SENT TO REVIEW (DATE)'] || '—'); } },
-    { label: 'Send Exim', minWidth: 100, cell: function(d) { return escHtml(d['SEND TO EXIM (DATE)'] || '—'); } },
-    { label: 'BL Date', minWidth: 100, cell: function(d) { return escHtml(d['BL DATE'] || '—'); } },
+    { label: 'Total BL', minWidth: 72, cell: function(d) { return escHtml(blTotalBlValue_(d) || '—'); } },
+    { label: 'BL No.', minWidth: 160, cell: function(d) { return '<span class="mill-id bl-row-key">' + escHtml(d['BL NO.'] || '—') + '</span>'; } },
+    { label: 'Received', minWidth: 100, cell: function(d) { return escHtml(blFormatDateDisplay_(d['RECEIVED DATE'])); } },
+    { label: 'Sent Review', minWidth: 100, cell: function(d) { return escHtml(blFormatDateDisplay_(d['SENT TO REVIEW (DATE)'])); } },
+    { label: 'Send Exim', minWidth: 100, cell: function(d) { return escHtml(blFormatDateDisplay_(d['SEND TO EXIM (DATE)'])); } },
+    { label: 'BL Date', minWidth: 100, cell: function(d) { return escHtml(blFormatDateDisplay_(d['BL DATE'])); } },
     { label: 'Vessel', minWidth: 120, cell: function(d) { return escHtml(d['VESSEL'] || '—'); } },
     { label: 'Comodity', minWidth: 90, cell: function(d) { return escHtml(d['COMODITY'] || '—'); } },
     { label: 'Volume (Ton)', minWidth: 100, cell: function(d) { return escHtml(d['VOLUME (TON)'] || '—'); } },
     { label: 'Request', minWidth: 90, cell: function(d) { return blRequestBadge_(d['REQUEST TYPE']); } },
+    { label: 'Status', minWidth: 100, cell: function(d) { return blStatusBadge_(d['STATUS']); } },
+    { label: 'TTM', minWidth: 80, cell: function(d) {
+      const ttmCount = (d._ttmLinks || []).length;
+      return blLinkPill_(d['TTM'] || blTtmCountLabel_(ttmCount));
+    } },
+    { label: 'TTP', minWidth: 70, cell: function(d) {
+      const ttpCount = (d._ttpLinks || []).length;
+      return blLinkPill_(d['TTP'] || blTtpCountLabel_(ttpCount));
+    } },
+    { label: '', minWidth: 110, isActions: true, cell: function(d) {
+      return ''
+        + '<div class="row-actions">'
+        + '<button type="button" class="btn-row btn-edit bl-row-edit" data-row="' + d._row + '">Edit</button>'
+        + '<button type="button" class="btn-row btn-delete bl-row-delete" data-rownum="' + d._row + '">Del</button>'
+        + '</div>';
+    } },
+  ];
+  const BL_DECL_REGISTRY_COLUMNS = [
+    { label: 'Buyer', minWidth: 140, cell: function(d) { return '<span class="bl-row-key">' + escHtml(d['BUYER'] || '—') + '</span>'; } },
+    { label: 'Received', minWidth: 100, cell: function(d) { return escHtml(blFormatDateDisplay_(d['RECEIVED DATE'])); } },
+    { label: 'Sent to Requester', minWidth: 120, cell: function(d) { return escHtml(blFormatDateDisplay_(d['SENT TO REQUESTER'])); } },
+    { label: 'Period', minWidth: 90, cell: function(d) { return escHtml(d['PERIOD'] || '—'); } },
+    { label: 'Commodity Supply', minWidth: 120, cell: function(d) { return escHtml(d['COMMODITY SUPPLY'] || '—'); } },
+    { label: 'Volume', minWidth: 90, cell: function(d) { return escHtml(d['VOLUME (TON)'] || '—'); } },
+    { label: 'Requested', minWidth: 90, cell: function(d) { return blRequestBadge_(d['REQUEST TYPE']); } },
     { label: 'Status', minWidth: 100, cell: function(d) { return blStatusBadge_(d['STATUS']); } },
     { label: 'TTM', minWidth: 80, cell: function(d) {
       const ttmCount = (d._ttmLinks || []).length;
@@ -10419,8 +10471,11 @@ function initDashboardApp() {
   let blData = [];
   let blLoaded = false;
   let blLoadPromise = null;
+  let blActiveType = 'shipping';
+  let blFormRecordType = 'shipping';
   let blSearch = '';
   let blScrollToBlNo_ = '';
+  let blScrollToRowNum_ = 0;
   let blFormMode = 'add';
   let blFormRow = null;
   let blSelectedTtm = [];
@@ -10443,6 +10498,153 @@ function initDashboardApp() {
       if (row[k] != null && String(row[k]).trim() !== '') return String(row[k]).trim();
     }
     return '—';
+  }
+
+  function blResolveRecordType_(row) {
+    const raw = String(row && row[BL_RECORD_TYPE_FIELD] != null ? row[BL_RECORD_TYPE_FIELD] : '').trim().toLowerCase();
+    if (raw === 'declaration') return BL_TYPE_DECLARATION;
+    return BL_TYPE_SHIPPING;
+  }
+
+  function blIsDeclarationRow_(row) {
+    return blResolveRecordType_(row) === BL_TYPE_DECLARATION;
+  }
+
+  function blActiveRecordTypeValue_() {
+    return blActiveType === 'declaration' ? BL_TYPE_DECLARATION : BL_TYPE_SHIPPING;
+  }
+
+  function blFormFieldsForType_(type) {
+    return type === 'declaration' ? BL_DECL_FORM_FIELDS : BL_SHIPPING_FORM_FIELDS;
+  }
+
+  function blFieldLabel_(field, type) {
+    if (type === 'declaration' && BL_DECL_FIELD_LABELS[field]) return BL_DECL_FIELD_LABELS[field];
+    if (BL_SHIPPING_FIELD_LABELS[field]) return BL_SHIPPING_FIELD_LABELS[field];
+    return field;
+  }
+
+  function blTotalBlValue_(row) {
+    return String(row && (row['TOTAL BL'] || row['NO'] || '') || '').trim();
+  }
+
+  function blFormatDateDisplay_(raw) {
+    const iso = dashNormalizeToIso(raw);
+    return iso ? dashIsoToDisplay(iso) : String(raw || '').trim() || '—';
+  }
+
+  function blComodityOptions_() {
+    const seen = {};
+    const out = [];
+    BL_COMODITY_BASE_OPTIONS.forEach(function(v) {
+      const k = v.toLowerCase();
+      if (!seen[k]) { seen[k] = true; out.push(v); }
+    });
+    (blData || []).forEach(function(d) {
+      ['COMODITY', 'COMMODITY SUPPLY'].forEach(function(col) {
+        const v = String(d[col] || '').trim();
+        if (!v) return;
+        const k = v.toLowerCase();
+        if (!seen[k]) { seen[k] = true; out.push(v); }
+      });
+    });
+    return out.sort(function(a, b) { return a.localeCompare(b, 'en', { sensitivity: 'base' }); });
+  }
+
+  function blFilteredData_() {
+    const wantDecl = blActiveType === 'declaration';
+    return (blData || []).filter(function(d) {
+      return blIsDeclarationRow_(d) === wantDecl;
+    });
+  }
+
+  function buildBlSearchableSelect_(field, options, currentVal, label) {
+    const val = String(currentVal || '').trim();
+    const arrowSvg = '<svg class="cs-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    const checkSvg = '<svg class="cs-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    const triggerInner = val
+      ? '<span class="cs-value">' + escHtml(val) + '</span>'
+      : '<span class="cs-placeholder">— Select or search —</span>';
+    const opts = (options || []).slice();
+    if (val && opts.indexOf(val) === -1) opts.unshift(val);
+    const optionsHtml = '<div class="cs-option cs-option-placeholder" data-val="">— Select —</div>'
+      + opts.map(function(o) {
+        return '<div class="cs-option' + (val === o ? ' selected' : '') + '" data-val="' + escAttr_(o) + '">' + checkSvg + escHtml(o) + '</div>';
+      }).join('');
+    return '<div class="form-field bl-searchable-select">'
+      + '<label>' + escHtml(label || field) + '</label>'
+      + '<input type="hidden" data-field="' + escHtml(field) + '" value="' + escHtml(val) + '">'
+      + '<div class="custom-select-wrap bl-comodity-wrap">'
+      + '<div class="custom-select-trigger">' + triggerInner + arrowSvg + '</div>'
+      + '<div class="custom-select-dropdown">'
+      + '<input type="text" class="cs-search-input" placeholder="Search commodity..." autocomplete="off" aria-label="Search ' + escHtml(label || field) + '">'
+      + optionsHtml
+      + '</div></div></div>';
+  }
+
+  function initBlSearchableSelects_(container) {
+    if (!container) return;
+    container.querySelectorAll('.bl-searchable-select .custom-select-wrap').forEach(function(wrap) {
+      if (wrap.dataset.blSearchBound) return;
+      wrap.dataset.blSearchBound = '1';
+      const trigger = wrap.querySelector('.custom-select-trigger');
+      const dropdown = wrap.querySelector('.custom-select-dropdown');
+      const hidden = wrap.parentElement.querySelector('input[data-field]');
+      const searchInput = dropdown ? dropdown.querySelector('.cs-search-input') : null;
+      if (!trigger || !dropdown || !hidden) return;
+
+      function filterOptions_(q) {
+        const needle = String(q || '').toLowerCase().trim();
+        dropdown.querySelectorAll('.cs-option').forEach(function(opt) {
+          if (opt.classList.contains('cs-option-placeholder')) {
+            opt.classList.toggle('cs-hidden', !!needle);
+            return;
+          }
+          const text = (opt.dataset.val || opt.textContent || '').toLowerCase();
+          opt.classList.toggle('cs-hidden', needle && !text.includes(needle));
+        });
+      }
+
+      trigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const isOpen = wrap.classList.contains('open');
+        container.querySelectorAll('.custom-select-wrap.open').forEach(function(w) { w.classList.remove('open'); });
+        if (!isOpen) {
+          wrap.classList.add('open');
+          if (searchInput) {
+            searchInput.value = '';
+            filterOptions_('');
+            setTimeout(function() { searchInput.focus(); }, 0);
+          }
+        }
+      });
+
+      if (searchInput) {
+        searchInput.addEventListener('input', function() { filterOptions_(searchInput.value); });
+        searchInput.addEventListener('click', function(e) { e.stopPropagation(); });
+        searchInput.addEventListener('keydown', function(e) { e.stopPropagation(); });
+      }
+
+      dropdown.querySelectorAll('.cs-option').forEach(function(opt) {
+        opt.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const v = opt.dataset.val || '';
+          hidden.value = v;
+          const arrow = trigger.querySelector('.cs-arrow');
+          const arrowHtml = arrow ? arrow.outerHTML : '';
+          trigger.innerHTML = v
+            ? '<span class="cs-value">' + escHtml(v) + '</span>' + arrowHtml
+            : '<span class="cs-placeholder">— Select or search —</span>' + arrowHtml;
+          dropdown.querySelectorAll('.cs-option').forEach(function(o) { o.classList.toggle('selected', o === opt); });
+          wrap.classList.remove('open');
+        });
+      });
+    });
+  }
+
+  function blFindBuyerInput_() {
+    return document.querySelector('#blFormFieldsGrid [data-bl-field="BUYER"]')
+      || document.querySelector('#blFormFieldsGrid input[data-field="BUYER"]');
   }
 
   function blBuyerMatchesNblRiser_(buyer, riser) {
@@ -10495,7 +10697,7 @@ function initDashboardApp() {
 
   function blRenderBuyerNblAlert_(result) {
     const alertEl = document.getElementById('blBuyerNblAlert');
-    const buyerInput = document.querySelector('#blFormFieldsGrid [data-bl-field="BUYER"]');
+    const buyerInput = blFindBuyerInput_();
     if (!alertEl || !buyerInput) return;
     if (!result || !result.blocked) {
       alertEl.hidden = true;
@@ -10519,7 +10721,7 @@ function initDashboardApp() {
   }
 
   async function blValidateBuyerField_() {
-    const buyerInput = document.querySelector('#blFormFieldsGrid [data-bl-field="BUYER"]');
+    const buyerInput = blFindBuyerInput_();
     if (!buyerInput) {
       blBuyerNblBlocked_ = false;
       blUpdateSaveBlButtonState_();
@@ -10547,7 +10749,7 @@ function initDashboardApp() {
   }
 
   function bindBlBuyerValidation_() {
-    const buyerInput = document.querySelector('#blFormFieldsGrid [data-bl-field="BUYER"]');
+    const buyerInput = blFindBuyerInput_();
     if (!buyerInput || buyerInput._blBuyerBound) return;
     buyerInput._blBuyerBound = true;
     const debounced = debounce(function() { blValidateBuyerField_(); }, 250);
@@ -10828,10 +11030,11 @@ function initDashboardApp() {
     return row;
   }
 
-  function blNextNo_() {
+  function blNextTotalBl_() {
     let max = 0;
     blData.forEach(function(d) {
-      const n = parseInt(String(d['NO'] || '').replace(/\D/g, ''), 10);
+      if (blIsDeclarationRow_(d)) return;
+      const n = parseInt(String(blTotalBlValue_(d)).replace(/\D/g, ''), 10);
       if (!isNaN(n) && n > max) max = n;
     });
     return String(max + 1);
@@ -10872,6 +11075,7 @@ function initDashboardApp() {
       const ttpCount = (d._ttpLinks || []).length;
       return d['TTP'] || blTtpCountLabel_(ttpCount) || '';
     }
+    if (colDef.field === 'TOTAL BL') return blTotalBlValue_(d);
     return d[colDef.field] != null ? String(d[colDef.field]) : '';
   }
 
@@ -10892,10 +11096,16 @@ function initDashboardApp() {
       var norm = String(k).replace(/\s+/g, ' ').trim();
       if (norm !== k && row[norm] === undefined) row[norm] = row[k];
     });
+    if (!row['TOTAL BL'] && row['NO']) row['TOTAL BL'] = row['NO'];
+    if (!row[BL_RECORD_TYPE_FIELD]) row[BL_RECORD_TYPE_FIELD] = BL_TYPE_SHIPPING;
     blNormalizeRowNation_(row);
+    row._blRecordType = blResolveRecordType_(row);
     row._ttmLinks = parseBlLinksJson_(row[BL_JSON_TTM]);
     row._ttpLinks = parseBlLinksJson_(row[BL_JSON_TTP]);
-    row._blSearchBlob = BL_FORM_FIELDS.concat(['TTM', 'TTP']).map(function(f) {
+    const searchFields = row._blRecordType === BL_TYPE_DECLARATION
+      ? BL_DECL_FORM_FIELDS.concat(['TTM', 'TTP'])
+      : BL_SHIPPING_FORM_FIELDS.concat(['TTM', 'TTP', 'BL NO.']);
+    row._blSearchBlob = searchFields.map(function(f) {
       return String(row[f] || '').toLowerCase();
     }).join('|');
     return row;
@@ -10925,16 +11135,21 @@ function initDashboardApp() {
   function updateBlStats_() {
     const totalEl = document.getElementById('bl-stat-total');
     if (!totalEl) return;
+    const rows = blFilteredData_();
     let ttmSum = 0;
     let onprogress = 0;
     let done = 0;
-    blData.forEach(function(d) {
+    rows.forEach(function(d) {
       ttmSum += (d._ttmLinks || []).length;
       const st = String(d['STATUS'] || '').toLowerCase();
       if (st.includes('done')) done++;
       else if (st.includes('onprogress') || st.includes('progress')) onprogress++;
     });
-    totalEl.textContent = blData.length;
+    totalEl.textContent = rows.length;
+    const totalLabel = document.getElementById('bl-stat-total-label');
+    if (totalLabel) {
+      totalLabel.textContent = blActiveType === 'declaration' ? 'Total declarations' : 'Total shipping BL';
+    }
     const activeEl = document.getElementById('bl-stat-active');
     const doneEl = document.getElementById('bl-stat-done');
     const ttmEl = document.getElementById('bl-stat-ttm');
@@ -10943,24 +11158,56 @@ function initDashboardApp() {
     if (ttmEl) ttmEl.textContent = ttmSum || '0';
   }
 
+  function setBlActiveType_(type) {
+    blActiveType = type === 'declaration' ? 'declaration' : 'shipping';
+    document.querySelectorAll('#panel-bl-monitoring .bl-source-tab').forEach(function(btn) {
+      const on = btn.getAttribute('data-bl-type') === blActiveType;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const titleEl = document.getElementById('bl-table-title');
+    if (titleEl) {
+      titleEl.textContent = blActiveType === 'declaration' ? 'Declaration registry' : 'Shipping registry';
+    }
+    const btnAdd = document.getElementById('btn-add-bl');
+    if (btnAdd) {
+      btnAdd.textContent = blActiveType === 'declaration' ? '+ Add Declaration' : '+ Add Shipping';
+    }
+    const searchEl = document.getElementById('blSearch');
+    if (searchEl) {
+      searchEl.placeholder = blActiveType === 'declaration'
+        ? 'Search buyer, period, commodity, status...'
+        : 'Search BL no., vessel, buyer, port, status...';
+    }
+    updateBlStats_();
+    scheduleRenderBlTable();
+  }
+
   const scheduleRenderBlTable = makeRafScheduler(function() {
     renderBlTable();
     blRestoreUiAfterRender_();
   });
 
   function blRestoreUiAfterRender_() {
-    if (!blScrollToBlNo_) return;
     const body = document.getElementById('blTableBody');
     if (!body) return;
-    const needle = blScrollToBlNo_.toLowerCase();
     let target = null;
-    body.querySelectorAll('.bl-main-row').forEach(function(row) {
-      const idSpan = row.querySelector('.mill-id');
-      if (idSpan && idSpan.textContent.trim().toLowerCase() === needle) target = row;
-    });
+    if (blScrollToRowNum_) {
+      body.querySelectorAll('.bl-main-row').forEach(function(row) {
+        if (parseInt(row.dataset.row, 10) === blScrollToRowNum_) target = row;
+      });
+    }
+    if (!target && blScrollToBlNo_) {
+      const needle = blScrollToBlNo_.toLowerCase();
+      body.querySelectorAll('.bl-main-row').forEach(function(row) {
+        const keyEl = row.querySelector('.bl-row-key');
+        if (keyEl && keyEl.textContent.trim().toLowerCase() === needle) target = row;
+      });
+    }
     if (target) {
       dashScrollRowIntoView_(target);
       blScrollToBlNo_ = '';
+      blScrollToRowNum_ = 0;
     }
   }
 
@@ -10972,7 +11219,7 @@ function initDashboardApp() {
       blLoaded = true;
       updateBlStats_();
       scheduleRenderBlTable.flush();
-      if (!blScrollToBlNo_ && scrollEl) {
+      if (!blScrollToBlNo_ && !blScrollToRowNum_ && scrollEl) {
         requestAnimationFrame(function() { scrollEl.scrollTop = savedScrollTop; });
       }
     } catch (err) {
@@ -10982,37 +11229,35 @@ function initDashboardApp() {
     }
   }
 
-  function renderBlTableHead_() {
-    const row = document.getElementById('blTableHeadRow');
-    if (!row) return;
-    row.innerHTML = BL_REGISTRY_COLUMNS.map(function(col) {
-      const minW = col.minWidth ? ' style="min-width:' + col.minWidth + 'px"' : '';
-      return '<th' + minW + '>' + escHtml(col.label) + '</th>';
-    }).join('');
-  }
-
-  function renderBlTableRowHtml_(d) {
-    return BL_REGISTRY_COLUMNS.map(function(col) {
-      const minW = col.minWidth ? ' style="min-width:' + col.minWidth + 'px"' : '';
-      return '<td' + minW + '>' + col.cell(d) + '</td>';
-    }).join('');
+  function blRegistryColumns_() {
+    return blActiveType === 'declaration' ? BL_DECL_REGISTRY_COLUMNS : BL_REGISTRY_COLUMNS;
   }
 
   function renderBlTable() {
     const body = document.getElementById('blTableBody');
     if (!body) return;
     bindBlTableDelegationOnce_();
-    renderBlTableHead_();
+    const cols = blRegistryColumns_();
+    const headRow = document.getElementById('blTableHeadRow');
+    if (headRow) {
+      headRow.innerHTML = cols.map(function(col) {
+        const minW = col.minWidth ? ' style="min-width:' + col.minWidth + 'px"' : '';
+        return '<th' + minW + '>' + escHtml(col.label) + '</th>';
+      }).join('');
+    }
     const q = blSearch;
-    const filtered = blData.filter(function(d) {
+    const filtered = blFilteredData_().filter(function(d) {
       return !q || (d._blSearchBlob || '').includes(q);
     });
     if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="' + BL_REGISTRY_COLUMNS.length + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
+      body.innerHTML = '<tr><td colspan="' + cols.length + '" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>';
       return;
     }
     body.innerHTML = filtered.map(function(d) {
-      return '<tr class="bl-main-row" data-row="' + d._row + '">' + renderBlTableRowHtml_(d) + '</tr>';
+      return '<tr class="bl-main-row" data-row="' + d._row + '">' + cols.map(function(col) {
+        const minW = col.minWidth ? ' style="min-width:' + col.minWidth + 'px"' : '';
+        return '<td' + minW + '>' + col.cell(d) + '</td>';
+      }).join('') + '</tr>';
     }).join('');
   }
 
@@ -11195,13 +11440,15 @@ function initDashboardApp() {
 
   function exportBlExcelAll_(colDefs) {
     const defs = colDefs || getBlExportColDefs_();
-    if (!blData.length || !defs.length) return;
+    const rows = blFilteredData_();
+    if (!rows.length || !defs.length) return;
     const headers = defs.map(function(c) { return c.header; });
+    const label = blActiveType === 'declaration' ? 'BL Declaration' : 'BL Shipping';
     writeBlExcelFile_(
-      blData.map(function(d) { return blRowToExport_(d, defs); }),
+      rows.map(function(d) { return blRowToExport_(d, defs); }),
       headers,
-      'BL Monitoring',
-      'bl_monitoring_all_' + blExcelStamp_() + '.xlsx'
+      label,
+      'bl_' + blActiveType + '_' + blExcelStamp_() + '.xlsx'
     );
   }
 
@@ -11285,51 +11532,74 @@ function initDashboardApp() {
     closeBlExportModal_();
   }
 
-  function buildBlFormFields_(row) {
+  function buildBlFormFields_(row, recordType) {
     const grid = document.getElementById('blFormFieldsGrid');
     if (!grid) return;
     const data = row || {};
-    grid.innerHTML = BL_FORM_FIELDS.map(function(f) {
-      const label = BL_FIELD_LABELS[f] || f;
+    const type = recordType || blFormRecordType || 'shipping';
+    const fields = blFormFieldsForType_(type);
+    const comodityOpts = blComodityOptions_();
+
+    grid.innerHTML = fields.map(function(f) {
+      const label = blFieldLabel_(f, type);
       const val = data[f] != null ? String(data[f]) : '';
       if (f === 'REQUEST TYPE') {
-        return buildCustomSelect('REQUEST TYPE', BL_REQUEST_TYPES, val, false, false);
+        let reqHtml = buildCustomSelect('REQUEST TYPE', BL_REQUEST_TYPES, val, false, false);
+        if (type === 'declaration') {
+          reqHtml = reqHtml.replace('>REQUEST TYPE<', '>Requested Type<');
+        }
+        return reqHtml;
       }
       if (f === 'STATUS') {
         return buildCustomSelect('STATUS', BL_STATUS_VALUES, val || 'Onprogress', false, false);
       }
-      if (f === 'NO') {
-        const noVal = blFormMode === 'add' ? blNextNo_() : (val || blNextNo_());
+      if (f === 'TOTAL BL') {
+        const totalVal = blFormMode === 'add' ? blNextTotalBl_() : (blTotalBlValue_(data) || blNextTotalBl_());
         return ''
           + '<div class="form-field">'
           + '<label>' + escHtml(label) + '</label>'
-          + '<input type="text" data-bl-field="NO" value="' + escHtml(noVal) + '" placeholder="Auto" readonly>'
+          + '<input type="text" data-field="TOTAL BL" value="' + escHtml(totalVal) + '" placeholder="Auto" readonly>'
           + '</div>';
       }
       if (f === 'BUYER') {
         return ''
           + '<div class="form-field bl-buyer-field-wrap">'
           + '<label>' + escHtml(label) + '</label>'
-          + '<input type="text" data-bl-field="BUYER" value="' + escHtml(val) + '" placeholder="' + escHtml(label) + '">'
+          + '<input type="text" data-field="BUYER" value="' + escHtml(val) + '" placeholder="' + escHtml(label) + '">'
           + '<div id="blBuyerNblAlert" class="bl-buyer-nbl-alert" hidden role="alert"></div>'
           + '</div>';
+      }
+      if (BL_DATE_FIELDS.has(f)) {
+        return dashDateFieldHtml(f, val, { label: label });
+      }
+      if (f === 'COMODITY' || f === 'COMMODITY SUPPLY') {
+        return buildBlSearchableSelect_(f, comodityOpts, val, label);
       }
       return ''
         + '<div class="form-field">'
         + '<label>' + escHtml(label) + '</label>'
-        + '<input type="text" data-bl-field="' + escHtml(f) + '" value="' + escHtml(val) + '" placeholder="' + escHtml(label) + '">'
+        + '<input type="text" data-field="' + escHtml(f) + '" value="' + escHtml(val) + '" placeholder="' + escHtml(label) + '">'
         + '</div>';
     }).join('');
+
     initCustomSelects(grid);
+    initBlSearchableSelects_(grid);
+    initDashDateFields(grid);
   }
 
   function readBlFormFields_() {
+    const grid = document.getElementById('blFormFieldsGrid');
     const data = {};
-    document.querySelectorAll('#blFormFieldsGrid [data-bl-field]').forEach(function(el) {
-      data[el.dataset.blField] = el.value.trim();
-    });
-    document.querySelectorAll('#blFormFieldsGrid [data-field]').forEach(function(el) {
-      data[el.dataset.field] = el.value.trim();
+    if (grid) dashDateCollectValues(grid);
+    if (grid) {
+      grid.querySelectorAll('[data-field]').forEach(function(el) {
+        data[el.dataset.field] = el.value.trim();
+      });
+    }
+    BL_DATE_FIELDS.forEach(function(f) {
+      if (!grid) return;
+      const iso = dashDateReadIso(grid, f);
+      if (iso) data[f] = dashIsoToDisplay(iso);
     });
     return data;
   }
@@ -11420,9 +11690,10 @@ function initDashboardApp() {
     blPeriodQuarter = '';
     blBuyerNblBlocked_ = false;
     blBuyerValidateSeq_++;
+    blFormRecordType = 'shipping';
   }
 
-  async function openBlFormModal_(mode, row) {
+  async function openBlFormModal_(mode, row, recordType) {
     if (!ttpLoaded) await loadTTPData();
     if (!Array.isArray(allData) || !allData.length) await loadMillData();
     await ensureNblListsForCheck_();
@@ -11431,6 +11702,9 @@ function initDashboardApp() {
     if (!overlay) return;
     blFormMode = mode || 'add';
     blFormRow = row || null;
+    blFormRecordType = row
+      ? (blIsDeclarationRow_(row) ? 'declaration' : 'shipping')
+      : (recordType || blActiveType || 'shipping');
     blSelectedTtm = row ? (row._ttmLinks || []).slice() : [];
     blSelectedTtp = row ? (row._ttpLinks || []).slice() : [];
     blTtmRowsWithTtp_ = new Set();
@@ -11438,9 +11712,22 @@ function initDashboardApp() {
       if (t && t._row) blTtmRowsWithTtp_.add(t._row);
     });
 
+    const isDecl = blFormRecordType === 'declaration';
     const titleEl = document.getElementById('blFormTitle');
-    if (titleEl) titleEl.textContent = mode === 'edit' ? 'Edit Bill of Lading' : 'Add Bill of Lading';
-    buildBlFormFields_(row);
+    const subEl = document.getElementById('blFormSubtitle');
+    const sectionEl = document.getElementById('blFormSectionTitle');
+    const saveBtn = document.getElementById('blFormSave');
+    if (titleEl) {
+      titleEl.textContent = mode === 'edit'
+        ? (isDecl ? 'Edit Declaration' : 'Edit Shipping')
+        : (isDecl ? 'Add Declaration' : 'Add Shipping');
+    }
+    if (subEl) {
+      subEl.textContent = 'Enter record data, then link Monitoring TTM/TTP rows. Each row can be added as TTM only or TTM + TTP.';
+    }
+    if (sectionEl) sectionEl.textContent = isDecl ? 'Declaration details' : 'Shipping details';
+    if (saveBtn) saveBtn.textContent = isDecl ? 'Save Declaration' : 'Save Shipping';
+    buildBlFormFields_(row, blFormRecordType);
     bindBlBuyerValidation_();
     blBuyerNblBlocked_ = false;
     blRenderBuyerNblAlert_(null);
@@ -11464,13 +11751,18 @@ function initDashboardApp() {
   async function saveBlForm_() {
     const btn = document.getElementById('blFormSave');
     const fields = readBlFormFields_();
-    if (!String(fields['BL NO.'] || '').trim()) {
-      alert('BL NO. is required.');
+    const isDecl = blFormRecordType === 'declaration';
+    if (!isDecl && !String(fields['BL NO.'] || '').trim()) {
+      alert('BL No. is required.');
+      return;
+    }
+    if (!String(fields['BUYER'] || '').trim()) {
+      alert('Buyer is required.');
       return;
     }
     const buyerOk = await blValidateBuyerField_();
     if (!buyerOk || blBuyerNblBlocked_) {
-      const rejectMsg = 'Buyer is on No Buy List (riser match). BL cannot be saved.';
+      const rejectMsg = 'Buyer is on No Buy List (riser match). Record cannot be saved.';
       if (typeof window.showSddToast === 'function') {
         window.showSddToast(rejectMsg, 'error');
       } else {
@@ -11479,7 +11771,11 @@ function initDashboardApp() {
       return;
     }
     const payload = Object.assign({}, fields);
-    if (!payload['NO']) payload['NO'] = blNextNo_();
+    payload[BL_RECORD_TYPE_FIELD] = isDecl ? BL_TYPE_DECLARATION : BL_TYPE_SHIPPING;
+    if (!isDecl) {
+      if (!payload['TOTAL BL']) payload['TOTAL BL'] = blNextTotalBl_();
+      payload['NO'] = payload['TOTAL BL'];
+    }
     payload[BL_JSON_TTM] = JSON.stringify(blSelectedTtm);
     payload[BL_JSON_TTP] = JSON.stringify(blSelectedTtp);
     payload['TTM'] = blTtmCountLabel_(blUniqueMillCount_(blSelectedTtm));
@@ -11489,17 +11785,22 @@ function initDashboardApp() {
     try {
       if (blFormMode === 'edit' && blFormRow && blFormRow._row) {
         await apiPost({ action: 'update', sheet: 'blMonitoring', row: blFormRow._row, data: payload }, { baseUrl: SDD_DEFAULT_WEBAPP_URL });
+        blScrollToRowNum_ = blFormRow._row;
       } else {
         await apiPost({ action: 'add', sheet: 'blMonitoring', data: payload }, { baseUrl: SDD_DEFAULT_WEBAPP_URL });
+        blScrollToBlNo_ = isDecl
+          ? String(fields['BUYER'] || '').trim()
+          : String(fields['BL NO.'] || '').trim();
       }
       closeBlFormModal_();
-      blScrollToBlNo_ = String(fields['BL NO.'] || '').trim();
+      blActiveType = isDecl ? 'declaration' : 'shipping';
+      setBlActiveType_(blActiveType);
       await reloadBlDataSoft_();
     } catch (err) {
-      alert('Error saving BL: ' + err.message);
+      alert('Error saving record: ' + err.message);
     } finally {
       if (btn) {
-        btn.textContent = 'Save BL';
+        btn.textContent = isDecl ? 'Save Declaration' : 'Save Shipping';
         blUpdateSaveBlButtonState_();
       }
     }
@@ -11532,21 +11833,29 @@ function initDashboardApp() {
     const bodyEl = document.getElementById('blDetailBody');
     if (!titleEl || !subEl || !bodyEl) return;
 
-    titleEl.textContent = 'BL ' + (row['BL NO.'] || '—');
-    subEl.textContent = [
-      row['VESSEL'], row['BUYER'], row['LOADING PORT'],
-    ].filter(function(p) { return p && String(p).trim(); }).join(' · ') || 'Bill of Lading';
+    const isDecl = blIsDeclarationRow_(row);
+    titleEl.textContent = isDecl
+      ? ('Declaration · ' + (row['BUYER'] || '—'))
+      : ('BL ' + (row['BL NO.'] || '—'));
+    subEl.textContent = isDecl
+      ? [row['PERIOD'], row['COMMODITY SUPPLY'], row['REQUEST TYPE']].filter(function(p) { return p && String(p).trim(); }).join(' · ') || 'Declaration'
+      : [row['VESSEL'], row['BUYER'], row['LOADING PORT']].filter(function(p) { return p && String(p).trim(); }).join(' · ') || 'Shipping';
 
-    const blGrid = BL_FORM_FIELDS.map(function(f) {
+    const detailFields = blFormFieldsForType_(isDecl ? 'declaration' : 'shipping');
+    const blGrid = detailFields.map(function(f) {
+      const label = blFieldLabel_(f, isDecl ? 'declaration' : 'shipping');
+      let display = row[f] || '—';
+      if (BL_DATE_FIELDS.has(f)) display = blFormatDateDisplay_(row[f]);
+      if (f === 'TOTAL BL') display = blTotalBlValue_(row) || '—';
       return ''
         + '<div class="bl-detail-item">'
-        + '<div class="bl-detail-label">' + escHtml(f) + '</div>'
-        + '<div class="bl-detail-val">' + escHtml(row[f] || '—') + '</div>'
+        + '<div class="bl-detail-label">' + escHtml(label) + '</div>'
+        + '<div class="bl-detail-val">' + escHtml(display) + '</div>'
         + '</div>';
     }).join('');
 
     bodyEl.innerHTML = ''
-      + '<div class="bl-detail-section"><div class="bl-detail-section-title">Bill of Lading</div><div class="bl-detail-grid">' + blGrid + '</div></div>'
+      + '<div class="bl-detail-section"><div class="bl-detail-section-title">' + (isDecl ? 'Declaration' : 'Shipping') + '</div><div class="bl-detail-grid">' + blGrid + '</div></div>'
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(row['TTM'] || blTtmCountLabel_((row._ttmLinks || []).length) || '—') + '</div>'
       + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, row._ttmLinks || []) + '</div>'
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(row['TTP'] || blTtpCountLabel_((row._ttpLinks || []).length) || '—') + '</div>'
@@ -11600,7 +11909,13 @@ function initDashboardApp() {
       searchEl.focus();
     });
 
-    btnAdd.addEventListener('click', function() { openBlFormModal_('add', null); });
+    document.querySelectorAll('#panel-bl-monitoring .bl-source-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setBlActiveType_(btn.getAttribute('data-bl-type') || 'shipping');
+      });
+    });
+
+    btnAdd.addEventListener('click', function() { openBlFormModal_('add', null, blActiveType); });
     btnExport.addEventListener('click', function() { openBlExportModal_(null); });
 
     const formOverlay = mountBlOverlay_('blFormOverlay');

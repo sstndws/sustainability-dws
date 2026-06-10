@@ -3,22 +3,28 @@
         <div class="breadcrumb">Dashboard <span>/ BL Monitoring</span></div>
         <div class="page-header">
           <h1>BL Monitoring</h1>
-          <p>Monitor Bill of Lading shipments and linked mill (TTM) &amp; supplier (TTP) data</p>
+          <p>Track Bill of Lading shipments and traceability declarations with linked TTM / TTP data</p>
         </div>
 
         <div class="stats-row bl-stats-row">
-          <div class="stat-card"><div class="stat-card-num" id="bl-stat-total">—</div><div class="stat-card-label">Total BL</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="bl-stat-total">—</div><div class="stat-card-label" id="bl-stat-total-label">Total records</div></div>
           <div class="stat-card"><div class="stat-card-num" id="bl-stat-active">—</div><div class="stat-card-label">Onprogress</div></div>
           <div class="stat-card"><div class="stat-card-num" id="bl-stat-done">—</div><div class="stat-card-label">Done</div></div>
           <div class="stat-card"><div class="stat-card-num" id="bl-stat-ttm">—</div><div class="stat-card-label">Linked Mills</div></div>
         </div>
 
-        <div class="table-card">
-          <div class="table-header">
-            <h3>Bill of Lading Registry</h3>
+        <div class="table-card bl-list-card">
+          <div class="table-header bl-table-header">
+            <div class="bl-table-header-left">
+              <h3 id="bl-table-title">Shipping registry</h3>
+              <div class="bl-source-tabs" role="tablist" aria-label="BL record type">
+                <button type="button" class="bl-source-tab active" data-bl-type="shipping" role="tab" aria-selected="true">Shipping</button>
+                <button type="button" class="bl-source-tab" data-bl-type="declaration" role="tab" aria-selected="false">Declaration</button>
+              </div>
+            </div>
             <div class="table-actions">
-              <button class="btn-sm btn-outline" type="button" id="btn-export-bl">Export all existing BL</button>
-              <button class="btn-sm btn-filled" type="button" id="btn-add-bl">+ Add BL</button>
+              <button class="btn-sm btn-outline" type="button" id="btn-export-bl">Export</button>
+              <button class="btn-sm btn-filled" type="button" id="btn-add-bl">+ Add Shipping</button>
             </div>
           </div>
           <div class="search-bar">

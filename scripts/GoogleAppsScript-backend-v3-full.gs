@@ -86,7 +86,9 @@ function resolveSheetTabName_(sheetKey) {
 
 /** Physical sheet columns (matches Excel — two columns both named NATION). */
 const BL_MONITORING_SHEET_HEADERS = [
+  'RECORD TYPE',
   'NO',
+  'TOTAL BL',
   'LOADING PORT',
   'NATION',
   'BUYER',
@@ -101,6 +103,9 @@ const BL_MONITORING_SHEET_HEADERS = [
   'VOLUME (TON)',
   'REQUEST TYPE',
   'STATUS',
+  'SENT TO REQUESTER',
+  'PERIOD',
+  'COMMODITY SUPPLY',
   'TTM',
   'TTP',
 ];
@@ -108,6 +113,15 @@ const BL_MONITORING_SHEET_HEADERS = [
 const BL_MONITORING_JSON_HEADERS = ['TTM LINKS JSON', 'TTP LINKS JSON'];
 
 const BL_MONITORING_HEADERS = BL_MONITORING_SHEET_HEADERS.concat(BL_MONITORING_JSON_HEADERS);
+
+/** Columns appended to existing BL Monitoring tabs when missing. */
+const BL_MONITORING_ENSURE_HEADERS = [
+  'RECORD TYPE',
+  'TOTAL BL',
+  'SENT TO REQUESTER',
+  'PERIOD',
+  'COMMODITY SUPPLY',
+].concat(BL_MONITORING_JSON_HEADERS);
 
 // ── Supply Import Draft headers ──────────────────────────────
 const SUPPLY_DRAFT_HEADERS = [
@@ -1247,6 +1261,12 @@ function blCanonicalizeRow_(headers, sourceRow) {
     }
     obj[key] = sourceRow[j];
   });
+  if (obj['NO'] != null && String(obj['NO']).trim() !== '' && (!obj['TOTAL BL'] || String(obj['TOTAL BL']).trim() === '')) {
+    obj['TOTAL BL'] = obj['NO'];
+  }
+  if (!obj['RECORD TYPE'] || String(obj['RECORD TYPE']).trim() === '') {
+    obj['RECORD TYPE'] = 'Shipping';
+  }
   return obj;
 }
 
@@ -1263,6 +1283,7 @@ function blExpandCanonicalToRow_(headers, data, current) {
       if (data && nationIdx === 2 && data['BUYER NATION'] !== undefined) return data['BUYER NATION'];
       return current ? current[j] : '';
     }
+    if (/^no$/i.test(key) && data && data['TOTAL BL'] !== undefined) return data['TOTAL BL'];
     if (data && data[key] !== undefined) return data[key];
     return current ? current[j] : '';
   });
@@ -1290,7 +1311,7 @@ function ensureBlMonitoringHeaders_() {
 
   const headers = hdr.headers.slice();
   const headerRow = hdr.headerRow;
-  BL_MONITORING_JSON_HEADERS.forEach(function(col) {
+  BL_MONITORING_ENSURE_HEADERS.forEach(function(col) {
     if (headers.indexOf(col) !== -1) return;
     const newCol = headers.length + 1;
     ws.getRange(headerRow, newCol).setValue(col);

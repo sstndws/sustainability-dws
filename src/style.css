@@ -5471,6 +5471,63 @@ tr.pf-group-detail-row.hidden {
 /* ─── END PERFORMA FACILITY ─────────────────────────────────────────────────── */
 
 /* ─── BL MONITORING ─────────────────────────────────────────────────────────── */
+#panel-bl-monitoring .bl-table-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+#panel-bl-monitoring .bl-table-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+#panel-bl-monitoring .bl-source-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(74, 28, 28, 0.06);
+  border-radius: 10px;
+}
+#panel-bl-monitoring .bl-source-tab {
+  border: none;
+  background: transparent;
+  color: #7C6565;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+#panel-bl-monitoring .bl-source-tab:hover {
+  color: #4A1C1C;
+  background: rgba(255, 255, 255, 0.65);
+}
+#panel-bl-monitoring .bl-source-tab.active {
+  background: #fff;
+  color: #8B1A1A;
+  box-shadow: 0 1px 4px rgba(74, 28, 28, 0.12);
+}
+.bl-searchable-select .cs-search-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgba(74, 28, 28, 0.1);
+  padding: 10px 12px;
+  font-size: 13px;
+  outline: none;
+  background: #fdfafa;
+  box-sizing: border-box;
+}
+.bl-searchable-select .custom-select-dropdown {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.bl-searchable-select .cs-option.cs-hidden {
+  display: none;
+}
 .bl-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 #blTable.bl-registry-table {
   width: max-content;
