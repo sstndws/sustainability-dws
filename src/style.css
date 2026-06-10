@@ -5528,12 +5528,24 @@ tr.pf-group-detail-row.hidden {
 .bl-searchable-select .cs-option.cs-hidden {
   display: none;
 }
-.bl-searchable-select .cs-option.cs-option-add {
+.bl-searchable-select .cs-option.cs-option-add,
+.bl-searchable-select .cs-option.cs-option-add-hint {
   color: #8B1A1A;
   font-weight: 600;
   border-top: 1px solid rgba(74, 28, 28, 0.08);
   margin-top: 4px;
   padding-top: 10px;
+  cursor: pointer;
+}
+.bl-searchable-select .cs-option.cs-option-add-hint {
+  font-weight: 500;
+  font-size: 12px;
+  color: #6b3a3a;
+  background: #fdf8f8;
+}
+.bl-searchable-select .cs-option.cs-option-add:hover,
+.bl-searchable-select .cs-option.cs-option-add-hint:hover {
+  background: rgba(139, 26, 26, 0.06);
 }
 .bl-buyer-field-wrap .custom-select-trigger.bl-field-rejected,
 .bl-buyer-field-wrap .custom-select-trigger.bl-field-rejected:focus {

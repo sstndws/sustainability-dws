@@ -10703,7 +10703,8 @@ function initDashboardApp() {
         return '<div class="cs-option' + (val.toLowerCase() === o.toLowerCase() ? ' selected' : '') + '" data-val="' + escAttr_(o) + '">' + checkSvg + escHtml(o) + '</div>';
       }).join('')
       + (allowAdd
-        ? '<div class="cs-option cs-option-add cs-hidden" data-val="">+ Add new</div>'
+        ? '<div class="cs-option cs-option-add-hint">+ Add new ' + escHtml(String(meta.addLabel || 'item').toLowerCase()) + ' — type in search box</div>'
+        + '<div class="cs-option cs-option-add cs-hidden" data-val=""></div>'
         : '');
     return '<div class="form-field bl-searchable-select' + extraClass + '">'
       + '<label>' + escHtml(label || field) + '</label>'
@@ -10732,11 +10733,22 @@ function initDashboardApp() {
       const searchInput = dropdown ? dropdown.querySelector('.cs-search-input') : null;
       if (!trigger || !dropdown || !hidden) return;
 
+      function blLookupExactOption_(raw) {
+        const term = String(raw || '').trim().toLowerCase();
+        if (!term) return null;
+        var hit = null;
+        dropdown.querySelectorAll('.cs-option:not(.cs-option-placeholder):not(.cs-option-add):not(.cs-option-add-hint)').forEach(function(opt) {
+          if (String(opt.dataset.val || '').trim().toLowerCase() === term) hit = opt;
+        });
+        return hit;
+      }
+
       function filterOptions_(q) {
         const needle = String(q || '').toLowerCase().trim();
         const addOpt = dropdown.querySelector('.cs-option-add');
+        const addHint = dropdown.querySelector('.cs-option-add-hint');
         dropdown.querySelectorAll('.cs-option').forEach(function(opt) {
-          if (opt.classList.contains('cs-option-add')) return;
+          if (opt.classList.contains('cs-option-add') || opt.classList.contains('cs-option-add-hint')) return;
           if (opt.classList.contains('cs-option-placeholder')) {
             opt.classList.toggle('cs-hidden', !!needle);
             return;
@@ -10744,24 +10756,34 @@ function initDashboardApp() {
           const text = (opt.dataset.val || opt.textContent || '').toLowerCase();
           opt.classList.toggle('cs-hidden', needle && !text.includes(needle));
         });
-        if (addOpt && wrap.dataset.allowAdd === '1') {
-          const raw = String(q || '').trim();
-          if (!raw) {
-            addOpt.classList.add('cs-hidden');
-            return;
-          }
-          let hasExact = false;
-          dropdown.querySelectorAll('.cs-option:not(.cs-option-placeholder):not(.cs-option-add)').forEach(function(opt) {
-            if (String(opt.dataset.val || '').trim().toLowerCase() === raw.toLowerCase()) hasExact = true;
-          });
-          if (!hasExact) {
-            addOpt.dataset.val = raw;
-            addOpt.innerHTML = '+ Add &ldquo;' + escHtml(raw) + '&rdquo;';
-            addOpt.classList.remove('cs-hidden');
-          } else {
-            addOpt.classList.add('cs-hidden');
-          }
+        if (wrap.dataset.allowAdd !== '1') return;
+        const raw = String(q || '').trim();
+        if (!raw) {
+          if (addHint) addHint.classList.remove('cs-hidden');
+          if (addOpt) addOpt.classList.add('cs-hidden');
+          return;
         }
+        if (addHint) addHint.classList.add('cs-hidden');
+        if (!addOpt) return;
+        if (!blLookupExactOption_(raw)) {
+          addOpt.dataset.val = raw;
+          addOpt.innerHTML = '+ Add &ldquo;' + escHtml(raw) + '&rdquo;';
+          addOpt.classList.remove('cs-hidden');
+        } else {
+          addOpt.classList.add('cs-hidden');
+        }
+      }
+
+      function commitSearchAdd_() {
+        const raw = searchInput ? searchInput.value.trim() : '';
+        if (!raw) return;
+        const exact = blLookupExactOption_(raw);
+        if (exact) {
+          applySelection_(exact.dataset.val || raw, exact);
+          return;
+        }
+        const addOpt = dropdown.querySelector('.cs-option-add');
+        applySelection_(raw, addOpt);
       }
 
       function applySelection_(v, optEl) {
@@ -10798,12 +10820,30 @@ function initDashboardApp() {
       if (searchInput) {
         searchInput.addEventListener('input', function() { filterOptions_(searchInput.value); });
         searchInput.addEventListener('click', function(e) { e.stopPropagation(); });
-        searchInput.addEventListener('keydown', function(e) { e.stopPropagation(); });
+        searchInput.addEventListener('keydown', function(e) {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitSearchAdd_();
+          }
+        });
       }
 
       dropdown.querySelectorAll('.cs-option').forEach(function(opt) {
         opt.addEventListener('click', function(e) {
           e.stopPropagation();
+          if (opt.classList.contains('cs-option-add-hint')) {
+            if (searchInput) {
+              searchInput.focus();
+              searchInput.select();
+            }
+            return;
+          }
+          if (opt.classList.contains('cs-option-add')) {
+            const raw = searchInput ? searchInput.value.trim() : (opt.dataset.val || '');
+            if (raw) applySelection_(raw, opt);
+            return;
+          }
           applySelection_(opt.dataset.val || '', opt);
         });
       });
@@ -11751,7 +11791,8 @@ function initDashboardApp() {
         return buildBlSearchableSelect_(f, buyerOpts, val, label, {
           allowAdd: true,
           lookupKind: 'Buyer',
-          searchPlaceholder: 'Search buyer...',
+          addLabel: 'buyer',
+          searchPlaceholder: 'Search or type new buyer...',
           wrapperClass: 'bl-buyer-field-wrap',
           alertHtml: '<div id="blBuyerNblAlert" class="bl-buyer-nbl-alert" hidden role="alert"></div>',
         });
@@ -11763,7 +11804,8 @@ function initDashboardApp() {
         return buildBlSearchableSelect_(f, comodityOpts, val, label, {
           allowAdd: true,
           lookupKind: 'Commodity',
-          searchPlaceholder: 'Search commodity...',
+          addLabel: 'commodity',
+          searchPlaceholder: 'Search or type new commodity...',
         });
       }
       return ''
