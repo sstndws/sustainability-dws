@@ -10394,17 +10394,7 @@ function initDashboardApp() {
     { key: 'PLANTED AREA', label: 'Planted Area' },
     { key: 'FFB SUPPLY to MILL (TON)', label: 'FFB Supply to Mill (Ton)' },
   ];
-  function blLinkExportColDefs_(prefix, detailCols, kind) {
-    return detailCols.map(function(c) {
-      return {
-        id: prefix + '_' + String(c.key).replace(/[^a-z0-9]+/gi, '_').toLowerCase(),
-        label: prefix.toUpperCase() + ' ' + c.label,
-        header: prefix.toUpperCase() + ' ' + c.label.toUpperCase(),
-        kind: kind,
-        linkKey: c.key,
-      };
-    });
-  }
+  const BL_EXPORT_LINK_PARENT_HEADERS = ['BUYER', 'BL NO.', 'RECORD TYPE'];
   const BL_EXPORT_COLUMN_DEFS = [
     { id: 'total_bl', label: 'Total BL', header: 'TOTAL BL', field: 'TOTAL BL' },
     { id: 'loading_port', label: 'Loading Port', header: 'LOADING PORT', field: 'LOADING PORT' },
@@ -10426,10 +10416,7 @@ function initDashboardApp() {
     { id: 'commodity_supply', label: 'Commodity Supply', header: 'COMMODITY SUPPLY', field: 'COMMODITY SUPPLY' },
     { id: 'ttm', label: 'TTM', header: 'TTM', kind: 'ttm' },
     { id: 'ttp', label: 'TTP', header: 'TTP', kind: 'ttp' },
-  ].concat(
-    blLinkExportColDefs_('ttm', BL_TTM_EXPORT_COLS, 'ttm_field'),
-    blLinkExportColDefs_('ttp', BL_TTP_DETAIL_COLS, 'ttp_field')
-  );
+  ];
   const BL_EXPORT_DEFAULT_COL_IDS = BL_EXPORT_COLUMN_DEFS.map(function(c) { return c.id; });
   const BL_REGISTRY_COLUMNS = [
     { label: 'Loading Port', minWidth: 120, cell: function(d) { return escHtml(d['LOADING PORT'] || '—'); } },
@@ -11298,14 +11285,6 @@ function initDashboardApp() {
     });
   }
 
-  function blExportLinkFieldValue_(links, linkKey) {
-    const parts = (links || []).map(function(item) {
-      const v = blField_(item, [linkKey]);
-      return v && v !== '—' ? String(v).trim() : '';
-    }).filter(Boolean);
-    return parts.join(' | ');
-  }
-
   function blExportColValue_(d, colDef) {
     if (!d || !colDef) return '';
     if (colDef.kind === 'ttm') {
@@ -11316,14 +11295,57 @@ function initDashboardApp() {
       const ttpCount = (d._ttpLinks || []).length;
       return d['TTP'] || blTtpCountLabel_(ttpCount) || '';
     }
-    if (colDef.kind === 'ttm_field') {
-      return blExportLinkFieldValue_(d._ttmLinks, colDef.linkKey);
-    }
-    if (colDef.kind === 'ttp_field') {
-      return blExportLinkFieldValue_(d._ttpLinks, colDef.linkKey);
-    }
     if (colDef.field === 'TOTAL BL') return blTotalBlValue_(d);
     return d[colDef.field] != null ? String(d[colDef.field]) : '';
+  }
+
+  function blMainExportColDefs_(colDefs) {
+    return (colDefs || getBlExportColDefs_()).filter(function(c) {
+      return c.kind !== 'ttm_field' && c.kind !== 'ttp_field';
+    });
+  }
+
+  function blExportParentRow_(d) {
+    return [
+      String(d['BUYER'] || '').trim(),
+      String(d['BL NO.'] || '').trim(),
+      String(d[BL_RECORD_TYPE_FIELD] || d._blRecordType || '').trim(),
+    ];
+  }
+
+  function blExportLinkCell_(item, key) {
+    const v = blField_(item, [key]);
+    return v && v !== '—' ? String(v).trim() : '';
+  }
+
+  function blBuildTtmExportSheet_(blRows) {
+    const detailHeaders = BL_TTM_EXPORT_COLS.map(function(c) { return c.key; });
+    const headers = BL_EXPORT_LINK_PARENT_HEADERS.concat(detailHeaders);
+    const rows = [];
+    (blRows || []).forEach(function(d) {
+      const parent = blExportParentRow_(d);
+      (d._ttmLinks || []).forEach(function(link) {
+        rows.push(parent.concat(detailHeaders.map(function(key) {
+          return blExportLinkCell_(link, key);
+        })));
+      });
+    });
+    return { headers: headers, rows: rows };
+  }
+
+  function blBuildTtpExportSheet_(blRows) {
+    const detailHeaders = BL_TTP_DETAIL_COLS.map(function(c) { return c.key; });
+    const headers = BL_EXPORT_LINK_PARENT_HEADERS.concat(detailHeaders);
+    const rows = [];
+    (blRows || []).forEach(function(d) {
+      const parent = blExportParentRow_(d);
+      (d._ttpLinks || []).forEach(function(link) {
+        rows.push(parent.concat(detailHeaders.map(function(key) {
+          return blExportLinkCell_(link, key);
+        })));
+      });
+    });
+    return { headers: headers, rows: rows };
   }
 
   function getBlExportColDefs_(selectedIds) {
@@ -11646,15 +11668,14 @@ function initDashboardApp() {
     return String(raw || 'BL').trim().replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 40) || 'BL';
   }
 
-  function writeBlExcelFile_(rows, headers, sheetLabel, filename) {
-    if (typeof XLSX === 'undefined') return;
-    if (!headers || !headers.length) return;
-    const wsData = [headers].concat(rows);
+  function blCreateStyledExcelSheet_(headers, rows) {
+    const wsData = [headers].concat(rows || []);
     const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const bodyRows = rows || [];
 
     ws['!cols'] = headers.map(function(h, ci) {
       let maxLen = String(h).length;
-      rows.forEach(function(row) {
+      bodyRows.forEach(function(row) {
         const cell = row && row[ci] != null ? String(row[ci]) : '';
         if (cell.length > maxLen) maxLen = cell.length;
       });
@@ -11676,47 +11697,69 @@ function initDashboardApp() {
     if (!ws['!rows']) ws['!rows'] = [];
     ws['!rows'][0] = { hpt: 24 };
 
-    if (rows.length) {
+    if (bodyRows.length) {
       ws['!autofilter'] = {
         ref: XLSX.utils.encode_range({
           s: { r: 0, c: 0 },
-          e: { r: rows.length, c: headers.length - 1 },
+          e: { r: bodyRows.length, c: headers.length - 1 },
         }),
       };
     }
 
+    return ws;
+  }
+
+  function writeBlExcelWorkbook_(sheets, filename) {
+    if (typeof XLSX === 'undefined') return;
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetLabel || 'BL Monitoring');
+    (sheets || []).forEach(function(sheet) {
+      if (!sheet || !sheet.headers || !sheet.headers.length) return;
+      const ws = blCreateStyledExcelSheet_(sheet.headers, sheet.rows || []);
+      const name = String(sheet.name || 'Sheet').slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    if (!wb.SheetNames.length) return;
     XLSX.writeFile(wb, filename, { cellStyles: true });
   }
 
+  function exportBlExcelRows_(blRows, filename, mainSheetLabel, colDefs) {
+    const rows = blRows || [];
+    if (!rows.length) return;
+    const mainDefs = blMainExportColDefs_(colDefs);
+    if (!mainDefs.length) return;
+    const mainHeaders = mainDefs.map(function(c) { return c.header; });
+    const mainData = rows.map(function(d) { return blRowToExport_(d, mainDefs); });
+    const ttmSheet = blBuildTtmExportSheet_(rows);
+    const ttpSheet = blBuildTtpExportSheet_(rows);
+    writeBlExcelWorkbook_([
+      { name: mainSheetLabel || 'BL', headers: mainHeaders, rows: mainData },
+      { name: 'TTM', headers: ttmSheet.headers, rows: ttmSheet.rows },
+      { name: 'TTP', headers: ttpSheet.headers, rows: ttpSheet.rows },
+    ], filename);
+  }
+
   function exportBlExcelAll_(colDefs) {
-    const defs = colDefs || getBlExportColDefs_();
     const rows = blFilteredData_();
-    if (!rows.length || !defs.length) return;
-    const headers = defs.map(function(c) { return c.header; });
+    if (!rows.length) return;
     const label = blActiveType === 'declaration' ? 'BL Declaration' : 'BL Shipping';
-    writeBlExcelFile_(
-      rows.map(function(d) { return blRowToExport_(d, defs); }),
-      headers,
+    exportBlExcelRows_(
+      rows,
+      'bl_' + blActiveType + '_' + blExcelStamp_() + '.xlsx',
       label,
-      'bl_' + blActiveType + '_' + blExcelStamp_() + '.xlsx'
+      colDefs
     );
   }
 
   function exportBlExcelOne_(row, colDefs) {
     if (!row) return;
-    const defs = colDefs || getBlExportColDefs_();
-    if (!defs.length) return;
-    const headers = defs.map(function(c) { return c.header; });
     const fileKey = blIsDeclarationRow_(row)
       ? blSafeFilePart_(row['BUYER'])
       : blSafeFilePart_(row['BL NO.']);
-    writeBlExcelFile_(
-      [blRowToExport_(row, defs)],
-      headers,
+    exportBlExcelRows_(
+      [row],
+      'bl_' + fileKey + '_' + blExcelStamp_() + '.xlsx',
       'BL',
-      'bl_' + fileKey + '_' + blExcelStamp_() + '.xlsx'
+      colDefs
     );
   }
 
