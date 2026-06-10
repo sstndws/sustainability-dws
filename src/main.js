@@ -10489,6 +10489,35 @@ function initDashboardApp() {
   let blExportSelectedColIds = BL_EXPORT_DEFAULT_COL_IDS.slice();
   let blBuyerNblBlocked_ = false;
   let blBuyerValidateSeq_ = 0;
+  let blWarmPickerPromise_ = null;
+
+  function blWarmPickerData_(force) {
+    if (!force && blWarmPickerPromise_) return blWarmPickerPromise_;
+    blWarmPickerPromise_ = Promise.all([
+      ttpLoaded ? Promise.resolve() : loadTTPData(),
+      (Array.isArray(allData) && allData.length) ? Promise.resolve() : loadMillData(),
+      ensureNblListsForCheck_(),
+    ]).catch(function(err) {
+      blWarmPickerPromise_ = null;
+      console.warn('[BL] Picker preload failed:', err);
+      throw err;
+    });
+    return blWarmPickerPromise_;
+  }
+
+  function blSetPickerLoading_(loading) {
+    const search = document.getElementById('blTtmSearch');
+    const results = document.getElementById('blTtmResults');
+    const label = document.getElementById('blPickerPeriodLabel');
+    if (search) search.disabled = !!loading;
+    if (loading) {
+      if (label) label.textContent = 'Loading monitoring data for TTM/TTP picker…';
+      if (results) {
+        results.innerHTML = '<div class="bl-picker-empty">Loading monitoring data…</div>';
+        results.classList.remove('open');
+      }
+    }
+  }
 
   function blField_(row, keys) {
     if (!row) return '—';
@@ -11694,10 +11723,6 @@ function initDashboardApp() {
   }
 
   async function openBlFormModal_(mode, row, recordType) {
-    if (!ttpLoaded) await loadTTPData();
-    if (!Array.isArray(allData) || !allData.length) await loadMillData();
-    await ensureNblListsForCheck_();
-    blApplyLatestPeriodFilter_();
     const overlay = mountBlOverlay_('blFormOverlay');
     if (!overlay) return;
     blFormMode = mode || 'add';
@@ -11732,7 +11757,6 @@ function initDashboardApp() {
     blBuyerNblBlocked_ = false;
     blRenderBuyerNblAlert_(null);
     blUpdateSaveBlButtonState_();
-    if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
     blRenderLinkedPickers_();
 
     const ttmSearch = document.getElementById('blTtmSearch');
@@ -11743,6 +11767,25 @@ function initDashboardApp() {
     document.body.classList.add('bl-form-open');
     overlay.classList.add('active');
     resetBlOverlayScroll_(overlay, document.getElementById('blFormBody'));
+
+    const pickerReady = ttpLoaded && _nblListsCache;
+    if (!pickerReady) {
+      blSetPickerLoading_(true);
+    } else {
+      blApplyLatestPeriodFilter_();
+      if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
+    }
+
+    blWarmPickerData_().then(function() {
+      blApplyLatestPeriodFilter_();
+      blSetPickerLoading_(false);
+      if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
+    }).catch(function() {
+      blSetPickerLoading_(false);
+      const label = document.getElementById('blPickerPeriodLabel');
+      if (label) label.textContent = 'Monitoring data unavailable — retry or refresh the page.';
+    });
+
     if (ttmSearch) {
       try { ttmSearch.focus({ preventScroll: true }); } catch (e) { ttmSearch.focus(); }
     }
@@ -16402,7 +16445,10 @@ function initDashboardApp() {
     }
     if (name === 'ttm-ttp' && !ttpLoaded) loadTTPData();
     if (name === 'grievance' && !grvLoaded) loadGrvData();
-    if (name === 'bl-monitoring' && !blLoaded) loadBlData();
+    if (name === 'bl-monitoring') {
+      if (!blLoaded) loadBlData();
+      blWarmPickerData_();
+    }
     if (name === 'questionnaire-monitoring' && !qmLoaded) loadQmData();
     if (name === 'eudr-potential' && !eudrLoaded) loadEudrData();
     if (name === 'contact-list-supplier') loadContactListData();
