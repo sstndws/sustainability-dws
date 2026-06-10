@@ -5537,6 +5537,7 @@ function initDashboardApp() {
     });
     try {
       const postSaveFocus = capturePostSaveFocus_(modalSheet, data);
+      if (modalSheet === 'ttp') ttpCanonicalizeCategoryFields_(data);
       if (modalMode === 'add' && modalSheet === 'ttp') {
         const dealerRows = ttpBuildDealerSaveRows_(data);
         if (dealerRows && dealerRows.length > 1) {
@@ -5544,7 +5545,7 @@ function initDashboardApp() {
         } else if (dealerRows && dealerRows.length === 1) {
           await apiPost({ action: 'add', sheet: modalSheet, data: dealerRows[0] });
         } else {
-          await apiPost({ action: 'add', sheet: modalSheet, data });
+          await apiPost({ action: 'add', sheet: modalSheet, data: data });
         }
       } else if (modalMode === 'add') {
         await apiPost({ action: 'add', sheet: modalSheet, data });
@@ -7350,6 +7351,17 @@ function initDashboardApp() {
     return hit ? hit.label : s;
   }
 
+  function ttpCanonicalizeCategoryFields_(data) {
+    if (!data || typeof data !== 'object') return data;
+    const categoryCol = ttpPickField_(['CATEGORY']);
+    if (!categoryCol) return data;
+    const raw = data[categoryCol];
+    if (raw == null || !String(raw).trim()) return data;
+    const canon = ttpCategoryDisplay_(raw);
+    if (canon && canon !== '—') data[categoryCol] = canon;
+    return data;
+  }
+
   function ttpCategoryGroupSummary_(rows) {
     if (!rows || !rows.length) return '—';
     const vals = rows.map(function(r) { return ttpRowCategoryValue_(r); }).filter(function(v) { return v && v !== '—'; });
@@ -7420,7 +7432,7 @@ function initDashboardApp() {
   const TTP_CATEGORY_MIX_BUCKETS = [
     {
       id: 'own_estate',
-      label: 'Own Estate',
+      label: 'Owned Estate',
       color: '#2d5a3d',
       desc: 'Plantations whose ownership and operations are under the direct control of the mill company.',
     },
@@ -7453,7 +7465,7 @@ function initDashboardApp() {
   function ttpNormalizeCategoryBucket_(raw) {
     const s = String(raw == null ? '' : raw).trim().toLowerCase().replace(/\s+/g, ' ');
     if (!s || s === '—' || s === '-') return '';
-    if (/^own\s*estate/.test(s) || s === 'own estate') return 'own_estate';
+    if (/^own(ed)?\s*estate/.test(s) || s === 'own estate' || s === 'owned estate') return 'own_estate';
     if (/^external\s*estate/.test(s) || s === 'external estate') return 'external_estate';
     if (s === 'dealer' || /^dealer\b/.test(s)) return 'dealer';
     if (/plasma/.test(s)) return 'plasma';
@@ -8577,7 +8589,13 @@ function initDashboardApp() {
     } else if (type === 'legalitas') {
       html = ttpModalLegalitasHtml_(field, val);
     } else if (type === 'category' || type === 'select') {
-      html = buildCustomSelect(field, ttpModalDropdownOptions_(field, val), String(val), false, isFull);
+      const useVal = type === 'category'
+        ? (function() {
+          const canon = ttpCategoryDisplay_(val);
+          return canon && canon !== '—' ? canon : String(val);
+        })()
+        : String(val);
+      html = buildCustomSelect(field, ttpModalDropdownOptions_(field, val), useVal, false, isFull);
     } else {
       html = '<div class="form-field' + (isFull ? ' full' : '') + '">'
         + '<label>' + escHtml(field) + '</label>'
@@ -8709,7 +8727,7 @@ function initDashboardApp() {
         if (latCol) row[latCol] = '';
         if (longCol) row[longCol] = '';
       }
-      return row;
+      return ttpCanonicalizeCategoryFields_(row);
     });
   }
 
