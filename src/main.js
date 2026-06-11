@@ -3821,8 +3821,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwC1Ixe6Xh9fFqCwVDEXMO-LEjvmrwBXkxG0IVfu9G7Mj7NwpeEn05SDnyYj1GEUAADWQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwC1Ixe6Xh9fFqCwVDEXMO-LEjvmrwBXkxG0IVfu9G7Mj7NwpeEn05SDnyYj1GEUAADWQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw3XLpQaEm_X-CwGDY-p404DmJucuLI7V6MvA0dq89h1mpJ4xXvK-mgxsURkvsjgEmkSQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw3XLpQaEm_X-CwGDY-p404DmJucuLI7V6MvA0dq89h1mpJ4xXvK-mgxsURkvsjgEmkSQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5387,6 +5387,7 @@ function initDashboardApp() {
           e.stopPropagation();
           const val = this.dataset.val;
           hidden.value = val;
+          hidden.dispatchEvent(new Event('input', { bubbles: true }));
 
           // update trigger display
           const arrowSvg = trigger.querySelector('.cs-arrow').outerHTML;
@@ -5540,11 +5541,17 @@ function initDashboardApp() {
       if (modalSheet === 'ttp') ttpCanonicalizeCategoryFields_(data);
       if (modalMode === 'add' && modalSheet === 'ttp') {
         const dealerRows = ttpBuildDealerSaveRows_(data);
-        if (dealerRows && dealerRows.length > 1) {
-          await apiPost({ action: 'addTtpBatch', sheet: 'ttp', rows: dealerRows });
-        } else if (dealerRows && dealerRows.length === 1) {
-          await apiPost({ action: 'add', sheet: modalSheet, data: dealerRows[0] });
+        if (dealerRows && dealerRows.length) {
+          const batchRes = await apiPost({ action: 'addTtpBatch', sheet: 'ttp', rows: dealerRows });
+          const saved = batchRes && batchRes.count != null ? Number(batchRes.count) : dealerRows.length;
+          if (saved !== dealerRows.length) {
+            throw new Error('Expected ' + dealerRows.length + ' TTP rows but server saved ' + saved + '.');
+          }
         } else {
+          const villages = ttpCollectDealerVillages_();
+          const villageCol = ttpPickField_(['VILLAGE']);
+          if (!villages.length) throw new Error('Village is required.');
+          if (villageCol) data[villageCol] = villages[0];
           await apiPost({ action: 'add', sheet: modalSheet, data: data });
         }
       } else if (modalMode === 'add') {
@@ -8525,7 +8532,7 @@ function initDashboardApp() {
   }
 
   function ttpIsDealerCategory_(value) {
-    return /^dealer$/i.test(String(value || '').trim());
+    return ttpNormalizeCategoryBucket_(value) === 'dealer';
   }
 
   function ttpModalSubdistrictHtml_(field, val, village) {
@@ -8646,6 +8653,14 @@ function initDashboardApp() {
   function ttpReadCategoryValue_(grid) {
     const categoryCol = ttpPickField_(['CATEGORY']);
     if (!categoryCol || !grid) return '';
+    const catWrap = grid.querySelector('[data-ttp-category-field="1"]');
+    if (catWrap) {
+      const catEl = catWrap.querySelector('input[data-field]');
+      const hiddenVal = catEl ? String(catEl.value || '').trim() : '';
+      if (hiddenVal) return hiddenVal;
+      const displayEl = catWrap.querySelector('.cs-value');
+      if (displayEl) return String(displayEl.textContent || '').trim();
+    }
     const catEl = grid.querySelector('input[data-field="' + categoryCol.replace(/"/g, '\\"') + '"]');
     return catEl ? String(catEl.value || '').trim() : '';
   }
@@ -8658,9 +8673,14 @@ function initDashboardApp() {
     const desc = document.getElementById('ttpDealerVillagesDesc');
     if (addBtn) addBtn.hidden = !isDealer;
     if (desc) {
-      desc.textContent = isDealer
-        ? 'Enter village name (type manually). One village = one data row. Lat/Long only on the first row.'
-        : 'Type village name.';
+      if (!isDealer) {
+        desc.textContent = 'Type village name.';
+      } else {
+        const filled = ttpCollectDealerVillages_().length;
+        desc.textContent = filled
+          ? (filled + ' village → ' + filled + ' baris TTP baru (1 Save). Lat/Long hanya baris pertama.')
+          : ('1 village = 1 baris. Klik + Tambah village sebanyak yang perlu — 3, 10, 20, dst. Lat/Long hanya baris pertama.');
+      }
     }
     panel.querySelectorAll('.ttp-dealer-village-rm').forEach(function(btn) {
       btn.hidden = !isDealer;
@@ -8669,28 +8689,48 @@ function initDashboardApp() {
     if (!isDealer && list) {
       const rows = list.querySelectorAll('.ttp-dealer-village-row');
       for (let i = 1; i < rows.length; i++) rows[i].remove();
-    } else if (isDealer && list && !list.querySelector('.ttp-dealer-village-row')) {
-      list.innerHTML = ttpDealerVillageRowHtml_('') + ttpDealerVillageRowHtml_('');
+    } else if (isDealer && list) {
+      while (list.querySelectorAll('.ttp-dealer-village-row').length < 2) {
+        list.insertAdjacentHTML('beforeend', ttpDealerVillageRowHtml_(''));
+      }
     }
   }
 
   function bindTtpModalDealerUi_(grid) {
     if (!grid) return;
+
+    const categoryCol = ttpPickField_(['CATEGORY']);
+    if (categoryCol) {
+      const catHidden = grid.querySelector('input[data-field="' + categoryCol.replace(/"/g, '\\"') + '"]');
+      if (catHidden && catHidden.dataset.ttpDealerCatBound !== '1') {
+        catHidden.dataset.ttpDealerCatBound = '1';
+        catHidden.addEventListener('input', function() {
+          ttpSyncDealerVillagesUi_(grid);
+        });
+      }
+    }
+
     ttpSyncDealerVillagesUi_(grid);
 
     if (grid.dataset.ttpDealerUiBound === '1') return;
     grid.dataset.ttpDealerUiBound = '1';
 
+    if (!grid.dataset.ttpDealerVillageInputBound) {
+      grid.dataset.ttpDealerVillageInputBound = '1';
+      grid.addEventListener('input', function(e) {
+        if (e.target && e.target.classList && e.target.classList.contains('ttp-dealer-village-inp')) {
+          ttpSyncDealerVillagesUi_(grid);
+        }
+      });
+    }
+
     grid.addEventListener('click', function(e) {
-      const opt = e.target.closest('.cs-option');
-      if (opt && opt.closest('[data-ttp-category-field="1"]')) {
-        setTimeout(function() { ttpSyncDealerVillagesUi_(grid); }, 0);
-      }
       if (e.target.closest('#ttpDealerAddVillage')) {
         e.preventDefault();
         const list = document.getElementById('ttpDealerVillagesList');
         if (!list) return;
         list.insertAdjacentHTML('beforeend', ttpDealerVillageRowHtml_(''));
+        ttpSyncDealerVillagesUi_(grid);
       }
       const rmBtn = e.target.closest('.ttp-dealer-village-rm');
       if (rmBtn) {
@@ -8703,22 +8743,26 @@ function initDashboardApp() {
           return;
         }
         row.remove();
+        ttpSyncDealerVillagesUi_(grid);
       }
     });
   }
 
   function ttpBuildDealerSaveRows_(data) {
+    const modalGrid = document.getElementById('modalFormGrid');
     const categoryCol = ttpPickField_(['CATEGORY']);
     const villageCol = ttpPickField_(['VILLAGE']);
     const latCol = ttpPickField_(['LAT', 'LATITUDE']);
     const longCol = ttpPickField_(['LONG', 'LONGITUDE']);
-    const category = categoryCol ? data[categoryCol] : '';
+    const category = categoryCol
+      ? (ttpReadCategoryValue_(modalGrid) || data[categoryCol] || '')
+      : '';
     const villages = ttpCollectDealerVillages_();
+    if (!ttpIsDealerCategory_(category)) return null;
     if (!villages.length) {
-      throw new Error('Village is required.');
+      throw new Error('Dealer: isi minimal 1 village (1 village = 1 baris TTP).');
     }
     if (villageCol) data[villageCol] = villages[0];
-    if (!ttpIsDealerCategory_(category)) return null;
 
     return villages.map(function(village, idx) {
       const row = Object.assign({}, data);
@@ -8757,15 +8801,17 @@ function initDashboardApp() {
       html += '</div></div>';
     });
     grid.innerHTML = html;
-    initCustomSelects(grid);
     if (categoryCol) {
-      const catHidden = grid.querySelector('input[data-field="' + categoryCol.replace(/"/g, '\\"') + '"]');
-      if (catHidden && catHidden.parentElement) {
-        catHidden.parentElement.setAttribute('data-ttp-category-field', '1');
+      const catFieldEsc = categoryCol.replace(/"/g, '\\"');
+      const catFieldEl = grid.querySelector('input[data-field="' + catFieldEsc + '"]');
+      if (catFieldEl && catFieldEl.parentElement) {
+        catFieldEl.parentElement.setAttribute('data-ttp-category-field', '1');
       }
     }
+    initCustomSelects(grid);
     bindTtpModalDealerUi_(grid);
     bindTtpModalLocationCascade_(grid);
+    ttpSyncDealerVillagesUi_(grid);
   }
 
   function ttpModalVillageValue_(grid) {

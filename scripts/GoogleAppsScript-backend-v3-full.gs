@@ -906,6 +906,65 @@ function millFindNextAppendRow_(sheet, headers) {
   return millFindActiveZoneLastRow_(sheet, headers) + 1;
 }
 
+var TTP_IDENTITY_HEADERS_ = [
+  'VILLAGE', 'FFB SUPPLIER NAME', 'FFB SUPPLIER GROUP NAME', 'CATEGORY',
+  'UML ID', 'MILL NAME', 'COMPANY NAME', 'GROUP NAME', 'COMPANY CODE'
+];
+
+var TTP_NON_IDENTITY_HEADERS_ = {
+  'QUARTER': true, 'YEAR': true, 'LAT': true, 'LONG': true, 'LATITUDE': true, 'LONGITUDE': true,
+  'PERCENTAGE TRACEABILITY': true, '% CPO TRACEABLE': true, '% PK TRACEABLE': true,
+  'PERCENTAGE': true, 'SUPPLY': true, 'FFB SUPPLY TO MILL (TON)': true,
+  'TOTAL SUPPLY FFB (TON)': true, 'ISPO (Y/N)': true, 'RSPO (Y/N)': true, 'ISCC (Y/N)': true,
+};
+
+function ttpIdentityColumnIndices_(headers) {
+  var out = [];
+  var seen = {};
+  (headers || []).forEach(function(h, i) {
+    var key = String(h || '').trim().toUpperCase();
+    if (!key || seen[key] || TTP_NON_IDENTITY_HEADERS_[key]) return;
+    for (var k = 0; k < TTP_IDENTITY_HEADERS_.length; k++) {
+      if (TTP_IDENTITY_HEADERS_[k] === key) {
+        seen[key] = true;
+        out.push(i);
+        break;
+      }
+    }
+  });
+  return out.length ? out : null;
+}
+
+function ttpFindActiveZoneLastRow_(sheet, headers, headerRow) {
+  headerRow = headerRow || 1;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= headerRow) return headerRow;
+
+  var numCols = Math.max(headers.length, sheet.getLastColumn());
+  var rowCount = lastRow - headerRow;
+  if (rowCount <= 0) return headerRow;
+
+  var allData = sheet.getRange(headerRow + 1, 1, rowCount, numCols).getValues();
+  var idCols = ttpIdentityColumnIndices_(headers);
+  var lastDataRow = headerRow;
+  var emptyStreak = 0;
+
+  for (var i = 0; i < allData.length; i++) {
+    if (millRowHasIdentityContent_(allData[i], idCols)) {
+      lastDataRow = headerRow + 1 + i;
+      emptyStreak = 0;
+    } else {
+      emptyStreak++;
+      if (emptyStreak >= MILL_ARCHIVE_GAP_ROWS && lastDataRow > headerRow) break;
+    }
+  }
+  return lastDataRow;
+}
+
+function ttpFindNextAppendRow_(sheet, headers, headerRow) {
+  return ttpFindActiveZoneLastRow_(sheet, headers, headerRow) + 1;
+}
+
 /** Ringkasan zona aktif vs archive copy (jalankan dari GAS editor). */
 function millSheetTailReport_() {
   var sheet = getSheet('mill');
@@ -1788,21 +1847,31 @@ function appendTtpRow_(ws, headers, obj) {
   ws.appendRow(row);
 }
 
-/** Add multiple TTP rows in one request (e.g. Dealer → one row per village). */
+/** Add multiple TTP rows in one request (Dealer → one row per village, consecutive active-zone rows). */
 function addTtpBatch_(rows) {
   if (!rows || !rows.length) throw new Error('No TTP rows to add');
   ensureTtpHeaders_();
   const sheet = getSheet('ttp');
   const hdr = detectTtpHeaderRow_(sheet);
   const headers = hdr && hdr.headers && hdr.headers.length ? hdr.headers : TTP_HEADERS.slice();
-  rows.forEach(function(data) {
+  const headerRow = hdr && hdr.headerRow ? hdr.headerRow : 1;
+  var nextRow = ttpFindNextAppendRow_(sheet, headers, headerRow);
+  var rowArrays = rows.map(function(data) {
     const newRow = headers.map(function(h) {
       return data[h] !== undefined && data[h] !== null ? data[h] : '';
     });
     forceCoordStrings_(headers, newRow);
-    sheet.appendRow(newRow);
+    return newRow;
   });
-  return { success: true, count: rows.length };
+  rowArrays.forEach(function(rowArr, i) {
+    safeInsertRowAt_(sheet, headers, rowArr, nextRow + i);
+  });
+  return {
+    success: true,
+    count: rows.length,
+    startRow: nextRow,
+    endRow: nextRow + rows.length - 1,
+  };
 }
 
 function patchTtpRow_(ws, headers, sheetRow, patch) {
@@ -2708,6 +2777,16 @@ function addRow(sheetKey, data) {
     const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
     forceCoordStrings_(headers, newRow);
     const targetRow = millFindNextAppendRow_(sheet, headers);
+    safeInsertRowAt_(sheet, headers, newRow, targetRow);
+    return { success: true, row: targetRow };
+  }
+  if (sheetKey === 'ttp') {
+    const hdr = detectTtpHeaderRow_(sheet);
+    if (hdr && hdr.headers && hdr.headers.length) headers = hdr.headers;
+    const headerRow = hdr && hdr.headerRow ? hdr.headerRow : 1;
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    forceCoordStrings_(headers, newRow);
+    const targetRow = ttpFindNextAppendRow_(sheet, headers, headerRow);
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
     return { success: true, row: targetRow };
   }
