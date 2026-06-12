@@ -2668,6 +2668,23 @@ function millSupplyUsesRawNumber_(header) {
   return u === 'SUPPLY CPO' || u === 'SUPPLY PK';
 }
 
+/** Date-only cells from Sheets → stable yyyy-MM-dd for API (avoids UTC off-by-one in JSON). */
+function formatApiCellValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return value;
+}
+
+/** ISO date strings from the dashboard → local midnight Date for Sheets. */
+function coerceSheetDateValue_(value) {
+  if (value === undefined || value === null || value === '') return value;
+  var s = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return value;
+  var parts = s.split('-');
+  return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+}
+
 function getData(sheetKey) {
   const sheet = getSheet(sheetKey);
   const range = sheet.getDataRange();
@@ -2717,7 +2734,7 @@ function getData(sheetKey) {
           && typeof rawVal === 'number' && !isNaN(rawVal)) {
         obj[h] = rawVal;
       } else {
-        obj[h] = sourceRow[j];
+        obj[h] = formatApiCellValue_(sourceRow[j]);
       }
     });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
@@ -2790,7 +2807,9 @@ function addRow(sheetKey, data) {
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
     return { success: true, row: targetRow };
   }
-  const newRow  = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+  const newRow  = headers.map(function(h) {
+    return coerceSheetDateValue_(data[h] !== undefined ? data[h] : '');
+  });
   sheet.appendRow(newRow);
   return { success: true };
 }
@@ -2829,7 +2848,8 @@ function updateRow(sheetKey, rowNum, data) {
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
   const updated = headers.map(function(h, j) {
-    return data[h] !== undefined ? data[h] : current[j];
+    var v = data[h] !== undefined ? data[h] : current[j];
+    return coerceSheetDateValue_(v);
   });
   sheet.getRange(r, 1, 1, updated.length).setValues([updated]);
   return { success: true };
