@@ -6043,8 +6043,8 @@ function initDashboardApp() {
         + '</div>';
       document.body.appendChild(menu);
       const br = btn.getBoundingClientRect();
-      menu.style.top = (br.bottom + 6 + window.scrollY) + 'px';
-      menu.style.left = Math.max(8, br.right - 260 + window.scrollX) + 'px';
+      menu.style.top = (br.bottom + 6) + 'px';
+      menu.style.left = Math.max(8, Math.min(br.right - 260, window.innerWidth - 268)) + 'px';
 
       const listEl = menu.querySelector('.mill-col-filter-list');
       const searchEl = menu.querySelector('.mill-col-filter-search');
@@ -6209,16 +6209,20 @@ function initDashboardApp() {
 
   function millPdfResetDim(dim) {
     if (millPdfDimFilters[dim]) millPdfDimFilters[dim].clear();
-    document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-dim="' + dim + '"][data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
+    document.querySelectorAll('.mill-dim-filter-surface input[data-mill-pdf-dim="' + dim + '"][data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
     updateMillPdfExportScope();
     scheduleRenderMillTable();
   }
 
   function millPdfResetAllDims() {
     millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
-    document.querySelectorAll('#millPdfFilterDimsPanel input[data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
+    document.querySelectorAll('.mill-dim-filter-surface input[data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
     updateMillPdfExportScope();
     scheduleRenderMillTable();
+  }
+
+  function millPdfResetRegistryDims_() {
+    ['group', 'province'].forEach(function(dim) { millPdfResetDim(dim); });
   }
 
   async function millExportToPdf() {
@@ -6295,62 +6299,100 @@ function initDashboardApp() {
     }
   }
 
+  function closeMillToolbarDropdowns_(exceptPanelId) {
+    const pairs = [
+      ['millPdfBtnFilterDims', 'millPdfFilterDimsPanel'],
+      ['millBtnFilterQuarter', 'millQuarterFilterPanel'],
+      ['millBtnFilterYear', 'millYearFilterPanel'],
+      ['millPdfBtnCols', 'millPdfColsPanel'],
+    ];
+    pairs.forEach(function(pair) {
+      if (exceptPanelId && pair[1] === exceptPanelId) return;
+      const btn = document.getElementById(pair[0]);
+      const panel = document.getElementById(pair[1]);
+      if (panel) panel.classList.remove('open');
+      if (btn) btn.classList.remove('active');
+    });
+  }
+
   (function bindMillPdfToolbarOnce() {
     const btnPdf = document.getElementById('btn-mill-export-pdf');
     const bFilter = document.getElementById('millPdfBtnFilterDims');
+    const bQuarter = document.getElementById('millBtnFilterQuarter');
+    const bYear = document.getElementById('millBtnFilterYear');
     const bCols = document.getElementById('millPdfBtnCols');
     const pFilter = document.getElementById('millPdfFilterDimsPanel');
+    const pQuarter = document.getElementById('millQuarterFilterPanel');
+    const pYear = document.getElementById('millYearFilterPanel');
     const pCols = document.getElementById('millPdfColsPanel');
     const gSearch = document.getElementById('millPdfGroupSearch');
     if (!btnPdf || !bFilter || !bCols || !pFilter || !pCols) return;
 
-    bFilter.addEventListener('click', function(e) {
-      e.stopPropagation();
-      openTTPDropdown('millPdfBtnFilterDims', 'millPdfFilterDimsPanel', 'millPdfColsPanel', 'millPdfBtnCols');
-    });
+    function bindMillDimDropdown_(btnId, panelId) {
+      const btn = document.getElementById(btnId);
+      const panel = document.getElementById(panelId);
+      if (!btn || !panel) return;
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const isOpen = panel.classList.contains('open');
+        closeMillToolbarDropdowns_();
+        if (!isOpen) {
+          panel.classList.add('open');
+          btn.classList.add('active');
+        }
+      });
+    }
+
+    bindMillDimDropdown_('millPdfBtnFilterDims', 'millPdfFilterDimsPanel');
+    if (bQuarter && pQuarter) bindMillDimDropdown_('millBtnFilterQuarter', 'millQuarterFilterPanel');
+    if (bYear && pYear) bindMillDimDropdown_('millBtnFilterYear', 'millYearFilterPanel');
     bCols.addEventListener('click', function(e) {
       e.stopPropagation();
-      openTTPDropdown('millPdfBtnCols', 'millPdfColsPanel', 'millPdfFilterDimsPanel', 'millPdfBtnFilterDims');
+      const isOpen = pCols.classList.contains('open');
+      closeMillToolbarDropdowns_();
+      if (!isOpen) {
+        pCols.classList.add('open');
+        bCols.classList.add('active');
+      }
     });
 
     if (!window.__sddMillPdfDropdownOutsideClickBound) {
       window.__sddMillPdfDropdownOutsideClickBound = true;
       document.addEventListener('click', function(e) {
-        const w1 = document.getElementById('millPdfFilterWrap');
-        const w2 = document.getElementById('millPdfColWrap');
-        if (w1 && pFilter && !w1.contains(e.target)) {
-          pFilter.classList.remove('open');
-          bFilter.classList.remove('active');
-        }
-        if (w2 && pCols && !w2.contains(e.target)) {
-          pCols.classList.remove('open');
-          bCols.classList.remove('active');
-        }
+        const wraps = [
+          document.getElementById('millPdfFilterWrap'),
+          document.getElementById('millQuarterFilterWrap'),
+          document.getElementById('millYearFilterWrap'),
+          document.getElementById('millPdfColWrap'),
+        ];
+        if (wraps.some(function(w) { return w && w.contains(e.target); })) return;
+        closeMillToolbarDropdowns_();
       });
     }
 
-    pFilter.addEventListener('change', function(e) {
-      const t = e.target;
-      if (!t || t.type !== 'checkbox' || !t.dataset.millPdfDim || !t.dataset.millPdfVal) return;
-      const dim = t.dataset.millPdfDim;
-      const tok = t.dataset.millPdfVal;
-      if (!millPdfDimFilters[dim]) return;
-      if (t.checked) millPdfDimFilters[dim].add(tok);
-      else millPdfDimFilters[dim].delete(tok);
-      updateMillPdfExportScope();
-      scheduleRenderMillTable();
+    document.querySelectorAll('.mill-dim-filter-surface').forEach(function(surface) {
+      surface.addEventListener('change', function(e) {
+        const t = e.target;
+        if (!t || t.type !== 'checkbox' || !t.dataset.millPdfDim || !t.dataset.millPdfVal) return;
+        const dim = t.dataset.millPdfDim;
+        const tok = t.dataset.millPdfVal;
+        if (!millPdfDimFilters[dim]) return;
+        if (t.checked) millPdfDimFilters[dim].add(tok);
+        else millPdfDimFilters[dim].delete(tok);
+        updateMillPdfExportScope();
+        scheduleRenderMillTable();
+      });
+      surface.querySelectorAll('[data-mill-pdf-dim-reset]').forEach(function(b) {
+        b.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const dim = this.getAttribute('data-mill-pdf-dim-reset');
+          if (dim) millPdfResetDim(dim);
+        });
+      });
     });
 
     const resetAll = document.getElementById('millPdfDimResetAll');
-    if (resetAll) resetAll.addEventListener('click', function(e) { e.stopPropagation(); millPdfResetAllDims(); });
-
-    pFilter.querySelectorAll('[data-mill-pdf-dim-reset]').forEach(function(b) {
-      b.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const dim = this.getAttribute('data-mill-pdf-dim-reset');
-        if (dim) millPdfResetDim(dim);
-      });
-    });
+    if (resetAll) resetAll.addEventListener('click', function(e) { e.stopPropagation(); millPdfResetRegistryDims_(); });
 
     if (gSearch) {
       gSearch.addEventListener('input', function() { millPdfApplyGroupSearchFilter(); });

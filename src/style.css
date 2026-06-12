@@ -2450,13 +2450,36 @@
      overflow: visible;
    }
 
-   /* Mill Registry: scroll body + frozen column headers */
-   #panel-mill-onboarding .table-scroll {
-     overflow: auto;
-     max-height: min(68vh, calc(100dvh - 300px));
-     -webkit-overflow-scrolling: touch;
+   #panel-mill-onboarding .mill-export-toolbar {
+     position: relative;
+     z-index: 40;
    }
-   #panel-mill-onboarding .table-scroll table#millTable {
+   /* Open filter panels upward so they do not cover the table headers below */
+   #panel-mill-onboarding .mill-export-toolbar .ttp-dropdown-panel {
+     top: auto;
+     bottom: calc(100% + 6px);
+     z-index: 12050;
+   }
+   #panel-mill-onboarding .mill-period-filter-panel {
+     min-width: 200px;
+     max-width: min(280px, calc(100vw - 32px));
+     max-height: min(320px, 55vh);
+   }
+
+   /* Mill Registry: scroll body + frozen column headers */
+   #panel-mill-onboarding .mill-registry-table-scroll {
+     overflow: auto !important;
+     max-height: min(65vh, calc(100dvh - 280px));
+     -webkit-overflow-scrolling: touch;
+     position: relative;
+     scrollbar-width: thin;
+     scrollbar-color: rgba(139, 26, 26, 0.18) transparent;
+   }
+   #panel-mill-onboarding .mill-registry-table-scroll::-webkit-scrollbar {
+     width: 6px;
+     height: 6px;
+   }
+   #panel-mill-onboarding .mill-registry-table-scroll table#millTable {
      width: 100%;
      min-width: 0;
      max-width: 100%;
@@ -2467,7 +2490,7 @@
    #panel-mill-onboarding #millTable thead th {
      position: sticky;
      top: 0;
-     z-index: 2;
+     z-index: 5;
      vertical-align: top;
      padding: 12px 9px 11px;
      font-size: 9.5px;
@@ -2524,6 +2547,7 @@
      overflow-wrap: break-word;
      hyphens: manual;
      color: #2a1010;
+     background: #fff;
    }
    #panel-mill-onboarding #millTable tbody td:nth-child(1) {
      white-space: nowrap;
@@ -2574,14 +2598,14 @@
     color: #8B1A1A;
   }
   .mill-col-filter-menu {
-    position: absolute;
+    position: fixed;
     width: 260px;
     max-height: 360px;
     background: #fff;
     border: 1px solid rgba(139,26,26,0.18);
     border-radius: 10px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.16);
-    z-index: 10010;
+    z-index: 12060;
     padding: 10px;
     display: flex;
     flex-direction: column;

@@ -194,38 +194,52 @@
     </div>
     <!-- Export / column filters (same component language as Monitoring TTM/TTP) -->
     <div class="ttp-toolbar mill-export-toolbar" id="millExportToolbar" aria-label="Saring dan export Mill Registry">
+      <div class="ttp-dropdown-wrap mill-period-filter-wrap" id="millQuarterFilterWrap">
+        <button type="button" class="ttp-btn-filter" id="millBtnFilterQuarter" aria-expanded="false" aria-controls="millQuarterFilterPanel">
+          <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+          Quarter
+          <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="ttp-dropdown-panel mill-period-filter-panel mill-dim-filter-surface" id="millQuarterFilterPanel" role="region" aria-label="Filter Quarter">
+          <div class="ttp-dropdown-head">
+            <span class="ttp-dropdown-title">Quarter</span>
+            <div class="ttp-dropdown-actions">
+              <button type="button" data-mill-pdf-dim-reset="quarter">Reset</button>
+            </div>
+          </div>
+          <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListQuarter"></div>
+        </div>
+      </div>
+      <div class="ttp-dropdown-wrap mill-period-filter-wrap" id="millYearFilterWrap">
+        <button type="button" class="ttp-btn-filter" id="millBtnFilterYear" aria-expanded="false" aria-controls="millYearFilterPanel">
+          <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+          Year
+          <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="ttp-dropdown-panel mill-period-filter-panel mill-dim-filter-surface" id="millYearFilterPanel" role="region" aria-label="Filter Year">
+          <div class="ttp-dropdown-head">
+            <span class="ttp-dropdown-title">Year</span>
+            <div class="ttp-dropdown-actions">
+              <button type="button" data-mill-pdf-dim-reset="year">Reset</button>
+            </div>
+          </div>
+          <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListYear"></div>
+        </div>
+      </div>
       <div class="ttp-dropdown-wrap" id="millPdfFilterWrap">
         <button type="button" class="ttp-btn-select" id="millPdfBtnFilterDims" aria-expanded="false" aria-controls="millPdfFilterDimsPanel">
           <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span>
           Filter registry
           <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
-        <div class="ttp-dropdown-panel mill-pdf-filter-panel" id="millPdfFilterDimsPanel" role="region" aria-label="Filter nilai registry dan PDF">
+        <div class="ttp-dropdown-panel mill-pdf-filter-panel mill-dim-filter-surface" id="millPdfFilterDimsPanel" role="region" aria-label="Filter Group dan Province">
           <div class="ttp-dropdown-head">
-            <span class="ttp-dropdown-title">Nilai di tabel &amp; PDF</span>
+            <span class="ttp-dropdown-title">Group &amp; Province</span>
             <div class="ttp-dropdown-actions">
               <button type="button" id="millPdfDimResetAll">Reset all</button>
             </div>
           </div>
-          <p class="mill-pdf-toolbar-hint">Clearing all checkboxes in one dimension = no limit on that dimension. Affects rows shown in the registry table and rows exported to PDF. Combines with NBL / Non-NBL chips, header column filters, and the search box above.</p>
-          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="quarter">
-            <div class="mill-pdf-dim-head">
-              <span>Quarter</span>
-              <div class="ttp-dropdown-actions">
-                <button type="button" data-mill-pdf-dim-reset="quarter">Reset</button>
-              </div>
-            </div>
-            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListQuarter"></div>
-          </div>
-          <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="year">
-            <div class="mill-pdf-dim-head">
-              <span>Year</span>
-              <div class="ttp-dropdown-actions">
-                <button type="button" data-mill-pdf-dim-reset="year">Reset</button>
-              </div>
-            </div>
-            <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListYear"></div>
-          </div>
+          <p class="mill-pdf-toolbar-hint">Kosongkan semua checkbox = tidak ada batas pada dimensi itu. Berlaku untuk tabel registry dan export PDF.</p>
           <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="group">
             <div class="mill-pdf-dim-head">
               <span>Group</span>
@@ -273,7 +287,7 @@
       </div>
     </div>
     <div id="mill-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
-    <div class="table-scroll">
+    <div class="table-scroll mill-registry-table-scroll">
       <table id="millTable" style="display:none;">
         <thead>
           <tr>
