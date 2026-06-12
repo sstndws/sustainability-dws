@@ -419,6 +419,22 @@ import {
     return -1;
   }
 
+  /** Traceability A. Mill List — legacy (COMPANY NAME col A) vs new (COMPANY GROUP NAME col A). */
+  function detectTraceMillListHeaderRow_(rows, searchFromRow) {
+    const from = searchFromRow >= 0 ? searchFromRow + 1 : 0;
+    for (let r = from; r < Math.min(rows.length, from + 24); r++) {
+      const c0 = normalizeCellText(cellAt(rows, r, 0)).toUpperCase();
+      const c1 = normalizeCellText(cellAt(rows, r, 1)).toUpperCase();
+      if (c0 === 'COMPANY GROUP NAME' && (c1 === 'COMPANY NAME' || c1.indexOf('COMPANY') >= 0)) {
+        return { headerRow: r, hasCompanyGroupName: true };
+      }
+      if (c0 === 'COMPANY NAME') {
+        return { headerRow: r, hasCompanyGroupName: false };
+      }
+    }
+    return null;
+  }
+
   function getValueNearLabel(rows, label) {
     const target = normalizeCellText(label).toLowerCase();
     function isPlaceholder(v) {
@@ -851,34 +867,49 @@ import {
     // A. Mill List -> TML columns
     const millStart = findRowByFirstCell(rows, 'A. Mill List', 0);
     if (millStart >= 0) {
-      let header = -1;
-      for (let r = millStart + 1; r < Math.min(rows.length, millStart + 20); r++) {
-        if (cellAt(rows, r, 0).toUpperCase() === 'COMPANY NAME') { header = r; break; }
-      }
-      if (header >= 0) {
+      const millHdr = detectTraceMillListHeaderRow_(rows, millStart);
+      if (millHdr && millHdr.headerRow >= 0) {
+        const header = millHdr.headerRow;
+        const hasCompanyGroupName = !!millHdr.hasCompanyGroupName;
+        const companyCol = hasCompanyGroupName ? 1 : 0;
+        const millCol = hasCompanyGroupName ? 2 : 1;
+        const umlCol = hasCompanyGroupName ? 3 : 2;
+        const villageCol = hasCompanyGroupName ? 4 : 3;
+        const subDistrictCol = hasCompanyGroupName ? 5 : 4;
+        const districtCol = hasCompanyGroupName ? 6 : 5;
+        const capacityCol = hasCompanyGroupName ? 7 : 6;
+        const latCol = hasCompanyGroupName ? 8 : 7;
+        const longCol = hasCompanyGroupName ? 9 : 8;
+        const legalityCol = hasCompanyGroupName ? 10 : 9;
+        const ispoCol = hasCompanyGroupName ? 11 : 10;
+        const rspoCol = hasCompanyGroupName ? 12 : 11;
+        const isccCol = hasCompanyGroupName ? 13 : 12;
+        const totalSupplyCol = hasCompanyGroupName ? 14 : 13;
         for (let r = header + 1; r < rows.length; r++) {
           const first = cellAt(rows, r, 0);
           const ft = String(first || '').trim();
           if (ft.toLowerCase() === 'b. ffb supplier list') break;
           if (/^[C-Z]\.\s/i.test(ft) && !normalizeCellText(cellAt(rows, r, 1)) && !normalizeCellText(cellAt(rows, r, 2))) break;
-          const company = cellAt(rows, r, 0);
-          const mill = cellAt(rows, r, 1);
-          if (!company && !mill) continue;
+          const companyGroup = hasCompanyGroupName ? cellAt(rows, r, 0) : '';
+          const company = cellAt(rows, r, companyCol);
+          const mill = cellAt(rows, r, millCol);
+          if (!companyGroup && !company && !mill) continue;
           out.push({
+            'TML - Company Group Name': companyGroup,
             'TML - Company Name': company,
             'TML - Mill Name': mill,
-            'TML - UML ID': cellAt(rows, r, 2),
-            'TML - Village': cellAt(rows, r, 3),
-            'TML - Sub District': cellAt(rows, r, 4),
-            'TML - District': cellAt(rows, r, 5),
-            'TML - Capacity (Ton/Hour)': cellAt(rows, r, 6),
-            'TML - Latitude': normalizeCoordinate(rawCellAt(r, 7), 'TML - Latitude'),
-            'TML - Longitude': normalizeCoordinate(rawCellAt(r, 8), 'TML - Longitude'),
-            'TML - Legality': cellAt(rows, r, 9),
-            'TML - ISPO (Y/N)': cellAt(rows, r, 10),
-            'TML - RSPO (Y/N)': cellAt(rows, r, 11),
-            'TML - ISCC (Y/N)': cellAt(rows, r, 12),
-            'TML - Total Supply CPO/PK (Ton)': cellAt(rows, r, 13)
+            'TML - UML ID': cellAt(rows, r, umlCol),
+            'TML - Village': cellAt(rows, r, villageCol),
+            'TML - Sub District': cellAt(rows, r, subDistrictCol),
+            'TML - District': cellAt(rows, r, districtCol),
+            'TML - Capacity (Ton/Hour)': cellAt(rows, r, capacityCol),
+            'TML - Latitude': normalizeCoordinate(rawCellAt(r, latCol), 'TML - Latitude'),
+            'TML - Longitude': normalizeCoordinate(rawCellAt(r, longCol), 'TML - Longitude'),
+            'TML - Legality': cellAt(rows, r, legalityCol),
+            'TML - ISPO (Y/N)': cellAt(rows, r, ispoCol),
+            'TML - RSPO (Y/N)': cellAt(rows, r, rspoCol),
+            'TML - ISCC (Y/N)': cellAt(rows, r, isccCol),
+            'TML - Total Supply CPO/PK (Ton)': cellAt(rows, r, totalSupplyCol)
           });
         }
       }
@@ -1233,16 +1264,15 @@ import {
         const v0 = cellVal(row, 0);
 
         if (v0 === 'A. Mill List') {
-          // Find header row (next row with content in col 0 or 1)
           i++;
-          // skip sub-header rows until we hit the real column headers
           while (i < data.length && !cellVal(data[i], 0) && !cellVal(data[i], 1)) i++;
-          // col headers might be split across 2 rows (row 5 has group headers, row 6 has col headers)
-          // find the row with COMPANY NAME
-          let headerIdx = i;
-          while (headerIdx < data.length && cellVal(data[headerIdx], 0) !== 'COMPANY NAME') headerIdx++;
-          if (headerIdx < data.length) {
-            const headers = ['Company Name','Mill Name','UML ID','Village','Sub District','District','Capacity','Lat','Long','Legality','ISPO','RSPO','ISCC','Total Supply CPO/PK (Ton)'];
+          const millHdr = detectTraceMillListHeaderRow_(data, i - 1);
+          if (millHdr && millHdr.headerRow < data.length) {
+            const headerIdx = millHdr.headerRow;
+            const hasCompanyGroupName = !!millHdr.hasCompanyGroupName;
+            const headers = hasCompanyGroupName
+              ? ['Company Group Name','Company Name','Mill Name','UML ID','Village','Sub District','District','Capacity','Lat','Long','Legality','ISPO','RSPO','ISCC','Total Supply CPO/PK (Ton)']
+              : ['Company Name','Mill Name','UML ID','Village','Sub District','District','Capacity','Lat','Long','Legality','ISPO','RSPO','ISCC','Total Supply CPO/PK (Ton)'];
             const tableRows = [];
             let j = headerIdx + 1;
             while (j < data.length) {
@@ -1250,10 +1280,16 @@ import {
               if (!r || !r.some(c => c !== null && c !== undefined && String(c).trim() !== '')) { j++; continue; }
               const v = cellVal(r, 0);
               if (v === 'B. FFB Supplier List' || isSectionHeader(r)) break;
-              tableRows.push([cellVal(r,0),cellVal(r,1),cellVal(r,2),cellVal(r,3),cellVal(r,4),cellVal(r,5),cellVal(r,6),cellVal(r,7),cellVal(r,8),cellVal(r,9),cellVal(r,10),cellVal(r,11),cellVal(r,12),cellVal(r,13)]);
+              if (hasCompanyGroupName) {
+                tableRows.push([cellVal(r,0),cellVal(r,1),cellVal(r,2),cellVal(r,3),cellVal(r,4),cellVal(r,5),cellVal(r,6),cellVal(r,7),cellVal(r,8),cellVal(r,9),cellVal(r,10),cellVal(r,11),cellVal(r,12),cellVal(r,13),cellVal(r,14)]);
+              } else {
+                tableRows.push([cellVal(r,0),cellVal(r,1),cellVal(r,2),cellVal(r,3),cellVal(r,4),cellVal(r,5),cellVal(r,6),cellVal(r,7),cellVal(r,8),cellVal(r,9),cellVal(r,10),cellVal(r,11),cellVal(r,12),cellVal(r,13)]);
+              }
               j++;
             }
-            html += tableCard('A. Mill List', headers, tableRows.filter(r => r[0] || r[1]));
+            html += tableCard('A. Mill List', headers, tableRows.filter(function(row) {
+              return hasCompanyGroupName ? (row[0] || row[1] || row[2]) : (row[0] || row[1]);
+            }));
             i = j;
           } else { i++; }
         }
@@ -1326,16 +1362,18 @@ import {
         const _sr = data[_scanI];
         const _sv = cellVal(_sr, 0);
         if (_sv === 'A. Mill List') {
-          let _shi = _scanI + 1;
-          while (_shi < data.length && cellVal(data[_shi], 0) !== 'COMPANY NAME') _shi++;
-          let _sj = _shi + 1;
-          while (_sj < data.length) {
-            const _srow = data[_sj];
-            if (!_srow || !_srow.some(c => c !== null && c !== undefined && String(c).trim() !== '')) { _sj++; continue; }
-            if (cellVal(_srow, 0) === 'B. FFB Supplier List') break;
-            const mn = cellVal(_srow, 1);
-            if (mn) window._tmlMillNames.push(mn);
-            _sj++;
+          const millHdr = detectTraceMillListHeaderRow_(data, _scanI);
+          if (millHdr && millHdr.headerRow >= 0) {
+            let _sj = millHdr.headerRow + 1;
+            const millCol = millHdr.hasCompanyGroupName ? 2 : 1;
+            while (_sj < data.length) {
+              const _srow = data[_sj];
+              if (!_srow || !_srow.some(c => c !== null && c !== undefined && String(c).trim() !== '')) { _sj++; continue; }
+              if (cellVal(_srow, 0) === 'B. FFB Supplier List') break;
+              const mn = cellVal(_srow, millCol);
+              if (mn) window._tmlMillNames.push(mn);
+              _sj++;
+            }
           }
         }
         _scanI++;
@@ -1776,7 +1814,7 @@ import {
         <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:space-between;">
           <div style="flex:1;min-width:200px;">
             <div style="font-size:12px;font-weight:700;color:#1A0A0A;">No Buy List check</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Flags <strong>Yes</strong> if any imported name matches NBL (Group or Company) or Unilever NBL (Company or Mill). One similar name is enough.</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Flags <strong>Yes</strong> if any name from Main Form <em>or</em> Traceability (Company Group, Company, Mill, Supplier Group) matches NBL or Unilever NBL. One match is enough.</div>
           </div>
           <button type="button" id="sdd-check-nbl-btn" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="flex-shrink:0;padding:9px 18px;border-radius:8px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(139,26,26,0.2);">Check NBL</button>
         </div>
@@ -2226,11 +2264,19 @@ import {
     d.push(['*If there is no supply from the mill, continue filling in section B to complete the FFB supply data']);
     d.push([]); d.push(['A. Mill List']);
     d.push([]);
-    d.push(['COMPANY NAME','MILL NAME','UML ID','VILLAGE','SUB DISTRICT','DISTRICT','CAPACITY','LAT','LONG','LEGALITY','ISPO (Y/N)','RSPO (Y/N)','ISCC (Y/N)','TOTAL SUPPLY CPO / PK (TON)']);
+    const tmlHasGroup = rows.some(function(r) {
+      return String(r['TML - Company Group Name'] || '').trim() !== '';
+    });
+    d.push(tmlHasGroup
+      ? ['COMPANY GROUP NAME','COMPANY NAME','MILL NAME','UML ID','VILLAGE','SUB DISTRICT','DISTRICT','CAPACITY','LAT','LONG','LEGALITY','ISPO (Y/N)','RSPO (Y/N)','ISCC (Y/N)','TOTAL SUPPLY CPO / PK (TON)']
+      : ['COMPANY NAME','MILL NAME','UML ID','VILLAGE','SUB DISTRICT','DISTRICT','CAPACITY','LAT','LONG','LEGALITY','ISPO (Y/N)','RSPO (Y/N)','ISCC (Y/N)','TOTAL SUPPLY CPO / PK (TON)']);
     rows.filter(function(r){
-      return String(r['TML - Mill Name'] || '').trim() !== '' || String(r['TML - Company Name'] || '').trim() !== '';
+      return String(r['TML - Mill Name'] || '').trim() !== ''
+        || String(r['TML - Company Name'] || '').trim() !== ''
+        || String(r['TML - Company Group Name'] || '').trim() !== '';
     }).forEach(function(r){
       const tmlSig = [
+        normalizeCellText(r['TML - Company Group Name']),
         normalizeCellText(r['TML - Company Name']),
         normalizeCellText(r['TML - Mill Name']),
         normalizeCellText(r['TML - UML ID']),
@@ -2248,7 +2294,7 @@ import {
       ].join('|');
       if (seenTml[tmlSig]) return;
       seenTml[tmlSig] = true;
-      d.push([
+      const tmlRow = [
         r['TML - Company Name'] || '',
         r['TML - Mill Name'] || '',
         r['TML - UML ID'] || '',
@@ -2263,7 +2309,9 @@ import {
         r['TML - RSPO (Y/N)'] || '',
         r['TML - ISCC (Y/N)'] || '',
         r['TML - Total Supply CPO/PK (Ton)'] || ''
-      ]);
+      ];
+      if (tmlHasGroup) tmlRow.unshift(r['TML - Company Group Name'] || '');
+      d.push(tmlRow);
     });
 
     d.push([]); d.push(['B. FFB Supplier List']); d.push([]);
@@ -3821,7 +3869,7 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw3XLpQaEm_X-CwGDY-p404DmJucuLI7V6MvA0dq89h1mpJ4xXvK-mgxsURkvsjgEmkSQ/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzMQ_3HiULgK-nKSC6OkFMTHOK_PvJvXfWm4DZTn0heW_IzWIQK5KUxduMCFOaJOMhZPQ/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw3XLpQaEm_X-CwGDY-p404DmJucuLI7V6MvA0dq89h1mpJ4xXvK-mgxsURkvsjgEmkSQ';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -16458,6 +16506,49 @@ function initDashboardApp() {
     };
   }
 
+  function nblAddUniqueName_(arr, val) {
+    var t = normalizeCellText(val);
+    if (!t) return;
+    var lk = t.toLowerCase();
+    for (var i = 0; i < arr.length; i++) {
+      if (String(arr[i] || '').toLowerCase() === lk) return;
+    }
+    arr.push(t);
+  }
+
+  /** Collect group/company/mill names from Main Form + all Traceability import rows for NBL check. */
+  function getSddAllNamesForNblCheck_() {
+    var groups = [];
+    var companies = [];
+    var mills = [];
+    var rows = Array.isArray(window._sddImportedRows) && window._sddImportedRows.length
+      ? window._sddImportedRows
+      : [window._loadedPrimarySddRow || window._sddImportFirstRow || {}];
+    rows.forEach(function(r) {
+      if (!r || typeof r !== 'object') return;
+      nblAddUniqueName_(groups, r['Group Name']);
+      nblAddUniqueName_(groups, r['Grup Name']);
+      nblAddUniqueName_(groups, r['TML - Company Group Name']);
+      nblAddUniqueName_(groups, r['FFB - Supplier Group Name']);
+      nblAddUniqueName_(companies, r['Company Name']);
+      nblAddUniqueName_(companies, r['TML - Company Name']);
+      nblAddUniqueName_(companies, r['FFB - Supplier Name']);
+      nblAddUniqueName_(mills, r['Mill Name']);
+      nblAddUniqueName_(mills, r['TML - Mill Name']);
+      nblAddUniqueName_(mills, r['FFB - Mill Name']);
+    });
+    var primary = getSddPrimaryForNblCheck_();
+    if (primary.group) nblAddUniqueName_(groups, primary.group);
+    if (primary.company) nblAddUniqueName_(companies, primary.company);
+    if (primary.mill) nblAddUniqueName_(mills, primary.mill);
+    return {
+      groups: groups,
+      companies: companies,
+      mills: mills,
+      primary: primary,
+    };
+  }
+
   async function ensureNblListsForCheck_() {
     var now = Date.now();
     if (_nblListsCache && (now - _nblListsCacheAt) < NBL_LISTS_CACHE_MS) {
@@ -16472,12 +16563,13 @@ function initDashboardApp() {
     return _nblListsCache;
   }
 
-  function runNblMatchCheck_(primary, lists) {
+  function runNblMatchCheck_(namesInput, lists) {
     var matches = [];
     var seen = {};
-    var group = primary.group;
-    var company = primary.company;
-    var mill = primary.mill;
+    var groups = namesInput.groups || (namesInput.group ? [namesInput.group] : []);
+    var companies = namesInput.companies || (namesInput.company ? [namesInput.company] : []);
+    var mills = namesInput.mills || (namesInput.mill ? [namesInput.mill] : []);
+    var primary = namesInput.primary || getSddPrimaryForNblCheck_();
 
     function pushMatch_(key, entry) {
       if (seen[key]) return;
@@ -16485,44 +16577,71 @@ function initDashboardApp() {
       matches.push(entry);
     }
 
-    // NBL: any single field match counts (Group OR Company)
-    if (group || company) {
+    // NBL: any import Group OR Company name match counts
+    groups.forEach(function(group) {
+      if (!group) return;
       lists.registry.forEach(function(r, i) {
-        var groupMatch = !!(group && nblNamesEqual_(r._nblGroup, group));
-        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
-        if (!groupMatch && !companyMatch) return;
-        var hit = [];
-        if (groupMatch) hit.push('Group Name');
-        if (companyMatch) hit.push('Company Name');
-        pushMatch_('nbl-' + i, {
+        if (!nblNamesEqual_(r._nblGroup, group)) return;
+        pushMatch_('nbl-g-' + i + '-' + normalizeLooseKey(group), {
           source: 'NBL',
-          detail: 'Matched (' + hit.join(' or ') + '): Group ' + (r._nblGroup || '—')
-            + ' · Company ' + (r._nblCompany || '—')
+          detail: 'Matched import Group "' + group + '" → NBL Group "' + (r._nblGroup || '—') + '"'
+            + (r._nblCompany ? ' · Company ' + r._nblCompany : '')
             + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
         });
       });
-    }
+    });
+    companies.forEach(function(company) {
+      if (!company) return;
+      lists.registry.forEach(function(r, i) {
+        if (!nblNamesEqual_(r._nblCompany, company)) return;
+        pushMatch_('nbl-c-' + i + '-' + normalizeLooseKey(company), {
+          source: 'NBL',
+          detail: 'Matched import Company "' + company + '" → NBL Company "' + (r._nblCompany || '—') + '"'
+            + (r._nblGroup ? ' · Group ' + r._nblGroup : '')
+            + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
+        });
+      });
+    });
 
-    // Unilever NBL: any single field match counts (Company OR Mill)
-    if (company || mill) {
+    // Unilever NBL: any import Company OR Mill name match counts
+    companies.forEach(function(company) {
+      if (!company) return;
       lists.unilever.forEach(function(r, i) {
-        var companyMatch = !!(company && nblNamesEqual_(r._nblCompany, company));
-        var millMatch = !!(mill && nblNamesEqual_(r._nblMill, mill));
-        if (!companyMatch && !millMatch) return;
-        var hit = [];
-        if (companyMatch) hit.push('Company Name');
-        if (millMatch) hit.push('Mill Name');
-        pushMatch_('uni-' + i, {
+        if (!nblNamesEqual_(r._nblCompany, company)) return;
+        pushMatch_('uni-c-' + i + '-' + normalizeLooseKey(company), {
           source: 'Unilever NBL',
-          detail: 'Matched (' + hit.join(' or ') + '): Company ' + (r._nblCompany || '—')
-            + ' · Mill ' + (r._nblMill || '—')
+          detail: 'Matched import Company "' + company + '" → Unilever Company "' + (r._nblCompany || '—') + '"'
+            + (r._nblMill ? ' · Mill ' + r._nblMill : '')
             + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
         });
       });
-    }
+    });
+    mills.forEach(function(mill) {
+      if (!mill) return;
+      lists.unilever.forEach(function(r, i) {
+        if (!nblNamesEqual_(r._nblMill, mill)) return;
+        pushMatch_('uni-m-' + i + '-' + normalizeLooseKey(mill), {
+          source: 'Unilever NBL',
+          detail: 'Matched import Mill "' + mill + '" → Unilever Mill "' + (r._nblMill || '—') + '"'
+            + (r._nblCompany ? ' · Company ' + r._nblCompany : '')
+            + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
+        });
+      });
+    });
 
     var status = matches.length ? 'Yes' : 'No';
-    return { status: status, matches: matches, checkedAt: new Date().toISOString(), primary: primary };
+    return {
+      status: status,
+      matches: matches,
+      checkedAt: new Date().toISOString(),
+      primary: primary,
+      groupsChecked: groups.length,
+      companiesChecked: companies.length,
+      millsChecked: mills.length,
+      groupsScanned: groups,
+      companiesScanned: companies,
+      millsScanned: mills,
+    };
   }
 
   function renderSddNblCheckBanner_(result) {
@@ -16533,9 +16652,14 @@ function initDashboardApp() {
     var border = isYes ? 'rgba(185,28,28,0.35)' : 'rgba(30,107,58,0.35)';
     var title = isYes ? 'Yes — on No Buy List' : 'No — not on No Buy List';
     var html = '<strong style="color:#1A0A0A;">' + title + '</strong>';
-    html += '<div style="margin-top:6px;color:#5F4A48;">Compared: Group <em>' + escHtml(result.primary.group || '—')
-      + '</em> · Company <em>' + escHtml(result.primary.company || '—')
-      + '</em> · Mill <em>' + escHtml(result.primary.mill || '—') + '</em></div>';
+    html += '<div style="margin-top:6px;color:#5F4A48;">Scanned from import: '
+      + (result.groupsChecked || 0) + ' group name(s), '
+      + (result.companiesChecked || 0) + ' company name(s), '
+      + (result.millsChecked || 0) + ' mill name(s) (Main Form + Traceability).</div>';
+    if (result.groupsScanned && result.groupsScanned.length) {
+      html += '<div style="margin-top:4px;font-size:11px;color:#6b7280;">Groups: '
+        + escHtml(result.groupsScanned.join(' · ')) + '</div>';
+    }
     if (result.matches.length) {
       html += '<ul style="margin:8px 0 0;padding-left:18px;color:#4a1c1c;">';
       result.matches.forEach(function(m) {
@@ -16626,10 +16750,10 @@ function initDashboardApp() {
   window.restoreNblCheckResultFromRow_ = restoreNblCheckResultFromRow_;
 
   window.runSddNblCheck = async function() {
-    var primary = getSddPrimaryForNblCheck_();
-    if (!primary.company && !primary.group && !primary.mill) {
+    var names = getSddAllNamesForNblCheck_();
+    if (!names.groups.length && !names.companies.length && !names.mills.length) {
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Import Excel first — Group Name, Company Name, and Mill Name are required for Check NBL.', 'error');
+        window.showSddToast('Import Excel first — names from Main Form and Traceability are required for Check NBL.', 'error');
       }
       return;
     }
@@ -16648,7 +16772,7 @@ function initDashboardApp() {
 
     try {
       var lists = await ensureNblListsForCheck_();
-      var result = runNblMatchCheck_(primary, lists);
+      var result = runNblMatchCheck_(names, lists);
       window._nblCheckResult = result;
       applyNblCheckToScrForm_(result.status);
       persistNblCheckToSdd_(result);

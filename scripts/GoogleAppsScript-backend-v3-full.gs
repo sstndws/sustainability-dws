@@ -410,7 +410,7 @@ const RELATIONAL_HEADERS = {
   sddMill: [
     'submission_id', 'line_id', 'supplier_type',
     'created_at', 'updated_at', 'created_by', 'updated_by', 'is_deleted',
-    'TML - Company Name', 'TML - Mill Name', 'TML - UML ID',
+    'TML - Company Group Name', 'TML - Company Name', 'TML - Mill Name', 'TML - UML ID',
     'TML - Village', 'TML - Sub District', 'TML - District',
     'TML - Capacity (Ton/Hour)',
     'TML - Latitude', 'TML - Longitude', 'TML - Legality',
