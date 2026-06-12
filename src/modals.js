@@ -112,7 +112,6 @@ window.openViewScreeningPopup = async function() {
       inner += row('Distance to Mill (Km)', f['FFB - Distance to Mill (Km)']);
       inner += row('Deforestation (Ha)', f['FFB - Deforestation (Ha)']);
       inner += row('Burn Area (Ha)', f['FFB - Burn Area (Ha)']);
-      inner += row('Village Risk', f['FFB - Village Risk']);
       inner += row('Screening Status', f['FFB - Screening Status']);
       inner += row('Screening Date', f['FFB - Screening Date']);
       html += section('FFB Screening — ' + supplierName, inner);
@@ -514,7 +513,6 @@ window.openFfbScreeningForm = function() {
   document.getElementById('ffb-dist-km').value = '';
   document.getElementById('ffb-defor').value = '';
   document.getElementById('ffb-burn').value = '';
-  document.getElementById('ffb-village-risk').value = '';
   syncForestAreaGroup_(FFB_FOREST_CFG, window.ffbToggleHa);
   syncForestAreaGroup_(FFB_PEAT_CFG, window.ffbToggleHa);
 
@@ -563,7 +561,6 @@ window._populateFfbScreeningForm = function(supplier) {
     document.getElementById('ffb-dist-km').value = '';
     document.getElementById('ffb-defor').value = '';
     document.getElementById('ffb-burn').value = '';
-    document.getElementById('ffb-village-risk').value = '';
     document.getElementById('ffb-form-status').textContent = '';
     window._ffbYNState.coord = '';
     window._ffbYNState.mora = '';
@@ -586,7 +583,6 @@ window._populateFfbScreeningForm = function(supplier) {
   document.getElementById('ffb-dist-km').value = saved.distKm === '—' ? '' : saved.distKm;
   document.getElementById('ffb-defor').value = saved.defor === '—' ? '' : saved.defor;
   document.getElementById('ffb-burn').value = saved.burn === '—' ? '' : saved.burn;
-  document.getElementById('ffb-village-risk').value = saved.villageRisk === '—' ? '' : saved.villageRisk;
 
   forestItems.forEach(item => {
     const cb = document.getElementById(item.id);
@@ -667,7 +663,6 @@ window.saveFfbScreening = function() {
   const distKm = document.getElementById('ffb-dist-km').value || '—';
   const defor = document.getElementById('ffb-defor').value || '—';
   const burn = document.getElementById('ffb-burn').value || '—';
-  const villageRisk = document.getElementById('ffb-village-risk').value.trim() || '—';
 
   const forestItems = [
     {id:'ffb-fa-apl', label:'APL'}, {id:'ffb-fa-hpk', label:'HPK'},
@@ -690,7 +685,6 @@ window.saveFfbScreening = function() {
     distKm,
     defor,
     burn,
-    villageRisk,
     status: 'Draft',
     date: new Date().toLocaleDateString('id-ID')
   };

@@ -3055,7 +3055,6 @@ import {
             distKm      : f['FFB - Distance to Mill (Km)'] || '',
             defor       : f['FFB - Deforestation (Ha)']    || '',
             burn        : f['FFB - Burn Area (Ha)']        || '',
-            villageRisk : f['FFB - Village Risk']          || '',
             status      : f['FFB - Screening Status']      || 'Draft',
             date        : f['FFB - Screening Date']        || '',
           };
@@ -4790,7 +4789,6 @@ async function handleFinalSave(scrData) {
         'FFB - Distance to Mill (Km)' : scrD.distKm      || '',
         'FFB - Deforestation (Ha)'    : scrD.defor       || '',
         'FFB - Burn Area (Ha)'        : scrD.burn        || '',
-        'FFB - Village Risk'          : scrD.villageRisk || '',
       };
       var supplierNorm = normalizeCellText(supplierName).toLowerCase();
       var matchIdx = ffbRows.findIndex(function(fr) {
@@ -5045,7 +5043,6 @@ async function saveFfbScreeningToSdd(supplier, screeningData) {
     'FFB - Distance to Mill (Km)': screeningData.distKm      || '',
     'FFB - Deforestation (Ha)'   : screeningData.defor       || '',
     'FFB - Burn Area (Ha)'       : screeningData.burn        || '',
-    'FFB - Village Risk'         : screeningData.villageRisk || '',
   };
 
   var sid = window._sddSubmissionId || window._scrLoadedKey || null;
@@ -20880,7 +20877,7 @@ function initDashboardApp() {
         if (ffbScr.length) {
           gap(1); subHead('FFB Screening Detail');
           tbl(
-            [['Supplier', 'Valid Coord', 'Forest Area', 'Peatland', 'Moratorium', 'Mora (Ha)', 'Dist (Km)', 'Defor (Ha)', 'Burn (Ha)', 'Village Risk', 'Status', 'Date']],
+            [['Supplier', 'Valid Coord', 'Forest Area', 'Peatland', 'Moratorium', 'Mora (Ha)', 'Dist (Km)', 'Defor (Ha)', 'Burn (Ha)', 'Status', 'Date']],
             ffbScr.map(function(r) {
               var k = r['FFB - Supplier Name'] || '';
               var sd = (window._ffbScreeningData && k) ? (window._ffbScreeningData[k] || {}) : {};
@@ -20894,7 +20891,6 @@ function initDashboardApp() {
                 r['FFB - Distance to Mill (Km)'] || sd.distKm      || '',
                 r['FFB - Deforestation (Ha)']    || sd.defor       || '',
                 r['FFB - Burn Area (Ha)']        || sd.burn        || '',
-                r['FFB - Village Risk']          || sd.villageRisk || '',
                 r['FFB - Screening Status']      || sd.status      || '',
                 r['FFB - Screening Date']        || sd.date        || ''
               ];
