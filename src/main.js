@@ -21269,16 +21269,50 @@ function initDashboardApp() {
       yearSel.value = String(curYear);
     }
 
-    // ── Modal open/close ──────────────────────────────────────────────────────
-    const overlay   = document.getElementById('supply-import-modal-overlay');
+    // ── Modal open/close (portal to body — fixed overlay inside .main-content leaves a gap at bottom)
+    let supplyImportScrollLock_ = null;
+    function mountSupplyImportOverlay_() {
+      const el = document.getElementById('supply-import-modal-overlay');
+      if (!el) return null;
+      if (el.parentElement !== document.body) document.body.appendChild(el);
+      return el;
+    }
+    function lockSupplyImportScroll_() {
+      if (supplyImportScrollLock_) return;
+      const main = document.querySelector('.main-content');
+      supplyImportScrollLock_ = {
+        main: main,
+        mainTop: main ? main.scrollTop : 0,
+      };
+      if (main) main.classList.add('bl-overlay-scroll-lock');
+      document.body.classList.add('supply-import-open');
+    }
+    function unlockSupplyImportScroll_() {
+      if (!supplyImportScrollLock_) return;
+      const lock = supplyImportScrollLock_;
+      supplyImportScrollLock_ = null;
+      if (lock.main) {
+        lock.main.classList.remove('bl-overlay-scroll-lock');
+        lock.main.scrollTop = lock.mainTop;
+      }
+      document.body.classList.remove('supply-import-open');
+    }
+    const overlay   = mountSupplyImportOverlay_();
     const openBtn   = document.getElementById('btn-supply-import-open');
     const closeBtn  = document.getElementById('btn-supply-import-close');
     const cancelBtn = document.getElementById('btn-supply-import-cancel');
     function closeModal() {
-      if (overlay) overlay.style.display = 'none';
+      if (overlay) overlay.classList.remove('open');
+      unlockSupplyImportScroll_();
       resetImportModal_();
     }
-    if (openBtn)   openBtn.addEventListener('click', function() { if (overlay) overlay.style.display = 'block'; });
+    function openModal() {
+      const el = mountSupplyImportOverlay_();
+      if (!el) return;
+      lockSupplyImportScroll_();
+      el.classList.add('open');
+    }
+    if (openBtn)   openBtn.addEventListener('click', openModal);
     if (closeBtn)  closeBtn.addEventListener('click', closeModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
     if (overlay)   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
@@ -21653,11 +21687,11 @@ function initDashboardApp() {
     ];
 
     const head = '<tr>'
-      + (isSubmitted ? '' : '<th style="width:24px;"></th>')
+      + (isSubmitted ? '' : '<th class="supply-batch-th--check"></th>')
       + SHOW_COLS.map(function(c) {
-          return '<th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#5A3030;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);white-space:nowrap;">' + escHtml(c[1]) + '</th>';
+          return '<th>' + escHtml(c[1]) + '</th>';
         }).join('')
-      + '<th style="width:80px;background:#f9f3f3;border-bottom:1px solid rgba(139,26,26,0.1);"></th>'
+      + '<th class="supply-batch-th--action"></th>'
       + '</tr>';
 
     const body = batch.rows.map(function(row, i) {
@@ -21675,17 +21709,17 @@ function initDashboardApp() {
         const key = c[0];
         const val = row[key] != null ? row[key] : '';
         if (key === 'COMPANY NAME') {
-          return '<td style="padding:7px 10px;font-size:12px;color:#1A0A0A;border-bottom:1px solid rgba(139,26,26,0.05);">'
+          return '<td style="color:#1A0A0A;">'
             + escHtml(String(val || '—')) + matchBadge + '</td>';
         }
         if (!isSubmitted && !isRowDone && (key === pctKey || key === facKey || key === 'TRADER NAME' || key === 'GROUP NAME')) {
-          return '<td style="padding:4px 6px;border-bottom:1px solid rgba(139,26,26,0.05);">'
+          return '<td class="supply-batch-td--input">'
             + '<input class="supply-inline-input" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '" data-field="' + escHtml(key) + '"'
             + ' value="' + escHtml(String(val || '')) + '"'
             + ' style="width:100%;height:28px;border:1px solid rgba(139,26,26,0.18);border-radius:5px;padding:0 7px;font-size:11.5px;color:#1A0A0A;background:#fff;">'
             + '</td>';
         }
-        return '<td style="padding:7px 10px;font-size:12px;color:#2A1010;border-bottom:1px solid rgba(139,26,26,0.05);">' + escHtml(String(val || '—')) + '</td>';
+        return '<td>' + escHtml(String(val || '—')) + '</td>';
       }).join('');
 
       // Per-row action button — all rows open modal for review/edit before save
@@ -21702,13 +21736,13 @@ function initDashboardApp() {
       }
 
       return '<tr' + (isRowDone ? ' style="opacity:0.5;"' : '') + '>'
-        + (isSubmitted ? '' : '<td style="padding:7px 6px;border-bottom:1px solid rgba(139,26,26,0.05);vertical-align:middle;"><input type="checkbox" class="supply-row-check" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '"' + (isRowDone ? ' disabled' : ' checked') + '></td>')
+        + (isSubmitted ? '' : '<td><input type="checkbox" class="supply-row-check" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '"' + (isRowDone ? ' disabled' : ' checked') + '></td>')
         + cells
-        + '<td style="padding:4px 8px;border-bottom:1px solid rgba(139,26,26,0.05);text-align:right;white-space:nowrap;">' + rowAction + '</td>'
+        + '<td class="supply-batch-td--action">' + rowAction + '</td>'
         + '</tr>';
     }).join('');
 
-    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    return '<div class="supply-batch-table-scroll"><table class="supply-batch-table">'
       + '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
       + (!isSubmitted ? supplyBatchFooterHtml_(batch.batch_id) : '');
   }

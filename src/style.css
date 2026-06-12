@@ -4606,6 +4606,34 @@
   background: rgba(139, 26, 26, 0.06);
   box-shadow: 0 0 0 1px rgba(139, 26, 26, 0.12);
 }
+
+.supply-import-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(0, 0, 0, 0.45);
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.supply-import-modal-overlay.open {
+  display: flex;
+}
+.supply-import-modal-box {
+  background: #fff;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 540px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+body.supply-import-open {
+  overflow: hidden;
+}
 .supply-badge--cpo {
   background: rgba(21, 101, 192, 0.1);
   color: #1565c0;
@@ -4626,7 +4654,7 @@
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 2px 8px rgba(139, 26, 26, 0.04);
-  overflow: hidden;
+  overflow: visible;
 }
 .supply-batch-card-head {
   display: flex;
@@ -4666,6 +4694,56 @@
 }
 .supply-batch-table-wrap {
   padding: 0 12px 12px;
+}
+.supply-batch-table-scroll {
+  overflow: auto;
+  max-height: min(68vh, 620px);
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0 0 10px 10px;
+}
+.supply-batch-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.supply-batch-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #5A3030;
+  background: #f9f3f3;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.12);
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(139, 26, 26, 0.08);
+}
+.supply-batch-table thead th.supply-batch-th--check {
+  width: 28px;
+  min-width: 28px;
+}
+.supply-batch-table thead th.supply-batch-th--action {
+  width: 96px;
+  min-width: 96px;
+}
+.supply-batch-table tbody td {
+  padding: 7px 10px;
+  font-size: 12px;
+  color: #2A1010;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.05);
+  vertical-align: middle;
+  background: #fff;
+}
+.supply-batch-table tbody td.supply-batch-td--input {
+  padding: 4px 6px;
+}
+.supply-batch-table tbody td.supply-batch-td--action {
+  padding: 4px 8px;
+  text-align: right;
+  white-space: nowrap;
 }
 .supply-badge {
   display: inline-flex;
