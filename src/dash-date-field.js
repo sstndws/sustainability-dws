@@ -119,10 +119,87 @@ export function dashDateFieldHtml(fieldName, rawValue, opts) {
     + '</div>';
 }
 
+function dashRestorePopoverDom_(popover) {
+  if (!popover) return;
+  const fieldEl = popover._dashOwnerField;
+  if (fieldEl) {
+    const wrap = fieldEl.querySelector('.dash-date-wrap');
+    if (wrap && popover.parentNode !== wrap) wrap.appendChild(popover);
+  }
+  popover.style.position = '';
+  popover.style.top = '';
+  popover.style.left = '';
+  popover.style.right = '';
+  popover.style.width = '';
+  popover.style.zIndex = '';
+  popover._dashOwnerField = null;
+}
+
 function dashClosePopover() {
-  if (dashActivePopover) {
-    dashActivePopover.hidden = true;
-    dashActivePopover = null;
+  if (!dashActivePopover) return;
+  const popover = dashActivePopover;
+  popover.hidden = true;
+  dashRestorePopoverDom_(popover);
+  if (initDashDateFields._scrollClose) {
+    window.removeEventListener('scroll', initDashDateFields._scrollClose, true);
+    initDashDateFields._scrollClose = null;
+  }
+  dashActivePopover = null;
+}
+
+function dashPositionPopover_(fieldEl, popover) {
+  const wrap = fieldEl.querySelector('.dash-date-wrap');
+  if (!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const popW = 300;
+  const popH = 340;
+  let top = rect.bottom + 6;
+  let left = Math.max(8, Math.min(rect.left, window.innerWidth - popW - 8));
+  if (top + popH > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - popH - 6);
+  }
+  popover.style.position = 'fixed';
+  popover.style.width = popW + 'px';
+  popover.style.zIndex = '10050';
+  popover.style.top = top + 'px';
+  popover.style.left = left + 'px';
+  popover.style.right = 'auto';
+}
+
+function dashOpenDatePopover_(fieldEl) {
+  const text = fieldEl.querySelector('.dash-date-text');
+  const hidden = fieldEl.querySelector('.dash-date-value');
+  const popover = fieldEl.querySelector('.dash-date-popover');
+  if (!text || !hidden || !popover) return;
+
+  if (!popover.hidden && dashActivePopover === popover) {
+    dashClosePopover();
+    return;
+  }
+
+  dashClosePopover();
+  dashDateSyncField(fieldEl);
+
+  const iso = hidden.value || dashDisplayToIso(text.value);
+  const view = iso ? new Date(iso + 'T12:00:00') : new Date();
+
+  popover._dashOwnerField = fieldEl;
+  if (popover.parentNode !== document.body) document.body.appendChild(popover);
+  dashPositionPopover_(fieldEl, popover);
+
+  dashRenderCalendar_(popover, view, iso, function(selectedIso) {
+    hidden.value = selectedIso;
+    text.value = dashIsoToDisplay(selectedIso);
+    text.classList.remove('dash-date-invalid');
+    dashClosePopover();
+  });
+
+  popover.hidden = false;
+  dashActivePopover = popover;
+
+  if (!initDashDateFields._scrollClose) {
+    initDashDateFields._scrollClose = function() { dashClosePopover(); };
+    window.addEventListener('scroll', initDashDateFields._scrollClose, true);
   }
 }
 
@@ -295,25 +372,14 @@ export function initDashDateFields(root) {
       const formatted = dashFormatDigits_(digits);
       if (formatted !== text.value) text.value = formatted;
     });
+    text.addEventListener('click', function(e) {
+      e.stopPropagation();
+      dashOpenDatePopover_(fieldEl);
+    });
 
     trigger.addEventListener('click', function(e) {
       e.stopPropagation();
-      if (!popover.hidden && dashActivePopover === popover) {
-        dashClosePopover();
-        return;
-      }
-      dashClosePopover();
-      dashDateSyncField(fieldEl);
-      const iso = hidden.value || dashDisplayToIso(text.value);
-      const view = iso ? new Date(iso + 'T12:00:00') : new Date();
-      dashRenderCalendar_(popover, view, iso, function(selectedIso) {
-        hidden.value = selectedIso;
-        text.value = dashIsoToDisplay(selectedIso);
-        text.classList.remove('dash-date-invalid');
-        dashClosePopover();
-      });
-      popover.hidden = false;
-      dashActivePopover = popover;
+      dashOpenDatePopover_(fieldEl);
     });
 
     popover.addEventListener('click', function(e) { e.stopPropagation(); });
@@ -321,7 +387,12 @@ export function initDashDateFields(root) {
 
   if (!initDashDateFields._docBound) {
     initDashDateFields._docBound = true;
-    document.addEventListener('click', dashClosePopover);
+    document.addEventListener('click', function(e) {
+      if (!dashActivePopover) return;
+      if (dashActivePopover.contains(e.target)) return;
+      if (e.target.closest('.dash-date-trigger, .dash-date-text, .dash-date-wrap')) return;
+      dashClosePopover();
+    });
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') dashClosePopover();
     });

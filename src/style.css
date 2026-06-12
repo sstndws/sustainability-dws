@@ -3858,6 +3858,10 @@
      overflow-y: auto;
      flex: 1 1 0%;
    }
+   .modal-body .dash-date-field,
+   .modal-form-grid .dash-date-field {
+     overflow: visible;
+   }
    .modal-foot,
    .modal-footer {
      display: flex;
@@ -6367,10 +6371,8 @@ body.qm-form-open { overflow: hidden; }
 }
 
 .dash-date-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 1200;
+  position: fixed;
+  z-index: 10050;
   width: 300px;
   padding: 12px;
   border: 1px solid rgba(139,26,26,0.14);
