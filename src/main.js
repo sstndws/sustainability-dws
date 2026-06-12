@@ -10656,6 +10656,7 @@ function initDashboardApp() {
   let blTtmRowsWithTtp_ = new Set();
   let blPeriodYear = '';
   let blPeriodQuarter = '';
+  let blPeriodFilterFallback_ = false;
   let blDetailCurrent = null;
   let blTableDelegationBound = false;
   let blExportTargetRow = null;
@@ -11274,13 +11275,24 @@ function initDashboardApp() {
     return keys.size;
   }
 
+  function blValidQuarterNum_(q) {
+    return q >= 1 && q <= 4;
+  }
+
+  function blPeriodQuarterToken_(quarter) {
+    const n = parseMillQuarterSort(quarter);
+    if (blValidQuarterNum_(n)) return 'Q' + n;
+    const m = String(quarter || '').trim().toUpperCase().match(/^Q?([1-4])$/);
+    return m ? ('Q' + m[1]) : '';
+  }
+
   function blDetectLatestPeriod_() {
     var bestY = 0;
     var bestQ = 0;
     (ttpData || []).forEach(function(row) {
       var y = parseMillYearSort(millYearVal(row));
       var q = parseMillQuarterSort(millQuarterVal(row));
-      if (!y || !q) return;
+      if (!y || !blValidQuarterNum_(q)) return;
       if (y > bestY || (y === bestY && q > bestQ)) {
         bestY = y;
         bestQ = q;
@@ -11311,14 +11323,34 @@ function initDashboardApp() {
       el.textContent = 'Monitoring period: all data (quarter not detected)';
       return;
     }
+    if (blPeriodFilterFallback_) {
+      el.textContent = 'No TTM/TTP for ' + blPeriodQuarter + ' ' + blPeriodYear + ' — showing all periods';
+      return;
+    }
     el.textContent = 'Monitoring period (auto): ' + blPeriodQuarter + ' ' + blPeriodYear;
   }
 
   function blFilterMonitoringByPeriod_(rows) {
-    if (!blPeriodYear || !blPeriodQuarter) return rows || [];
-    return (rows || []).filter(function(r) {
-      return ttpYearToken_(r) === blPeriodYear && ttpQuarterToken_(r) === blPeriodQuarter;
+    const list = rows || [];
+    if (!blPeriodYear || !blPeriodQuarter) {
+      blPeriodFilterFallback_ = false;
+      return list;
+    }
+    const wantY = String(parseMillYearSort(blPeriodYear));
+    const wantQ = blPeriodQuarterToken_(blPeriodQuarter);
+    if (!wantY || !wantQ) {
+      blPeriodFilterFallback_ = false;
+      return list;
+    }
+    const filtered = list.filter(function(r) {
+      return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
     });
+    if (!filtered.length && list.length) {
+      blPeriodFilterFallback_ = true;
+      return list;
+    }
+    blPeriodFilterFallback_ = false;
+    return filtered;
   }
 
   function blRebuildSelectedTtp_() {
@@ -11364,7 +11396,8 @@ function initDashboardApp() {
   }
 
   function getBlRowCandidates_() {
-    return blFilterMonitoringByPeriod_(ttpData || []).map(function(row) {
+    const rows = blFilterMonitoringByPeriod_(ttpData || []);
+    return rows.map(function(row) {
       return {
         _row: row._row,
         ttm: buildBlTtmCandidate_(row),
@@ -12118,8 +12151,12 @@ function initDashboardApp() {
     const panel = document.getElementById('blTtmResults');
     if (!panel) return;
     const items = filterBlRowResults_(query);
+    blUpdatePickerPeriodLabel_();
     if (!items.length) {
-      panel.innerHTML = '<div class="bl-picker-empty">No rows found</div>';
+      const hint = !(ttpData || []).length
+        ? 'No monitoring data loaded — open Monitoring TTM/TTP first or refresh the page.'
+        : 'No rows found for this search or period.';
+      panel.innerHTML = '<div class="bl-picker-empty">' + escHtml(hint) + '</div>';
       panel.classList.add('open');
       return;
     }
@@ -12155,6 +12192,7 @@ function initDashboardApp() {
     blTtmRowsWithTtp_ = new Set();
     blPeriodYear = '';
     blPeriodQuarter = '';
+    blPeriodFilterFallback_ = false;
     blBuyerNblWarn_ = false;
     blBuyerValidateSeq_++;
     blFormRecordType = 'shipping';
@@ -12211,12 +12249,14 @@ function initDashboardApp() {
       blSetPickerLoading_(true);
     } else {
       blApplyLatestPeriodFilter_();
+      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
       if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
     }
 
     blWarmPickerData_().then(function() {
       blApplyLatestPeriodFilter_();
       blSetPickerLoading_(false);
+      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
       if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
     }).catch(function() {
       blSetPickerLoading_(false);
