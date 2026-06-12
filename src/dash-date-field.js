@@ -78,6 +78,24 @@ export function dashDisplayToIso(text) {
   return yy + '-' + dashPad2(mm) + '-' + dashPad2(dd);
 }
 
+/** Compact date field for table cells (no label). */
+export function dashDateTableCellHtml(rawValue, opts) {
+  opts = opts || {};
+  const iso = dashNormalizeToIso(rawValue);
+  const display = dashIsoToDisplay(iso);
+  const uid = opts.id || ('dash-date-' + Math.random().toString(36).slice(2, 9));
+  const aria = opts.label != null ? opts.label : 'Date';
+
+  return '<div class="dash-date-field dash-date-field--table">'
+    + '<div class="dash-date-wrap">'
+    + '<input type="text" id="' + uid + '-text" class="dash-date-text" placeholder="DD/MM/YYYY" value="' + dashEscAttr(display) + '" inputmode="numeric" autocomplete="off" aria-label="' + dashEscAttr(aria) + '">'
+    + '<input type="hidden" class="dash-date-value" value="' + dashEscAttr(iso) + '">'
+    + '<button type="button" class="dash-date-trigger" aria-label="Open calendar" title="Choose date">' + DASH_CAL_ICON + '</button>'
+    + '<div class="dash-date-popover" hidden></div>'
+    + '</div>'
+    + '</div>';
+}
+
 export function dashDateFieldHtml(fieldName, rawValue, opts) {
   opts = opts || {};
   const iso = dashNormalizeToIso(rawValue);

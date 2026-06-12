@@ -6,8 +6,10 @@ import { initMonthlyReport_ } from './monthly-report-ui.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 import {
   dashDateFieldHtml,
+  dashDateTableCellHtml,
   dashDateCollectValues,
   dashDateReadIso,
+  dashDateSyncField,
   dashIsoToDisplay,
   dashNormalizeToIso,
   initDashDateFields,
@@ -1410,7 +1412,6 @@ import {
         return st === 'submitted';
       })();
       html += '<div id="sdd-trace-action-btn-wrap" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:16px;padding-right:4px;">'
-        + '<button type="button" id="sdd-check-nbl-btn-trace" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(139,26,26,0.35);background:#fff;color:#8B1A1A;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;">Check NBL</button>'
         + (_isSubmittedForBtn
           ? '<button onclick="window.openViewScreeningPopup()" style="background:#1e40af;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(30,64,175,0.25);" onmouseover="this.style.background=\'#1d4ed8\'" onmouseout="this.style.background=\'#1e40af\'">'
             + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
@@ -1773,25 +1774,27 @@ import {
         ${opts.map(v=>`<option${val===v?' selected':''}>${v}</option>`).join('')}
       </select>`;
     }
-    function grvRowHtml(r) {
+    function grvRowHtml(r, idx) {
       r=r||{};
+      const dateId = 'scr-grv-date-' + (idx != null ? idx : Math.random().toString(36).slice(2, 9));
       return `<tr>
         <td><input type="text" class="grv-source" value="${(r.source||'').replace(/"/g,'&quot;')}" placeholder="Source"></td>
         <td><input type="text" class="grv-desc"   value="${(r.desc||'').replace(/"/g,'&quot;')}" placeholder="Description"></td>
         <td><input type="text" class="grv-pub"    value="${(r.pub||'').replace(/"/g,'&quot;')}" placeholder="Publisher"></td>
-        <td><input type="text" class="grv-date"   value="${(r.date||'').replace(/"/g,'&quot;')}" placeholder="YYYY-MM-DD"></td>
+        <td class="scr-date-cell">${dashDateTableCellHtml(r.date || '', { id: dateId, label: 'Date publish' })}</td>
         <td><input type="text" class="grv-status" value="${(r.status||'').replace(/"/g,'&quot;')}" placeholder="Status"></td>
         <td><input type="text" class="grv-attach" value="${(r.attach||'').replace(/"/g,'&quot;')}" placeholder="Link/filename"></td>
         <td><button type="button" class="scr-del-row">✕</button></td>
       </tr>`;
     }
-    function priRowHtml(r) {
+    function priRowHtml(r, idx) {
       r=r||{};
+      const dateId = 'scr-pri-date-' + (idx != null ? idx : Math.random().toString(36).slice(2, 9));
       return `<tr>
         <td><input type="text" class="pri-company" value="${(r.company||'').replace(/"/g,'&quot;')}" placeholder="Company"></td>
         <td><input type="text" class="pri-desc"    value="${(r.desc||'').replace(/"/g,'&quot;')}" placeholder="Description"></td>
         <td><input type="text" class="pri-pub"     value="${(r.pub||'').replace(/"/g,'&quot;')}" placeholder="Publisher"></td>
-        <td><input type="text" class="pri-date"    value="${(r.date||'').replace(/"/g,'&quot;')}" placeholder="YYYY-MM-DD"></td>
+        <td class="scr-date-cell">${dashDateTableCellHtml(r.date || '', { id: dateId, label: 'Date publish' })}</td>
         <td><input type="text" class="pri-attach"  value="${(r.attach||'').replace(/"/g,'&quot;')}" placeholder="Link/filename"></td>
         <td><input type="text" class="pri-action"  value="${(r.action||'').replace(/"/g,'&quot;')}" placeholder="Action Request"></td>
         <td><button type="button" class="scr-del-row">✕</button></td>
@@ -1814,7 +1817,7 @@ import {
         <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:space-between;">
           <div style="flex:1;min-width:200px;">
             <div style="font-size:12px;font-weight:700;color:#1A0A0A;">No Buy List check</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Flags <strong>Yes</strong> if any name from Main Form <em>or</em> Traceability (Company Group, Company, Mill, Supplier Group) matches NBL or Unilever NBL. One match is enough.</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45;">Compare names from Main Form and Traceability against the NBL registry.</div>
           </div>
           <button type="button" id="sdd-check-nbl-btn" onclick="window.runSddNblCheck && window.runSddNblCheck()" style="flex-shrink:0;padding:9px 18px;border-radius:8px;border:none;background:#8B1A1A;color:#fff;font-size:13px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(139,26,26,0.2);">Check NBL</button>
         </div>
@@ -1862,7 +1865,7 @@ import {
             <th class="scr-th" style="min-width:160px">Attachment</th>
             <th class="scr-th" style="width:36px"></th>
           </tr></thead>
-          <tbody id="scr-grv-tbody">${grvRows.map(r=>grvRowHtml(r)).join('')}</tbody>
+          <tbody id="scr-grv-tbody">${grvRows.map((r,i)=>grvRowHtml(r,i)).join('')}</tbody>
         </table></div>
         <button type="button" class="scr-add-btn" id="scr-grv-add" title="Maximum ${SCR_GRV_PRI_MAX_ROWS} rows">+ Add Row</button>
       </div>
@@ -1880,7 +1883,7 @@ import {
             <th class="scr-th" style="min-width:180px">Action Request</th>
             <th class="scr-th" style="width:36px"></th>
           </tr></thead>
-          <tbody id="scr-pri-tbody">${priRows.map(r=>priRowHtml(r)).join('')}</tbody>
+          <tbody id="scr-pri-tbody">${priRows.map((r,i)=>priRowHtml(r,i)).join('')}</tbody>
         </table></div>
         <button type="button" class="scr-add-btn" id="scr-pri-add" title="Maximum ${SCR_GRV_PRI_MAX_ROWS} rows">+ Add Row</button>
       </div>
@@ -1897,8 +1900,8 @@ import {
       .scr-sel-no{border-color:rgba(192,57,43,0.4)!important;background-color:rgba(192,57,43,0.04)!important;color:#c0392b!important;}
       .scr-th{padding:8px 12px;text-align:left;color:#8B1A1A;font-weight:700;font-size:10px;letter-spacing:0.6px;text-transform:uppercase;border-bottom:1.5px solid rgba(139,26,26,0.12);}
       #scr-grv-tbl td,#scr-pri-tbl td{padding:7px 8px;border-bottom:1px solid rgba(74,28,28,0.07);vertical-align:top;}
-      #scr-grv-tbl td input,#scr-pri-tbl td input{width:100%;padding:5px 8px;border:1px solid rgba(74,28,28,0.12);border-radius:5px;font-family:Inter,sans-serif;font-size:12px;color:#1A0A0A;background:white;outline:none;}
-      #scr-grv-tbl td input:focus,#scr-pri-tbl td input:focus{border-color:#8B1A1A;}
+      #scr-grv-tbl td input:not(.dash-date-text):not(.dash-date-value),#scr-pri-tbl td input:not(.dash-date-text):not(.dash-date-value){width:100%;padding:5px 8px;border:1px solid rgba(74,28,28,0.12);border-radius:5px;font-family:Inter,sans-serif;font-size:12px;color:#1A0A0A;background:white;outline:none;}
+      #scr-grv-tbl td input:not(.dash-date-text):not(.dash-date-value):focus,#scr-pri-tbl td input:not(.dash-date-text):not(.dash-date-value):focus{border-color:#8B1A1A;}
       .scr-del-row{background:none;border:none;cursor:pointer;color:#c0392b;font-size:14px;padding:2px 5px;border-radius:4px;}
       .scr-del-row:hover{background:rgba(192,57,43,0.1);}
       .scr-add-btn{margin-top:8px;padding:5px 14px;background:rgba(139,26,26,0.07);border:1.5px solid rgba(139,26,26,0.2);border-radius:6px;color:#8B1A1A;font-size:12px;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;transition:background 0.15s;}
@@ -3153,24 +3156,39 @@ import {
   };
 
   // ─── INIT INTERAKSI FORM ─────────────────────────────────────────────────────
+  function readScrRowDate_(tr) {
+    if (!tr) return '';
+    const field = tr.querySelector('.scr-date-cell .dash-date-field');
+    if (field) {
+      dashDateSyncField(field);
+      const hidden = field.querySelector('.dash-date-value');
+      return hidden ? (hidden.value || '') : '';
+    }
+    return tr.querySelector('.grv-date, .pri-date')?.value || '';
+  }
+
   function initScrForm() {
+    let scrGrvRowSeq = 1000;
+    let scrPriRowSeq = 2000;
     function newGrvRow() {
+      const dateId = 'scr-grv-date-' + (scrGrvRowSeq++);
       return `<tr>
         <td><input type="text" class="grv-source" placeholder="Source"></td>
         <td><input type="text" class="grv-desc"   placeholder="Description"></td>
         <td><input type="text" class="grv-pub"    placeholder="Publisher"></td>
-        <td><input type="text" class="grv-date"   placeholder="YYYY-MM-DD"></td>
+        <td class="scr-date-cell">${dashDateTableCellHtml('', { id: dateId, label: 'Date publish' })}</td>
         <td><input type="text" class="grv-status" placeholder="Status"></td>
         <td><input type="text" class="grv-attach" placeholder="Link/filename"></td>
         <td><button type="button" class="scr-del-row">✕</button></td>
       </tr>`;
     }
     function newPriRow() {
+      const dateId = 'scr-pri-date-' + (scrPriRowSeq++);
       return `<tr>
         <td><input type="text" class="pri-company" placeholder="Company"></td>
         <td><input type="text" class="pri-desc"    placeholder="Description"></td>
         <td><input type="text" class="pri-pub"     placeholder="Publisher"></td>
-        <td><input type="text" class="pri-date"    placeholder="YYYY-MM-DD"></td>
+        <td class="scr-date-cell">${dashDateTableCellHtml('', { id: dateId, label: 'Date publish' })}</td>
         <td><input type="text" class="pri-attach"  placeholder="Link/filename"></td>
         <td><input type="text" class="pri-action"  placeholder="Action Request"></td>
         <td><button type="button" class="scr-del-row">✕</button></td>
@@ -3199,6 +3217,8 @@ import {
         return;
       }
       tb.insertAdjacentHTML('beforeend', newGrvRow());
+      const newTr = tb.lastElementChild;
+      if (newTr) initDashDateFields(newTr);
     }
     function tryAddPriRow() {
       const tb = document.getElementById('scr-pri-tbody');
@@ -3210,6 +3230,8 @@ import {
         return;
       }
       tb.insertAdjacentHTML('beforeend', newPriRow());
+      const newTr = tb.lastElementChild;
+      if (newTr) initDashDateFields(newTr);
     }
 
     const grvAdd = document.getElementById('scr-grv-add');
@@ -3238,6 +3260,10 @@ import {
         }
         if (el.classList && el.classList.contains('scr-del-row')) {
           el.style.display = locked ? 'none' : '';
+          el.disabled = !!locked;
+          return;
+        }
+        if (el.classList && el.classList.contains('dash-date-trigger')) {
           el.disabled = !!locked;
           return;
         }
@@ -3492,29 +3518,32 @@ import {
       window._renderTraceAttachments && window._renderTraceAttachments();
 
       const grvTb = document.getElementById('scr-grv-tbody');
-      if (grvTb) grvTb.innerHTML = (s.grvRows && s.grvRows.length ? s.grvRows : [{}]).map(function(r) {
+      if (grvTb) grvTb.innerHTML = (s.grvRows && s.grvRows.length ? s.grvRows : [{}]).map(function(r, i) {
+        const dateId = 'scr-grv-date-load-' + i;
         return `<tr>
           <td><input type="text" class="grv-source" value="${(r.source||'').replace(/"/g,'&quot;')}" placeholder="Source"></td>
           <td><input type="text" class="grv-desc" value="${(r.desc||'').replace(/"/g,'&quot;')}" placeholder="Description"></td>
           <td><input type="text" class="grv-pub" value="${(r.pub||'').replace(/"/g,'&quot;')}" placeholder="Publisher"></td>
-          <td><input type="text" class="grv-date" value="${(r.date||'').replace(/"/g,'&quot;')}" placeholder="YYYY-MM-DD"></td>
+          <td class="scr-date-cell">${dashDateTableCellHtml(r.date || '', { id: dateId, label: 'Date publish' })}</td>
           <td><input type="text" class="grv-status" value="${(r.status||'').replace(/"/g,'&quot;')}" placeholder="Status"></td>
           <td><input type="text" class="grv-attach" value="${(r.attach||'').replace(/"/g,'&quot;')}" placeholder="Link/filename"></td>
           <td><button type="button" class="scr-del-row">✕</button></td>
         </tr>`;
       }).join('');
       const priTb = document.getElementById('scr-pri-tbody');
-      if (priTb) priTb.innerHTML = (s.priRows && s.priRows.length ? s.priRows : [{}]).map(function(r) {
+      if (priTb) priTb.innerHTML = (s.priRows && s.priRows.length ? s.priRows : [{}]).map(function(r, i) {
+        const dateId = 'scr-pri-date-load-' + i;
         return `<tr>
           <td><input type="text" class="pri-company" value="${(r.company||'').replace(/"/g,'&quot;')}" placeholder="Company"></td>
           <td><input type="text" class="pri-desc" value="${(r.desc||'').replace(/"/g,'&quot;')}" placeholder="Description"></td>
           <td><input type="text" class="pri-pub" value="${(r.pub||'').replace(/"/g,'&quot;')}" placeholder="Publisher"></td>
-          <td><input type="text" class="pri-date" value="${(r.date||'').replace(/"/g,'&quot;')}" placeholder="YYYY-MM-DD"></td>
+          <td class="scr-date-cell">${dashDateTableCellHtml(r.date || '', { id: dateId, label: 'Date publish' })}</td>
           <td><input type="text" class="pri-attach" value="${(r.attach||'').replace(/"/g,'&quot;')}" placeholder="Link/filename"></td>
           <td><input type="text" class="pri-action" value="${(r.action||'').replace(/"/g,'&quot;')}" placeholder="Action Request"></td>
           <td><button type="button" class="scr-del-row">✕</button></td>
         </tr>`;
       }).join('');
+      initDashDateFields(document.getElementById('scr-form-wrap'));
 
       ['scr-legality','scr-ndpe','scr-nbl','scr-grv-yn','scr-pri-yn'].forEach(id => {
         const el = document.getElementById(id); if (el) updateSelColor(el);
@@ -3706,7 +3735,7 @@ import {
       if (scrData.nbl && !scrData.nblCheckDetail && window._nblCheckResult) {
         scrData.nblCheckDetail = window._scrData.nblCheckDetail
           || (window._nblCheckResult.matches && window._nblCheckResult.matches.length
-            ? window._nblCheckResult.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
+            ? formatNblMatchesForSave_(window._nblCheckResult.matches)
             : (scrData.nbl === 'No'
               ? 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.'
               : 'Supplier matched a name on the NBL or Unilever NBL registry.'));
@@ -3717,7 +3746,7 @@ import {
           source: tr.querySelector('.grv-source')?.value||'',
           desc:   tr.querySelector('.grv-desc')?.value||'',
           pub:    tr.querySelector('.grv-pub')?.value||'',
-          date:   tr.querySelector('.grv-date')?.value||'',
+          date:   readScrRowDate_(tr),
           status: tr.querySelector('.grv-status')?.value||'',
           attach: tr.querySelector('.grv-attach')?.value||'',
         });
@@ -3727,7 +3756,7 @@ import {
           company: tr.querySelector('.pri-company')?.value||'',
           desc:    tr.querySelector('.pri-desc')?.value||'',
           pub:     tr.querySelector('.pri-pub')?.value||'',
-          date:    tr.querySelector('.pri-date')?.value||'',
+          date:    readScrRowDate_(tr),
           attach:  tr.querySelector('.pri-attach')?.value||'',
           action:  tr.querySelector('.pri-action')?.value||'',
         });
@@ -3866,11 +3895,12 @@ import {
       window.loadSavedScrFromDropdownGlobal && window.loadSavedScrFromDropdownGlobal();
       window._pendingScrLoadKey = '';
     }
+    initDashDateFields(document.getElementById('scr-form-wrap'));
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
 var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzMQ_3HiULgK-nKSC6OkFMTHOK_PvJvXfWm4DZTn0heW_IzWIQK5KUxduMCFOaJOMhZPQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw3XLpQaEm_X-CwGDY-p404DmJucuLI7V6MvA0dq89h1mpJ4xXvK-mgxsURkvsjgEmkSQ';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzMQ_3HiULgK-nKSC6OkFMTHOK_PvJvXfWm4DZTn0heW_IzWIQK5KUxduMCFOaJOMhZPQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -16563,6 +16593,53 @@ function initDashboardApp() {
     return _nblListsCache;
   }
 
+  function nblExtractWhoFromLegacyDetail_(detail) {
+    var m = String(detail || '').match(/"([^"]+)"/);
+    return m ? m[1].trim() : '';
+  }
+
+  function nblMatchDisplayWho_(m) {
+    var who = String(m.matchedName || '').trim().replace(/^[•·]\s*/, '');
+    if (!who && m.detail) who = nblExtractWhoFromLegacyDetail_(m.detail);
+    return who.trim();
+  }
+
+  function nblMatchDedupeKey_(m) {
+    return normalizeLooseKey(nblMatchDisplayWho_(m)) + '|' + normalizeLooseKey(m.riser) + '|' + String(m.source || '');
+  }
+
+  function collectNblDisplayMatches_(matches) {
+    var seen = {};
+    var out = [];
+    (matches || []).forEach(function(m) {
+      var who = nblMatchDisplayWho_(m);
+      if (!who) return;
+      var key = nblMatchDedupeKey_(m);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({
+        who: who,
+        riser: String(m.riser || '').trim(),
+        source: m.source === 'Unilever NBL' ? 'unilever' : 'nbl',
+        sourceLabel: m.source === 'Unilever NBL' ? 'Unilever NBL' : 'NBL Registry',
+      });
+    });
+    return out;
+  }
+
+  function formatNblMatchesForSave_(matches) {
+    return collectNblDisplayMatches_(matches).map(function(item) {
+      var s = item.who;
+      if (item.riser) s += ' · Riser: ' + item.riser;
+      if (item.source === 'unilever') s += ' · Unilever NBL';
+      return s;
+    }).join(' | ');
+  }
+
+  function formatNblMatchesSimple_(matches) {
+    return formatNblMatchesForSave_(matches).split(/\s*\|\s*/).filter(Boolean);
+  }
+
   function runNblMatchCheck_(namesInput, lists) {
     var matches = [];
     var seen = {};
@@ -16582,11 +16659,10 @@ function initDashboardApp() {
       if (!group) return;
       lists.registry.forEach(function(r, i) {
         if (!nblNamesEqual_(r._nblGroup, group)) return;
-        pushMatch_('nbl-g-' + i + '-' + normalizeLooseKey(group), {
+        pushMatch_('nbl-g-' + normalizeLooseKey(r._nblGroup || group) + '-' + normalizeLooseKey(r._nblRiser), {
           source: 'NBL',
-          detail: 'Matched import Group "' + group + '" → NBL Group "' + (r._nblGroup || '—') + '"'
-            + (r._nblCompany ? ' · Company ' + r._nblCompany : '')
-            + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
+          matchedName: String(r._nblGroup || group).trim(),
+          riser: String(r._nblRiser || '').trim(),
         });
       });
     });
@@ -16594,11 +16670,10 @@ function initDashboardApp() {
       if (!company) return;
       lists.registry.forEach(function(r, i) {
         if (!nblNamesEqual_(r._nblCompany, company)) return;
-        pushMatch_('nbl-c-' + i + '-' + normalizeLooseKey(company), {
+        pushMatch_('nbl-c-' + normalizeLooseKey(r._nblCompany || company) + '-' + normalizeLooseKey(r._nblRiser), {
           source: 'NBL',
-          detail: 'Matched import Company "' + company + '" → NBL Company "' + (r._nblCompany || '—') + '"'
-            + (r._nblGroup ? ' · Group ' + r._nblGroup : '')
-            + (r._nblSource ? ' · Source: ' + r._nblSource : ''),
+          matchedName: String(r._nblCompany || company).trim(),
+          riser: String(r._nblRiser || '').trim(),
         });
       });
     });
@@ -16608,11 +16683,9 @@ function initDashboardApp() {
       if (!company) return;
       lists.unilever.forEach(function(r, i) {
         if (!nblNamesEqual_(r._nblCompany, company)) return;
-        pushMatch_('uni-c-' + i + '-' + normalizeLooseKey(company), {
+        pushMatch_('uni-c-' + normalizeLooseKey(r._nblCompany || company), {
           source: 'Unilever NBL',
-          detail: 'Matched import Company "' + company + '" → Unilever Company "' + (r._nblCompany || '—') + '"'
-            + (r._nblMill ? ' · Mill ' + r._nblMill : '')
-            + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
+          matchedName: String(r._nblCompany || company).trim(),
         });
       });
     });
@@ -16620,11 +16693,9 @@ function initDashboardApp() {
       if (!mill) return;
       lists.unilever.forEach(function(r, i) {
         if (!nblNamesEqual_(r._nblMill, mill)) return;
-        pushMatch_('uni-m-' + i + '-' + normalizeLooseKey(mill), {
+        pushMatch_('uni-m-' + normalizeLooseKey(r._nblMill || mill), {
           source: 'Unilever NBL',
-          detail: 'Matched import Mill "' + mill + '" → Unilever Mill "' + (r._nblMill || '—') + '"'
-            + (r._nblCompany ? ' · Company ' + r._nblCompany : '')
-            + (r._nblUml ? ' · UML: ' + r._nblUml : ''),
+          matchedName: String(r._nblMill || mill).trim(),
         });
       });
     });
@@ -16648,36 +16719,41 @@ function initDashboardApp() {
     var boxes = document.querySelectorAll('#sdd-nbl-check-result');
     if (!boxes.length) return;
     var isYes = result.status === 'Yes';
-    var bg = isYes ? 'rgba(185,28,28,0.08)' : 'rgba(30,107,58,0.08)';
-    var border = isYes ? 'rgba(185,28,28,0.35)' : 'rgba(30,107,58,0.35)';
-    var title = isYes ? 'Yes — on No Buy List' : 'No — not on No Buy List';
-    var html = '<strong style="color:#1A0A0A;">' + title + '</strong>';
-    html += '<div style="margin-top:6px;color:#5F4A48;">Scanned from import: '
-      + (result.groupsChecked || 0) + ' group name(s), '
-      + (result.companiesChecked || 0) + ' company name(s), '
-      + (result.millsChecked || 0) + ' mill name(s) (Main Form + Traceability).</div>';
-    if (result.groupsScanned && result.groupsScanned.length) {
-      html += '<div style="margin-top:4px;font-size:11px;color:#6b7280;">Groups: '
-        + escHtml(result.groupsScanned.join(' · ')) + '</div>';
+    var items = collectNblDisplayMatches_(result.matches || []);
+    var html = '<div class="sdd-nbl-result' + (isYes ? ' sdd-nbl-result--yes' : ' sdd-nbl-result--no') + '">';
+    html += '<div class="sdd-nbl-result-head">';
+    html += '<span class="sdd-nbl-result-icon" aria-hidden="true">' + (isYes ? '!' : '✓') + '</span>';
+    html += '<div class="sdd-nbl-result-head-text">';
+    html += '<div class="sdd-nbl-result-title">' + escHtml(isYes ? 'On No Buy List' : 'Not on No Buy List') + '</div>';
+    if (isYes && items.length) {
+      html += '<div class="sdd-nbl-result-sub">' + items.length + ' match' + (items.length === 1 ? '' : 'es') + ' found</div>';
+    } else if (!isYes) {
+      html += '<div class="sdd-nbl-result-sub">No match in NBL or Unilever NBL registry</div>';
     }
-    if (result.matches.length) {
-      html += '<ul style="margin:8px 0 0;padding-left:18px;color:#4a1c1c;">';
-      result.matches.forEach(function(m) {
-        html += '<li style="margin-bottom:4px;"><span style="font-weight:600;">' + escHtml(m.source) + ':</span> '
-          + escHtml(m.detail) + '</li>';
+    html += '</div></div>';
+    if (isYes && items.length) {
+      html += '<div class="sdd-nbl-match-list">';
+      items.forEach(function(item) {
+        html += '<div class="sdd-nbl-match-card">';
+        html += '<div class="sdd-nbl-match-name">' + escHtml(item.who) + '</div>';
+        if (item.riser) {
+          html += '<div class="sdd-nbl-match-riser"><span class="sdd-nbl-match-lbl">Riser</span> ' + escHtml(item.riser) + '</div>';
+        }
+        html += '<span class="sdd-nbl-match-tag sdd-nbl-match-tag--' + item.source + '">' + escHtml(item.sourceLabel) + '</span>';
+        html += '</div>';
       });
-      html += '</ul>';
-    } else {
-      html += '<div style="margin-top:6px;">No similar Group Name, Company Name, or Mill Name found in NBL or Unilever NBL sheets.</div>';
+      html += '</div>';
     }
-    html += '<div style="margin-top:8px;font-size:11px;color:#9C8080;">Screening field <strong>No Buy List</strong> set to '
-      + escHtml(result.status) + '. Included in PDF export.</div>';
+    html += '<div class="sdd-nbl-result-foot">Field <strong>No Buy List</strong> → ' + escHtml(result.status) + '</div>';
+    html += '</div>';
     boxes.forEach(function(box) {
       box.style.display = 'block';
-      box.style.background = bg;
-      box.style.border = '1px solid ' + border;
-      box.style.borderRadius = '8px';
-      box.style.padding = '10px 12px';
+      box.style.background = '';
+      box.style.border = '';
+      box.style.borderRadius = '';
+      box.style.padding = '';
+      box.className = 'sdd-nbl-check-result sdd-nbl-check-result--visible'
+        + (isYes ? ' sdd-nbl-check-result--yes' : ' sdd-nbl-check-result--no');
       box.innerHTML = html;
     });
   }
@@ -16688,7 +16764,7 @@ function initDashboardApp() {
       ? 'YES — Supplier IS ON the No Buy List (NBL)'
       : 'NO — Supplier is NOT on the No Buy List';
     var detail = result.matches.length
-      ? result.matches.map(function(m) { return m.source + ': ' + m.detail; }).join(' | ')
+      ? formatNblMatchesForSave_(result.matches)
       : 'No matching Group Name, Company Name, or Mill Name in NBL or Unilever NBL sheets.';
     window._scrData = window._scrData || {};
     window._scrData.nblCheckResult = statusLabel;
@@ -16729,10 +16805,28 @@ function initDashboardApp() {
     if (stored && /not on the no buy list/i.test(stored)) status = 'No';
     var matches = [];
     if (detail && !/^no matching/i.test(detail)) {
+      var restoreSeen = {};
       detail.split(/\s*\|\s*/).forEach(function(part) {
-        var idx = part.indexOf(':');
-        if (idx > -1) {
-          matches.push({ source: part.slice(0, idx).trim(), detail: part.slice(idx + 1).trim() });
+        part = part.trim();
+        if (!part) return;
+        var entry = { source: 'NBL', matchedName: '', riser: '' };
+        if (/unilever nbl\s*$/i.test(part)) {
+          entry.source = 'Unilever NBL';
+          part = part.replace(/\s*·\s*Unilever NBL\s*$/i, '').trim();
+        }
+        if (/^unilever nbl by /i.test(part)) {
+          entry.source = 'Unilever NBL';
+          part = part.replace(/^unilever nbl by /i, '').trim();
+        } else if (/^nbl by /i.test(part)) {
+          part = part.replace(/^nbl by /i, '').trim();
+        }
+        var riserSplit = part.split(/\s*·\s*Riser:\s*/i);
+        entry.matchedName = (riserSplit[0] || '').replace(/^[•·]\s*/, '').trim();
+        entry.riser = riserSplit[1] ? riserSplit[1].replace(/\s*·\s*Unilever NBL\s*$/i, '').trim() : '';
+        var rKey = nblMatchDedupeKey_(entry);
+        if (entry.matchedName && !restoreSeen[rKey]) {
+          restoreSeen[rKey] = true;
+          matches.push(entry);
         }
       });
     }
@@ -16746,6 +16840,7 @@ function initDashboardApp() {
     window._scrData.nblCheckResult = stored;
     window._scrData.nblCheckDetail = detail;
     window._scrData.nblCheckedAt = checkedAt;
+    renderSddNblCheckBanner_(window._nblCheckResult);
   }
   window.restoreNblCheckResultFromRow_ = restoreNblCheckResultFromRow_;
 
@@ -16758,7 +16853,7 @@ function initDashboardApp() {
       return;
     }
 
-    var btns = document.querySelectorAll('#sdd-check-nbl-btn, #sdd-check-nbl-btn-trace');
+    var btns = document.querySelectorAll('#sdd-check-nbl-btn');
     btns.forEach(function(b) { b.disabled = true; });
     var boxes = document.querySelectorAll('#sdd-nbl-check-result');
     boxes.forEach(function(box) {

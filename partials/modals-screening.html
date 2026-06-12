@@ -49,11 +49,11 @@
         <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Screening Traceability</div>
         <div style="font-size:13px;color:#9C8080;margin-top:3px;">Select a Mill to screen. Draft/Submitted entries will be marked and can be reopened.</div>
       </div>
-      <button onclick="document.getElementById('tml-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="tml-mill-list" style="max-height:240px;overflow-y:auto;border:1.5px solid rgba(74,28,28,0.12);border-radius:10px;margin-bottom:20px;"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button onclick="document.getElementById('tml-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.openTmlScreeningForm()" style="padding:9px 20px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Lanjut →</button>
     </div>
   </div>
@@ -67,11 +67,11 @@
         <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Screening FFB Supplier List</div>
         <div style="font-size:13px;color:#9C8080;margin-top:3px;">Select a Supplier to screen. Draft/Submitted entries will be marked and can be reopened.</div>
       </div>
-      <button onclick="document.getElementById('ffb-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="ffb-supplier-list" style="max-height:240px;overflow-y:auto;border:1.5px solid rgba(74,28,28,0.12);border-radius:10px;margin-bottom:20px;"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button onclick="document.getElementById('ffb-pick-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:9px 18px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.openFfbScreeningForm()" style="padding:9px 20px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Lanjut →</button>
     </div>
   </div>
@@ -82,7 +82,7 @@
   <div style="background:white;border-radius:16px;width:600px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:32px;box-shadow:0 24px 72px rgba(10,4,4,0.28);animation:modalIn 0.28s cubic-bezier(.16,1,.3,1);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Form Screening Traceability</div>
-      <button onclick="document.getElementById('tml-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="tml-form-mill-label" style="font-size:13px;color:#8B1A1A;font-weight:600;margin-bottom:8px;padding:8px 12px;background:rgba(139,26,26,0.06);border-radius:7px;border-left:3px solid #8B1A1A;"></div>
   <div id="tml-form-status" style="font-size:12px;color:#8B1A1A;font-weight:600;margin-bottom:20px;"></div>
@@ -194,7 +194,7 @@
       💡 Screening data will be sent to Sheets when you click <strong>Save as Draft / Submit</strong> on the main form.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
-      <button onclick="document.getElementById('tml-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.deleteTmlScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#EF4444;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Delete</button>
       <button onclick="window.saveTmlScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Save &amp; Back</button>
     </div>
@@ -206,11 +206,11 @@
   <div style="background:white;border-radius:16px;width:540px;max-width:96vw;max-height:85vh;overflow-y:auto;padding:32px;box-shadow:0 24px 72px rgba(10,4,4,0.28);animation:modalIn 0.28s cubic-bezier(.16,1,.3,1);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Hasil Screening Traceability</div>
-      <button onclick="document.getElementById('tml-result-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="tml-result-body"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:20px;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
-      <button onclick="document.getElementById('tml-result-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 24px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Tutup</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:10px 24px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Tutup</button>
     </div>
   </div>
 </div>
@@ -220,7 +220,7 @@
   <div style="background:white;border-radius:16px;width:620px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:32px;box-shadow:0 24px 72px rgba(10,4,4,0.28);animation:modalIn 0.28s cubic-bezier(.16,1,.3,1);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
       <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Form Screening FFB Supplier List</div>
-      <button onclick="document.getElementById('ffb-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="ffb-form-supplier-label" style="font-size:13px;color:#8B1A1A;font-weight:600;margin-bottom:8px;padding:8px 12px;background:rgba(139,26,26,0.06);border-radius:7px;border-left:3px solid #8B1A1A;"></div>
     <div id="ffb-form-status" style="font-size:12px;color:#8B1A1A;font-weight:600;margin-bottom:20px;"></div>
@@ -361,7 +361,7 @@
       💡 Screening data will be sent to Sheets when you click <strong>Save as Draft / Submit</strong> on the main form.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
-      <button onclick="document.getElementById('ffb-form-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:10px 20px;border-radius:8px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#5F4A48;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;">← Kembali</button>
       <button onclick="window.deleteFfbScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#EF4444;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Delete</button>
       <button onclick="window.saveFfbScreening()" style="padding:10px 24px;border-radius:8px;border:none;background:#10B981;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Save &amp; Back</button>
     </div>
@@ -373,11 +373,11 @@
   <div style="background:white;border-radius:16px;width:540px;max-width:96vw;max-height:85vh;overflow-y:auto;padding:32px;box-shadow:0 24px 72px rgba(10,4,4,0.28);animation:modalIn 0.28s cubic-bezier(.16,1,.3,1);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <div style="font-size:18px;font-weight:700;color:#1A0A0A;font-family:Playfair Display,serif;">Hasil Screening FFB Supplier List</div>
-      <button onclick="document.getElementById('ffb-result-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="width:30px;height:30px;border-radius:50%;border:none;background:rgba(74,28,28,0.08);cursor:pointer;font-size:16px;color:#5F4A48;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
     <div id="ffb-result-body"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:20px;border-top:1px solid rgba(74,28,28,0.08);padding-top:20px;">
-      <button onclick="document.getElementById('ffb-result-overlay').style.display='none';document.getElementById('tml-type-overlay').style.display='flex'" style="padding:10px 24px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Tutup</button>
+      <button onclick="window.returnToScreeningTypePicker_()" style="padding:10px 24px;border-radius:8px;border:none;background:#8B1A1A;color:white;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Tutup</button>
     </div>
   </div>
 </div>

@@ -163,6 +163,18 @@ window.tmlTypeNext = function() {
   }
 };
 
+/** After save/delete — return to Traceability vs FFB type picker (not main page). */
+window.returnToScreeningTypePicker_ = function() {
+  ['tml-form-overlay', 'tml-pick-overlay', 'ffb-form-overlay', 'ffb-pick-overlay', 'tml-result-overlay', 'ffb-result-overlay'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  var typeOverlay = document.getElementById('tml-type-overlay');
+  if (typeOverlay) typeOverlay.style.display = 'flex';
+  if (window._tmlScreeningType === 'traceability') window.tmlSelectTypeCard('trace');
+  else if (window._tmlScreeningType === 'ffb') window.tmlSelectTypeCard('ffb');
+};
+
 // ── TRACEABILITY: MILL PICKER ──────────────────────────────────
 window._openTmlMillPicker = function() {
   const mills = window._tmlMillNames || [];
@@ -360,7 +372,7 @@ window.saveTmlScreening = function() {
     date: new Date().toLocaleDateString('id-ID')
   };
 
-  document.getElementById('tml-form-overlay').style.display = 'none';
+  window.returnToScreeningTypePicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
       'Saved temporarily. Click Save as Draft on the main form to send to Sheets.',
@@ -378,7 +390,7 @@ window.deleteTmlScreening = function() {
   if (!mill) { alert('Select a Mill first.'); return; }
   if (!confirm('Are you sure you want to delete screening for "' + mill + '"?')) return;
   if (window._tmlScreeningData) delete window._tmlScreeningData[mill];
-  document.getElementById('tml-form-overlay').style.display = 'none';
+  window.returnToScreeningTypePicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast('TML screening for "' + mill + '" removed from memory.', 'info');
   }
@@ -598,7 +610,7 @@ window.saveFfbScreening = function() {
     date: new Date().toLocaleDateString('id-ID')
   };
 
-  document.getElementById('ffb-form-overlay').style.display = 'none';
+  window.returnToScreeningTypePicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
       'Saved temporarily. Click Save as Draft on the main form to send to Sheets.',
@@ -616,7 +628,7 @@ window.deleteFfbScreening = function() {
   if (!supplier) { alert('Select a supplier first.'); return; }
   if (!confirm('Are you sure you want to delete FFB screening for "' + supplier + '"?')) return;
   if (window._ffbScreeningData) delete window._ffbScreeningData[supplier];
-  document.getElementById('ffb-form-overlay').style.display = 'none';
+  window.returnToScreeningTypePicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast('FFB screening for "' + supplier + '" removed from memory.', 'info');
   }
