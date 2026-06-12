@@ -174,6 +174,18 @@ window.returnToScreeningTypePicker_ = function() {
   else if (window._tmlScreeningType === 'ffb') window.tmlSelectTypeCard('ffb');
 };
 
+/** After FFB save/delete/back — return to FFB supplier list (not type picker). */
+window.returnToFfbSupplierPicker_ = function() {
+  ['tml-form-overlay', 'tml-pick-overlay', 'ffb-form-overlay', 'tml-result-overlay', 'ffb-result-overlay'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  var typeOverlay = document.getElementById('tml-type-overlay');
+  if (typeOverlay) typeOverlay.style.display = 'none';
+  window._tmlScreeningType = 'ffb';
+  window._openFfbSupplierPicker();
+};
+
 // ── TRACEABILITY: MILL PICKER ──────────────────────────────────
 window._openTmlMillPicker = function() {
   const mills = window._tmlMillNames || [];
@@ -689,7 +701,7 @@ window.saveFfbScreening = function() {
     date: new Date().toLocaleDateString('id-ID')
   };
 
-  window.returnToScreeningTypePicker_();
+  window.returnToFfbSupplierPicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast(
       'Saved temporarily. Click Save as Draft on the main form to send to Sheets.',
@@ -707,7 +719,7 @@ window.deleteFfbScreening = function() {
   if (!supplier) { alert('Select a supplier first.'); return; }
   if (!confirm('Are you sure you want to delete FFB screening for "' + supplier + '"?')) return;
   if (window._ffbScreeningData) delete window._ffbScreeningData[supplier];
-  window.returnToScreeningTypePicker_();
+  window.returnToFfbSupplierPicker_();
   if (typeof window.showSddToast === 'function') {
     window.showSddToast('FFB screening for "' + supplier + '" removed from memory.', 'info');
   }
