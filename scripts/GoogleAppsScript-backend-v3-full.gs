@@ -2358,12 +2358,12 @@ function tmlMatchKeys_(tml) {
   return keys;
 }
 
-/** Carry-forward FFB - Mill Name (Excel blank = same mill as row above). */
+/** Carry-forward FFB - Mill Name (blank / — / - = same mill as row above). */
 function resolveFfbEffectiveMillNames_(ffbRows) {
   let carry = '';
   return (ffbRows || []).filter(isMeaningfulSddFfbRow_).map(function(ffb) {
     const raw = String(ffb['FFB - Mill Name'] || '').trim();
-    if (raw) carry = raw;
+    if (!isBlankTtpCell_(raw)) carry = raw;
     return { ffb: ffb, effectiveMill: carry };
   });
 }

@@ -141,7 +141,7 @@ function resolveFfbEffectiveMillNames_(ffbRows) {
   let carry = '';
   return (ffbRows || []).filter(isMeaningfulSddFfbRow_).map(function(ffb) {
     const raw = String(ffb['FFB - Mill Name'] || '').trim();
-    if (raw) carry = raw;
+    if (raw && raw !== '—' && raw !== '-' && !/^please select$/i.test(raw)) carry = raw;
     return { ffb: ffb, effectiveMill: carry };
   });
 }
@@ -390,12 +390,12 @@ const tmlRows = [
 ];
 const ffbRows = [
   { line_id: 'ffb-1', 'FFB - Mill Name': 'MITRASARI PRIMA', 'FFB - Supplier Name': 'TOGAR' },
-  { line_id: 'ffb-2', 'FFB - Mill Name': '', 'FFB - Supplier Name': 'BUYUNG' },
-  { line_id: 'ffb-3', 'FFB - Mill Name': '', 'FFB - Supplier Name': 'CP' },
+  { line_id: 'ffb-2', 'FFB - Mill Name': '—', 'FFB - Supplier Name': 'BUYUNG' },
+  { line_id: 'ffb-3', 'FFB - Mill Name': '-', 'FFB - Supplier Name': 'CP' },
   { line_id: 'ffb-4', 'FFB - Mill Name': 'JATIM JAYA PERKASA', 'FFB - Supplier Name': 'JATIM JAYA PERKASA' },
 ];
 const segatiFfb = ffbRowsForTmlLine_(tmlRows, ffbRows, 'tml-1');
-assertEq(segatiFfb.length, 3, 'SEGATI mill gets 3 FFB rows (carry-forward blank mill name)');
+assertEq(segatiFfb.length, 3, 'SEGATI mill gets 3 FFB rows (carry-forward blank/dash mill name)');
 assertEq(segatiFfb[0]['FFB - Supplier Name'], 'TOGAR', 'first FFB TOGAR');
 const merlungFfb = ffbRowsForTmlLine_(tmlRows, ffbRows, 'tml-2');
 assertEq(merlungFfb.length, 1, 'MERLUNG mill gets 1 FFB row');
@@ -426,6 +426,9 @@ assert(gs.includes('MILL/KCP cannot set mill_added=true directly when mill list 
 assert(gs.includes('mill_added_line for MILL/KCP requires mill_ttp_sync'), 'MILL/KCP line requires TTP sync');
 assert(gs.includes('ffbRowsForTmlLine_'), 'FFB-to-TML matching in backend');
 assert(gs.includes('mill_tml_'), 'per-TML header line id prefix in backend');
+assert(gs.includes('isBlankTtpCell_(raw)'), 'FFB carry-forward treats dash cells as blank');
+assert(mainJs.includes('isBlankFfbMillName_'), 'frontend carry-forward helper for FFB mill name');
+assert(mainJs.includes('carryForwardFfbMillName_'), 'frontend applies FFB mill carry-forward');
 assert(mainJs.includes('renderMillTaskGroupedCard_'), 'frontend grouped task list for MILL/KCP');
 assert(mainJs.includes("'TML - Company Group Name'"), 'TML group name used for mill payload (not SDD_MAIN)');
 assert(gs.includes('payload.mill_ttp_sync'), 'updateSubmission accepts mill_ttp_sync');

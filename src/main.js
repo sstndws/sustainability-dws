@@ -94,6 +94,29 @@ import {
     return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
   }
 
+  /** Blank FFB mill cell: empty, dash, em-dash, or Please Select. */
+  function isBlankFfbMillName_(v) {
+    const s = normalizeCellText(v);
+    if (!s || s === '-' || s === '—') return true;
+    if (/^please select$/i.test(s)) return true;
+    if (/^silahkan pilih$/i.test(s)) return true;
+    return false;
+  }
+
+  /** Carry-forward FFB - Mill Name from rows above when cell is blank or —. */
+  function carryForwardFfbMillName_(rows, millKey) {
+    millKey = millKey || 'FFB - Mill Name';
+    let carry = '';
+    return (rows || []).map(function(row) {
+      if (!row || typeof row !== 'object') return row;
+      const raw = String(row[millKey] || '').trim();
+      if (!isBlankFfbMillName_(raw)) carry = raw;
+      const out = Object.assign({}, row);
+      if (carry) out[millKey] = carry;
+      return out;
+    });
+  }
+
   function normalizeLooseKey(v) {
     return normalizeCellText(v).toLowerCase().replace(/[^a-z0-9]/g, '');
   }
@@ -953,6 +976,7 @@ import {
         const isccCol = hasSupplierGroupName ? 16 : 15;
         const totalSupplyCol = hasSupplierGroupName ? 17 : 16;
         const ffbSeen = {};
+        let ffbMillCarry = '';
         for (let r = header + 1; r < rows.length; r++) {
           const raw0 = cellAt(rows, r, 0);
           const t0 = String(raw0 || '').trim();
@@ -964,11 +988,13 @@ import {
           const category = cellAt(rows, r, categoryCol);
           if (!supplier || supplier.toUpperCase() === 'PLEASE SELECT') continue;
           if (!cellAt(rows, r, 0) && !supplier && !category) continue;
-          const dedupeK = [normalizeCellText(raw0), normalizeCellText(supplier), normalizeCellText(category), normalizeCellText(cellAt(rows, r, villageCol))].join('|');
+          if (!isBlankFfbMillName_(raw0)) ffbMillCarry = String(raw0).trim();
+          const effectiveMill = ffbMillCarry || String(raw0 || '').trim();
+          const dedupeK = [normalizeCellText(effectiveMill), normalizeCellText(supplier), normalizeCellText(category), normalizeCellText(cellAt(rows, r, villageCol))].join('|');
           if (ffbSeen[dedupeK]) continue;
           ffbSeen[dedupeK] = true;
           out.push({
-            'FFB - Mill Name': cellAt(rows, r, 0),
+            'FFB - Mill Name': effectiveMill,
             'FFB - Supplier Group Name': hasSupplierGroupName ? cellAt(rows, r, 1) : '',
             'FFB - Supplier Name': supplier,
             'FFB - Village': cellAt(rows, r, villageCol),
@@ -1309,6 +1335,7 @@ import {
             const tableRows = [];
             let j = headerIdx + 1;
             const seenFfbCombos = new Set();
+            let ffbMillCarry = '';
             while (j < data.length) {
               const r = data[j];
               if (!r || !r.some(c => c !== null && c !== undefined && String(c).trim() !== '')) { j++; continue; }
@@ -1321,11 +1348,13 @@ import {
               const supplierName = cellVal(r, hasSupplierGroupName ? 2 : 1) || (hasSupplierGroupName ? '' : cellVal(r, 2));
               if (!supplierName) { j++; continue; }
               const millNameCell = cellVal(r, 0);
+              if (!isBlankFfbMillName_(millNameCell)) ffbMillCarry = String(millNameCell).trim();
+              const displayMill = ffbMillCarry || millNameCell;
               // Deduplicate by logical supplier identity (not all columns),
               // so legacy duplicate rows in Sheets do not reappear in UI.
               const comboKey = hasSupplierGroupName
                 ? [
-                  normalizeCellText(millNameCell).toLowerCase(),
+                  normalizeCellText(displayMill).toLowerCase(),
                   normalizeCellText(supplierGroup).toLowerCase(),
                   normalizeCellText(supplierName).toLowerCase(),
                   normalizeCellText(cellVal(r,3)).toLowerCase(),
@@ -1334,7 +1363,7 @@ import {
                   normalizeCellText(cellVal(r,6)).toLowerCase()
                 ].join('||')
                 : [
-                  normalizeCellText(millNameCell).toLowerCase(),
+                  normalizeCellText(displayMill).toLowerCase(),
                   normalizeCellText(supplierName).toLowerCase(),
                   normalizeCellText(cellVal(r,2)).toLowerCase(),
                   normalizeCellText(cellVal(r,3)).toLowerCase(),
@@ -1344,9 +1373,9 @@ import {
               if (seenFfbCombos.has(comboKey)) { j++; continue; }
               seenFfbCombos.add(comboKey);
               if (hasSupplierGroupName) {
-                tableRows.push([millNameCell, supplierGroup, supplierName, cellVal(r,3), cellVal(r,4), cellVal(r,5), cellVal(r,6), cellVal(r,7), cellVal(r,8), cellVal(r,9), cellVal(r,10), cellVal(r,11), cellVal(r,12), cellVal(r,13), cellVal(r,14), cellVal(r,15), cellVal(r,16), cellVal(r,17)]);
+                tableRows.push([displayMill, supplierGroup, supplierName, cellVal(r,3), cellVal(r,4), cellVal(r,5), cellVal(r,6), cellVal(r,7), cellVal(r,8), cellVal(r,9), cellVal(r,10), cellVal(r,11), cellVal(r,12), cellVal(r,13), cellVal(r,14), cellVal(r,15), cellVal(r,16), cellVal(r,17)]);
               } else {
-                tableRows.push([millNameCell, supplierName, cellVal(r,2), cellVal(r,3), cellVal(r,4), cellVal(r,5), cellVal(r,6), cellVal(r,7), cellVal(r,8), cellVal(r,9), cellVal(r,10), cellVal(r,11), cellVal(r,12), cellVal(r,13), cellVal(r,14), cellVal(r,15), cellVal(r,16)]);
+                tableRows.push([displayMill, supplierName, cellVal(r,2), cellVal(r,3), cellVal(r,4), cellVal(r,5), cellVal(r,6), cellVal(r,7), cellVal(r,8), cellVal(r,9), cellVal(r,10), cellVal(r,11), cellVal(r,12), cellVal(r,13), cellVal(r,14), cellVal(r,15), cellVal(r,16)]);
               }
               j++;
             }
@@ -3008,7 +3037,7 @@ import {
       }
       const cleanMain = cleanRow(mainRow);
       const cleanMills = millRows.map(cleanRow);
-      const cleanFfb   = ffbRows.map(cleanRow);
+      const cleanFfb   = carryForwardFfbMillName_(ffbRows.map(cleanRow));
 
       // ── Hydrate in-memory screening state (REPLACE, bukan merge) ──────────
       // window._tml/_ffbScreeningData adalah authoritative untuk pre-fill modal.
@@ -20748,6 +20777,7 @@ function initDashboardApp() {
       var cachedGroup = (window._scrSavedGroupsByKey && sid) ? window._scrSavedGroupsByKey[sid] : null;
       var millRows = (cachedGroup && Array.isArray(cachedGroup.mills))    ? cachedGroup.mills    : [];
       var ffbRows  = (cachedGroup && Array.isArray(cachedGroup.ffb_rows)) ? cachedGroup.ffb_rows : [];
+      ffbRows = carryForwardFfbMillName_(ffbRows);
       if (!millRows.length && !ffbRows.length && Array.isArray(window._sddImportedRows)) {
         window._sddImportedRows.forEach(function(r) {
           if (String(r['TML - Mill Name'] || r['TML - Company Name'] || '').trim()) millRows.push(r);
