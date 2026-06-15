@@ -3898,8 +3898,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzN8eDNgdsuOG9By7fMstimu3PGsZ3gN_2-gyOaBwr_l31-XEBr87MoOOTwkRXhQN2uag/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzN8eDNgdsuOG9By7fMstimu3PGsZ3gN_2-gyOaBwr_l31-XEBr87MoOOTwkRXhQN2uag';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwSQT0h8BG4M1J26_TeY4THMTGREQ0Zf5hrIg6c0cVSC0s_zgNkElQ4ckdQ-fnpPrBx1w/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwSQT0h8BG4M1J26_TeY4THMTGREQ0Zf5hrIg6c0cVSC0s_zgNkElQ4ckdQ-fnpPrBx1w';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -4426,8 +4426,7 @@ window._submitSddApproverDecision = function(statusSdd) {
   _refreshDecisionChromeForDraft();
   if (scrSt === 'submitted' && sid) {
     apiSetSubmissionStatus({ submission_id: sid, statusSDD: statusSdd })
-      .then(function(statusResp) {
-        window._lastTtpSyncResult = statusResp && statusResp.ttp_sync ? statusResp.ttp_sync : null;
+      .then(function() {
         return apiUpdateSubmission({
           submission_id: sid,
           main: {
@@ -4451,16 +4450,11 @@ window._submitSddApproverDecision = function(statusSdd) {
           saveOk.textContent = '✓ Decision saved: ' + statusSdd + ' · Submission ID: ' + sid;
         }
         if (typeof window.__contactListInvalidate === 'function') window.__contactListInvalidate();
-        if (typeof window.__ttpInvalidate === 'function') window.__ttpInvalidate();
         var normDecision = _normalizeDecisionLabel(statusSdd);
         if (normDecision === 'APPROVED') {
           var clsPanel = document.getElementById('panel-contact-list-supplier');
           if (clsPanel && clsPanel.classList.contains('active') && typeof window.loadContactListData === 'function') {
             return window.loadContactListData(true);
-          }
-          var ttpPanel = document.getElementById('panel-ttm-ttp');
-          if (ttpPanel && ttpPanel.classList.contains('active') && typeof loadTTPData === 'function') {
-            return loadTTPData();
           }
         }
       })
@@ -4470,15 +4464,6 @@ window._submitSddApproverDecision = function(statusSdd) {
           var extraCls = normToast === 'APPROVED'
             ? ' Sustainability PIC contact saved to Contact List Supplier.'
             : '';
-          var ttpSync = window._lastTtpSyncResult;
-          if (normToast === 'APPROVED' && ttpSync) {
-            if (ttpSync.synced) {
-              extraCls += ' Monitoring TTM/TTP: ' + String(ttpSync.inserted || 0) + ' new, '
-                + String(ttpSync.updated || 0) + ' updated.';
-            } else if (ttpSync.skipped && ttpSync.reason === 'no_ffb_rows') {
-              extraCls += ' Monitoring TTM/TTP: no FFB rows in traceability.';
-            }
-          }
           window.showSddToast('Submitted decision saved: ' + statusSdd + ' (SID: ' + sid + ').' + extraCls, 'success');
         }
       })
@@ -4519,6 +4504,37 @@ function formatSddDateImported() {
   const d = new Date();
   const p = function(n) { return String(n).padStart(2, '0'); };
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/** Parse SDD Date Imported (or similar) → JS Date. */
+function parseSddImportDate_(raw) {
+  const s = String(raw === undefined || raw === null ? '' : raw).trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) return new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** QUARTER (Q1–Q4) + YEAR from SDD import date. */
+function quarterYearFromSddImportDate_(raw) {
+  const d = parseSddImportDate_(raw);
+  if (!d) return { quarter: '', year: '' };
+  const q = Math.floor(d.getMonth() / 3) + 1;
+  return { quarter: 'Q' + q, year: String(d.getFullYear()) };
+}
+
+function resolveSddPeriodFromMainRow_(mainRow) {
+  if (!mainRow || typeof mainRow !== 'object') return { quarter: '', year: '' };
+  const dateRaw = String(
+    mainRow['Date Imported'] || mainRow['DATE IMPORTED'] || mainRow['date_imported'] || ''
+  ).trim();
+  if (dateRaw) return quarterYearFromSddImportDate_(dateRaw);
+  return quarterYearFromSddImportDate_(
+    mainRow['updated_at'] || mainRow['SCR - Last Updated'] || mainRow['created_at'] || ''
+  );
 }
 
 function setAliasGroup(obj, keys) {
@@ -5255,6 +5271,8 @@ function initDashboardApp() {
   const MILL_FIELDS = ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','SIGN','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
   let modalTaskKey = ''; // submission_id dari SDD yang di-add via Task List
+  let modalTaskLineId = ''; // line_id TML untuk TRADER mill list (satu submission, banyak mill)
+  let _millTaskTraderCache = {}; // submission_id → { mills, main, fetchedAt }
   let allData = [];
   let allDataRaw = [];
   let currentFilter = 'All';
@@ -5615,6 +5633,25 @@ function initDashboardApp() {
     document.querySelectorAll('#modalFormGrid [data-field]').forEach(el => {
       data[el.dataset.field] = el.value;
     });
+    if (modalSheet === 'mill' && modalTaskKey) {
+      const sddMain = window._scrSavedRowsByKey && window._scrSavedRowsByKey[modalTaskKey];
+      if (sddMain) {
+        const period = resolveSddPeriodFromMainRow_(sddMain);
+        if (period.quarter) data['QUARTER'] = period.quarter;
+        if (period.year) data['YEAR'] = period.year;
+      }
+      const ttpRequired = ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID'];
+      const ttpMissing = ttpRequired.filter(function(k) { return !String(data[k] || '').trim(); });
+      if (modalTaskLineId && !String(data['TRADER NAME'] || '').trim()) {
+        ttpMissing.push('TRADER NAME');
+      }
+      if (ttpMissing.length) {
+        const msg = modalTaskLineId
+          ? 'Fill Trader Name, Group Name, Company Name, Mill Name, and UML ID before saving from Task List.'
+          : 'Fill Group Name, Company Name, Mill Name, and UML ID before saving from Task List.';
+        throw new Error(msg);
+      }
+    }
     try {
       const postSaveFocus = capturePostSaveFocus_(modalSheet, data);
       if (modalSheet === 'ttp') ttpCanonicalizeCategoryFields_(data);
@@ -5649,15 +5686,88 @@ function initDashboardApp() {
       if (modalSheet === 'mill') {
         if (modalTaskKey) {
           const taskKey = modalTaskKey;
+          const taskLineId = modalTaskLineId;
           modalTaskKey = '';
+          modalTaskLineId = '';
+          const ttpIdentity = {
+            'GROUP NAME': String(data['GROUP NAME'] || '').trim(),
+            'COMPANY NAME': String(data['COMPANY NAME'] || '').trim(),
+            'MILL NAME': String(data['MILL NAME'] || '').trim(),
+            'UML ID': String(data['UML ID'] || '').trim(),
+          };
           try {
-            await apiUpdateSubmission({ submission_id: taskKey, main: { mill_added: 'true' } });
-            // Update local cache so re-render immediately reflects change
-            if (window._scrSavedRowsByKey && window._scrSavedRowsByKey[taskKey]) {
-              window._scrSavedRowsByKey[taskKey]['mill_added'] = 'true';
+            if (taskLineId) {
+              const lineRes = await apiUpdateSubmission({
+                submission_id: taskKey,
+                mill_added_line: taskLineId,
+              });
+              if (window._scrSavedRowsByKey && window._scrSavedRowsByKey[taskKey]) {
+                const cached = window._scrSavedRowsByKey[taskKey];
+                const prevLines = String(cached['mill_added_lines'] || '').split(',').map(function(s) {
+                  return s.trim();
+                }).filter(Boolean);
+                if (prevLines.indexOf(taskLineId) === -1) prevLines.push(taskLineId);
+                cached['mill_added_lines'] = prevLines.join(',');
+                if (lineRes && lineRes.mill_added_line && lineRes.mill_added_line.all_done) {
+                  cached['mill_added'] = 'true';
+                }
+              }
+              delete _millTaskTraderCache[taskKey];
+              if (typeof window.showSddToast === 'function') {
+                const done = lineRes && lineRes.mill_added_line && lineRes.mill_added_line.all_done;
+                const prog = lineRes && lineRes.mill_added_line
+                  ? String(lineRes.mill_added_line.completed_lines || 0) + '/' + String(lineRes.mill_added_line.total_mills || 0)
+                  : '';
+                window.showSddToast(
+                  done
+                    ? 'Trader mills saved — all ' + prog + ' added to Mill Onboarding.'
+                    : 'Mill saved to Mill Onboarding (' + prog + '). Continue remaining mills in Task List.',
+                  'success'
+                );
+              }
+            } else {
+              const updRes = await apiUpdateSubmission({
+                submission_id: taskKey,
+                main: { mill_added: 'true' },
+                mill_ttp_sync: ttpIdentity,
+              });
+              if (window._scrSavedRowsByKey && window._scrSavedRowsByKey[taskKey]) {
+                window._scrSavedRowsByKey[taskKey]['mill_added'] = 'true';
+              }
+              if (typeof window.__ttpInvalidate === 'function') window.__ttpInvalidate();
+              const ttpPanel = document.getElementById('panel-ttm-ttp');
+              if (ttpPanel && ttpPanel.classList.contains('active') && typeof reloadTTPDataSoft_ === 'function') {
+                await reloadTTPDataSoft_();
+              }
+              const ttpSync = updRes && updRes.ttp_sync;
+              if (typeof window.showSddToast === 'function') {
+                if (ttpSync && ttpSync.synced) {
+                  window.showSddToast(
+                    'Mill saved and Traceability Data synced: '
+                      + String(ttpSync.inserted || 0) + ' new, '
+                      + String(ttpSync.updated || 0) + ' updated.',
+                    'success'
+                  );
+                } else if (ttpSync && ttpSync.skipped && ttpSync.reason === 'supplier_type_not_mill_or_kcp') {
+                  window.showSddToast('Mill saved. Traceability sync applies to MILL/KCP only.', 'info');
+                }
+              }
             }
           } catch(e) {
-            console.warn('[TaskList] Failed to mark mill_added on submission:', e);
+            const msg = (e && e.message) ? e.message : String(e);
+            console.warn('[TaskList] mill_added / TTP sync failed:', e);
+            if (typeof window.showSddToast === 'function') {
+              window.showSddToast(
+                taskLineId
+                  ? 'Mill saved but Task List update failed: ' + msg
+                  : 'Mill saved but Traceability sync failed: ' + msg,
+                'error'
+              );
+            } else {
+              alert(taskLineId
+                ? 'Mill saved but Task List update failed: ' + msg
+                : 'Mill saved but Traceability sync failed: ' + msg);
+            }
           }
           if (currentFilter === 'Task List') renderMillTaskList();
         }
@@ -20105,57 +20215,213 @@ function initDashboardApp() {
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function renderMillTaskList() {
+  function parseMillAddedLines_(raw) {
+    return String(raw || '').split(',').map(function(s) {
+      return s.trim();
+    }).filter(Boolean);
+  }
+
+  function isMeaningfulTmlRow_(row) {
+    if (!row || typeof row !== 'object') return false;
+    if (String(row['is_deleted'] || '') === '1') return false;
+    return !!(
+      String(row['TML - Mill Name'] || '').trim()
+      || String(row['TML - UML ID'] || '').trim()
+      || String(row['TML - Company Name'] || '').trim()
+    );
+  }
+
+  function resolveTraderNameFromMain_(mainRow) {
+    if (!mainRow) return '';
+    return String(mainRow['Company Name'] || mainRow['Group Name'] || '').trim();
+  }
+
+  function isApprovedSubmittedSddRow_(r) {
+    const status = String(r['SCR - Screening Status'] || '').toLowerCase();
+    const decision = String(
+      r['statusSDD'] || r['statusSdd'] || r['Status SDD'] ||
+      r['statusBossDecision'] || r['Status Boss Decision'] || ''
+    ).trim().toLowerCase();
+    return status === 'submitted' && (decision === 'approve' || decision === 'approved');
+  }
+
+  function applySddPeriodToMillPayload_(payload, mainRow) {
+    const out = Object.assign({}, payload || {});
+    const period = resolveSddPeriodFromMainRow_(mainRow);
+    if (period.quarter) out['QUARTER'] = period.quarter;
+    if (period.year) out['YEAR'] = period.year;
+    return out;
+  }
+
+  function mapSddTmlRowToMillPayload(mainRow, tmlRow) {
+    if (!tmlRow || typeof tmlRow !== 'object') return {};
+    const toDot = function(v) { return String(v || '').split(',').join('.'); };
+    const lat = toDot(tmlRow['TML - Latitude']);
+    const lng = toDot(tmlRow['TML - Longitude']);
+    return applySddPeriodToMillPayload_({
+      'TRADER NAME': resolveTraderNameFromMain_(mainRow),
+      'GROUP NAME': String(tmlRow['TML - Company Group Name'] || mainRow['Group Name'] || mainRow['Grup Name'] || '').trim(),
+      'COMPANY NAME': String(tmlRow['TML - Company Name'] || mainRow['Company Name'] || '').trim(),
+      'MILL NAME': String(tmlRow['TML - Mill Name'] || '').trim(),
+      'UML ID': String(tmlRow['TML - UML ID'] || '').trim(),
+      'COORDINATES': [lat, lng].filter(Boolean).join(', '),
+      'MILL CAPACITY (TON/HOUR)': String(tmlRow['TML - Capacity (Ton/Hour)'] || '').trim(),
+    }, mainRow);
+  }
+
+  async function fetchTraderTaskMills_(sid) {
+    sid = String(sid || '').trim();
+    if (!sid) return { mills: [], main: null };
+    if (_millTaskTraderCache[sid] && Array.isArray(_millTaskTraderCache[sid].mills)) {
+      return _millTaskTraderCache[sid];
+    }
+    const result = await apiGetSubmissionById(sid);
+    const mills = (result && Array.isArray(result.mills) ? result.mills : []).filter(isMeaningfulTmlRow_);
+    const pack = { mills: mills, main: result && result.main ? result.main : null, fetchedAt: Date.now() };
+    _millTaskTraderCache[sid] = pack;
+    return pack;
+  }
+
+  function renderMillTaskStandardCard_(key, r) {
+    const grp = String(r['Group Name'] || r['Grup Name'] || '—').trim();
+    const mill = String(r['Mill Name'] || r['KCP Name'] || '').trim();
+    const tp = String(r['Supplier Type'] || r['supplier_type'] || '').trim().toUpperCase();
+    const updRaw = String(r['updated_at'] || r['SCR - Last Updated'] || '').trim();
+    const updDate = updRaw ? new Date(updRaw).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    const metaParts = [tp, mill, updDate ? 'Submitted ' + updDate : ''].filter(Boolean);
+
+    return '<div class="mill-task-card">'
+      + '<div class="mill-task-card-icon">'
+      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'
+      + '</div>'
+      + '<div class="mill-task-card-info">'
+      + '<div class="mill-task-card-group">' + escapeHtmlMin(grp) + '</div>'
+      + (metaParts.length ? '<div class="mill-task-card-meta">' + metaParts.map(escapeHtmlMin).join(' &nbsp;·&nbsp; ') + '</div>' : '')
+      + '</div>'
+      + '<button type="button" class="mill-task-card-btn"'
+      + ' data-task-key="' + escapeHtmlMin(key) + '"'
+      + ' data-task-group="' + escapeHtmlMin(grp) + '">+ Add to Mill</button>'
+      + '</div>';
+  }
+
+  function renderMillTaskTraderGroupCard_(key, r, mills, doneLines) {
+    const traderName = resolveTraderNameFromMain_(r) || String(r['Group Name'] || '—').trim();
+    const updRaw = String(r['updated_at'] || r['SCR - Last Updated'] || '').trim();
+    const updDate = updRaw ? new Date(updRaw).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    const pendingCount = mills.filter(function(m) {
+      return doneLines.indexOf(String(m['line_id'] || '').trim()) === -1;
+    }).length;
+
+    let millsHtml = '';
+    if (!mills.length) {
+      millsHtml = '<div class="mill-task-trader-empty">No mill list in Traceability A — add mills in SDD first.</div>';
+    } else {
+      millsHtml = mills.map(function(m) {
+        const lineId = String(m['line_id'] || '').trim();
+        const millName = String(m['TML - Mill Name'] || '—').trim();
+        const company = String(m['TML - Company Name'] || '').trim();
+        const uml = String(m['TML - UML ID'] || '').trim();
+        const done = doneLines.indexOf(lineId) !== -1;
+        const meta = [company, uml ? 'UML ' + uml : ''].filter(Boolean).join(' · ');
+        return '<div class="mill-task-trader-mill' + (done ? ' is-done' : '') + '">'
+          + '<div class="mill-task-trader-mill-info">'
+          + '<div class="mill-task-trader-mill-name">' + escapeHtmlMin(millName) + (done ? ' <span class="mill-task-done-badge">✓</span>' : '') + '</div>'
+          + (meta ? '<div class="mill-task-trader-mill-meta">' + escapeHtmlMin(meta) + '</div>' : '')
+          + '</div>'
+          + (done ? '' : '<button type="button" class="mill-task-card-btn mill-task-trader-mill-btn"'
+            + ' data-task-key="' + escapeHtmlMin(key) + '"'
+            + ' data-task-line-id="' + escapeHtmlMin(lineId) + '"'
+            + ' data-task-group="' + escapeHtmlMin(traderName) + '">+ Add to Mill</button>')
+          + '</div>';
+      }).join('');
+    }
+
+    return '<div class="mill-task-trader-group">'
+      + '<div class="mill-task-trader-head">'
+      + '<div class="mill-task-card-icon">'
+      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>'
+      + '</div>'
+      + '<div class="mill-task-card-info">'
+      + '<div class="mill-task-card-group">' + escapeHtmlMin(traderName) + '</div>'
+      + '<div class="mill-task-card-meta">TRADER'
+      + (mills.length ? ' · ' + mills.length + ' mill' + (mills.length === 1 ? '' : 's') : '')
+      + (pendingCount ? ' · ' + pendingCount + ' pending' : ' · complete')
+      + (updDate ? ' · Submitted ' + escapeHtmlMin(updDate) : '')
+      + '</div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="mill-task-trader-mills">' + millsHtml + '</div>'
+      + '</div>';
+  }
+
+  async function renderMillTaskList() {
     const body    = document.getElementById('mill-task-list-body');
     const empty   = document.getElementById('mill-task-empty');
     const countEl = document.getElementById('mill-task-count');
     if (!body) return;
 
     const rows = window._scrSavedRowsByKey || {};
-    const submitted = Object.entries(rows)
-      .filter(function([, r]) {
-        const status    = String(r['SCR - Screening Status'] || '').toLowerCase();
-        const decision  = String(
-          r['statusSDD'] || r['statusSdd'] || r['Status SDD'] ||
-          r['statusBossDecision'] || r['Status Boss Decision'] || ''
-        ).trim().toLowerCase();
-        const millAdded = String(r['mill_added'] || '').toLowerCase();
-        return status === 'submitted' && (decision === 'approve' || decision === 'approved') && millAdded !== 'true';
-      })
-      .sort(function([, a], [, b]) {
-        return new Date(b['updated_at'] || 0) - new Date(a['updated_at'] || 0);
-      });
+    const candidates = Object.entries(rows).filter(function([, r]) {
+      if (!isApprovedSubmittedSddRow_(r)) return false;
+      const tp = String(r['Supplier Type'] || r['supplier_type'] || '').trim().toUpperCase();
+      if (tp === 'TRADER') return String(r['mill_added'] || '').toLowerCase() !== 'true';
+      return String(r['mill_added'] || '').toLowerCase() !== 'true';
+    }).sort(function([, a], [, b]) {
+      return new Date(b['updated_at'] || 0) - new Date(a['updated_at'] || 0);
+    });
 
-    if (countEl) countEl.textContent = submitted.length + ' entr' + (submitted.length === 1 ? 'y' : 'ies');
+    body.innerHTML = '<div class="mill-task-loading">Loading task list…</div>';
+    if (empty) empty.style.display = 'none';
 
-    if (!submitted.length) {
+    const standard = [];
+    const traders = [];
+    candidates.forEach(function(entry) {
+      const tp = String(entry[1]['Supplier Type'] || entry[1]['supplier_type'] || '').trim().toUpperCase();
+      if (tp === 'TRADER') traders.push(entry);
+      else standard.push(entry);
+    });
+
+    let pendingMillCount = standard.length;
+    const traderCards = [];
+    for (let i = 0; i < traders.length; i++) {
+      const key = traders[i][0];
+      const r = traders[i][1];
+      try {
+        const pack = await fetchTraderTaskMills_(key);
+        const doneLines = parseMillAddedLines_(r['mill_added_lines']);
+        const pending = (pack.mills || []).filter(function(m) {
+          return doneLines.indexOf(String(m['line_id'] || '').trim()) === -1;
+        });
+        pendingMillCount += pending.length;
+        if (pending.length) traderCards.push(renderMillTaskTraderGroupCard_(key, r, pack.mills, doneLines));
+      } catch (e) {
+        traderCards.push(
+          '<div class="mill-task-card mill-task-card-error">'
+          + '<div class="mill-task-card-info"><div class="mill-task-card-group">'
+          + escapeHtmlMin(resolveTraderNameFromMain_(r) || 'TRADER')
+          + '</div><div class="mill-task-card-meta">Failed to load mill list: '
+          + escapeHtmlMin((e && e.message) ? e.message : String(e))
+          + '</div></div></div>'
+        );
+        pendingMillCount += 1;
+      }
+    }
+
+    const html = standard.map(function(entry) {
+      return renderMillTaskStandardCard_(entry[0], entry[1]);
+    }).concat(traderCards).join('');
+
+    if (countEl) {
+      countEl.textContent = pendingMillCount + ' pending mill' + (pendingMillCount === 1 ? '' : 's');
+    }
+
+    if (!html) {
       body.innerHTML = '';
       if (empty) empty.style.display = 'block';
       return;
     }
     if (empty) empty.style.display = 'none';
-
-    body.innerHTML = submitted.map(function([key, r]) {
-      const grp      = String(r['Group Name'] || r['Grup Name'] || '—').trim();
-      const mill     = String(r['Mill Name'] || '').trim();
-      const tp       = String(r['Supplier Type'] || r['supplier_type'] || '').trim().toUpperCase();
-      const updRaw   = String(r['updated_at'] || r['SCR - Last Updated'] || '').trim();
-      const updDate  = updRaw ? new Date(updRaw).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '';
-      const metaParts = [tp, mill, updDate ? 'Submitted ' + updDate : ''].filter(Boolean);
-
-      return '<div class="mill-task-card">'
-        + '<div class="mill-task-card-icon">'
-        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'
-        + '</div>'
-        + '<div class="mill-task-card-info">'
-        + '<div class="mill-task-card-group">' + escapeHtmlMin(grp) + '</div>'
-        + (metaParts.length ? '<div class="mill-task-card-meta">' + metaParts.map(escapeHtmlMin).join(' &nbsp;·&nbsp; ') + '</div>' : '')
-        + '</div>'
-        + '<button type="button" class="mill-task-card-btn"'
-        + ' data-task-key="' + escapeHtmlMin(key) + '"'
-        + ' data-task-group="' + escapeHtmlMin(grp) + '">+ Add to Mill</button>'
-        + '</div>';
-    }).join('');
+    body.innerHTML = html;
   }
 
   /**
@@ -20204,7 +20470,7 @@ function initDashboardApp() {
     // ── Mill Category: Mill first, KCP fallback ───────────────────────────────
     const millCat = String(r['Mill Category'] || r['KCP Category'] || '').trim();
 
-    return {
+    return applySddPeriodToMillPayload_({
       'GROUP NAME':               String(r['Group Name'] || r['Grup Name'] || '').trim(),
       'COMPANY NAME':             String(r['Company Name'] || '').trim(),
       'MILL NAME':                millName,
@@ -20212,30 +20478,51 @@ function initDashboardApp() {
       'COORDINATES':              coords,
       'MILL CATEGORY':            millCat,
       'MILL CAPACITY (TON/HOUR)': capacity,
-    };
+    }, r);
   }
 
   (function bindMillTaskListDelegationIfPresent() {
     const body = document.getElementById('mill-task-list-body');
     if (!body) return;
-    body.addEventListener('click', function(e) {
-      const btn = e.target.closest('.mill-task-card-btn');
+    body.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.mill-task-card-btn, .mill-task-trader-mill-btn');
       if (!btn || !body.contains(btn)) return;
 
       const taskKey = btn.dataset.taskKey || '';
+      const taskLineId = btn.dataset.taskLineId || '';
       modalTaskKey  = taskKey;
+      modalTaskLineId = taskLineId;
 
-      // Resolve cached SDD row for pre-fill (guard: key may be absent from cache)
       const sddRow  = (taskKey && window._scrSavedRowsByKey)
                       ? (window._scrSavedRowsByKey[taskKey] || null)
                       : null;
-      const prefill = sddRow ? mapSddRowToMillPayload(sddRow) : {};
 
-      // Derive modal title: prefer mill name, fall back to group, then taskGroup attr
-      const titleName = prefill['MILL NAME'] || prefill['GROUP NAME']
+      let prefill = {};
+      if (taskLineId && sddRow) {
+        let pack = _millTaskTraderCache[taskKey];
+        if (!pack || !Array.isArray(pack.mills)) {
+          try {
+            pack = await fetchTraderTaskMills_(taskKey);
+          } catch (err) {
+            if (typeof window.showSddToast === 'function') {
+              window.showSddToast('Failed to load trader mill list: ' + (err.message || err), 'error');
+            }
+            modalTaskKey = '';
+            modalTaskLineId = '';
+            return;
+          }
+        }
+        const tmlRow = pack.mills.find(function(m) {
+          return String(m['line_id'] || '').trim() === taskLineId;
+        });
+        prefill = mapSddTmlRowToMillPayload(sddRow, tmlRow || {});
+      } else {
+        prefill = sddRow ? mapSddRowToMillPayload(sddRow) : {};
+      }
+
+      const titleName = prefill['MILL NAME'] || prefill['TRADER NAME'] || prefill['GROUP NAME']
                         || btn.dataset.taskGroup || '';
 
-      // Open modal with pre-filled data; buildMillForm reads data[f] for each field
       openModal('mill', MILL_FIELDS, 'add', prefill);
 
       // After DOM settles: patch title + fire input events on pre-filled text inputs
