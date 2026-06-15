@@ -155,7 +155,15 @@
       <button type="button" class="pf-export-modal-close" id="blExportModalClose" aria-label="Close">✕</button>
     </div>
     <div class="pf-export-modal-body">
-      <p class="pf-export-hint">Select columns to include in the Excel file. Row order follows the table (most recent Received Date first).</p>
+      <p class="pf-export-hint" id="blExportHint">Choose which BL records and columns to include. Row order follows the table (most recent Received Date first).</p>
+      <div id="blExportRowSection">
+        <div class="pf-export-facility-toolbar">
+          <span class="pf-export-label">BL records</span>
+          <button type="button" class="pf-export-link-btn" id="blExportRowAll">Select all</button>
+          <button type="button" class="pf-export-link-btn" id="blExportRowNone">Clear</button>
+        </div>
+        <div id="blExportRowList" class="pf-export-facility-list bl-export-row-list"></div>
+      </div>
       <div class="pf-export-facility-toolbar">
         <span class="pf-export-label">Columns</span>
         <button type="button" class="pf-export-link-btn" id="blExportColAll">Select all</button>

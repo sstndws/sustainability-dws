@@ -10026,10 +10026,10 @@ function initDashboardApp() {
   function buildColPickerChips() {
     const container = document.getElementById('ttpColPickerList');
     if (!container) return;
-    container.innerHTML = ttpFields.map(f => {
-      const active = f === ttpActiveFilterCol ? 'style="background:var(--primary);color:white;border-color:var(--primary);"' : '';
-      return `<button onclick="ttpSwitchFilterCol('${f.replace(/'/g,"\\'")}',this)"
-        style="padding:3px 9px;border-radius:20px;border:1.5px solid rgba(74,28,28,0.15);background:white;color:#4A3535;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all 0.15s;" ${active}>${f}</button>`;
+    container.innerHTML = ttpFields.map(function(f) {
+      const active = f === ttpActiveFilterCol;
+      const safe = f.replace(/'/g, "\\'");
+      return '<button type="button" class="ttp-col-chip' + (active ? ' active' : '') + '" onclick="ttpSwitchFilterCol(\'' + safe + '\',this)">' + escHtml(f) + '</button>';
     }).join('');
   }
 
@@ -10856,6 +10856,7 @@ function initDashboardApp() {
   let blTableDelegationBound = false;
   let blExportTargetRow = null;
   let blExportSelectedColIds = BL_EXPORT_DEFAULT_COL_IDS.slice();
+  let blExportSelectedRowNums = null;
   let blBuyerNblWarn_ = false;
   let blBuyerValidateSeq_ = 0;
   let blWarmPickerPromise_ = null;
@@ -11696,6 +11697,68 @@ function initDashboardApp() {
     });
   }
 
+  function blRowsForExportPicker_() {
+    const q = blSearch;
+    return sortBlRowsByReceivedDesc_(blFilteredData_().filter(function(d) {
+      return !q || (d._blSearchBlob || '').includes(q);
+    }));
+  }
+
+  function blExportRowLabel_(d) {
+    if (!d) return 'BL';
+    if (blIsDeclarationRow_(d)) {
+      return [d['BUYER'], d['PERIOD'], d['COMMODITY SUPPLY']].map(function(v) {
+        return String(v || '').trim();
+      }).filter(Boolean).join(' · ') || 'Declaration';
+    }
+    return [d['BL NO.'], d['BUYER'], d['VESSEL']].map(function(v) {
+      return String(v || '').trim();
+    }).filter(Boolean).join(' · ') || 'Shipping BL';
+  }
+
+  function blRefreshExportRowList_() {
+    const section = document.getElementById('blExportRowSection');
+    const listEl = document.getElementById('blExportRowList');
+    const hintEl = document.getElementById('blExportHint');
+    if (!section || !listEl) return;
+    if (blExportTargetRow) {
+      section.style.display = 'none';
+      if (hintEl) {
+        hintEl.textContent = 'Choose columns for this BL record. TTM and TTP sheets are included when links exist.';
+      }
+      return;
+    }
+    section.style.display = '';
+    const rows = blRowsForExportPicker_();
+    if (!blExportSelectedRowNums) {
+      blExportSelectedRowNums = new Set(rows.map(function(d) { return d._row; }));
+    }
+    if (hintEl) {
+      hintEl.textContent = 'Choose BL records and columns to export (' + rows.length + ' visible). Row order follows Received Date.';
+    }
+    listEl.innerHTML = rows.length
+      ? rows.map(function(d) {
+        const checked = blExportSelectedRowNums.has(d._row) ? ' checked' : '';
+        return ''
+          + '<label class="pf-export-facility-item">'
+          + '<input type="checkbox" name="blExportRow" value="' + String(d._row) + '"' + checked + ' />'
+          + '<span>' + escHtml(blExportRowLabel_(d)) + '</span>'
+          + '</label>';
+      }).join('')
+      : '<p class="pf-export-empty">No rows match the current filter.</p>';
+  }
+
+  function blReadExportRowSelection_() {
+    if (blExportTargetRow) return [blExportTargetRow];
+    const checked = Array.from(document.querySelectorAll('#blExportRowList input[name="blExportRow"]:checked'))
+      .map(function(cb) { return parseInt(cb.value, 10); })
+      .filter(function(n) { return n > 0; });
+    const byRow = {};
+    (blData || []).forEach(function(d) { byRow[d._row] = d; });
+    const picked = checked.map(function(n) { return byRow[n]; }).filter(Boolean);
+    return sortBlRowsByReceivedDesc_(picked);
+  }
+
   function blExportColValue_(d, colDef) {
     if (!d || !colDef) return '';
     if (colDef.kind === 'ttm') {
@@ -12149,12 +12212,12 @@ function initDashboardApp() {
     ], filename);
   }
 
-  function exportBlExcelAll_(colDefs) {
-    const rows = blFilteredData_();
-    if (!rows.length) return;
+  function exportBlExcelAll_(colDefs, rows) {
+    const exportRows = rows && rows.length ? rows : blRowsForExportPicker_();
+    if (!exportRows.length) return;
     const label = blActiveType === 'declaration' ? 'BL Declaration' : 'BL Shipping';
     exportBlExcelRows_(
-      rows,
+      exportRows,
       'bl_' + blActiveType + '_' + blExcelStamp_() + '.xlsx',
       label,
       colDefs
@@ -12205,15 +12268,21 @@ function initDashboardApp() {
     const modal = mountBlExportModal_();
     if (!modal) return;
     blExportTargetRow = targetRow || null;
+    if (!blExportTargetRow) {
+      blExportSelectedRowNums = new Set(blRowsForExportPicker_().map(function(d) { return d._row; }));
+    }
     const titleEl = document.getElementById('blExportModalTitle');
     if (titleEl) {
       titleEl.textContent = targetRow
         ? ('Export BL ' + (targetRow['BL NO.'] || ''))
         : 'Export BL to Excel';
     }
+    blRefreshExportRowList_();
     blRefreshExportColList_();
     const listEl = document.getElementById('blExportColList');
     if (listEl) listEl.scrollTop = 0;
+    const rowListEl = document.getElementById('blExportRowList');
+    if (rowListEl) rowListEl.scrollTop = 0;
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
   }
@@ -12224,6 +12293,7 @@ function initDashboardApp() {
     modal.style.display = 'none';
     modal.setAttribute('aria-hidden', 'true');
     blExportTargetRow = null;
+    blExportSelectedRowNums = null;
   }
 
   function confirmBlExport_() {
@@ -12232,10 +12302,15 @@ function initDashboardApp() {
       alert('Select at least one column.');
       return;
     }
+    const rows = blReadExportRowSelection_();
+    if (!rows.length) {
+      alert('Select at least one BL record.');
+      return;
+    }
     if (blExportTargetRow) {
       exportBlExcelOne_(blExportTargetRow, colDefs);
     } else {
-      exportBlExcelAll_(colDefs);
+      exportBlExcelAll_(colDefs, rows);
     }
     closeBlExportModal_();
   }
@@ -12689,6 +12764,23 @@ function initDashboardApp() {
     document.getElementById('blExportColNone')?.addEventListener('click', function() {
       blExportSelectedColIds = [];
       blRefreshExportColList_();
+    });
+    document.getElementById('blExportRowAll')?.addEventListener('click', function() {
+      blExportSelectedRowNums = new Set(blRowsForExportPicker_().map(function(d) { return d._row; }));
+      blRefreshExportRowList_();
+    });
+    document.getElementById('blExportRowNone')?.addEventListener('click', function() {
+      blExportSelectedRowNums = new Set();
+      blRefreshExportRowList_();
+    });
+    document.getElementById('blExportRowList')?.addEventListener('change', function(e) {
+      const cb = e.target;
+      if (!cb || cb.name !== 'blExportRow') return;
+      const rowNum = parseInt(cb.value, 10);
+      if (!rowNum) return;
+      if (!blExportSelectedRowNums) blExportSelectedRowNums = new Set();
+      if (cb.checked) blExportSelectedRowNums.add(rowNum);
+      else blExportSelectedRowNums.delete(rowNum);
     });
 
     const ttmSearch = document.getElementById('blTtmSearch');
