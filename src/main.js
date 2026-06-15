@@ -5779,7 +5779,8 @@ function initDashboardApp() {
                   window.showSddToast(
                     'Mill saved and Traceability Data synced: '
                       + String(ttpSync.inserted || 0) + ' new, '
-                      + String(ttpSync.updated || 0) + ' updated.',
+                      + String(ttpSync.updated || 0) + ' updated.'
+                      + ' Open Traceability Data tab to view (check Year filter).',
                     'success'
                   );
                 } else if (ttpSync && ttpSync.skipped) {
@@ -7847,7 +7848,10 @@ function initDashboardApp() {
     const list = rows || [];
     const wantY = String(ttpPeriodYear || '');
     if (!wantY) return list.slice();
-    return list.filter(function(r) { return ttpYearToken_(r) === wantY; });
+    return list.filter(function(r) {
+      const y = ttpYearToken_(r);
+      return !y || y === wantY;
+    });
   }
 
   function ttpGetPeriodRows_() {
@@ -9542,6 +9546,7 @@ function initDashboardApp() {
     try {
       applyTtpDataFromApi_(await apiGet('ttp'));
       ttpLoaded = true;
+      buildTtpPeriodDropdowns_();
       refreshTtpPeriodDashboard_();
       if (!ttpScrollToMillAfterRender_ && scrollEl) {
         requestAnimationFrame(function() {
