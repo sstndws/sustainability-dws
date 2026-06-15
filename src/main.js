@@ -3898,8 +3898,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwSQT0h8BG4M1J26_TeY4THMTGREQ0Zf5hrIg6c0cVSC0s_zgNkElQ4ckdQ-fnpPrBx1w/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwSQT0h8BG4M1J26_TeY4THMTGREQ0Zf5hrIg6c0cVSC0s_zgNkElQ4ckdQ-fnpPrBx1w';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx9w-syr4O6DaxdLtayHVVWpwvTOrZKlOCZay5qfrcq_uTk8S33tMNw7EkVUIIroMT7qw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9w-syr4O6DaxdLtayHVVWpwvTOrZKlOCZay5qfrcq_uTk8S33tMNw7EkVUIIroMT7qw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5697,9 +5697,17 @@ function initDashboardApp() {
           };
           try {
             if (taskLineId) {
+              const ttpMirror = Object.assign({}, ttpIdentity);
+              const coordsRaw = String(data['COORDINATES'] || '').trim();
+              if (coordsRaw) {
+                const coordParts = coordsRaw.split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+                if (coordParts[0]) ttpMirror['LAT'] = coordParts[0];
+                if (coordParts[1]) ttpMirror['LONG'] = coordParts[1];
+              }
               const lineRes = await apiUpdateSubmission({
                 submission_id: taskKey,
                 mill_added_line: taskLineId,
+                mill_ttp_sync: ttpMirror,
               });
               if (window._scrSavedRowsByKey && window._scrSavedRowsByKey[taskKey]) {
                 const cached = window._scrSavedRowsByKey[taskKey];
@@ -5713,17 +5721,32 @@ function initDashboardApp() {
                 }
               }
               delete _millTaskTraderCache[taskKey];
+              if (typeof window.__ttpInvalidate === 'function') window.__ttpInvalidate();
+              const ttpPanel = document.getElementById('panel-ttm-ttp');
+              if (ttpPanel && ttpPanel.classList.contains('active') && typeof reloadTTPDataSoft_ === 'function') {
+                await reloadTTPDataSoft_();
+              }
               if (typeof window.showSddToast === 'function') {
                 const done = lineRes && lineRes.mill_added_line && lineRes.mill_added_line.all_done;
                 const prog = lineRes && lineRes.mill_added_line
                   ? String(lineRes.mill_added_line.completed_lines || 0) + '/' + String(lineRes.mill_added_line.total_mills || 0)
                   : '';
-                window.showSddToast(
-                  done
-                    ? 'Trader mills saved — all ' + prog + ' added to Mill Onboarding.'
-                    : 'Mill saved to Mill Onboarding (' + prog + '). Continue remaining mills in Task List.',
-                  'success'
-                );
+                const ttpSync = lineRes && lineRes.ttp_sync;
+                if (ttpSync && ttpSync.synced) {
+                  window.showSddToast(
+                    done
+                      ? 'Trader mills saved — all ' + prog + ' mirrored to Traceability Data.'
+                      : 'Mill saved to Mill Onboarding and Traceability (' + prog + '). Continue remaining mills.',
+                    'success'
+                  );
+                } else {
+                  window.showSddToast(
+                    done
+                      ? 'Trader mills saved — all ' + prog + ' added to Mill Onboarding.'
+                      : 'Mill saved to Mill Onboarding (' + prog + '). Continue remaining mills in Task List.',
+                    'success'
+                  );
+                }
               }
             } else {
               const updRes = await apiUpdateSubmission({
@@ -5759,13 +5782,13 @@ function initDashboardApp() {
             if (typeof window.showSddToast === 'function') {
               window.showSddToast(
                 taskLineId
-                  ? 'Mill saved but Task List update failed: ' + msg
+                  ? 'Mill saved but Traceability / Task List update failed: ' + msg
                   : 'Mill saved but Traceability sync failed: ' + msg,
                 'error'
               );
             } else {
               alert(taskLineId
-                ? 'Mill saved but Task List update failed: ' + msg
+                ? 'Mill saved but Traceability / Task List update failed: ' + msg
                 : 'Mill saved but Traceability sync failed: ' + msg);
             }
           }

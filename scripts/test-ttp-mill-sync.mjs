@@ -11,6 +11,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
 const TTP_MILL_HEADER_LINE_ID = '__mill_header__';
+const TTP_TRADER_TML_LINE_PREFIX = 'trader_tml_';
+
+function ttpTraderMirrorLineId_(tmlLineId) {
+  return TTP_TRADER_TML_LINE_PREFIX + String(tmlLineId || '').trim();
+}
 
 function normalizeSddDecisionLabel_(raw) {
   const s = String(raw || '').trim().toLowerCase();
@@ -121,6 +126,53 @@ function sanitizeMillTtpIdentity_(raw) {
   return out;
 }
 
+function sanitizeMillTtpMirrorFromOnboarding_(raw) {
+  const base = sanitizeMillTtpIdentity_(raw);
+  const MAX = 500;
+  const clip = (v) => String(v === undefined || v === null ? '' : v).trim().slice(0, MAX);
+  const out = Object.assign({}, base);
+  const lat = clip(raw['LAT'] || raw['Latitude']);
+  const lng = clip(raw['LONG'] || raw['Longitude']);
+  if (lat) out['LAT'] = lat;
+  if (lng) out['LONG'] = lng;
+  return out;
+}
+
+function buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now) {
+  const identity = millIdentity || {};
+  return {
+    'GROUP NAME': String(identity['GROUP NAME'] || '').trim(),
+    'COMPANY NAME': String(identity['COMPANY NAME'] || '').trim(),
+    'MILL NAME': String(identity['MILL NAME'] || '').trim(),
+    'UML ID': String(identity['UML ID'] || '').trim(),
+    'LAT': String(identity['LAT'] || '').trim(),
+    'LONG': String(identity['LONG'] || '').trim(),
+    'submission_id': sid,
+    'ffb_line_id': ttpTraderMirrorLineId_(tmlLineId),
+    'supplier_type': 'TRADER',
+    'synced_at': now,
+    'synced_by': user,
+  };
+}
+
+function shouldSyncTraderTtpMirror_(mainObj, millIdentity, tmlLineId) {
+  const decision = normalizeSddDecisionLabel_(
+    mainObj['statusSDD'] || mainObj['statusBossDecision'] || ''
+  );
+  if (decision !== 'APPROVED') return { ok: false, reason: 'not_approved' };
+  const scrSt = String(mainObj['SCR - Screening Status'] || '').trim().toLowerCase();
+  if (scrSt !== 'submitted') return { ok: false, reason: 'not_submitted' };
+  const supplierType = String(mainObj['supplier_type'] || '').trim().toUpperCase();
+  if (supplierType !== 'TRADER') return { ok: false, reason: 'not_trader' };
+  if (!String(tmlLineId || '').trim()) return { ok: false, reason: 'missing_tml_line_id' };
+  try {
+    sanitizeMillTtpMirrorFromOnboarding_(millIdentity);
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+  return { ok: true };
+}
+
 // ── Test runner ─────────────────────────────────────────────
 let passed = 0;
 let failed = 0;
@@ -193,6 +245,27 @@ assert(!shouldSyncTtp_({ ...mainKcp, supplier_type: 'TRADER' }, millIdentity).ok
 assert(!shouldSyncTtp_({ ...mainKcp, statusSDD: 'Hold' }, millIdentity).ok, 'not approved → skip');
 assert(!shouldSyncTtp_({ ...mainKcp, 'SCR - Screening Status': 'Draft' }, millIdentity).ok, 'not submitted → skip');
 
+console.log('\n3c. TRADER mirror patch (identity from Mill Onboarding, one row per TML line)');
+const mainTrader = {
+  supplier_type: 'TRADER',
+  statusSDD: 'Approved',
+  'SCR - Screening Status': 'submitted',
+};
+const traderMirrorIdentity = {
+  ...millIdentity,
+  'LAT': '-1.234',
+  'LONG': '101.567',
+};
+const traderPatch = buildTtpTraderMillMirrorPatch_(traderMirrorIdentity, 'SID-T1', 'tml-42', 'tester', '2026-06-15');
+assertEq(traderPatch['GROUP NAME'], 'AAA', 'trader mirror GROUP NAME');
+assertEq(traderPatch['MILL NAME'], 'SEGATI KCP', 'trader mirror MILL NAME');
+assertEq(traderPatch['ffb_line_id'], 'trader_tml_tml-42', 'trader mirror line id prefix');
+assertEq(traderPatch['supplier_type'], 'TRADER', 'trader mirror supplier type');
+assertEq(traderPatch['LAT'], '-1.234', 'trader mirror LAT');
+assert(!traderPatch['FFB SUPPLIER NAME'], 'trader mirror has no FFB fields');
+assert(shouldSyncTraderTtpMirror_(mainTrader, traderMirrorIdentity, 'tml-42').ok, 'TRADER mirror allowed');
+assert(!shouldSyncTraderTtpMirror_(mainKcp, traderMirrorIdentity, 'tml-42').ok, 'KCP cannot use trader mirror gate');
+
 console.log('\n3b. Identity validation (required fields + max length)');
 try {
   sanitizeMillTtpIdentity_({ 'GROUP NAME': '', 'COMPANY NAME': 'X', 'MILL NAME': 'Y', 'UML ID': 'Z' });
@@ -218,22 +291,25 @@ const mainJs = readFileSync(join(ROOT, 'src/main.js'), 'utf8');
 
 assert(!gs.includes('syncTtpFromApprovedSubmission_'), 'approve-time TTP sync removed from backend');
 assert(gs.includes('syncTtpFromMillOnboarding_'), 'mill onboarding TTP sync present in backend');
+assert(gs.includes('syncTtpMirrorTraderMillFromOnboarding_'), 'trader mirror TTP sync present in backend');
 assert(gs.includes('payload.mill_ttp_sync'), 'updateSubmission accepts mill_ttp_sync');
 assert(!gs.includes('syncTtpFromApprovedSubmission_(sid'), 'no call to old approve sync');
 
-assert(mainJs.includes("mill_ttp_sync: ttpIdentity"), 'frontend sends mill_ttp_sync on task list save');
+assert(mainJs.includes("mill_ttp_sync: ttpMirror"), 'frontend sends mill_ttp_sync on trader task list save');
+assert(mainJs.includes("mill_ttp_sync: ttpIdentity"), 'frontend sends mill_ttp_sync on MILL/KCP task list save');
 assert(mainJs.includes("'UML ID': String(data['UML ID']"), 'frontend passes UML ID from mill modal');
 assert(mainJs.includes("'GROUP NAME': String(data['GROUP NAME']"), 'frontend passes GROUP NAME');
 assert(mainJs.includes("'COMPANY NAME': String(data['COMPANY NAME']"), 'frontend passes COMPANY NAME');
 assert(mainJs.includes("'MILL NAME': String(data['MILL NAME']"), 'frontend passes MILL NAME');
 assert(gs.includes('sanitizeMillTtpIdentity_'), 'backend sanitizes mill identity');
+assert(gs.includes('sanitizeMillTtpMirrorFromOnboarding_'), 'backend sanitizes trader mirror payload');
 assert(gs.includes('assertMillTtpSyncSucceeded_'), 'backend asserts sync success before mill_added');
-assert(gs.includes('mill_ttp_sync requires mill_added=true'), 'mill_ttp_sync gated by mill_added');
+assert(gs.includes('mill_ttp_sync requires mill_added=true or mill_added_line'), 'mill_ttp_sync gated by mill_added or line');
+assert(gs.includes('trader_tml_'), 'trader mirror line id prefix in backend');
 assert(gs.includes('not_submitted'), 'backend checks SCR submitted status');
 assert(mainJs.includes("Fill Group Name, Company Name, Mill Name, and UML ID"), 'frontend validates before save');
 assert(mainJs.includes('Mill saved but Traceability sync failed'), 'frontend shows sync failure to user');
-assert(!mainJs.includes('syncTtpFromApprovedSubmission_'), 'frontend has no approve sync reference');
-assert(!mainJs.includes('Monitoring TTM/TTP: no FFB rows'), 'approve toast no longer mentions TTP sync');
+assert(mainJs.includes('mirrored to Traceability Data'), 'frontend trader success toast mentions TTP');
 
 console.log('\n6. Mill modal includes UML ID field');
 assert(mainJs.includes("'UML ID'") && mainJs.includes('MILL_FIELDS'), 'UML ID in mill onboarding form fields');

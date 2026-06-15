@@ -491,6 +491,12 @@ const TTP_HEADERS = [
 
 /** Identity-only TTP row when SDD has no FFB suppliers (header stub). */
 const TTP_MILL_HEADER_LINE_ID = '__mill_header__';
+/** Per-mill TTP row id prefix for TRADER (mirrors Mill Onboarding, one row per TML line). */
+const TTP_TRADER_TML_LINE_PREFIX = 'trader_tml_';
+
+function ttpTraderMirrorLineId_(tmlLineId) {
+  return TTP_TRADER_TML_LINE_PREFIX + String(tmlLineId || '').trim();
+}
 
 /** TTP columns filled by monitoring team — not overwritten on SDD re-sync when already set. */
 const TTP_MONITORING_PRESERVE_KEYS = [
@@ -2065,17 +2071,107 @@ function sanitizeMillTtpIdentity_(raw) {
   return out;
 }
 
-function millTtpSyncSkipAllowsMillAdded_(ttpSync) {
-  if (!ttpSync || !ttpSync.skipped) return false;
-  return ttpSync.reason === 'supplier_type_not_mill_or_kcp';
+/** Mirror payload from Mill Onboarding save (TRADER) — identity + optional location. */
+function sanitizeMillTtpMirrorFromOnboarding_(raw) {
+  const base = sanitizeMillTtpIdentity_(raw);
+  const MAX = 500;
+  function clip(v) {
+    return String(v === undefined || v === null ? '' : v).trim().slice(0, MAX);
+  }
+  const out = Object.assign({}, base);
+  const lat = clip(raw['LAT'] || raw['Latitude']);
+  const lng = clip(raw['LONG'] || raw['Longitude']);
+  if (lat) out['LAT'] = lat;
+  if (lng) out['LONG'] = lng;
+  return out;
+}
+
+function buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now) {
+  const identity = millIdentity || {};
+  return {
+    'GROUP NAME'    : String(identity['GROUP NAME'] || '').trim(),
+    'COMPANY NAME'  : String(identity['COMPANY NAME'] || '').trim(),
+    'MILL NAME'     : String(identity['MILL NAME'] || '').trim(),
+    'UML ID'        : String(identity['UML ID'] || '').trim(),
+    'LAT'           : String(identity['LAT'] || '').trim(),
+    'LONG'          : String(identity['LONG'] || '').trim(),
+    'submission_id' : sid,
+    'ffb_line_id'   : ttpTraderMirrorLineId_(tmlLineId),
+    'supplier_type' : 'TRADER',
+    'synced_at'     : now,
+    'synced_by'     : user,
+  };
+}
+
+/**
+ * TRADER: mirror one Mill Onboarding row → one TTP row (identity only, no FFB list).
+ */
+function syncTtpMirrorTraderMillFromOnboarding_(sid, tmlLineId, millIdentity, mainObj, user, now) {
+  sid = String(sid || '').trim();
+  tmlLineId = String(tmlLineId || '').trim();
+  if (!sid) return { synced: false, skipped: true, reason: 'missing_submission_id' };
+  if (!tmlLineId) return { synced: false, skipped: true, reason: 'missing_tml_line_id' };
+
+  const merged = mainObj || {};
+  const decision = normalizeSddDecisionLabel_(
+    merged['statusSDD'] || merged['statusBossDecision'] || ''
+  );
+  if (decision !== 'APPROVED') {
+    return { synced: false, skipped: true, reason: 'not_approved', decision: decision };
+  }
+
+  const scrSt = String(merged['SCR - Screening Status'] || '').trim().toLowerCase();
+  if (scrSt !== 'submitted') {
+    return { synced: false, skipped: true, reason: 'not_submitted', scr_status: scrSt };
+  }
+
+  const supplierType = String(merged['supplier_type'] || merged['Supplier Type'] || '').trim().toUpperCase();
+  if (supplierType !== 'TRADER') {
+    return { synced: false, skipped: true, reason: 'not_trader', supplier_type: supplierType };
+  }
+
+  const patch = buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now);
+  const ttpResult = readTtpRows_();
+  const mirrorLineId = ttpTraderMirrorLineId_(tmlLineId);
+  let inserted = 0;
+  let updated = 0;
+
+  try {
+    const hit = findTtpRowBySyncKeys_(ttpResult.rows, sid, mirrorLineId, patch);
+    if (hit) {
+      const mergedPatch = mergeTtpPreserveMonitoring_(hit.row, patch);
+      patchTtpRow_(ttpResult.ws, ttpResult.headers, hit._sheetRow, mergedPatch);
+      updated++;
+    } else {
+      appendTtpRow_(ttpResult.ws, ttpResult.headers, patch);
+      inserted++;
+    }
+  } catch (err) {
+    return {
+      synced: false,
+      submission_id: sid,
+      inserted: 0,
+      updated: 0,
+      total_ffb: 0,
+      errors: [{ line_id: tmlLineId, error: String(err && err.message ? err.message : err) }],
+      reason: 'mirror_failed',
+    };
+  }
+
+  return {
+    synced: true,
+    submission_id: sid,
+    inserted: inserted,
+    updated: updated,
+    total_ffb: 0,
+    trader_mirror: true,
+    tml_line_id: tmlLineId,
+  };
 }
 
 function assertMillTtpSyncSucceeded_(ttpSync) {
   if (!ttpSync) {
     throw new Error('Traceability sync did not run');
-  }
-  if (millTtpSyncSkipAllowsMillAdded_(ttpSync)) {
-    return;
   }
   if (!ttpSync.synced) {
     const reason = String(ttpSync.reason || ttpSync.decision || 'unknown').trim();
@@ -3430,19 +3526,30 @@ function updateSubmission(payload) {
     const wantsMillTtpSync = payload.mill_ttp_sync && typeof payload.mill_ttp_sync === 'object';
     const wantsMillAdded = payload.main
       && String(payload.main.mill_added || '').trim().toLowerCase() === 'true';
+    const traderTmlLineId = String(payload.mill_added_line || '').trim();
+    const supplierTypeEarly = String(mainHit.obj['supplier_type'] || mainHit.obj['Supplier Type'] || '').trim().toUpperCase();
+    const isTraderTtpMirror = wantsMillTtpSync && traderTmlLineId && supplierTypeEarly === 'TRADER';
 
-    if (wantsMillTtpSync && !wantsMillAdded) {
-      throw new Error('mill_ttp_sync requires mill_added=true in the same request');
+    if (wantsMillTtpSync && !wantsMillAdded && !traderTmlLineId) {
+      throw new Error('mill_ttp_sync requires mill_added=true or mill_added_line');
     }
 
     let ttpSync = null;
     let millAddedLineResult = null;
 
-    if (payload.mill_added_line) {
-      millAddedLineResult = applyMillAddedLine_(sid, payload.mill_added_line, mainHit, user, now);
-    }
-
-    if (wantsMillTtpSync) {
+    if (isTraderTtpMirror) {
+      const mirrorIdentity = sanitizeMillTtpMirrorFromOnboarding_(payload.mill_ttp_sync);
+      ttpSync = syncTtpMirrorTraderMillFromOnboarding_(
+        sid, traderTmlLineId, mirrorIdentity, mainHit.obj, user, now
+      );
+      assertMillTtpSyncSucceeded_(ttpSync);
+      auditLog_('POST', 'mill_ttp_trader_mirror', 'ttp', user, JSON.stringify({
+        submission_id: sid,
+        tml_line_id: traderTmlLineId,
+        inserted: ttpSync.inserted,
+        updated: ttpSync.updated,
+      }));
+    } else if (wantsMillTtpSync) {
       const identity = sanitizeMillTtpIdentity_(payload.mill_ttp_sync);
       ttpSync = syncTtpFromMillOnboarding_(sid, identity, mainHit.obj, user, now);
       assertMillTtpSyncSucceeded_(ttpSync);
@@ -3454,6 +3561,10 @@ function updateSubmission(payload) {
         skipped: ttpSync.skipped || false,
         reason: ttpSync.reason || '',
       }));
+    }
+
+    if (payload.mill_added_line) {
+      millAddedLineResult = applyMillAddedLine_(sid, payload.mill_added_line, mainHit, user, now);
     }
 
     if (payload.main && Object.keys(payload.main).length > 0) {
