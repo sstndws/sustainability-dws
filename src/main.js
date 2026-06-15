@@ -9933,14 +9933,27 @@ function initDashboardApp() {
         const ttpSelectPanel = document.getElementById('ttpSelectPanel');
         const ttpFilterPanel = document.getElementById('ttpFilterPanel');
         const ttpBtnSelectEl = document.getElementById('ttpBtnSelect');
-        if (ttpSelectWrap && ttpSelectPanel && ttpBtnSelectEl && !ttpSelectWrap.contains(e.target)) {
-          ttpSelectPanel.classList.remove('open');
-          ttpBtnSelectEl.classList.remove('active');
+        const ttpBtnFilterEl = document.getElementById('ttpBtnFilter');
+        const inSelect = ttpSelectWrap && ttpSelectWrap.contains(e.target);
+        const inFilter = ttpFilterWrap && ttpFilterWrap.contains(e.target);
+        const inSelectPanel = ttpSelectPanel && ttpSelectPanel.contains(e.target);
+        const inFilterPanel = ttpFilterPanel && ttpFilterPanel.contains(e.target);
+        if (!inSelect && !inSelectPanel) {
+          ttpSelectPanel?.classList.remove('open');
+          ttpBtnSelectEl?.classList.remove('active');
+          ttpClearDropdownPanelPosition_(ttpSelectPanel);
         }
-        if (ttpFilterWrap && ttpFilterPanel && !ttpFilterWrap.contains(e.target)) {
-          ttpFilterPanel.classList.remove('open');
+        if (!inFilter && !inFilterPanel) {
+          ttpFilterPanel?.classList.remove('open');
+          ttpBtnFilterEl?.classList.remove('active');
+          ttpClearDropdownPanelPosition_(ttpFilterPanel);
         }
       });
+    }
+    if (!window.__sddTtpDropdownScrollBound) {
+      window.__sddTtpDropdownScrollBound = true;
+      document.querySelector('.ttp-table-scroll')?.addEventListener('scroll', closeTtpDropdowns_, { passive: true });
+      window.addEventListener('resize', closeTtpDropdowns_, { passive: true });
     }
 
     ttpExportBtn.addEventListener('click', function() {
@@ -10223,41 +10236,90 @@ function initDashboardApp() {
     }
   }
 
-  // ─── TTP DROPDOWN TOGGLE (absolute under .ttp-dropdown-wrap — avoid position:fixed + ancestor transform mismatch) ──
+  // ─── TTP DROPDOWN TOGGLE (fixed above trigger — avoids overlap with sticky table headers) ──
+  function ttpClearDropdownPanelPosition_(panel) {
+    if (!panel) return;
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    panel.style.left = '';
+    panel.style.right = '';
+    panel.style.width = '';
+    panel.style.minWidth = '';
+    panel.style.maxWidth = '';
+    panel.style.maxHeight = '';
+    panel.style.zIndex = '';
+  }
+
+  function ttpPositionDropdownPanel_(btn, panel) {
+    if (!btn || !panel) return;
+    const rect = btn.getBoundingClientRect();
+    const isSelect = panel.id === 'ttpSelectPanel';
+    const minW = isSelect ? 300 : 220;
+    const maxW = isSelect ? 420 : 360;
+    const width = Math.min(Math.max(rect.width, minW), maxW, window.innerWidth - 24);
+    let left = rect.left;
+    if (left + width > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - 12 - width);
+    }
+    const spaceAbove = rect.top - 12;
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const preferAbove = spaceAbove >= 140 || spaceAbove >= spaceBelow;
+    const maxH = Math.min(360, Math.max(160, (preferAbove ? spaceAbove : spaceBelow) - 8));
+
+    panel.style.position = 'fixed';
+    panel.style.left = left + 'px';
+    panel.style.width = width + 'px';
+    panel.style.minWidth = minW + 'px';
+    panel.style.maxWidth = maxW + 'px';
+    panel.style.maxHeight = maxH + 'px';
+    panel.style.zIndex = '12050';
+
+    if (preferAbove) {
+      panel.style.top = 'auto';
+      panel.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+    } else {
+      panel.style.bottom = 'auto';
+      panel.style.top = (rect.bottom + 6) + 'px';
+    }
+  }
+
+  function closeTtpDropdowns_() {
+    ['ttpSelectPanel', 'ttpFilterPanel'].forEach(function(id) {
+      const panel = document.getElementById(id);
+      if (!panel) return;
+      panel.classList.remove('open');
+      ttpClearDropdownPanelPosition_(panel);
+    });
+    ['ttpBtnSelect', 'ttpBtnFilter'].forEach(function(id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.remove('active');
+    });
+  }
+
   function openTTPDropdown(btnId, panelId, otherPanelId, otherBtnId) {
     const btn    = document.getElementById(btnId);
     const panel  = document.getElementById(panelId);
     const other  = document.getElementById(otherPanelId);
     if (!btn || !panel || !other) return;
 
-    // Close the other panel
+    ttpClearDropdownPanelPosition_(other);
     other.classList.remove('open');
-    if (otherBtnId) document.getElementById(otherBtnId).classList.remove('active');
+    if (otherBtnId) {
+      const otherBtn = document.getElementById(otherBtnId);
+      if (otherBtn) otherBtn.classList.remove('active');
+    }
 
     const isOpen = panel.classList.contains('open');
     if (isOpen) {
-      panel.classList.remove('open');
-      btn.classList.remove('active');
-      panel.style.position = '';
-      panel.style.top = '';
-      panel.style.left = '';
-      panel.style.right = '';
-      panel.style.width = '';
-      panel.style.minWidth = '';
-      panel.style.maxWidth = '';
+      closeTtpDropdowns_();
       return;
     }
 
-    panel.style.position = '';
-    panel.style.top = '';
-    panel.style.left = '';
-    panel.style.right = '';
-    panel.style.width = '';
-    panel.style.minWidth = '';
-    panel.style.maxWidth = '';
-
+    ttpClearDropdownPanelPosition_(panel);
     panel.classList.add('open');
     btn.classList.add('active');
+    ttpPositionDropdownPanel_(btn, panel);
   }
 
   function doExportXLSX(rows, cols, colMode) {
@@ -10978,16 +11040,13 @@ function initDashboardApp() {
   }
 
   function blSetPickerLoading_(loading) {
-    const search = document.getElementById('blTtmSearch');
-    const results = document.getElementById('blTtmResults');
-    const label = document.getElementById('blPickerPeriodLabel');
-    if (search) search.disabled = !!loading;
-    if (loading) {
-      if (label) label.textContent = 'Loading monitoring data for TTM/TTP picker…';
-      if (results) {
-        results.innerHTML = '<div class="bl-picker-empty">Loading monitoring data…</div>';
-        results.classList.remove('open');
-      }
+    const yearSel = document.getElementById('blPickerYear');
+    const quarterSel = document.getElementById('blPickerQuarter');
+    const summary = document.getElementById('blPickerPeriodSummary');
+    if (yearSel) yearSel.disabled = !!loading;
+    if (quarterSel) quarterSel.disabled = !!loading;
+    if (loading && summary) {
+      summary.textContent = 'Loading monitoring data for TTM/TTP…';
     }
   }
 
@@ -11527,46 +11586,135 @@ function initDashboardApp() {
     return latest;
   }
 
-  function blApplyLatestPeriodFilter_() {
-    blApplyLatestPeriod_();
-    blUpdatePickerPeriodLabel_();
+  function blCollectPeriodYears_() {
+    const seenY = Object.create(null);
+    const years = [];
+    (ttpData || []).forEach(function(row) {
+      const y = ttpYearToken_(row);
+      if (y && !seenY[y]) { seenY[y] = true; years.push(y); }
+    });
+    years.sort(function(a, b) { return parseInt(b, 10) - parseInt(a, 10); });
+    return years;
   }
 
-  function blUpdatePickerPeriodLabel_() {
-    var el = document.getElementById('blPickerPeriodLabel');
+  function blDetectPeriodFromLinks_(links) {
+    const rowNums = new Set();
+    (links || []).forEach(function(l) { if (l && l._row) rowNums.add(l._row); });
+    if (!rowNums.size) return null;
+    let year = '';
+    let quarter = '';
+    (ttpData || []).forEach(function(row) {
+      if (!rowNums.has(row._row)) return;
+      const y = ttpYearToken_(row);
+      const q = ttpQuarterToken_(row);
+      if (y && q) { year = y; quarter = q; }
+    });
+    return year && quarter ? { year: year, quarter: quarter } : null;
+  }
+
+  function blRenderPickerPeriodDropdowns_() {
+    const yearSel = document.getElementById('blPickerYear');
+    const quarterSel = document.getElementById('blPickerQuarter');
+    if (!yearSel || !quarterSel) return;
+    const years = blCollectPeriodYears_();
+    yearSel.innerHTML = years.length
+      ? years.map(function(y) { return '<option value="' + escHtml(y) + '">' + escHtml(y) + '</option>'; }).join('')
+      : '<option value="">—</option>';
+    if (!blPeriodYear || years.indexOf(blPeriodYear) === -1) {
+      const latest = blDetectLatestPeriod_();
+      blPeriodYear = latest.year || (years[0] || '');
+      blPeriodQuarter = latest.quarter || 'Q1';
+    }
+    yearSel.value = blPeriodYear || '';
+    if (blPeriodQuarter) quarterSel.value = blPeriodQuarterToken_(blPeriodQuarter);
+  }
+
+  function blUpdatePeriodSummary_() {
+    const el = document.getElementById('blPickerPeriodSummary');
     if (!el) return;
     if (!blPeriodYear || !blPeriodQuarter) {
-      el.textContent = 'Monitoring period: all data (quarter not detected)';
+      el.textContent = 'Choose year and quarter for the monitoring period.';
       return;
     }
-    if (blPeriodFilterFallback_) {
-      el.textContent = 'No TTM/TTP for ' + blPeriodQuarter + ' ' + blPeriodYear + ' — showing all periods';
+    const rows = blFilterMonitoringByPeriod_(ttpData || []);
+    const millN = blUniqueMillCount_(rows.map(function(r) { return buildBlTtmCandidate_(r); }));
+    const ttpN = rows.length;
+    if (!ttpN) {
+      el.textContent = 'No TTM/TTP data for ' + blPeriodQuarter + ' ' + blPeriodYear + '.';
       return;
     }
-    el.textContent = 'Monitoring period (auto): ' + blPeriodQuarter + ' ' + blPeriodYear;
+    el.textContent = millN + ' mill' + (millN === 1 ? '' : 's') + ' · ' + ttpN + ' TTP row'
+      + (ttpN === 1 ? '' : 's') + ' linked for ' + blPeriodQuarter + ' ' + blPeriodYear + '.';
+  }
+
+  function blSyncDeclarationPeriodField_() {
+    if (blFormRecordType !== 'declaration') return;
+    const period = [blPeriodQuarter, blPeriodYear].filter(Boolean).join(' ');
+    if (!period) return;
+    const grid = document.getElementById('blFormFieldsGrid');
+    const el = grid && grid.querySelector('[data-field="PERIOD"]');
+    if (el) el.value = period;
+  }
+
+  function blAutoLinkPeriodRows_() {
+    const yearSel = document.getElementById('blPickerYear');
+    const quarterSel = document.getElementById('blPickerQuarter');
+    if (yearSel) blPeriodYear = yearSel.value || '';
+    if (quarterSel) blPeriodQuarter = quarterSel.value || '';
+    blPeriodFilterFallback_ = false;
+    const rows = blFilterMonitoringByPeriod_(ttpData || []);
+    blSelectedTtm = [];
+    blSelectedTtp = [];
+    blTtmRowsWithTtp_ = new Set();
+    rows.forEach(function(src) {
+      if (!src || !src._row) return;
+      blSelectedTtm.push(buildBlTtmCandidate_(src));
+      blTtmRowsWithTtp_.add(src._row);
+    });
+    blRebuildSelectedTtp_();
+    blRenderLinkedPickers_();
+    blUpdatePeriodSummary_();
+    blSyncDeclarationPeriodField_();
+  }
+
+  function blInitPickerPeriod_(row) {
+    blRenderPickerPeriodDropdowns_();
+    if (row && (row._ttmLinks || []).length) {
+      const detected = blDetectPeriodFromLinks_(row._ttmLinks);
+      if (detected) {
+        blPeriodYear = detected.year;
+        blPeriodQuarter = detected.quarter;
+        const yearSel = document.getElementById('blPickerYear');
+        const quarterSel = document.getElementById('blPickerQuarter');
+        if (yearSel) yearSel.value = blPeriodYear;
+        if (quarterSel) quarterSel.value = blPeriodQuarter;
+      }
+    } else {
+      blApplyLatestPeriod_();
+      const yearSel = document.getElementById('blPickerYear');
+      const quarterSel = document.getElementById('blPickerQuarter');
+      if (yearSel) yearSel.value = blPeriodYear || '';
+      if (quarterSel && blPeriodQuarter) quarterSel.value = blPeriodQuarter;
+    }
+    blAutoLinkPeriodRows_();
   }
 
   function blFilterMonitoringByPeriod_(rows) {
     const list = rows || [];
     if (!blPeriodYear || !blPeriodQuarter) {
       blPeriodFilterFallback_ = false;
-      return list;
+      return [];
     }
     const wantY = String(parseMillYearSort(blPeriodYear));
     const wantQ = blPeriodQuarterToken_(blPeriodQuarter);
     if (!wantY || !wantQ) {
       blPeriodFilterFallback_ = false;
-      return list;
-    }
-    const filtered = list.filter(function(r) {
-      return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
-    });
-    if (!filtered.length && list.length) {
-      blPeriodFilterFallback_ = true;
-      return list;
+      return [];
     }
     blPeriodFilterFallback_ = false;
-    return filtered;
+    return list.filter(function(r) {
+      return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
+    });
   }
 
   function blRebuildSelectedTtp_() {
@@ -11583,66 +11731,9 @@ function initDashboardApp() {
     blSelectedTtp = next.filter(Boolean);
   }
 
-  function blSyncTtpFromTtmRows_() {
-    blRebuildSelectedTtp_();
-  }
-
-  function blAddMonitoringRowPick_(src, includeTtp) {
-    if (!src || !src._row) return false;
-    if (blSelectedTtm.some(function(x) { return x._row === src._row; })) return false;
-    blSelectedTtm.push(buildBlTtmCandidate_(src));
-    if (includeTtp) {
-      blTtmRowsWithTtp_.add(src._row);
-    } else {
-      blTtmRowsWithTtp_.delete(src._row);
-    }
-    blRebuildSelectedTtp_();
-    return true;
-  }
-
-  function blRemoveMonitoringRowPick_(rowNum) {
-    blSelectedTtm = blSelectedTtm.filter(function(x) { return x._row !== rowNum; });
-    blTtmRowsWithTtp_.delete(rowNum);
-    blRebuildSelectedTtp_();
-  }
-
   function blRenderLinkedPickers_() {
     renderBlPickerChips_('blTtmSelected', blSelectedTtm, 'ttm');
     renderBlPickerChips_('blTtpSelected', blSelectedTtp, 'ttp');
-  }
-
-  function getBlRowCandidates_() {
-    const rows = blFilterMonitoringByPeriod_(ttpData || []);
-    return rows.map(function(row) {
-      return {
-        _row: row._row,
-        ttm: buildBlTtmCandidate_(row),
-        ttp: buildBlTtpCandidate_(row),
-      };
-    });
-  }
-
-  function filterBlRowResults_(query) {
-    const q = String(query || '').toLowerCase().trim();
-    const selectedRows = new Set(blSelectedTtm.map(function(x) { return x._row; }));
-    return getBlRowCandidates_().filter(function(item) {
-      if (selectedRows.has(item._row)) return false;
-      if (!q) return true;
-      const blob = [
-        item.ttm['COMPANY NAME'], item.ttm['GROUP NAME'], item.ttm['UML ID'], item.ttm['MILL NAME'],
-        item.ttp['FFB SUPPLIER NAME'], item.ttp['CATEGORY'], item.ttp['VILLAGE'],
-        item.ttp['SUBDISTRICT'], item.ttp['DISTRICT'], item.ttp['PROVINCE'],
-      ].join(' ').toLowerCase();
-      return blob.includes(q);
-    }).slice(0, 40);
-  }
-
-  function getBlTtmCandidates_() {
-    return getBlRowCandidates_().map(function(item) { return item.ttm; });
-  }
-
-  function getBlTtpCandidates_() {
-    return getBlRowCandidates_().map(function(item) { return item.ttp; });
   }
 
   function blTtmCountLabel_(count) {
@@ -12400,8 +12491,8 @@ function initDashboardApp() {
     if (!el) return;
     if (!items.length) {
       const emptyMsg = type === 'ttp'
-        ? 'None yet — appears automatically when you select TTM/TTP rows above'
-        : 'Nothing selected yet';
+        ? 'No TTP rows for the selected monitoring period'
+        : 'No TTM rows for the selected monitoring period';
       el.innerHTML = '<span class="bl-picker-empty" style="padding:0;border:none;background:transparent;">' + escHtml(emptyMsg) + '</span>';
       return;
     }
@@ -12411,9 +12502,6 @@ function initDashboardApp() {
         label = blField_(item, ['COMPANY NAME']) + ' · ' + blField_(item, ['UML ID']);
         const sup = blField_(item, ['FFB SUPPLIER NAME']);
         if (sup && sup !== '—') label += ' → ' + sup;
-        if (item._row && !blTtmRowsWithTtp_.has(item._row)) {
-          label += ' · TTM only';
-        }
         if (item._row) {
           const src = (ttpData || []).find(function(r) { return r._row === item._row; });
           if (src) {
@@ -12430,44 +12518,8 @@ function initDashboardApp() {
       return ''
         + '<span class="bl-picker-chip"' + rowAttr + ' data-idx="' + idx + '">'
         + '<span>' + escHtml(label) + '</span>'
-        + (type === 'ttm' && item._row
-          ? '<button type="button" class="bl-picker-chip-remove" data-row="' + item._row + '" aria-label="Remove">×</button>'
-          : '')
         + '</span>';
     }).join('');
-  }
-
-  function renderBlTtmResults_(query) {
-    const panel = document.getElementById('blTtmResults');
-    if (!panel) return;
-    const items = filterBlRowResults_(query);
-    blUpdatePickerPeriodLabel_();
-    if (!items.length) {
-      const hint = !(ttpData || []).length
-        ? 'No monitoring data loaded — open Monitoring TTM/TTP first or refresh the page.'
-        : 'No rows found for this search or period.';
-      panel.innerHTML = '<div class="bl-picker-empty">' + escHtml(hint) + '</div>';
-      panel.classList.add('open');
-      return;
-    }
-    panel.innerHTML = items.map(function(item) {
-      const srcRow = (ttpData || []).find(function(r) { return r._row === item._row; });
-      const warnings = srcRow ? blAssessMonitoringRowWarningsSync_(srcRow) : [];
-      const warnHtml = blFormatMonitoringWarningsHtml_(warnings);
-      return ''
-        + '<div class="bl-picker-item' + (warnings.length ? ' bl-picker-item--warn' : '') + '">'
-        + '<div class="bl-picker-item-main">'
-        + '<div class="bl-picker-item-title">' + escHtml(blField_(item.ttm, ['COMPANY NAME'])) + ' · UML ' + escHtml(blField_(item.ttm, ['UML ID'])) + '</div>'
-        + '<div class="bl-picker-item-sub">TTP: ' + escHtml(blField_(item.ttp, ['FFB SUPPLIER NAME'])) + ' · ' + escHtml(blField_(item.ttp, ['VILLAGE'])) + ', ' + escHtml(blField_(item.ttp, ['DISTRICT'])) + '</div>'
-        + warnHtml
-        + '</div>'
-        + '<div class="bl-picker-item-actions">'
-        + '<button type="button" class="bl-pick-btn" data-row="' + item._row + '" data-include-ttp="0">+ TTM</button>'
-        + '<button type="button" class="bl-pick-btn bl-pick-btn--both" data-row="' + item._row + '" data-include-ttp="1">+ TTM + TTP</button>'
-        + '</div>'
-        + '</div>';
-    }).join('');
-    panel.classList.add('open');
   }
 
   function closeBlFormModal_() {
@@ -12515,7 +12567,9 @@ function initDashboardApp() {
         : (isDecl ? 'Add Declaration' : 'Add Shipping');
     }
     if (subEl) {
-      subEl.textContent = 'Enter record data, pick a buyer from the list, then link Monitoring TTM/TTP rows. No Buy List matches are shown as warnings only.';
+      subEl.textContent = isDecl
+        ? 'Enter declaration details and choose a monitoring period — TTM/TTP for that quarter are linked automatically.'
+        : 'Enter shipping details and choose a monitoring period — TTM/TTP for that quarter are linked automatically.';
     }
     if (sectionEl) sectionEl.textContent = isDecl ? 'Declaration details' : 'Shipping details';
     if (saveBtn) saveBtn.textContent = isDecl ? 'Save Declaration' : 'Save Shipping';
@@ -12524,10 +12578,6 @@ function initDashboardApp() {
     blBuyerNblWarn_ = false;
     blRenderBuyerNblNotice_(null);
     blRenderLinkedPickers_();
-
-    const ttmSearch = document.getElementById('blTtmSearch');
-    if (ttmSearch) { ttmSearch.value = ''; }
-    document.getElementById('blTtmResults')?.classList.remove('open');
 
     lockBlOverlayScroll_();
     document.body.classList.add('bl-form-open');
@@ -12538,24 +12588,23 @@ function initDashboardApp() {
     if (!pickerReady) {
       blSetPickerLoading_(true);
     } else {
-      blApplyLatestPeriodFilter_();
-      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
+      blInitPickerPeriod_(row);
       if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
     }
 
     blWarmPickerData_().then(function() {
-      blApplyLatestPeriodFilter_();
       blSetPickerLoading_(false);
-      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
+      blInitPickerPeriod_(row);
       if (row && String(row['BUYER'] || '').trim()) blValidateBuyerField_();
     }).catch(function() {
       blSetPickerLoading_(false);
-      const label = document.getElementById('blPickerPeriodLabel');
-      if (label) label.textContent = 'Monitoring data unavailable — retry or refresh the page.';
+      const summary = document.getElementById('blPickerPeriodSummary');
+      if (summary) summary.textContent = 'Monitoring data unavailable — retry or refresh the page.';
     });
 
-    if (ttmSearch) {
-      try { ttmSearch.focus({ preventScroll: true }); } catch (e) { ttmSearch.focus(); }
+    const yearSel = document.getElementById('blPickerYear');
+    if (yearSel) {
+      try { yearSel.focus({ preventScroll: true }); } catch (e) { yearSel.focus(); }
     }
   }
 
@@ -12783,32 +12832,11 @@ function initDashboardApp() {
       else blExportSelectedRowNums.delete(rowNum);
     });
 
-    const ttmSearch = document.getElementById('blTtmSearch');
-    ttmSearch?.addEventListener('input', function() { renderBlTtmResults_(this.value); });
-    ttmSearch?.addEventListener('focus', function() { renderBlTtmResults_(this.value); });
-
-    document.getElementById('blTtmResults')?.addEventListener('click', function(e) {
-      const btn = e.target.closest('.bl-pick-btn');
-      if (!btn) return;
-      const rowNum = parseInt(btn.dataset.row, 10);
-      const includeTtp = btn.dataset.includeTtp === '1';
-      const src = (ttpData || []).find(function(r) { return r._row === rowNum; });
-      if (!src) return;
-      if (!blAddMonitoringRowPick_(src, includeTtp)) return;
-      blRenderLinkedPickers_();
-      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
-      const pickLabel = includeTtp ? '+ TTM + TTP' : '+ TTM';
-      blNotifyMonitoringRowPickWarnings_(src, pickLabel);
+    document.getElementById('blPickerYear')?.addEventListener('change', function() {
+      blAutoLinkPeriodRows_();
     });
-
-    document.getElementById('blTtmSelected')?.addEventListener('click', function(e) {
-      const btn = e.target.closest('.bl-picker-chip-remove');
-      if (!btn) return;
-      const rowNum = parseInt(btn.dataset.row, 10);
-      if (!rowNum) return;
-      blRemoveMonitoringRowPick_(rowNum);
-      blRenderLinkedPickers_();
-      renderBlTtmResults_(ttmSearch ? ttmSearch.value : '');
+    document.getElementById('blPickerQuarter')?.addEventListener('change', function() {
+      blAutoLinkPeriodRows_();
     });
 
     if (!window.__sddBlEscBound) {

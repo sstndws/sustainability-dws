@@ -92,7 +92,7 @@
     <div class="bl-form-head">
       <div>
         <h2 id="blFormTitle">Add Shipping</h2>
-        <p class="bl-form-sub" id="blFormSubtitle">Enter record data, then link Monitoring TTM/TTP rows. Each row can be added as TTM only or TTM + TTP.</p>
+        <p class="bl-form-sub" id="blFormSubtitle">Enter record data, then choose a monitoring period — all TTM/TTP rows for that period are linked automatically.</p>
       </div>
       <button type="button" class="bl-form-close" id="blFormClose" aria-label="Close">✕</button>
     </div>
@@ -103,17 +103,29 @@
       </section>
       <section class="bl-form-section">
         <h3 class="bl-form-section-title">Link TTM / TTP</h3>
-        <p class="bl-form-section-desc" id="blPickerPeriodLabel">Loading monitoring period…</p>
-        <div class="bl-picker-wrap">
-          <div class="bl-picker-search">
-            <input type="text" id="blTtmSearch" placeholder="Cari company, UML ID, supplier, desa..." autocomplete="off" />
+        <p class="bl-form-section-desc">Choose the monitoring period — all TTM/TTP rows for that quarter are linked automatically.</p>
+        <div class="bl-period-toolbar" id="blPickerPeriodToolbar">
+          <div class="bl-period-field">
+            <label for="blPickerYear">Year</label>
+            <select id="blPickerYear" class="bl-period-select" aria-label="Monitoring year"></select>
           </div>
-          <div class="bl-picker-results" id="blTtmResults"></div>
+          <div class="bl-period-field">
+            <label for="blPickerQuarter">Quarter</label>
+            <select id="blPickerQuarter" class="bl-period-select" aria-label="Monitoring quarter">
+              <option value="Q1">Q1</option>
+              <option value="Q2">Q2</option>
+              <option value="Q3">Q3</option>
+              <option value="Q4">Q4</option>
+            </select>
+          </div>
+        </div>
+        <p class="bl-period-summary" id="blPickerPeriodSummary">Loading monitoring data…</p>
+        <div class="bl-picker-wrap bl-picker-wrap--readonly">
           <div class="bl-picker-selected" id="blTtmSelected"></div>
         </div>
       </section>
       <section class="bl-form-section bl-ttp-auto-section">
-        <h3 class="bl-form-section-title">Selected TTP <span class="bl-form-hint">Only rows selected with the TTM + TTP option</span></h3>
+        <h3 class="bl-form-section-title">Linked TTP <span class="bl-form-hint">All supplier rows for the selected period</span></h3>
         <div class="bl-picker-wrap bl-picker-wrap--readonly">
           <div class="bl-picker-selected" id="blTtpSelected"></div>
         </div>

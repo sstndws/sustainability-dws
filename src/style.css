@@ -1983,9 +1983,13 @@
    }
    /* Open filter panels upward so they do not collide with frozen table headers below */
    #panel-ttm-ttp .ttp-toolbar .ttp-dropdown-panel {
-     top: auto;
+     top: auto !important;
      bottom: calc(100% + 6px);
      z-index: 12050;
+   }
+   #panel-ttm-ttp .ttp-toolbar .ttp-dropdown-panel.open {
+     background: #fff;
+     isolation: isolate;
    }
    #panel-ttm-ttp .ttp-selection-info {
      flex: 1 1 100%;
@@ -6053,6 +6057,49 @@ body.bl-detail-open { overflow: hidden; }
   margin: -4px 0 12px;
   font-size: 12.5px;
   color: #8B6060;
+}
+.bl-period-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  margin-bottom: 10px;
+}
+.bl-period-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+.bl-period-field label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #9C8080;
+}
+.bl-period-select {
+  border: 1px solid rgba(74, 28, 28, 0.14);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #4A1C1C;
+  background: #fff;
+  min-width: 120px;
+}
+.bl-period-select:focus {
+  outline: none;
+  border-color: rgba(74, 28, 28, 0.35);
+  box-shadow: 0 0 0 2px rgba(74, 28, 28, 0.08);
+}
+.bl-period-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.bl-period-summary {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: #6B4A4A;
 }
 .bl-picker-item-actions {
   display: flex;
