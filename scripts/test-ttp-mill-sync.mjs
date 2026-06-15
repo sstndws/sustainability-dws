@@ -305,6 +305,9 @@ assert(gs.includes('sanitizeMillTtpIdentity_'), 'backend sanitizes mill identity
 assert(gs.includes('sanitizeMillTtpMirrorFromOnboarding_'), 'backend sanitizes trader mirror payload');
 assert(gs.includes('assertMillTtpSyncSucceeded_'), 'backend asserts sync success before mill_added');
 assert(gs.includes('mill_ttp_sync requires mill_added=true or mill_added_line'), 'mill_ttp_sync gated by mill_added or line');
+assert(gs.includes('mill_added_line for TRADER requires mill_ttp_sync'), 'TRADER line requires TTP sync');
+assert(gs.includes('TRADER cannot set mill_added=true directly'), 'TRADER cannot bypass per-mill flow');
+assert(gs.includes('assertTraderTmlLineKnown_'), 'backend validates TML line before mirror');
 assert(gs.includes('trader_tml_'), 'trader mirror line id prefix in backend');
 assert(gs.includes('not_submitted'), 'backend checks SCR submitted status');
 assert(mainJs.includes("Fill Group Name, Company Name, Mill Name, and UML ID"), 'frontend validates before save');

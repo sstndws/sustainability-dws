@@ -1864,6 +1864,23 @@ function applyMillAddedLine_(sid, lineId, mainHit, user, now) {
   };
 }
 
+/** Ensure TRADER mill_added_line references a real TML row before TTP mirror / completion. */
+function assertTraderTmlLineKnown_(sid, lineId) {
+  sid = String(sid || '').trim();
+  lineId = String(lineId || '').trim();
+  if (!sid || !lineId) throw new Error('mill_added_line requires submission_id and line_id');
+
+  const tmlRows = findChildRows_('sddMill', sid)
+    .map(function(r) { return r.obj; })
+    .filter(isMeaningfulTmlRow_);
+  const known = tmlRows.some(function(r) {
+    return String(r['line_id'] || '').trim() === lineId;
+  });
+  if (!known) {
+    throw new Error('mill_added_line not found in submission mill list: ' + lineId);
+  }
+}
+
 function readTtpRows_() {
   ensureTtpHeaders_();
   const ws = getSheet('ttp');
@@ -3534,10 +3551,19 @@ function updateSubmission(payload) {
       throw new Error('mill_ttp_sync requires mill_added=true or mill_added_line');
     }
 
+    if (supplierTypeEarly === 'TRADER' && wantsMillAdded) {
+      throw new Error('TRADER cannot set mill_added=true directly; complete all mills via Task List save');
+    }
+
+    if (supplierTypeEarly === 'TRADER' && traderTmlLineId && !wantsMillTtpSync) {
+      throw new Error('mill_added_line for TRADER requires mill_ttp_sync in the same request');
+    }
+
     let ttpSync = null;
     let millAddedLineResult = null;
 
     if (isTraderTtpMirror) {
+      assertTraderTmlLineKnown_(sid, traderTmlLineId);
       const mirrorIdentity = sanitizeMillTtpMirrorFromOnboarding_(payload.mill_ttp_sync);
       ttpSync = syncTtpMirrorTraderMillFromOnboarding_(
         sid, traderTmlLineId, mirrorIdentity, mainHit.obj, user, now
@@ -3564,6 +3590,9 @@ function updateSubmission(payload) {
     }
 
     if (payload.mill_added_line) {
+      if (supplierTypeEarly === 'TRADER') {
+        assertTraderTmlLineKnown_(sid, payload.mill_added_line);
+      }
       millAddedLineResult = applyMillAddedLine_(sid, payload.mill_added_line, mainHit, user, now);
     }
 
