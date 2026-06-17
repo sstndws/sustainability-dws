@@ -9954,6 +9954,7 @@ function initDashboardApp() {
       window.__sddTtpDropdownScrollBound = true;
       window.addEventListener('scroll', ttpRepositionOpenDropdowns_, true);
       window.addEventListener('resize', ttpRepositionOpenDropdowns_, { passive: true });
+      document.querySelector('#dashboard .main-content')?.addEventListener('scroll', ttpRepositionOpenDropdowns_, { passive: true });
       document.querySelector('.ttp-table-scroll')?.addEventListener('scroll', closeTtpDropdowns_, { passive: true });
     }
 
@@ -10237,7 +10238,33 @@ function initDashboardApp() {
     }
   }
 
-  // ─── TTP DROPDOWN TOGGLE (fixed to trigger — no body portal) ──
+  // ─── TTP DROPDOWN (portaled popover anchored to trigger button) ──
+  function ttpDropdownWrapForPanel_(panel) {
+    if (!panel) return null;
+    const wrapId = panel.dataset.ttpDropdownAnchor;
+    if (wrapId) return document.getElementById(wrapId);
+    return panel.closest('.ttp-dropdown-wrap');
+  }
+
+  function ttpAnchorPanelToBody_(panel) {
+    if (!panel) return;
+    const wrap = panel.closest('.ttp-dropdown-wrap');
+    if (wrap && wrap.id && !panel.dataset.ttpDropdownAnchor) {
+      panel.dataset.ttpDropdownAnchor = wrap.id;
+    }
+    if (panel.parentElement !== document.body) {
+      document.body.appendChild(panel);
+    }
+  }
+
+  function ttpRestorePanelToWrap_(panel) {
+    if (!panel) return;
+    const wrap = ttpDropdownWrapForPanel_(panel);
+    if (wrap && panel.parentElement === document.body) {
+      wrap.appendChild(panel);
+    }
+  }
+
   function ttpClearDropdownPanelPosition_(panel) {
     if (!panel) return;
     panel.classList.remove('ttp-dropdown-panel--fixed');
@@ -10251,24 +10278,26 @@ function initDashboardApp() {
     panel.style.maxWidth = '';
     panel.style.maxHeight = '';
     panel.style.zIndex = '';
+    panel.style.transform = '';
+    panel.style.margin = '';
+    ttpRestorePanelToWrap_(panel);
   }
 
   function ttpPositionDropdownPanel_(btn, panel) {
     if (!btn || !panel || !panel.classList.contains('open')) return;
     const rect = btn.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
+
     const isSelect = panel.id === 'ttpSelectPanel';
-    const minW = isSelect ? 320 : 240;
-    const maxW = isSelect ? 400 : 340;
+    const minW = isSelect ? 320 : 260;
+    const maxW = isSelect ? 400 : 360;
     const width = Math.min(Math.max(rect.width, minW), maxW, window.innerWidth - 24);
-    let left = rect.left;
-    if (left + width > window.innerWidth - 12) {
-      left = Math.max(12, window.innerWidth - 12 - width);
-    }
-    const spaceAbove = Math.max(0, rect.top - 12);
-    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - 12);
-    const preferAbove = spaceAbove >= 200 || (spaceAbove >= spaceBelow && spaceAbove >= 120);
-    const maxH = Math.min(isSelect ? 420 : 360, Math.max(180, (preferAbove ? spaceAbove : spaceBelow) - 10));
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+    const gap = 8;
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - 12);
+    const spaceAbove = Math.max(0, rect.top - gap - 12);
+    const openUp = spaceBelow < 280 && spaceAbove >= 140;
+    const maxH = Math.min(isSelect ? 440 : 360, Math.max(160, openUp ? spaceAbove : spaceBelow));
 
     panel.classList.add('ttp-dropdown-panel--fixed');
     panel.style.position = 'fixed';
@@ -10279,13 +10308,15 @@ function initDashboardApp() {
     panel.style.maxHeight = maxH + 'px';
     panel.style.zIndex = '12050';
     panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.margin = '0';
 
-    if (preferAbove) {
-      panel.style.top = 'auto';
-      panel.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    if (openUp) {
+      panel.style.top = Math.max(12, rect.top - gap) + 'px';
+      panel.style.transform = 'translateY(-100%)';
     } else {
-      panel.style.bottom = 'auto';
-      panel.style.top = (rect.bottom + 8) + 'px';
+      panel.style.top = (rect.bottom + gap) + 'px';
+      panel.style.transform = 'none';
     }
   }
 
@@ -10333,6 +10364,7 @@ function initDashboardApp() {
     }
 
     ttpClearDropdownPanelPosition_(panel);
+    ttpAnchorPanelToBody_(panel);
     panel.classList.add('open');
     btn.classList.add('active');
     ttpPositionDropdownPanel_(btn, panel);
