@@ -5316,6 +5316,7 @@ function initDashboardApp() {
   let ttpScrollToMillAfterRender_ = '';
   let ttpLocationCascadeCache_ = null;
   let millLoadPromise = null;
+  let millDataLoaded = false;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
   let grvScrollToId_ = '';
@@ -6831,6 +6832,7 @@ function initDashboardApp() {
         millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
         millPdfRebuildDimPanels();
       }
+      millDataLoaded = true;
       scheduleRenderMillTable();
       if (soft) millRestoreUiAfterRender_();
     } catch(err) {
@@ -6880,13 +6882,15 @@ function initDashboardApp() {
       }
     } catch (err) {
       console.warn('[Mill] Soft reload failed, falling back to full reload:', err);
-      await loadMillData();
+      await loadMillData({ force: true });
     }
   }
 
-  async function loadMillData() {
+  async function loadMillData(opts) {
+    opts = opts || {};
+    if (!opts.force && millDataLoaded) return;
     if (millLoadPromise) return millLoadPromise;
-    millLoadPromise = loadMillDataImpl();
+    millLoadPromise = loadMillDataImpl(opts);
     try {
       await millLoadPromise;
     } finally {
@@ -9731,9 +9735,11 @@ function initDashboardApp() {
       errorEl.style.display = 'none';
       table.style.display = 'none';
       const rawRows = await apiGet('ttp');
-      await loadMillData().catch(function(err) {
-        console.warn('[TTP] Mill data unavailable for TTM coordinate KPIs:', err);
-      });
+      if (!millDataLoaded) {
+        await loadMillData().catch(function(err) {
+          console.warn('[TTP] Mill data unavailable for TTM coordinate KPIs:', err);
+        });
+      }
       ttpLoaded = true;
       applyTtpDataFromApi_(rawRows);
       document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
@@ -16504,13 +16510,6 @@ function initDashboardApp() {
   async function ensureMillDataForEudr_() {
     if (allData && allData.length) return;
     await loadMillData();
-    if (allData && allData.length) return;
-    const rawRows = await apiGet('mill');
-    const rawData = (Array.isArray(rawRows) ? rawRows : []).map(normalizeMillApiRow);
-    if (rawData.length) {
-      allDataRaw = rawData.map(prepareMillRowPerfCache);
-      allData = allDataRaw.slice();
-    }
   }
 
   async function loadEudrDataImpl_(force) {
@@ -20802,6 +20801,7 @@ function initDashboardApp() {
     ttpData = [];
     allData = [];
     allDataRaw = [];
+    millDataLoaded = false;
     millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
     millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
     millPdfRebuildDimPanels();
@@ -23314,8 +23314,7 @@ function initDashboardApp() {
           const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
           if (allDone) batch.status = 'submitted';
           renderSupplyDraftList_();
-          millLoadPromise = null;
-          if (typeof loadMillData === 'function') loadMillData();
+          if (typeof loadMillData === 'function') loadMillData({ force: true });
           const errNote = (res.errors && res.errors.length) ? ('\nNote: ' + res.errors.slice(0, 3).join('; ')) : '';
           alert('✓ ' + (res.submitted || matchedRows.length) + ' rows updated in Mill Profile.' + errNote);
         })
@@ -23338,8 +23337,7 @@ function initDashboardApp() {
           row._submitted = true;
           const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
           if (allDone) batch.status = 'submitted';
-          millLoadPromise = null;
-          if (typeof loadMillData === 'function') loadMillData();
+          if (typeof loadMillData === 'function') loadMillData({ force: true });
           renderSupplyDraftList_();
         })
         .catch(function(err) {
