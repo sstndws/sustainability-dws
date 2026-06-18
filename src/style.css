@@ -8427,6 +8427,27 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   background: rgba(139, 26, 26, 0.04);
   border-radius: 8px;
 }
+#panel-monthly-report-detail .mrd-table-caption {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a4040;
+}
+#panel-monthly-report-detail .mrd-nbl-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 10px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #4a3030;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.1);
+  margin-bottom: 4px;
+}
 #panel-monthly-report-detail .mrd-error {
   color: #c0392b;
   background: rgba(192, 57, 43, 0.06);
