@@ -66,7 +66,8 @@ export const MRD_MILL_FULL_COLS = [
 ];
 
 export const MRD_GRV_SUMMARY_COLS = [
-  'Date Received', 'Category', 'Complainant', 'Group', 'Grievance Subject', 'Risk', 'Status',
+  'Date Received', 'Category', 'Complainant', 'Group', 'Grievance Subject',
+  'Risk Classification', 'Grievance Status',
 ];
 
 export const MRD_GRV_DETAIL_COLS = [
@@ -91,4 +92,62 @@ export function facilityPctColLabel(isPk) {
 export function facilitySummaryColLabels(isPk) {
   const pct = facilityPctColLabel(isPk);
   return ['Facility', 'Companies', 'No Buy List', 'High Risk', 'Total Grievance', 'Est. ISPO Supply %', pct];
+}
+
+/** Short / wrapped PDF header labels so columns do not overlap on A4. */
+const PDF_HEAD_SHORT = {
+  'Result Risk Level': 'Risk\nLevel',
+  'Group Name': 'Group\nName',
+  'Company Name': 'Company\nName',
+  'Mill Name': 'Mill\nName',
+  'No Buy List': 'No Buy\nList',
+  'Supplier Status': 'Supplier\nStatus',
+  'Total Grievances': 'Total\nGriev.',
+  'Facility Name CPO': 'Facility\nCPO',
+  'Facility Name PK': 'Facility\nPK',
+  'Date Received': 'Date\nReceived',
+  'Grievance Subject': 'Grievance\nSubject',
+  'Risk Classification': 'Risk\nClass.',
+  'Grievance Status': 'Grievance\nStatus',
+  'Grievance Description': 'Description',
+  'Verification Findings': 'Verification',
+  'Corrective Action': 'Corrective',
+  'Preventive Action': 'Preventive',
+  'Est. ISPO Supply %': 'ISPO\nSupply %',
+  '% TRACEABLE': '%\nTRACEABLE',
+  '% PK TRACEABLE': '% PK\nTRACEABLE',
+  'Company Group Name': 'Company\nGroup',
+  'Last Update': 'Last\nUpdate',
+  'Date Import': 'Date\nImport',
+  'Company Name NBL': 'Company\nName',
+};
+
+export function pdfHeadRow(labels) {
+  return labels.map(function(label) {
+    if (PDF_HEAD_SHORT[label]) return PDF_HEAD_SHORT[label];
+    const s = String(label || '');
+    if (s.length <= 12) return s;
+    const parts = s.split(' ');
+    if (parts.length > 1) {
+      const mid = Math.ceil(parts.length / 2);
+      return parts.slice(0, mid).join(' ') + '\n' + parts.slice(mid).join(' ');
+    }
+    if (s.length > 14) return s.slice(0, 14) + '\n' + s.slice(14);
+    return s;
+  });
+}
+
+export function pdfTableHead(labels) {
+  return [pdfHeadRow(labels)];
+}
+
+export function pdfCellTrim(val, maxLen) {
+  const s = pdfSanitizeText_(val);
+  const n = maxLen || 42;
+  if (s.length <= n) return s;
+  return s.slice(0, Math.max(0, n - 1)) + '…';
+}
+
+function pdfSanitizeText_(v) {
+  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim() || '—';
 }

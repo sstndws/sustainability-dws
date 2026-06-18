@@ -130,9 +130,10 @@ function renderSmartTable(columns, rows, opts) {
   if (!rows.length && !opts.alwaysShowTable) return opts.empty || '<p class="mrd-empty">No data.</p>';
   const active = filterColumns(columns, rows);
   const colCount = active.length;
-  let html = (opts.note || '') + '<div class="table-scroll mrd-table-scroll"><table class="mrd-table"><thead><tr>';
+  let html = (opts.note || '') + '<div class="table-scroll mrd-table-scroll"><table class="mrd-table' + (opts.tableClass ? ' ' + opts.tableClass : '') + '"><thead><tr>';
   active.forEach(function(col) {
-    html += '<th' + (col.thCls ? ' class="' + col.thCls + '"' : '') + '>' + esc(col.label) + '</th>';
+    const titleAttr = col.title ? ' title="' + esc(col.title) + '"' : '';
+    html += '<th' + (col.thCls ? ' class="' + col.thCls + '"' : '') + titleAttr + '>' + esc(col.label) + '</th>';
   });
   html += '</tr></thead><tbody>';
   if (!rows.length && opts.alwaysShowTable) {
@@ -637,18 +638,19 @@ function renderMillSection(rows) {
         return '<button type="button" class="mrd-expand-btn' + (d.isExp ? ' is-open' : '') + '" data-mrd-expand-btn="' + esc(d.expId) + '" data-mrd-mill-key="' + esc(d.item.cacheKey) + '">›</button>';
       },
     },
-    { label: 'Result Risk Level', hasData: function(row) { return hasCellValue(row._render.item.risk); }, render: function(row) { return riskPill(row._render.item.risk); } },
-    { label: 'Group Name', raw: function(row) { return row._render.r['GROUP NAME']; } },
-    { label: 'Company Name', raw: function(row) { return row._render.r['COMPANY NAME']; } },
-    { label: 'Mill Name', raw: function(row) { return row._render.r['MILL NAME']; } },
-    { label: 'Province', raw: function(row) { return row._render.r['PROVINCE']; } },
-    { label: 'No Buy List', hasData: function(row) { return isNblYes(row._render.item.nbl); }, render: function(row) {
+    { label: 'Result Risk Level', title: 'Result Risk Level', thCls: 'mrd-th-wrap', hasData: function(row) { return hasCellValue(row._render.item.risk); }, render: function(row) { return riskPill(row._render.item.risk); } },
+    { label: 'Group Name', title: 'Group Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['GROUP NAME']; } },
+    { label: 'Company Name', title: 'Company Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['COMPANY NAME']; } },
+    { label: 'Mill Name', title: 'Mill Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['MILL NAME']; } },
+    { label: 'Province', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['PROVINCE']; } },
+    { label: 'No Buy List', title: 'No Buy List', thCls: 'mrd-th-wrap', hasData: function(row) { return isNblYes(row._render.item.nbl); }, render: function(row) {
       return isNblYes(row._render.item.nbl) ? '<span class="mrd-pill mrd-pill--high">Yes</span>' : '';
     }},
   ];
   return renderSmartTable(cols, tableRows, {
     empty: '<p class="mrd-empty">No mills for this period.</p>',
     note: limitNote(filtered.length, MRD_ROW_LIMIT),
+    tableClass: 'mrd-table--wide',
   });
 }
 
@@ -774,6 +776,7 @@ function renderGrvSection(rows) {
   return renderSmartTable(cols, filtered, {
     empty: '<p class="mrd-empty">No grievances for this period.</p>',
     note: limitNote(rows.length, MRD_ROW_LIMIT),
+    tableClass: 'mrd-table--wide',
   });
 }
 
@@ -826,6 +829,7 @@ function renderFacilitySection(bundles, loading) {
     const table = renderSmartTable(cols, visible, {
       empty: '<p class="mrd-empty">No companies for this facility.</p>',
       note: '<p class="mrd-table-caption">Company breakdown</p>' + limitNote(companies.length, MRD_ROW_LIMIT),
+      tableClass: 'mrd-table--wide',
     });
 
     return '<div class="mrd-facility-block mrd-facility-block--' + accent + '">'

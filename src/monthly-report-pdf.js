@@ -13,6 +13,9 @@ import {
   MRD_FACILITY_COMPANY_COLS,
   facilityPctColLabel,
   facilitySummaryColLabels,
+  pdfTableHead,
+  pdfHeadRow,
+  pdfCellTrim,
   normalizeSddCategory,
   sddStatusText,
   sddCompanyName,
@@ -230,8 +233,12 @@ function createPdfContext_(jsPDFLib, opts) {
         fillColor: accent || BRAND,
         textColor: WHITE,
         fontStyle: 'bold',
-        fontSize: opts.fontSize || 7.5,
+        fontSize: opts.headFontSize != null ? opts.headFontSize : 5.8,
         halign: 'center',
+        valign: 'middle',
+        overflow: 'linebreak',
+        minCellHeight: opts.headMinHeight != null ? opts.headMinHeight : 11,
+        cellPadding: { top: 1.2, right: 1, bottom: 1.2, left: 1 },
       },
       alternateRowStyles: { fillColor: [255, 253, 253] },
       rowPageBreak: 'avoid',
@@ -468,13 +475,14 @@ function drawSddSection_(ctx, rows, noHeader) {
     })
     : [['—', 'No SDD records for this period.', '—', '—', '—']];
   ctx.drawAutoTable_(
-    [MRD_SDD_COLS],
+    pdfTableHead(MRD_SDD_COLS),
     body,
     BRAND,
     {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
       3: { cellWidth: w[3], fontSize: 6.5 }, 4: { cellWidth: w[4] },
-    }
+    },
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11 }
   );
 }
 
@@ -482,10 +490,10 @@ function millDetailCells_(item) {
   const r = item.row;
   return {
     supplierStatus: pdfSanitize(r['SUPPLIER STATUS']),
-    certification: pdfSanitize(r['CERTIFICATION']),
+    certification: pdfCellTrim(r['CERTIFICATION'], 36),
     grievances: pdfSanitize(r['TOTAL GRIEVANCES']),
-    facilityCpo: pdfSanitize(r['FACILITY NAME CPO']),
-    facilityPk: pdfSanitize(r['FACILITY NAME PK']),
+    facilityCpo: pdfCellTrim(r['FACILITY NAME CPO'], 44),
+    facilityPk: pdfCellTrim(r['FACILITY NAME PK'], 44),
     nblBy: pdfSanitize(item.nblBy),
   };
 }
@@ -497,17 +505,17 @@ function drawMillSection_(ctx, data, full) {
 
   if (mills.length) {
     if (full) {
-      const w = colWidths_([11, 12, 14, 14, 10, 8, 11, 10, 8, 12, 12], ctx.cW);
+      const w = colWidths_([9, 13, 16, 15, 9, 7, 10, 9, 7, 15, 15], ctx.cW);
       ctx.drawAutoTable_(
-        [MRD_MILL_FULL_COLS],
+        pdfTableHead(MRD_MILL_FULL_COLS),
         mills.map(function(item) {
           const r = item.row;
           const d = millDetailCells_(item);
           return [
             pdfSanitize(item.risk),
-            pdfSanitize(r['GROUP NAME']),
-            pdfSanitize(r['COMPANY NAME']),
-            pdfSanitize(r['MILL NAME']),
+            pdfCellTrim(r['GROUP NAME'], 28),
+            pdfCellTrim(r['COMPANY NAME'], 32),
+            pdfCellTrim(r['MILL NAME'], 28),
             pdfSanitize(r['PROVINCE']),
             pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
             d.supplierStatus,
@@ -524,19 +532,19 @@ function drawMillSection_(ctx, data, full) {
           6: { cellWidth: w[6], fontSize: 6.5 }, 7: { cellWidth: w[7], fontSize: 6.5 },
           8: { cellWidth: w[8] }, 9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
         },
-        { fontSize: 7, cellPadding: 2.2 }
+        { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 12 }
       );
     } else {
-      const w = colWidths_([12, 16, 18, 18, 12, 10], ctx.cW);
+      const w = colWidths_([10, 15, 18, 18, 11, 10], ctx.cW);
       ctx.drawAutoTable_(
-        [MRD_MILL_SUMMARY_COLS],
+        pdfTableHead(MRD_MILL_SUMMARY_COLS),
         mills.map(function(item) {
           const r = item.row;
           return [
             pdfSanitize(item.risk),
-            pdfSanitize(r['GROUP NAME']),
-            pdfSanitize(r['COMPANY NAME']),
-            pdfSanitize(r['MILL NAME']),
+            pdfCellTrim(r['GROUP NAME'], 28),
+            pdfCellTrim(r['COMPANY NAME'], 32),
+            pdfCellTrim(r['MILL NAME'], 28),
             pdfSanitize(r['PROVINCE']),
             pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
           ];
@@ -545,7 +553,8 @@ function drawMillSection_(ctx, data, full) {
         {
           0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
           3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
-        }
+        },
+        { headFontSize: 5.6, headMinHeight: 11 }
       );
     }
   }
@@ -555,7 +564,7 @@ function drawMillSection_(ctx, data, full) {
     ctx.beginSubsection_('High Risk Suppliers', BRAND);
     const hw = colWidths_([18, 22, 22, 14, 14], ctx.cW);
     ctx.drawAutoTable_(
-      [['Group Name', 'Company Name', 'Mill Name', 'Result Risk Level', 'Province']],
+      pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Result Risk Level', 'Province']),
       highRisk.map(function(item) {
         const r = item.row;
         return [
@@ -594,7 +603,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
   if (!full) {
     const w = colWidths_([12, 12, 14, 12, 16, 12, 12], ctx.cW);
     ctx.drawAutoTable_(
-      [MRD_GRV_SUMMARY_COLS],
+      pdfTableHead(MRD_GRV_SUMMARY_COLS),
       rows.map(function(item) {
         const r = item.row;
         return [
@@ -611,14 +620,15 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       {
         0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
         3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] }, 6: { cellWidth: w[6] },
-      }
+      },
+      { fontSize: 6.5, cellPadding: 2, headFontSize: 5.5, headMinHeight: 11 }
     );
     return;
   }
 
-  const w = colWidths_([10, 10, 10, 12, 10, 12, 10, 10, 14, 12, 12, 12], ctx.cW);
+  const w = colWidths_([9, 9, 9, 10, 9, 11, 9, 9, 14, 11, 11, 11], ctx.cW);
   ctx.drawAutoTable_(
-    [MRD_GRV_DETAIL_COLS],
+    pdfTableHead(MRD_GRV_DETAIL_COLS),
     rows.map(function(item) {
       const r = item.row;
       return [
@@ -644,7 +654,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
       11: { cellWidth: w[11], fontSize: 6.5 },
     },
-    { fontSize: 7, cellPadding: 2.2 }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 12 }
   );
 }
 
@@ -653,7 +663,7 @@ function drawNblSection_(ctx, rows) {
   ctx.beginSection_('05 · Active NBL Mills', NBL_RED);
   const w = colWidths_([18, 22, 24, 14, 12, 8], ctx.cW);
   ctx.drawAutoTable_(
-    [['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List']],
+    pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List']),
     rows.map(function(item) {
       const r = item.row || item;
       return [
@@ -675,7 +685,7 @@ function drawNblSummaryList_(ctx, rows) {
   if (!rows.length) return;
   const w = colWidths_([38, 62], ctx.cW);
   ctx.drawAutoTable_(
-    [['Company Group Name', 'Company Name']],
+    pdfTableHead(['Company Group Name', 'Company Name']),
     rows.map(function(item) {
       const r = item.row || item;
       return [
@@ -772,8 +782,8 @@ function drawFacilityCompanyTable_(ctx, companies, pctLabel, accent) {
   }
   const y0 = ctx.getY();
   const cw = colWidths_([14, 18, 14, 10, 12, 10, 14], ctx.cW);
-  const headers = MRD_FACILITY_COMPANY_COLS.slice();
-  headers[headers.length - 1] = pctLabel;
+  const headers = pdfHeadRow(MRD_FACILITY_COMPANY_COLS.slice());
+  headers[headers.length - 1] = pdfHeadRow([pctLabel])[0];
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -800,7 +810,7 @@ function drawFacilityCompanyTable_(ctx, companies, pctLabel, accent) {
       3: { cellWidth: cw[3], halign: 'center' }, 4: { cellWidth: cw[4], halign: 'center' },
       5: { cellWidth: cw[5], halign: 'right' }, 6: { cellWidth: cw[6], halign: 'right', fontStyle: 'bold' },
     },
-    { fontSize: 7.5, cellPadding: 2.2, gapAfter: 2 }
+    { fontSize: 6.5, cellPadding: 2, gapAfter: 2, headFontSize: 5.5, headMinHeight: 11 }
   );
 }
 
@@ -867,7 +877,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
   if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
   const w = colWidths_([12, 18, 20, 20, 14, 16], ctx.cW);
   ctx.drawAutoTable_(
-    [MRD_EUDR_COLS],
+    pdfTableHead(MRD_EUDR_COLS),
     rows.map(function(item) {
       const r = item.row;
       return [
@@ -882,7 +892,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
       3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
       5: { cellWidth: w[5], fontSize: 6.5 },
     },
-    { fontSize: 7, cellPadding: 2.2 }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11 }
   );
 }
 
@@ -922,21 +932,21 @@ function drawFacilitySummaryFromBundles_(ctx, bundles) {
   if (cpo.length) {
     ctx.beginSubsection_('CPO Facility Performance', BRAND);
     ctx.drawAutoTable_(
-      [facilitySummaryColLabels(false)],
+      pdfTableHead(facilitySummaryColLabels(false)),
       cpo.map(facilityBundleSummaryRow_),
       BRAND,
       colStyles,
-      { fontSize: 7.5, cellPadding: 2.2, gapAfter: 3 }
+      { fontSize: 7, cellPadding: 2, gapAfter: 3, headFontSize: 5.5, headMinHeight: 11 }
     );
   }
   if (pk.length) {
     ctx.beginSubsection_('PK Facility Performance', PK_GREEN);
     ctx.drawAutoTable_(
-      [facilitySummaryColLabels(true)],
+      pdfTableHead(facilitySummaryColLabels(true)),
       pk.map(facilityBundleSummaryRow_),
       PK_GREEN,
       colStyles,
-      { fontSize: 7.5, cellPadding: 2.2, gapAfter: 3 }
+      { fontSize: 7, cellPadding: 2, gapAfter: 3, headFontSize: 5.5, headMinHeight: 11 }
     );
   }
 }
