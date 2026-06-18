@@ -351,7 +351,7 @@ async function exportMonthlyReport_(exportOpts) {
     });
 
     if (typeof window.showSddToast === 'function') {
-      window.showSddToast('2 PDF files downloaded: Summary + Detail.', 'success');
+      window.showSddToast('2 PDF files downloaded. In Summary, click a section bar to jump to Detail (same folder).', 'success');
     }
   } catch (err) {
     console.error('[MRD PDF]', err);

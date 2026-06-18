@@ -40,20 +40,21 @@ const WHITE = [255, 255, 255];
 const BG_SOFT = [252, 250, 250];
 const BORDER = [230, 220, 220];
 
-/** Vertical rhythm — wide gaps only between major sections; tight within each block. */
+/** Vertical rhythm — minimal gaps; sectionGap only between major points. */
 const PDF_LAYOUT = {
-  bodyGap: 8,
-  sectionGap: 12,
-  afterSectionBar: 2,
-  subsectionGap: 2,
-  sectionDescGap: 1,
-  descToCards: 3,
-  cardsToContent: 2,
+  bodyGap: 6,
+  sectionGap: 6,
+  afterSectionBar: 1,
+  subsectionGap: 1,
+  sectionDescGap: 0,
+  descToCards: 2,
+  cardsToContent: 1,
+  cardGap: 3,
   headerMainH: 32,
   headerDetailH: 26,
   headerCompactH: 16,
-  compactBodyGap: 6,
-  autoTableTopMargin: 24,
+  compactBodyGap: 4,
+  autoTableTopMargin: 22,
 };
 
 const DEFAULT_SECTIONS = ['kpi', 'sdd', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
@@ -105,6 +106,19 @@ function drawFooters_(doc, pageW, pageH, mL, mR, mFoot) {
   }
 }
 
+function monthlyReportFileName_(variant, year, month) {
+  const tag = variant === 'summary' ? 'Summary' : 'Detail';
+  const fileLabel = pdfFileLabel_(year, month).replace(/\s+/g, '-');
+  return 'Monthly-Report-' + tag + '-' + fileLabel + '.pdf';
+}
+
+function addSummaryDetailLink_(doc, bar, fileName, pageNum) {
+  if (!bar || !fileName || !pageNum) return;
+  try {
+    doc.link(bar.x, bar.y, bar.w, bar.h, { url: fileName + '#page=' + pageNum });
+  } catch (e) { /* some viewers ignore cross-file links */ }
+}
+
 function createPdfContext_(jsPDFLib, opts) {
   opts = opts || {};
   const doc = new jsPDFLib({ orientation: opts.orientation || 'portrait', unit: 'mm', format: 'a4' });
@@ -132,6 +146,11 @@ function createPdfContext_(jsPDFLib, opts) {
     reportTitle: 'Monthly Report',
     reportSubtitle: 'Compliance snapshot — SDD, Mill, Traceability, Grievance, NBL, Facility, EUDR',
     detailLevel: 'summary',
+    pdfMode: opts.pdfMode || 'detail',
+    detailAnchors: opts.detailAnchors || null,
+    detailFileName: opts.detailFileName || '',
+    sectionAnchors: {},
+    lastSectionBar: null,
   };
 
   function markContent_(yPos) {
@@ -171,19 +190,29 @@ function createPdfContext_(jsPDFLib, opts) {
     return pageH - mFoot - 6 - y;
   }
 
+  function ensureBlockFits_(needed) {
+    const extra = sectionStarted ? PDF_LAYOUT.sectionGap : 0;
+    if (remainingSpace_() < needed + extra) {
+      doc.addPage();
+      y = drawCompactHeader_();
+    }
+  }
+
   function drawSectionBar_(title, accent, fontSize) {
     ensureSpace(14);
+    const barY = y;
     doc.setFillColor.apply(doc, accent || BRAND);
-    doc.roundedRect(mL, y, cW, 8, 1.2, 1.2, 'F');
+    doc.roundedRect(mL, barY, cW, 8, 1.2, 1.2, 'F');
     doc.setTextColor.apply(doc, WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(fontSize || 9);
-    doc.text(title, mL + 3, y + 5.5);
-    y += 8 + PDF_LAYOUT.afterSectionBar;
+    doc.text(title, mL + 3, barY + 5.5);
+    y = barY + 8 + PDF_LAYOUT.afterSectionBar;
+    ctx.lastSectionBar = { x: mL, y: barY, w: cW, h: 8 };
     markContent_(y);
   }
 
-  function beginSection_(title, accent) {
+  function beginSection_(title, accent, anchorId) {
     if (sectionStarted && remainingSpace_() < 30) {
       doc.addPage();
       y = drawCompactHeader_();
@@ -192,6 +221,11 @@ function createPdfContext_(jsPDFLib, opts) {
     }
     sectionStarted = true;
     drawSectionBar_(title, accent);
+    if (anchorId && ctx.pdfMode === 'detail') {
+      ctx.sectionAnchors[anchorId] = doc.internal.getNumberOfPages();
+    } else if (anchorId && ctx.pdfMode === 'summary' && ctx.detailAnchors && ctx.detailFileName) {
+      addSummaryDetailLink_(doc, ctx.lastSectionBar, ctx.detailFileName, ctx.detailAnchors[anchorId]);
+    }
   }
 
   function beginSubsection_(title, accent) {
@@ -377,6 +411,7 @@ function createPdfContext_(jsPDFLib, opts) {
   ctx.setY = function(v) { y = v; markContent_(v); };
   ctx.getY = function() { return y; };
   ctx.ensureSpace_ = function(needed) { ensureSpace(needed); };
+  ctx.ensureBlockFits_ = ensureBlockFits_;
 
   return ctx;
 }
@@ -478,7 +513,7 @@ function drawCoverPage_(ctx, stats, sections, full) {
 }
 
 function drawSddSection_(ctx, rows, noHeader) {
-  if (!noHeader) ctx.beginSection_('01 · Supplier Due Diligence', BRAND);
+  if (!noHeader) ctx.beginSection_('01 · Supplier Due Diligence', BRAND, 'sdd');
   ctx.beginSubsection_(MRD_SDD_TABLE_TITLE, BRAND);
   const w = colWidths_([14, 28, 12, 22, 14], ctx.cW);
   const body = (rows || []).length
@@ -519,7 +554,7 @@ function millDetailCells_(item) {
 function drawMillSection_(ctx, data, full) {
   const mills = data.mills || [];
   if (!mills.length && !(data.highRiskMills || []).length) return;
-  ctx.beginSection_('02 · Mill Onboarding', BRAND);
+  ctx.beginSection_('02 · Mill Onboarding', BRAND, 'mill');
 
   if (mills.length) {
     if (full) {
@@ -611,13 +646,13 @@ function traceMetricCards_(t) {
 
 function drawTraceTotalsSection_(ctx, totals, year, noHeader) {
   const t = totals || {};
-  if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
+  if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE, 'trace');
   drawMetricCardGrid_(ctx, traceMetricCards_(t), { cols: 4, cardH: 24, gapAfter: 0 });
 }
 
 function drawGrvSection_(ctx, rows, full, noHeader) {
   if (!rows.length) return;
-  if (!noHeader) ctx.beginSection_('04 · Grievance Monitoring', GRV_PURPLE);
+  if (!noHeader) ctx.beginSection_('04 · Grievance Monitoring', GRV_PURPLE, 'grv');
   if (!full) {
     const w = colWidths_([12, 12, 14, 12, 16, 12, 12], ctx.cW);
     ctx.drawAutoTable_(
@@ -678,7 +713,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
 
 function drawNblSection_(ctx, rows) {
   if (!rows.length) return;
-  ctx.beginSection_('05 · Active NBL Mills', NBL_RED);
+  ctx.beginSection_('05 · Active NBL Mills', NBL_RED, 'nbl');
   const w = colWidths_([18, 22, 24, 14, 12, 8], ctx.cW);
   ctx.drawAutoTable_(
     pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List']),
@@ -885,6 +920,7 @@ function drawFacilityBlock_(ctx, bundle, full, idx) {
 function drawFacilitySection_(ctx, bundles, full) {
   const active = (bundles || []).filter(function(b) { return (b.companies || []).length > 0; });
   if (!active.length) return;
+  ctx.beginSection_('06 · Facility Performance', PK_GREEN, 'facility');
   active.forEach(function(bundle, idx) {
     drawFacilityBlock_(ctx, bundle, full, idx);
   });
@@ -892,7 +928,7 @@ function drawFacilitySection_(ctx, bundles, full) {
 
 function drawEudrSection_(ctx, rows, noHeader) {
   if (!rows.length) return;
-  if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
+  if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL, 'eudr');
   const w = colWidths_([12, 18, 20, 20, 14, 16], ctx.cW);
   ctx.drawAutoTable_(
     pdfTableHead(MRD_EUDR_COLS),
@@ -991,7 +1027,7 @@ function drawMetricCardGrid_(ctx, items, opts) {
   const mL = ctx.mL;
   const cW = ctx.cW;
   const cols = opts.cols || 3;
-  const gap = opts.gap != null ? opts.gap : 4;
+  const gap = opts.gap != null ? opts.gap : PDF_LAYOUT.cardGap;
   const cardH = opts.cardH || 20;
   const cardW = (cW - gap * (cols - 1)) / cols;
   const rowCount = Math.ceil(items.length / cols);
@@ -1120,9 +1156,15 @@ function sectionSummaryConfig_(id, stats, data, year) {
   return configs[id] || null;
 }
 
-function drawSectionSummaryBlock_(ctx, cfg) {
+function drawSectionSummaryBlock_(ctx, sectionId, cfg) {
   if (!cfg) return;
-  ctx.beginSection_(cfg.num + ' · ' + cfg.title, cfg.accent);
+  const cols = Math.min(4, cfg.metrics.length);
+  const cardRows = Math.ceil(cfg.metrics.length / cols);
+  const cardH = 17;
+  const gridH = cardRows * cardH + Math.max(0, cardRows - 1) * PDF_LAYOUT.cardGap;
+  const blockNeed = 8 + PDF_LAYOUT.afterSectionBar + 3 + PDF_LAYOUT.descToCards + gridH + PDF_LAYOUT.cardsToContent;
+  ctx.ensureBlockFits_(blockNeed);
+  ctx.beginSection_(cfg.num + ' · ' + cfg.title, cfg.accent, sectionId);
   const doc = ctx.doc;
   const descY = ctx.getY() + PDF_LAYOUT.sectionDescGap;
   doc.setFont('helvetica', 'normal');
@@ -1131,9 +1173,10 @@ function drawSectionSummaryBlock_(ctx, cfg) {
   doc.text(cfg.desc, ctx.mL, descY);
   ctx.setY(descY + PDF_LAYOUT.descToCards);
   drawMetricCardGrid_(ctx, cfg.metrics, {
-    cols: Math.min(4, cfg.metrics.length),
+    cols: cols,
     accent: cfg.accent,
-    cardH: 19,
+    cardH: cardH,
+    gap: PDF_LAYOUT.cardGap,
     gapAfter: PDF_LAYOUT.cardsToContent,
   });
 }
@@ -1143,7 +1186,7 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year) {
   bodySections.forEach(function(id) {
     const cfg = sectionSummaryConfig_(id, stats, data, year);
     if (!cfg) return;
-    drawSectionSummaryBlock_(ctx, cfg);
+    drawSectionSummaryBlock_(ctx, id, cfg);
     if (id === 'sdd') drawSddSection_(ctx, data.sdd || [], true);
     else if (id === 'trace') { /* totals shown in metric cards above */ }
     else if (id === 'grv') drawGrvSection_(ctx, data.grv || [], false, true);
@@ -1168,9 +1211,7 @@ function pdfFileLabel_(year, month) {
 }
 
 function saveMonthlyReportPdf_(doc, variant, year, month) {
-  const tag = variant === 'summary' ? 'Summary' : 'Detail';
-  const fileLabel = pdfFileLabel_(year, month).replace(/\s+/g, '-');
-  doc.save('Monthly-Report-' + tag + '-' + fileLabel + '.pdf');
+  doc.save(monthlyReportFileName_(variant, year, month));
 }
 
 function finalizePdf_(ctx) {
@@ -1183,7 +1224,11 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
   const data = opts.data || {};
   const stats = data.stats || {};
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
-  const ctx = createPdfContext_(jsPDFLib);
+  const ctx = createPdfContext_(jsPDFLib, {
+    pdfMode: 'summary',
+    detailAnchors: opts.detailAnchors || null,
+    detailFileName: opts.detailFileName || '',
+  });
   ctx.periodText = 'Period: ' + periodLabel(opts.year, opts.month);
   ctx.generatedAt = new Date().toLocaleString('en-GB', { hour12: false });
   ctx.reportTitle = 'Monthly Report — Summary';
@@ -1194,7 +1239,12 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
 
   if (sections.indexOf('kpi') !== -1) {
     docSetSubhead_(ctx, 'Overview');
-    drawMetricCardGrid_(ctx, websiteKpiItems_(stats), { cols: 4, cardH: 22, gapAfter: 0 });
+    drawMetricCardGrid_(ctx, websiteKpiItems_(stats), {
+      cols: 4,
+      cardH: 18,
+      gap: PDF_LAYOUT.cardGap,
+      gapAfter: 0,
+    });
     ctx.setY(ctx.getY() + PDF_LAYOUT.sectionGap);
   }
 
@@ -1204,20 +1254,20 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
 
 function docSetSubhead_(ctx, text) {
   const doc = ctx.doc;
-  ctx.ensureSpace_(12);
-  const textY = ctx.getY() + 2;
+  ctx.ensureSpace_(10);
+  const textY = ctx.getY() + 1;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor.apply(doc, INK);
   doc.text(text, ctx.mL, textY);
-  ctx.setY(textY + 6);
+  ctx.setY(textY + 5);
 }
 
 function buildDetailPdfDoc_(jsPDFLib, opts) {
   const data = opts.data || {};
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const detailSections = sections.filter(function(id) { return id !== 'kpi'; });
-  const ctx = createPdfContext_(jsPDFLib, { orientation: 'landscape' });
+  const ctx = createPdfContext_(jsPDFLib, { orientation: 'landscape', pdfMode: 'detail' });
   ctx.periodText = 'Period: ' + periodLabel(opts.year, opts.month);
   ctx.generatedAt = new Date().toLocaleString('en-GB', { hour12: false });
 
@@ -1233,7 +1283,7 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
   } else {
     drawDetailReportBody_(ctx, data, detailSections, opts.year);
   }
-  return finalizePdf_(ctx);
+  return { doc: finalizePdf_(ctx), anchors: ctx.sectionAnchors };
 }
 
 function drawCompactHeaderForExport_(ctx) {
@@ -1261,13 +1311,18 @@ export async function buildMonthlyReportPdfPair_(opts) {
   const jsPDFLib = opts.getJsPDF();
   if (!jsPDFLib) throw new Error('PDF library is not ready.');
 
-  const summaryDoc = buildSummaryPdfDoc_(jsPDFLib, opts);
+  const detailFileName = monthlyReportFileName_('detail', opts.year, opts.month);
+  const detailResult = buildDetailPdfDoc_(jsPDFLib, opts);
+  const summaryDoc = buildSummaryPdfDoc_(jsPDFLib, Object.assign({}, opts, {
+    detailAnchors: detailResult.anchors,
+    detailFileName: detailFileName,
+  }));
+
   saveMonthlyReportPdf_(summaryDoc, 'summary', opts.year, opts.month);
 
   await new Promise(function(resolve) { setTimeout(resolve, 350); });
 
-  const detailDoc = buildDetailPdfDoc_(jsPDFLib, opts);
-  saveMonthlyReportPdf_(detailDoc, 'detail', opts.year, opts.month);
+  saveMonthlyReportPdf_(detailResult.doc, 'detail', opts.year, opts.month);
 }
 
 export const MRD_PDF_SECTIONS = [
