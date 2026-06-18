@@ -748,7 +748,6 @@ function renderGrvSection(rows) {
     { key: 'Verification Findings', label: 'Verification' },
     { key: 'Corrective Action', label: 'Corrective Action' },
     { key: 'Preventive Action', label: 'Preventive Action' },
-    { key: 'Date Closed', label: 'Date Closed' },
   ];
   const activeFields = fieldDefs.filter(function(f) {
     return filtered.some(function(item) { return hasCellValue(item.row[f.key]); });

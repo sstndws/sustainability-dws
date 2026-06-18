@@ -593,9 +593,9 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
     return;
   }
 
-  const w = colWidths_([10, 10, 12, 12, 14, 8, 8, 18, 14, 12, 12, 10], ctx.cW);
+  const w = colWidths_([10, 10, 12, 12, 14, 8, 8, 18, 14, 12, 12], ctx.cW);
   ctx.drawAutoTable_(
-    [['ID', 'Date', 'Complainant', 'Category', 'Subject', 'Risk', 'Status', 'Description', 'Verification', 'Corrective', 'Preventive', 'Closed']],
+    [['ID', 'Date', 'Complainant', 'Category', 'Subject', 'Risk', 'Status', 'Description', 'Verification', 'Corrective', 'Preventive']],
     rows.map(function(item) {
       const r = item.row;
       return [
@@ -610,7 +610,6 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
         pdfSanitize(r['Verification Findings']),
         pdfSanitize(r['Corrective Action']),
         pdfSanitize(r['Preventive Action']),
-        pdfSanitize(r['Date Closed']),
       ];
     }),
     GRV_PURPLE,
@@ -618,7 +617,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
       3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] }, 6: { cellWidth: w[6] },
       7: { cellWidth: w[7], fontSize: 6.5 }, 8: { cellWidth: w[8], fontSize: 6.5 },
-      9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 }, 11: { cellWidth: w[11] },
+      9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
     },
     { fontSize: 7, cellPadding: 2.2 }
   );

@@ -10564,7 +10564,6 @@ function initDashboardApp() {
 
   // ─── GRIEVANCE DATA ─────────────────────────────────────
   const GRV_FIELDS = ['Grievance ID','Date Received','Complainant','Grievance Source','Grievance Publisher','Grievance Category','Subject','Relationship','Grievance Subject','Grievance Subject Group','Subject ID','Grievance Description','Risk Classification','Verification Findings','Corrective Action','Preventive Action','Responsible Div./Dep.','Grievance Status','Date Closed','Action Taken','Published'];
-  const GRV_EXPAND_PRIMARY = ['Date Closed', 'Action Taken', 'Published'];
   /** Fields shown when a table row is expanded (edit modal still uses full GRV_FIELDS). */
   const GRV_EXPAND_FIELDS = [
     'Grievance ID',
@@ -10857,16 +10856,11 @@ function initDashboardApp() {
       return !q || (d._sddSearchBlob || '').includes(q);
     }));
     if (filtered.length === 0) {
-      body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
+      body.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`;
       return;
     }
     body.innerHTML = filtered.map((d, i) => {
-      const primaryHTML = GRV_EXPAND_PRIMARY.map(function(f) {
-        return grvExpandFieldHtml_(f, d[f]);
-      }).join('');
-      const detailHTML = GRV_EXPAND_FIELDS.filter(function(f) {
-        return GRV_EXPAND_PRIMARY.indexOf(f) === -1;
-      }).map(function(f) {
+      const detailHTML = GRV_EXPAND_FIELDS.map(function(f) {
         return grvExpandFieldHtml_(f, d[f]);
       }).join('');
       const rowJson = JSON.stringify(d).replace(/'/g, '&#39;');
@@ -10880,14 +10874,16 @@ function initDashboardApp() {
           <td>${escHtml(d['Grievance Subject'] || '—')}</td>
           <td>${riskBadge(d['Risk Classification'])}</td>
           <td>${statusBadgeGrv(d['Grievance Status'])}</td>
+          <td class="grv-cell-date"><span class="grv-date-val">${escHtml(grvFormatDateDisplay_(d['Date Closed']))}</span></td>
+          <td class="grv-cell-action">${escHtml(d['Action Taken'] || '—')}</td>
+          <td>${escHtml(d['Published'] || '—')}</td>
         </tr>
         <tr class="grv-expand-row">
-          <td colspan="7"><div class="grv-detail" id="grv-detail-${i}">
+          <td colspan="10"><div class="grv-detail" id="grv-detail-${i}">
             <div class="grv-detail-actions">
               <button type="button" class="btn-sm btn-outline btn-edit" data-row='${rowJson}' data-sheet="grievance">Edit</button>
               <button type="button" class="btn-sm btn-outline btn-delete" data-rownum="${d._row}" data-sheet="grievance">Delete</button>
             </div>
-            <div class="grv-detail-primary">${primaryHTML}</div>
             ${detailHTML}
           </div></td>
         </tr>`;
