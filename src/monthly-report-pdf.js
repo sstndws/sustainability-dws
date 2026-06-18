@@ -40,18 +40,20 @@ const WHITE = [255, 255, 255];
 const BG_SOFT = [252, 250, 250];
 const BORDER = [230, 220, 220];
 
-/** Vertical rhythm — keep content clear of page headers and section bars. */
+/** Vertical rhythm — wide gaps only between major sections; tight within each block. */
 const PDF_LAYOUT = {
-  bodyGap: 10,
-  sectionGap: 10,
-  afterSectionBar: 6,
-  subsectionGap: 8,
-  sectionDescGap: 5,
+  bodyGap: 8,
+  sectionGap: 12,
+  afterSectionBar: 2,
+  subsectionGap: 2,
+  sectionDescGap: 1,
+  descToCards: 3,
+  cardsToContent: 2,
   headerMainH: 32,
   headerDetailH: 26,
   headerCompactH: 16,
-  compactBodyGap: 8,
-  autoTableTopMargin: 26,
+  compactBodyGap: 6,
+  autoTableTopMargin: 24,
 };
 
 const DEFAULT_SECTIONS = ['kpi', 'sdd', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
@@ -210,7 +212,7 @@ function createPdfContext_(jsPDFLib, opts) {
       doc.addPage();
       y = drawCompactHeader_();
     } else if (sectionStarted) {
-      y += 6;
+      y += PDF_LAYOUT.subsectionGap;
     }
     sectionStarted = true;
     drawSectionBar_(title, accent);
@@ -284,7 +286,7 @@ function createPdfContext_(jsPDFLib, opts) {
     if (table && table.finalY) {
       const endPage = doc.internal.getNumberOfPages();
       markPageSpan_(endPage, endPage === startPage ? tableTop : PDF_LAYOUT.autoTableTopMargin, table.finalY);
-      y = table.finalY + (opts.gapAfter == null ? 4 : opts.gapAfter);
+      y = table.finalY + (opts.gapAfter == null ? 2 : opts.gapAfter);
       markContent_(y);
     }
   }
@@ -610,7 +612,7 @@ function traceMetricCards_(t) {
 function drawTraceTotalsSection_(ctx, totals, year, noHeader) {
   const t = totals || {};
   if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
-  drawMetricCardGrid_(ctx, traceMetricCards_(t), { cols: 4, cardH: 24, gapAfter: 3 });
+  drawMetricCardGrid_(ctx, traceMetricCards_(t), { cols: 4, cardH: 24, gapAfter: 0 });
 }
 
 function drawGrvSection_(ctx, rows, full, noHeader) {
@@ -1030,7 +1032,7 @@ function drawMetricCardGrid_(ctx, items, opts) {
     }
   });
 
-  ctx.setY(y0 + blockH + (opts.gapAfter == null ? 4 : opts.gapAfter));
+  ctx.setY(y0 + blockH + (opts.gapAfter == null ? 2 : opts.gapAfter));
 }
 
 function sectionSummaryConfig_(id, stats, data, year) {
@@ -1127,8 +1129,13 @@ function drawSectionSummaryBlock_(ctx, cfg) {
   doc.setFontSize(7.5);
   doc.setTextColor.apply(doc, INK_MUTED);
   doc.text(cfg.desc, ctx.mL, descY);
-  ctx.setY(descY + 7);
-  drawMetricCardGrid_(ctx, cfg.metrics, { cols: Math.min(4, cfg.metrics.length), accent: cfg.accent, cardH: 19, gapAfter: 5 });
+  ctx.setY(descY + PDF_LAYOUT.descToCards);
+  drawMetricCardGrid_(ctx, cfg.metrics, {
+    cols: Math.min(4, cfg.metrics.length),
+    accent: cfg.accent,
+    cardH: 19,
+    gapAfter: PDF_LAYOUT.cardsToContent,
+  });
 }
 
 function drawSummaryReportBody_(ctx, data, sections, stats, year) {
@@ -1187,7 +1194,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
 
   if (sections.indexOf('kpi') !== -1) {
     docSetSubhead_(ctx, 'Overview');
-    drawMetricCardGrid_(ctx, websiteKpiItems_(stats), { cols: 4, cardH: 22, gapAfter: 4 });
+    drawMetricCardGrid_(ctx, websiteKpiItems_(stats), { cols: 4, cardH: 22, gapAfter: 0 });
     ctx.setY(ctx.getY() + PDF_LAYOUT.sectionGap);
   }
 
@@ -1197,13 +1204,13 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
 
 function docSetSubhead_(ctx, text) {
   const doc = ctx.doc;
-  ctx.ensureSpace_(14);
-  const textY = ctx.getY() + 5;
+  ctx.ensureSpace_(12);
+  const textY = ctx.getY() + 2;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor.apply(doc, INK);
   doc.text(text, ctx.mL, textY);
-  ctx.setY(textY + 10);
+  ctx.setY(textY + 6);
 }
 
 function buildDetailPdfDoc_(jsPDFLib, opts) {
