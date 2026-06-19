@@ -7448,6 +7448,13 @@ function initDashboardApp() {
     }
     var lists = await ensureNblListsForCheck_();
     var matches = millNblSourceMatchesForRow_(row || {}, lists);
+    // DEBUG: log matches so we can trace incorrect risers
+    if (matches.length) {
+      console.log('[NBL-DEBUG] mill:', row['GROUP NAME'], '/', row['COMPANY NAME'],
+        '→ matches:', matches.map(function(m) {
+          return '{riser:' + m.riser + ', by:' + m.by + ', target:' + m.target + ', src:' + m.source + '}';
+        }).join(' | '));
+    }
     var info = millNblByInfoFromMatches_(matches);
     info.matches = matches;
     return info;
