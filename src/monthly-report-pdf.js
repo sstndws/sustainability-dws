@@ -12,6 +12,7 @@ import {
   MRD_EUDR_COLS,
   MRD_FACILITY_COMPANY_COLS,
   facilityPctColLabel,
+  facilityTtmColLabel,
   facilitySummaryColLabels,
   pdfTableHead,
   pdfHeadRow,
@@ -21,6 +22,15 @@ import {
   sddCompanyName,
   sddDateImport,
   sddLastUpdate,
+  mrdSortSddRows_,
+  mrdSortMillItems_,
+  mrdSortGrvItemsByDateDesc_,
+  mrdSortEudrItems_,
+  mrdSortFacilityBundles_,
+  mrdSortBundlesByFacility_,
+  mrdSortFacilityCompanies_,
+  mrdFormatNblRisers_,
+  mrdReportHeaderMeta_,
 } from './monthly-report-labels.js';
 
 const BRAND = [139, 26, 26];
@@ -51,8 +61,8 @@ const PDF_LAYOUT = {
   descLineH: 3.4,
   cardsToContent: 4,
   cardGap: 3,
-  headerMainH: 32,
-  headerDetailH: 26,
+  headerMainH: 44,
+  headerDetailH: 32,
   headerCompactH: 16,
   compactBodyGap: 4,
   autoTableTopMargin: 22,
@@ -71,8 +81,14 @@ function monthLabel(month) {
   return month ? names[parseInt(month, 10)] || month : 'All months';
 }
 
-function periodLabel(year, month) {
-  return (year || 'All years') + ' · ' + monthLabel(month);
+function applyReportHeaderMeta_(ctx, year, month) {
+  const meta = mrdReportHeaderMeta_(year, month);
+  ctx.periodText = meta.periodLine;
+  ctx.dataPeriodText = meta.dataPeriodLine;
+  ctx.cutoffText = meta.cutoffLine;
+  ctx.cutoffCompact = meta.period + ' · ' + meta.dataPeriod + ' · ' + meta.cutoffCompact;
+  ctx.exportedAt = meta.exportedAt;
+  return meta;
 }
 
 function isNblYes_(val) {
@@ -92,7 +108,7 @@ function colWidths_(ratios, totalW) {
   return widths;
 }
 
-function drawFooters_(doc, pageW, pageH, mL, mR, mFoot) {
+function drawFooters_(doc, pageW, pageH, mL, mR, mFoot, exportedAt) {
   const total = doc.internal.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
@@ -102,7 +118,10 @@ function drawFooters_(doc, pageW, pageH, mL, mR, mFoot) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor.apply(doc, INK_LIGHT);
-    doc.text('Sustainability Dashboard · Monthly Report', mL, pageH - 5);
+    const left = exportedAt
+      ? 'Sustainability Dashboard · Monthly Report · Exported ' + exportedAt
+      : 'Sustainability Dashboard · Monthly Report';
+    doc.text(left, mL, pageH - 5);
     doc.text('Page ' + p + ' of ' + total, pageW - mR, pageH - 5, { align: 'right' });
   }
 }
@@ -136,7 +155,10 @@ function createPdfContext_(jsPDFLib, opts) {
     mFoot: mFoot,
     cW: cW,
     periodText: '',
-    generatedAt: '',
+    dataPeriodText: '',
+    cutoffText: '',
+    cutoffCompact: '',
+    exportedAt: '',
     reportTitle: 'Monthly Report',
     reportSubtitle: 'Compliance snapshot — SDD, Mill, Traceability, Grievance, NBL, Facility, EUDR',
     detailLevel: 'summary',
@@ -173,16 +195,24 @@ function createPdfContext_(jsPDFLib, opts) {
     doc.setFont('helvetica', 'bold');
     if (ctx.isLandscape) {
       doc.setFontSize(11);
-      doc.text('Monthly Report — Detail', mL, 10);
+      doc.text('Monthly Report — Detail', mL, 9);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.text(ctx.periodText + '   ·   ' + ctx.generatedAt, mL, 17);
+      doc.setFontSize(6.5);
+      doc.text(ctx.periodText || '', mL, 14.5);
+      doc.text(ctx.dataPeriodText || '', mL, 18.5);
+      doc.text(ctx.cutoffText || '', mL, 22.5);
+      if (ctx.exportedAt) {
+        doc.text('Generated on ' + ctx.exportedAt, pageW - mR, 22.5, { align: 'right' });
+      }
     } else {
       doc.setFontSize(9.5);
       doc.text('Monthly Report', mL, 6.5);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.text(ctx.periodText + '   ·   ' + ctx.generatedAt, mL, 11.5);
+      doc.setFontSize(6.5);
+      doc.text(ctx.cutoffCompact || ctx.periodText || '', mL, 11.5);
+      if (ctx.exportedAt) {
+        doc.text('Generated on ' + ctx.exportedAt, pageW - mR, 11.5, { align: 'right' });
+      }
     }
     return bandH + PDF_LAYOUT.compactBodyGap;
   }
@@ -299,8 +329,8 @@ function createPdfContext_(jsPDFLib, opts) {
         cellPadding: { top: 1.2, right: 1, bottom: 1.2, left: 1 },
       },
       alternateRowStyles: { fillColor: [255, 253, 253] },
-      rowPageBreak: 'avoid',
-      showHead: 'firstPage',
+      rowPageBreak: opts.rowPageBreak || 'avoid',
+      showHead: opts.showHeadEveryPage ? 'everyPage' : 'firstPage',
     };
     doc.autoTable(Object.assign({}, base, {
       head: head,
@@ -365,19 +395,17 @@ function createPdfContext_(jsPDFLib, opts) {
     doc.setTextColor.apply(doc, WHITE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(17);
-    doc.text(ctx.reportTitle || 'Monthly Report', mL, 13);
-    const sub = String(ctx.reportSubtitle || '').trim();
+    doc.text(ctx.reportTitle || 'Monthly Report', mL, 11.5);
     doc.setFont('helvetica', 'normal');
-    if (sub) {
-      doc.setFontSize(8.5);
-      doc.text(sub, mL, 20);
-      doc.setFontSize(8);
-      doc.text(ctx.periodText + '   ·   Generated: ' + ctx.generatedAt, mL, 26);
-      markContent_(bandH);
-      return bandH;
+    doc.setFontSize(7.8);
+    doc.text(ctx.periodText || '', mL, 18.5);
+    doc.setFontSize(7.5);
+    doc.text(ctx.dataPeriodText || '', mL, 23.5);
+    doc.text(ctx.cutoffText || '', mL, 28.5);
+    if (ctx.exportedAt) {
+      doc.setFontSize(6.5);
+      doc.text('Generated on ' + ctx.exportedAt, pageW - mR, 28.5, { align: 'right' });
     }
-    doc.setFontSize(8);
-    doc.text(ctx.periodText + '   ·   Generated: ' + ctx.generatedAt, mL, 22);
     markContent_(bandH);
     return bandH;
   }
@@ -396,11 +424,7 @@ function createPdfContext_(jsPDFLib, opts) {
     let total = doc.internal.getNumberOfPages();
     for (let p = total; p >= 2; p--) {
       const bottom = pageBottomY[p] || 0;
-      const top = pageTopY[p] || bottom;
-      const span = bottom - top;
-      const isEmpty = bottom < MIN_CONTENT_Y;
-      const isOrphanStrip = span > 0 && span < 14;
-      if (isEmpty || isOrphanStrip) {
+      if (bottom < MIN_CONTENT_Y) {
         doc.deletePage(p);
       }
     }
@@ -520,6 +544,7 @@ function drawCoverPage_(ctx, stats, sections, full) {
 }
 
 function drawSddSection_(ctx, rows, noHeader) {
+  rows = mrdSortSddRows_(rows || []);
   if (!noHeader) ctx.beginSection_('01 · Supplier Due Diligence', BRAND);
   ctx.beginSubsection_(MRD_SDD_TABLE_TITLE, BRAND);
   const w = colWidths_([14, 28, 12, 22, 14], ctx.cW);
@@ -559,7 +584,7 @@ function millDetailCells_(item) {
 }
 
 function drawMillSection_(ctx, data, full) {
-  const mills = data.mills || [];
+  const mills = mrdSortMillItems_(data.mills || []);
   if (!mills.length && !(data.highRiskMills || []).length) return;
   ctx.beginSection_('02 · Mill Onboarding', BRAND);
 
@@ -619,7 +644,7 @@ function drawMillSection_(ctx, data, full) {
     }
   }
 
-  const highRisk = data.highRiskMills || [];
+  const highRisk = mrdSortMillItems_(data.highRiskMills || []);
   if (highRisk.length) {
     ctx.beginSubsection_('High Risk Suppliers', BRAND);
     const hw = colWidths_([18, 22, 22, 14, 14], ctx.cW);
@@ -657,7 +682,21 @@ function drawTraceTotalsSection_(ctx, totals, year, noHeader) {
   drawMetricCardGrid_(ctx, traceMetricCards_(t), { cols: 4, cardH: 24, gapAfter: 0 });
 }
 
+function grvStatusCounts_(rows) {
+  let open = 0;
+  let closed = 0;
+  let invalid = 0;
+  (rows || []).forEach(function(item) {
+    const st = String((item.row || item)['Grievance Status'] || '').toLowerCase();
+    if (st.includes('open')) open += 1;
+    else if (st.includes('invalid')) invalid += 1;
+    else if (st.includes('closed')) closed += 1;
+  });
+  return { open: open, closed: closed, invalid: invalid };
+}
+
 function drawGrvSection_(ctx, rows, full, noHeader) {
+  rows = mrdSortGrvItemsByDateDesc_(rows);
   if (!rows.length) return;
   if (!noHeader) ctx.beginSection_('04 · Grievance Monitoring', GRV_PURPLE);
   if (!full) {
@@ -683,6 +722,13 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       },
       { fontSize: 6.5, cellPadding: 2, headFontSize: 5.5, headMinHeight: 11 }
     );
+    const docSum = ctx.doc;
+    ctx.ensureSpace_(6);
+    docSum.setFont('helvetica', 'italic');
+    docSum.setFontSize(6.5);
+    docSum.setTextColor.apply(docSum, INK_LIGHT);
+    docSum.text(rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' in this period', ctx.mL, ctx.getY() + 3);
+    ctx.setY(ctx.getY() + 6);
     return;
   }
 
@@ -697,13 +743,13 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
         pdfSanitize(r['Grievance Category']),
         pdfSanitize(r['Complainant']),
         pdfSanitize(r['Grievance Subject Group']),
-        pdfSanitize(r['Grievance Subject'] || r['Subject']),
+        pdfCellTrim(r['Grievance Subject'] || r['Subject'], 48),
         pdfSanitize(r['Risk Classification']),
         pdfSanitize(r['Grievance Status']),
-        pdfSanitize(r['Grievance Description']),
-        pdfSanitize(r['Verification Findings']),
-        pdfSanitize(r['Corrective Action']),
-        pdfSanitize(r['Preventive Action']),
+        pdfCellTrim(r['Grievance Description'], 320),
+        pdfCellTrim(r['Verification Findings'], 120),
+        pdfCellTrim(r['Corrective Action'], 120),
+        pdfCellTrim(r['Preventive Action'], 120),
       ];
     }),
     GRV_PURPLE,
@@ -714,16 +760,24 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
       11: { cellWidth: w[11], fontSize: 6.5 },
     },
-    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 12 }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 12, rowPageBreak: 'auto', showHeadEveryPage: true }
   );
+  const doc = ctx.doc;
+  ctx.ensureSpace_(6);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  doc.setTextColor.apply(doc, INK_LIGHT);
+  doc.text(rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' in this period', ctx.mL, ctx.getY() + 3);
+  ctx.setY(ctx.getY() + 6);
 }
 
 function drawNblSection_(ctx, rows) {
+  rows = mrdSortMillItems_(rows);
   if (!rows.length) return;
   ctx.beginSection_('05 · Active NBL Mills', NBL_RED);
-  const w = colWidths_([18, 22, 24, 14, 12, 8], ctx.cW);
+  const w = colWidths_([14, 18, 18, 10, 10, 8, 14], ctx.cW);
   ctx.drawAutoTable_(
-    pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List']),
+    pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List', 'NBL Riser']),
     rows.map(function(item) {
       const r = item.row || item;
       return [
@@ -733,33 +787,40 @@ function drawNblSection_(ctx, rows) {
         pdfSanitize(r['PROVINCE']),
         pdfSanitize(item.risk || r['RESULT RISK LEVEL']),
         'Yes',
+        pdfSanitize(mrdFormatNblRisers_(item)),
       ];
     }),
     NBL_RED,
-    { 0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] } }
+    {
+      0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] },
+      4: { cellWidth: w[4] }, 5: { cellWidth: w[5], halign: 'center' }, 6: { cellWidth: w[6], fontSize: 6.5 },
+    },
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 11 }
   );
 }
 
-/** Summary PDF — Active NBL list (Company Group Name · Company Name). */
+/** Summary PDF — Active NBL list (Company Group Name · Company Name · NBL Riser). */
 function drawNblSummaryList_(ctx, rows) {
+  rows = mrdSortMillItems_(rows);
   if (!rows.length) return;
-  const w = colWidths_([38, 62], ctx.cW);
+  const w = colWidths_([28, 36, 36], ctx.cW);
   ctx.drawAutoTable_(
-    pdfTableHead(['Company Group Name', 'Company Name']),
+    pdfTableHead(['Company Group Name', 'Company Name', 'NBL Riser']),
     rows.map(function(item) {
       const r = item.row || item;
       return [
         pdfSanitize(r['GROUP NAME'] || r.group || ''),
         pdfSanitize(r['COMPANY NAME'] || r.company || ''),
+        pdfSanitize(mrdFormatNblRisers_(item)),
       ];
     }),
     NBL_RED,
-    { 0: { cellWidth: w[0] }, 1: { cellWidth: w[1] } },
-    { fontSize: 7.5, cellPadding: 2.5, gapAfter: 3 }
+    { 0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2], fontSize: 6.5 } },
+    { fontSize: 7.5, cellPadding: 2.5, gapAfter: 3, headFontSize: 5.4, headMinHeight: 11 }
   );
 }
 
-function drawFacilityHero_(ctx, bundle, accent, pctLabel, facilityPct, companiesCount) {
+function drawFacilityHero_(ctx, bundle, accent, pctLabel, facilityPct, ttmLabel, facilityTtm, companiesCount) {
   const doc = ctx.doc;
   const mL = ctx.mL;
   const cW = ctx.cW;
@@ -793,14 +854,16 @@ function drawFacilityHero_(ctx, bundle, accent, pctLabel, facilityPct, companies
   doc.setTextColor.apply(doc, INK_MUTED);
   const metaY = y0 + 9 + nameLines.length * 3.6 + 1;
   doc.text(
-    pctLabel + ': ' + pdfSanitize(facilityPct) + '   ·   ' + companiesCount + ' companies',
+    ttmLabel + ': ' + pdfSanitize(facilityTtm) + '   ·   '
+      + pctLabel + ': ' + pdfSanitize(facilityPct) + '   ·   '
+      + companiesCount + ' companies',
     mL + 28,
     metaY
   );
   ctx.setY(y0 + boxH + 2);
 }
 
-function drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, accent) {
+function drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, facilityTtm, ttmLabel, accent) {
   ctx.ensureSpace_(18);
   const doc = ctx.doc;
   const mL = ctx.mL;
@@ -810,7 +873,8 @@ function drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, accent) {
     { label: 'No Buy List', value: sum.nblYes > 0 ? String(sum.nblYes) + ' Yes' : '0' },
     { label: 'High Risk', value: String(sum.highRisk || 0) },
     { label: 'Total Grievance', value: String(sum.grievanceSum || 0) },
-    { label: 'Est. ISPO Supply %', value: pdfSanitize(sum.ispoPct || '—') },
+    { label: 'Estimated ISPO Supply %', value: pdfSanitize(sum.ispoPct || '—') },
+    { label: ttmLabel, value: pdfSanitize(facilityTtm) },
     { label: pctLabel, value: pdfSanitize(facilityPct) },
   ];
   const gap = 3;
@@ -839,15 +903,15 @@ function drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, accent) {
   ctx.setY(y0 + cardH + 6);
 }
 
-function drawFacilityCompanyTable_(ctx, companies, pctLabel, accent) {
+function drawFacilityCompanyTable_(ctx, companies, isPk, accent) {
   const doc = ctx.doc;
   if (ctx.pageH - ctx.mFoot - 6 - ctx.getY() < 16) {
     ctx.ensureSpace_(18);
   }
   const y0 = ctx.getY();
-  const cw = colWidths_([14, 18, 14, 10, 12, 10, 14], ctx.cW);
-  const headers = pdfHeadRow(MRD_FACILITY_COMPANY_COLS.slice());
-  headers[headers.length - 1] = pdfHeadRow([pctLabel])[0];
+  const cw = colWidths_([12, 16, 12, 9, 10, 9, 10, 10], ctx.cW);
+  const ttpLabel = facilityPctColLabel(isPk);
+  const ttmLabel = facilityTtmColLabel(isPk);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -856,15 +920,19 @@ function drawFacilityCompanyTable_(ctx, companies, pctLabel, accent) {
   ctx.setY(y0 + 5);
 
   ctx.drawAutoTable_(
-    [headers],
+    pdfTableHead([
+      'Group Name', 'Company Name', 'Certification', 'No Buy List', 'Result Risk Level',
+      'Total Grievance', ttmLabel, ttpLabel,
+    ]),
     companies.map(function(c) {
       return [
-        pdfSanitize(c.group),
+        pdfSanitize(c.group || c['GROUP NAME'] || ''),
         pdfSanitize(c.company),
         pdfSanitize(c.certification),
         pdfSanitize(c.nbl),
         pdfSanitize(c.riskLevel),
         pdfSanitize(c.grievance),
+        pctFmt_(c.ttmPctNum != null ? c.ttmPctNum : 0),
         pctFmt_(c.ttpPctNum),
       ];
     }),
@@ -873,6 +941,7 @@ function drawFacilityCompanyTable_(ctx, companies, pctLabel, accent) {
       0: { cellWidth: cw[0] }, 1: { cellWidth: cw[1] }, 2: { cellWidth: cw[2], fontSize: 6.8 },
       3: { cellWidth: cw[3], halign: 'center' }, 4: { cellWidth: cw[4], halign: 'center' },
       5: { cellWidth: cw[5], halign: 'right' }, 6: { cellWidth: cw[6], halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: cw[7], halign: 'right', fontStyle: 'bold' },
     },
     { fontSize: 6.5, cellPadding: 2, gapAfter: 2, headFontSize: 5.5, headMinHeight: 11 }
   );
@@ -882,18 +951,22 @@ function drawFacilityBlock_(ctx, bundle, full, idx) {
   const isPk = bundle.type === 'pk';
   const accent = isPk ? PK_GREEN : BRAND;
   const pctLabel = facilityPctColLabel(isPk);
+  const ttmLabel = facilityTtmColLabel(isPk);
   const sum = bundle.summary || {};
-  const facilityPct = isPk ? (sum.avgPk || '—') : (sum.avgCpo || '—');
-  const companies = (bundle.companies || []).slice().sort(function(a, b) {
-    return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
-  });
+  const facilityPct = (bundle.traceCalc && bundle.traceCalc.formatted)
+    ? bundle.traceCalc.formatted
+    : (isPk ? (sum.avgPk || '—') : (sum.avgCpo || '—'));
+  const facilityTtm = (bundle.ttmCalc && bundle.ttmCalc.formatted)
+    ? bundle.ttmCalc.formatted
+    : (sum.avgTtm || '0%');
+  const companies = mrdSortFacilityCompanies_(bundle.companies || []);
   if (!companies.length) return;
 
   const title = (isPk ? 'PK' : 'CPO') + ' · ' + pdfSanitize(bundle.facility);
   ctx.beginFacilityBlock_(title, accent, idx > 0);
 
-  drawFacilityHero_(ctx, bundle, accent, pctLabel, facilityPct, companies.length);
-  drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, accent);
+  drawFacilityHero_(ctx, bundle, accent, pctLabel, facilityPct, ttmLabel, facilityTtm, companies.length);
+  drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, facilityTtm, ttmLabel, accent);
 
   if (full) {
     const profiles = (bundle.profiles || []).filter(function(p) {
@@ -925,11 +998,11 @@ function drawFacilityBlock_(ctx, bundle, full, idx) {
     }
   }
 
-  drawFacilityCompanyTable_(ctx, companies, pctLabel, accent);
+  drawFacilityCompanyTable_(ctx, companies, isPk, accent);
 }
 
 function drawFacilitySection_(ctx, bundles, full) {
-  const active = (bundles || []).filter(function(b) { return (b.companies || []).length > 0; });
+  const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) { return (b.companies || []).length > 0; }));
   if (!active.length) return;
   ctx.beginSection_('06 · Facility Performance', PK_GREEN);
   active.forEach(function(bundle, idx) {
@@ -938,6 +1011,7 @@ function drawFacilitySection_(ctx, bundles, full) {
 }
 
 function drawEudrSection_(ctx, rows, noHeader) {
+  rows = mrdSortEudrItems_(rows);
   if (!rows.length) return;
   if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
   const w = colWidths_([12, 18, 20, 20, 14, 16], ctx.cW);
@@ -967,6 +1041,9 @@ function facilityBundleSummaryRow_(bundle) {
   const pct = (bundle.traceCalc && bundle.traceCalc.formatted)
     ? bundle.traceCalc.formatted
     : (isPk ? (sum.avgPk || '—') : (sum.avgCpo || '—'));
+  const ttm = (bundle.ttmCalc && bundle.ttmCalc.formatted)
+    ? bundle.ttmCalc.formatted
+    : (sum.avgTtm || '0%');
   return [
     pdfSanitize(bundle.facility),
     pdfSanitize((bundle.companies || []).length),
@@ -974,24 +1051,26 @@ function facilityBundleSummaryRow_(bundle) {
     pdfSanitize(sum.highRisk != null ? sum.highRisk : 0),
     pdfSanitize(sum.grievanceSum != null ? sum.grievanceSum : 0),
     pdfSanitize(sum.ispoPct || '—'),
+    pdfSanitize(ttm),
     pdfSanitize(pct),
   ];
 }
 
 function drawFacilitySummaryFromBundles_(ctx, bundles) {
-  const active = (bundles || []).filter(function(b) {
+  const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) {
     return (b.companies || []).length > 0 && pdfSanitize(b.facility) !== '—';
-  });
+  }));
   if (!active.length) return;
 
-  const cpo = active.filter(function(b) { return b.type !== 'pk'; });
-  const pk = active.filter(function(b) { return b.type === 'pk'; });
-  const w7 = colWidths_([24, 10, 10, 10, 12, 14, 12], ctx.cW);
+  const cpo = mrdSortBundlesByFacility_(active.filter(function(b) { return b.type !== 'pk'; }));
+  const pk = mrdSortBundlesByFacility_(active.filter(function(b) { return b.type === 'pk'; }));
+  const w7 = colWidths_([22, 9, 9, 9, 11, 12, 11, 11], ctx.cW);
   const colStyles = {
     0: { cellWidth: w7[0] }, 1: { cellWidth: w7[1], halign: 'center' },
     2: { cellWidth: w7[2], halign: 'center' }, 3: { cellWidth: w7[3], halign: 'center' },
     4: { cellWidth: w7[4], halign: 'center' }, 5: { cellWidth: w7[5], halign: 'right' },
     6: { cellWidth: w7[6], halign: 'right', fontStyle: 'bold' },
+    7: { cellWidth: w7[7], halign: 'right', fontStyle: 'bold' },
   };
 
   if (cpo.length) {
@@ -1084,9 +1163,10 @@ function drawMetricCardGrid_(ctx, items, opts) {
 
 function sectionSummaryConfig_(id, stats, data, year) {
   const s = stats || {};
-  const grvOpen = (data.grv || []).filter(function(item) {
-    return String(item.row['Grievance Status'] || '').toLowerCase().includes('open');
-  }).length;
+  const grvCounts = grvStatusCounts_(data.grv || []);
+  const grvOpen = grvCounts.open;
+  const grvClosed = grvCounts.closed;
+  const grvInvalid = grvCounts.invalid;
   const configs = {
     sdd: {
       num: '01', title: 'Supplier Due Diligence', accent: BRAND,
@@ -1131,11 +1211,13 @@ function sectionSummaryConfig_(id, stats, data, year) {
     },
     grv: {
       num: '04', title: 'Grievance Monitoring', accent: GRV_PURPLE,
-      desc: (s.grievances || 0) + ' in period · ' + grvOpen + ' open',
+      desc: (s.grievances || 0) + ' in period · ' + grvOpen + ' open · ' + grvClosed + ' closed'
+        + (grvInvalid ? ' · ' + grvInvalid + ' invalid' : ''),
       metrics: [
         { label: 'Total', value: String(s.grievances || 0) },
         { label: 'Open', value: String(grvOpen), hot: grvOpen > 0 },
-        { label: 'Closed', value: String(Math.max(0, (s.grievances || 0) - grvOpen)) },
+        { label: 'Closed', value: String(grvClosed) },
+        { label: 'Invalid', value: String(grvInvalid) },
       ],
     },
     nbl: {
@@ -1230,7 +1312,7 @@ function saveMonthlyReportPdf_(doc, variant, year, month) {
 
 function finalizePdf_(ctx) {
   ctx.pruneBlankPages_();
-  drawFooters_(ctx.doc, ctx.pageW, ctx.pageH, ctx.mL, ctx.mR, ctx.mFoot);
+  drawFooters_(ctx.doc, ctx.pageW, ctx.pageH, ctx.mL, ctx.mR, ctx.mFoot, ctx.exportedAt);
   return ctx.doc;
 }
 
@@ -1239,8 +1321,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
   const stats = data.stats || {};
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const ctx = createPdfContext_(jsPDFLib, { pdfMode: 'summary' });
-  ctx.periodText = 'Period: ' + periodLabel(opts.year, opts.month);
-  ctx.generatedAt = new Date().toLocaleString('en-GB', { hour12: false });
+  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month);
   ctx.reportTitle = 'Monthly Report — Summary';
   ctx.reportSubtitle = '';
 
@@ -1258,7 +1339,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
     ctx.setY(ctx.getY() + PDF_LAYOUT.sectionGap);
   }
 
-  drawSummaryReportBody_(ctx, data, sections, stats, opts.year);
+  drawSummaryReportBody_(ctx, data, sections, stats, headerMeta.dataYear || opts.year);
   return finalizePdf_(ctx);
 }
 
@@ -1278,8 +1359,7 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const detailSections = sections.filter(function(id) { return id !== 'kpi'; });
   const ctx = createPdfContext_(jsPDFLib, { orientation: 'landscape', pdfMode: 'detail' });
-  ctx.periodText = 'Period: ' + periodLabel(opts.year, opts.month);
-  ctx.generatedAt = new Date().toLocaleString('en-GB', { hour12: false });
+  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month);
 
   ctx.setY(drawCompactHeaderForExport_(ctx));
   if (!detailSections.length) {
@@ -1291,7 +1371,7 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
     doc.text('No detail sections selected. Include at least one section besides Overview.', ctx.mL, ctx.getY() + 4);
     ctx.markContent_(ctx.getY() + 8);
   } else {
-    drawDetailReportBody_(ctx, data, detailSections, opts.year);
+    drawDetailReportBody_(ctx, data, detailSections, headerMeta.dataYear || opts.year);
   }
   return finalizePdf_(ctx);
 }
@@ -1304,10 +1384,15 @@ function drawCompactHeaderForExport_(ctx) {
   doc.setTextColor.apply(doc, WHITE);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('Monthly Report — Detail', ctx.mL, 10);
+  doc.text('Monthly Report — Detail', ctx.mL, 9);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text(ctx.periodText + '   ·   ' + ctx.generatedAt, ctx.mL, 17);
+  doc.setFontSize(6.5);
+  doc.text(ctx.periodText || '', ctx.mL, 14.5);
+  doc.text(ctx.dataPeriodText || '', ctx.mL, 18.5);
+  doc.text(ctx.cutoffText || '', ctx.mL, 22.5);
+  if (ctx.exportedAt) {
+    doc.text('Generated on ' + ctx.exportedAt, ctx.pageW - ctx.mR, 22.5, { align: 'right' });
+  }
   ctx.markContent_(bandH);
   return bandH + PDF_LAYOUT.bodyGap;
 }
