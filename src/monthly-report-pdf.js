@@ -68,7 +68,7 @@ const PDF_LAYOUT = {
   autoTableTopMargin: 22,
 };
 
-const DEFAULT_SECTIONS = ['kpi', 'sdd', 'mill', 'highRisk', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
+const DEFAULT_SECTIONS = ['kpi', 'sdd', 'highRisk', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
 const MIN_CONTENT_Y = 24;
 
 function pdfSanitize(v) {
@@ -419,9 +419,35 @@ function createPdfContext_(jsPDFLib, opts) {
     let total = doc.internal.getNumberOfPages();
     for (let p = total; p >= 2; p--) {
       const bottom = pageBottomY[p] || 0;
-      if (bottom < MIN_CONTENT_Y) {
+      const top = pageTopY[p] || 0;
+      // Only drop pages with no marked content at all (fixes tables losing continuation pages).
+      if (bottom < MIN_CONTENT_Y && top < MIN_CONTENT_Y) {
         doc.deletePage(p);
       }
+    }
+  }
+
+  function newPage_() {
+    doc.addPage();
+    y = drawCompactHeader_();
+    markContent_(y);
+    return y;
+  }
+
+  /** Split long tables into fresh autoTable calls — avoids jspdf-autotable dropping rows after large prior tables. */
+  function drawPagedAutoTable_(head, body, accent, colStyles, opts) {
+    opts = opts || {};
+    if (!body.length) return;
+    const chunkSize = opts.chunkSize || 22;
+    for (let i = 0; i < body.length; i += chunkSize) {
+      if (i > 0) newPage_();
+      const chunk = body.slice(i, i + chunkSize);
+      const isLast = i + chunkSize >= body.length;
+      drawAutoTable_(head, chunk, accent, colStyles, Object.assign({}, opts, {
+        showHeadEveryPage: true,
+        rowPageBreak: 'auto',
+        gapAfter: isLast ? (opts.gapAfter == null ? 2 : opts.gapAfter) : 0,
+      }));
     }
   }
 
@@ -433,6 +459,8 @@ function createPdfContext_(jsPDFLib, opts) {
   ctx.drawMainHeader_ = drawMainHeader_;
   ctx.startBodyAfterCover_ = startBodyAfterCover_;
   ctx.pruneBlankPages_ = pruneBlankPages_;
+  ctx.newPage_ = newPage_;
+  ctx.drawPagedAutoTable_ = drawPagedAutoTable_;
   ctx.markContent_ = markContent_;
   ctx.setY = function(v) { y = v; markContent_(v); };
   ctx.getY = function() { return y; };
@@ -645,6 +673,8 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
   const stats = data.stats || {};
   const doc = ctx.doc;
 
+  if (full) ctx.newPage_();
+
   if (!noHeader) {
     ctx.beginSection_('High Risk Suppliers', NBL_RED);
     doc.setFont('helvetica', 'bold');
@@ -656,26 +686,28 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
     doc.setTextColor.apply(doc, INK_MUTED);
     doc.text('Separate from Mill Onboarding — ' + (stats.totalMills || 0) + ' total mills in period', ctx.mL, ctx.getY() + 8);
     ctx.setY(ctx.getY() + 12);
+    ctx.markContent_(ctx.getY());
   }
 
   if (full) {
     const w = colWidths_([10, 14, 18, 18, 12, 8, 10, 10], ctx.cW);
-    ctx.drawAutoTable_(
+    const body = rows.map(function(item) {
+      const r = item.row;
+      const d = millDetailCells_(item);
+      return [
+        pdfSanitize(item.risk),
+        pdfCellTrim(r['GROUP NAME'], 28),
+        pdfCellTrim(r['COMPANY NAME'], 32),
+        pdfCellTrim(r['MILL NAME'], 28),
+        pdfSanitize(r['PROVINCE']),
+        pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
+        d.supplierStatus,
+        d.certification,
+      ];
+    });
+    ctx.drawPagedAutoTable_(
       pdfTableHead(['Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
-      rows.map(function(item) {
-        const r = item.row;
-        const d = millDetailCells_(item);
-        return [
-          pdfSanitize(item.risk),
-          pdfCellTrim(r['GROUP NAME'], 28),
-          pdfCellTrim(r['COMPANY NAME'], 32),
-          pdfCellTrim(r['MILL NAME'], 28),
-          pdfSanitize(r['PROVINCE']),
-          pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
-          d.supplierStatus,
-          d.certification,
-        ];
-      }),
+      body,
       NBL_RED,
       {
         0: { cellWidth: w[0], fontStyle: 'bold', textColor: NBL_RED },
@@ -683,28 +715,29 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
         4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
         6: { cellWidth: w[6], fontSize: 6.5 }, 7: { cellWidth: w[7], fontSize: 6.5 },
       },
-      { fontSize: 7, cellPadding: 2.5, headFontSize: 6, headMinHeight: 12, showHeadEveryPage: true, rowPageBreak: 'auto' }
+      { fontSize: 7, cellPadding: 2.5, headFontSize: 6, headMinHeight: 12, chunkSize: 18 }
     );
   } else {
     const w = colWidths_([12, 18, 22, 22, 14], ctx.cW);
-    ctx.drawAutoTable_(
+    const body = rows.map(function(item) {
+      const r = item.row;
+      return [
+        pdfSanitize(item.risk),
+        pdfSanitize(r['GROUP NAME']),
+        pdfSanitize(r['COMPANY NAME']),
+        pdfSanitize(r['MILL NAME']),
+        pdfSanitize(r['PROVINCE']),
+      ];
+    });
+    ctx.drawPagedAutoTable_(
       pdfTableHead(['Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
-      rows.map(function(item) {
-        const r = item.row;
-        return [
-          pdfSanitize(item.risk),
-          pdfSanitize(r['GROUP NAME']),
-          pdfSanitize(r['COMPANY NAME']),
-          pdfSanitize(r['MILL NAME']),
-          pdfSanitize(r['PROVINCE']),
-        ];
-      }),
+      body,
       NBL_RED,
       {
         0: { cellWidth: w[0], fontStyle: 'bold', textColor: NBL_RED },
         1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
       },
-      { showHeadEveryPage: true, rowPageBreak: 'auto', headFontSize: 6, headMinHeight: 11 }
+      { headFontSize: 6, headMinHeight: 11, chunkSize: 24 }
     );
   }
 }
@@ -1056,25 +1089,27 @@ function drawFacilitySection_(ctx, bundles, full) {
 function drawEudrSection_(ctx, rows, noHeader) {
   rows = mrdSortEudrItems_(rows);
   if (!rows.length) return;
+  ctx.newPage_();
   if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
   const w = colWidths_([12, 18, 20, 20, 14, 16], ctx.cW);
-  ctx.drawAutoTable_(
+  const body = rows.map(function(item) {
+    const r = item.row;
+    return [
+      pdfSanitize(r['GROUP NAME']), pdfSanitize(r['COMPANY NAME']), pdfSanitize(r['MILL NAME']),
+      pdfSanitize(r['PROVINCE']), pdfSanitize(r['SUPPLY TO']),
+      'Potential',
+    ];
+  });
+  ctx.drawPagedAutoTable_(
     pdfTableHead(MRD_EUDR_COLS),
-    rows.map(function(item) {
-      const r = item.row;
-      return [
-        pdfSanitize(r['GROUP NAME']), pdfSanitize(r['COMPANY NAME']), pdfSanitize(r['MILL NAME']),
-        pdfSanitize(r['PROVINCE']), pdfSanitize(r['SUPPLY TO']),
-        'Potential',
-      ];
-    }),
+    body,
     EUDR_TEAL,
     {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
       3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
       5: { cellWidth: w[5], fontSize: 6.5 },
     },
-    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11, showHeadEveryPage: true, rowPageBreak: 'auto' }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11, chunkSize: 20 }
   );
 }
 
@@ -1346,8 +1381,8 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year) {
 
 function drawDetailReportBody_(ctx, data, sections, year) {
   if (sections.indexOf('sdd') !== -1) drawSddSection_(ctx, data.sdd || []);
-  if (sections.indexOf('mill') !== -1) drawMillSection_(ctx, data, true);
   if (sections.indexOf('highRisk') !== -1) drawHighRiskSection_(ctx, data, true);
+  if (sections.indexOf('mill') !== -1) drawMillSection_(ctx, data, true);
   if (sections.indexOf('trace') !== -1) drawTraceTotalsSection_(ctx, data.traceTotals || {}, year);
   if (sections.indexOf('grv') !== -1) drawGrvSection_(ctx, data.grv || [], true);
   if (sections.indexOf('nbl') !== -1) drawNblSection_(ctx, data.nblAll || []);
@@ -1467,8 +1502,8 @@ export async function buildMonthlyReportPdfPair_(opts) {
 export const MRD_PDF_SECTIONS = [
   { id: 'kpi', label: 'Overview · KPI cards' },
   { id: 'sdd', label: MRD_SECTION_LABELS.sdd },
-  { id: 'mill', label: MRD_SECTION_LABELS.mill },
   { id: 'highRisk', label: MRD_SECTION_LABELS.highRisk },
+  { id: 'mill', label: MRD_SECTION_LABELS.mill },
   { id: 'trace', label: MRD_SECTION_LABELS.trace },
   { id: 'grv', label: MRD_SECTION_LABELS.grv },
   { id: 'nbl', label: MRD_SECTION_LABELS.nbl },

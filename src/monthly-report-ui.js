@@ -376,7 +376,8 @@ async function exportMonthlyReport_(exportOpts) {
 
     let exportSections = sections.slice();
     if (exportSections.indexOf('mill') !== -1 && exportSections.indexOf('highRisk') === -1) {
-      exportSections.push('highRisk');
+      const millIdx = exportSections.indexOf('mill');
+      exportSections.splice(millIdx, 0, 'highRisk');
     }
 
     const mills = await resolveAllNblForExport_(
@@ -1027,8 +1028,8 @@ function renderAll() {
   const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
   const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
   html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
-  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
   html += sectionHtml('highRisk', 'High Risk Suppliers', stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
+  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
   html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
   html += flatSectionHtml('grv', 'Grievance Monitoring · ' + fullYearLabel, stats.grievances + ' grievances in ' + fullYearLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
