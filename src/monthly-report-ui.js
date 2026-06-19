@@ -359,26 +359,21 @@ async function exportMonthlyReport_(exportOpts) {
     const mills = await resolveAllNblForExport_(
       mrdSortMillItems_(filterForExport_(s.mills, function(item) { return matchesSearch(item.search); }))
     );
-    // highRiskMills must come from ALL mills (not search-filtered) so the count
-    // always matches stats.highRisk shown in the summary KPI card.
-    // Read item.risk directly from s.mills — it was already set at snapshot
-    // build time via millResolvedRiskLevel and does not need NBL resolution.
-    // highRiskMills is pre-computed in buildSnapshotSync alongside stats.highRisk —
-    // guaranteed to match the summary KPI count exactly.
-    // Fallback: re-filter s.mills by row-level risk if snapshot field is empty.
-    const highRiskMills = mrdSortMillItems_(
-      (s.highRiskMills && s.highRiskMills.length)
-        ? s.highRiskMills
-        : (s.mills || []).filter(function(item) {
-          const r = item.row || {};
-          const rr = String(
-            r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
-            r['Result Risk Level'] != null ? r['Result Risk Level'] :
-            r['RISK LEVEL'] != null ? r['RISK LEVEL'] : item.risk || ''
-          ).toLowerCase();
-          return rr.includes('high');
-        })
-    );
+    // highRiskMills must include ALL high-risk mills regardless of search filter.
+    // When no search is active, mills already contains every mill — reuse it.
+    // When a search IS active, resolve all s.mills in a separate pass.
+    const allMillsResolved = _search
+      ? await resolveAllNblForExport_(mrdSortMillItems_(s.mills || []))
+      : mills;
+    const highRiskMills = mrdSortMillItems_(allMillsResolved.filter(function(item) {
+      const r = item.row || {};
+      const rr = String(
+        r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
+        r['Result Risk Level'] != null ? r['Result Risk Level'] :
+        r['RISK LEVEL'] != null ? r['RISK LEVEL'] : item.risk || ''
+      ).toLowerCase();
+      return rr.includes('high');
+    }));
     const nblMills = mrdSortMillItems_(mills.filter(function(item) {
       return isNblYes(item.nbl) && matchesSearch(item.search);
     }));
