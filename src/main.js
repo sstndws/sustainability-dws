@@ -7290,17 +7290,32 @@ function initDashboardApp() {
       }
       return false;
     }
+    // Generic palm-oil words that appear in hundreds of company names and therefore
+    // should NOT count as a "distinctive" token hit on their own.
+    var GENERIC_TOKENS_ = {
+      sawit:1, agro:1, lestari:1, indah:1, makmur:1, jaya:1, mandiri:1,
+      prima:1, putra:1, nusa:1, palm:1, perkebunan:1, kebun:1, maju:1,
+      abadi:1, pratama:1, utama:1, karya:1, perkasa:1, sejahtera:1,
+      persada:1, nusantara:1, indonesia:1, group:1, plantation:1,
+      subur:1, sari:1, baru:1, raya:1, mas:1
+    };
     var hits = 0;
+    var distinctiveHits = 0;
     for (var i = 0; i < ta.length; i++) {
       var t1 = ta[i];
       var ok = false;
       for (var j = 0; j < tb.length; j++) {
         if (tokenNear_(t1, tb[j])) { ok = true; break; }
       }
-      if (ok) hits++;
+      if (ok) {
+        hits++;
+        if (!GENERIC_TOKENS_[t1]) distinctiveHits++;
+      }
     }
-    // Require at least 2 token hits to reduce false positives.
-    if (hits >= 2) return true;
+    // Require at least 2 token hits AND at least 1 must be a distinctive (non-generic) token.
+    // Without the distinctiveHits guard, "SAWIT KALTIM LESTARI" would false-match
+    // "WANA SAWIT SUBUR LESTARI" (both share "sawit"+"lestari", both generic).
+    if (hits >= 2 && distinctiveHits >= 1) return true;
     return false;
   }
 
