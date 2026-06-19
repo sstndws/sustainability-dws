@@ -27,8 +27,8 @@ import {
   sddLastUpdate,
 } from './monthly-report-labels.js';
 
-const MRD_ROW_LIMIT = 200;
-const MRD_SDD_LIMIT = 150;
+const MRD_ROW_LIMIT = 5000;
+const MRD_SDD_LIMIT = 5000;
 
 let _deps = null;
 let _bound = false;
