@@ -7341,8 +7341,16 @@ function initDashboardApp() {
     (lists.registry || []).forEach(function(r, i) {
       var gAliases = r._nblGroupAliases   || (r._nblGroup   ? [r._nblGroup]   : []);
       // Filter out wildcard company values ("ALL MILL", "ALL SUBSIDIARIES", etc.)
+      // Also filter out self-ref: when Company == Group (e.g. "JULONG/JULONG"), the entry
+      // applies to the whole group, not just one specific subsidiary — treat as group-only.
       var rawCAliases = r._nblCompanyAliases || (r._nblCompany ? [r._nblCompany] : []);
-      var cAliases = rawCAliases.filter(function(a) { return !ALL_MILL_RE.test(String(a).trim()); });
+      var cAliases = rawCAliases.filter(function(a) {
+        var s = String(a).trim();
+        if (ALL_MILL_RE.test(s)) return false;
+        // Self-ref: company alias is identical (normalised) to a group alias → group-only
+        if (gAliases.some(function(g) { return normalizeLooseKey(g) === normalizeLooseKey(s); })) return false;
+        return true;
+      });
       var hasGroup   = gAliases.length > 0;
       var hasCompany = cAliases.length > 0;
       var groupHit   = !!(group   && hasGroup   && nblMatchesAnyAlias_(group,   gAliases));
