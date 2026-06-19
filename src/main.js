@@ -7247,75 +7247,29 @@ function initDashboardApp() {
     return v === 'yes' || v.includes('nbl') || v.includes('no buy');
   }
 
+  /**
+   * Strict name comparison for NBL matching.
+   *
+   * Only two rules (no token/Levenshtein fuzzy matching):
+   *   1. Exact match after normalizeLooseKey (handles caps, spaces, punctuation differences,
+   *      e.g. "Kencana Agri" === "KENCANA AGRI", "GAR - Sinarmas" === "GAR-SINARMAS").
+   *   2. Substring containment for suffix variants like "PKS 1", " 2", etc.
+   *      (the shorter must be at least 4 chars to avoid trivial hits).
+   *
+   * Token/Levenshtein fuzzy matching was intentionally removed: company names in
+   * the NBL sheets are already normalised and share only caps differences.
+   * Token-based matching was causing false positives because generic palm-oil words
+   * ("sawit", "lestari", "agro", etc.) appear in hundreds of company names and
+   * 2-token coincidences are not meaningful.
+   */
   function millNameSimilarLoose_(a, b) {
     var na = normalizeLooseKey(a);
     var nb = normalizeLooseKey(b);
     if (!na || !nb) return false;
     if (na === nb) return true;
-    // "mirip" match: one contained in another, but avoid very short false positives
-    if (na.length >= 4 && nb.includes(na)) return true;
-    if (nb.length >= 4 && na.includes(nb)) return true;
-    // Token-level fuzzy match for small spelling variants (e.g. sumatra/sumatera).
-    var ta = String(a || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function(t) { return t.length >= 3; });
-    var tb = String(b || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function(t) { return t.length >= 3; });
-    if (!ta.length || !tb.length) return false;
-    function levDist_(x, y) {
-      if (x === y) return 0;
-      var m = x.length, n = y.length;
-      if (!m) return n;
-      if (!n) return m;
-      var prev = [];
-      for (var j = 0; j <= n; j++) prev[j] = j;
-      for (var i = 1; i <= m; i++) {
-        var cur = [i];
-        for (var j2 = 1; j2 <= n; j2++) {
-          var cost = x.charAt(i - 1) === y.charAt(j2 - 1) ? 0 : 1;
-          cur[j2] = Math.min(
-            cur[j2 - 1] + 1,
-            prev[j2] + 1,
-            prev[j2 - 1] + cost
-          );
-        }
-        prev = cur;
-      }
-      return prev[n];
-    }
-    function tokenNear_(x, y) {
-      if (x === y) return true;
-      if (x.length >= 4 && y.includes(x)) return true;
-      if (y.length >= 4 && x.includes(y)) return true;
-      // allow one-char typo on longer tokens
-      if (x.length >= 6 && y.length >= 6 && Math.abs(x.length - y.length) <= 1) {
-        return levDist_(x, y) <= 1;
-      }
-      return false;
-    }
-    // Generic palm-oil words that appear in hundreds of company names and therefore
-    // should NOT count as a "distinctive" token hit on their own.
-    var GENERIC_TOKENS_ = {
-      sawit:1, agro:1, lestari:1, indah:1, makmur:1, jaya:1, mandiri:1,
-      prima:1, putra:1, nusa:1, palm:1, perkebunan:1, kebun:1, maju:1,
-      abadi:1, pratama:1, utama:1, karya:1, perkasa:1, sejahtera:1,
-      persada:1, nusantara:1, indonesia:1, group:1, plantation:1,
-      subur:1, sari:1, baru:1, raya:1, mas:1
-    };
-    var hits = 0;
-    var distinctiveHits = 0;
-    for (var i = 0; i < ta.length; i++) {
-      var t1 = ta[i];
-      var ok = false;
-      for (var j = 0; j < tb.length; j++) {
-        if (tokenNear_(t1, tb[j])) { ok = true; break; }
-      }
-      if (ok) {
-        hits++;
-        if (!GENERIC_TOKENS_[t1]) distinctiveHits++;
-      }
-    }
-    // Require at least 2 token hits AND at least 1 must be a distinctive (non-generic) token.
-    // Without the distinctiveHits guard, "SAWIT KALTIM LESTARI" would false-match
-    // "WANA SAWIT SUBUR LESTARI" (both share "sawit"+"lestari", both generic).
-    if (hits >= 2 && distinctiveHits >= 1) return true;
+    // Substring: handle PKS-1/2 suffixes, e.g. "suryapanensubur" ⊂ "suryapanensubur2"
+    if (na.length >= 4 && nb.startsWith(na)) return true;
+    if (nb.length >= 4 && na.startsWith(nb)) return true;
     return false;
   }
 
