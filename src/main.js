@@ -7262,15 +7262,20 @@ function initDashboardApp() {
    * ("sawit", "lestari", "agro", etc.) appear in hundreds of company names and
    * 2-token coincidences are not meaningful.
    */
+  /**
+   * Strict name comparison for NBL matching: exact match only after normalisation.
+   * normalizeLooseKey lowercases and strips all non-alphanumeric chars, so differences
+   * in capitalisation and punctuation (e.g. "GAR - Sinarmas" vs "GAR-SINARMAS",
+   * "Kencana Agri" vs "KENCANA AGRI") are handled transparently.
+   *
+   * No fuzzy/substring/token matching: "SURYA PANEN SUBUR" and "SURYA PANEN SUBUR II"
+   * are different companies and must NOT match each other.
+   */
   function millNameSimilarLoose_(a, b) {
     var na = normalizeLooseKey(a);
     var nb = normalizeLooseKey(b);
     if (!na || !nb) return false;
-    if (na === nb) return true;
-    // Substring: handle PKS-1/2 suffixes, e.g. "suryapanensubur" ⊂ "suryapanensubur2"
-    if (na.length >= 4 && nb.startsWith(na)) return true;
-    if (nb.length >= 4 && na.startsWith(nb)) return true;
-    return false;
+    return na === nb;
   }
 
   /**
