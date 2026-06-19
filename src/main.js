@@ -7328,18 +7328,36 @@ function initDashboardApp() {
       out.push(item);
     }
 
-    // Source: NBL registry — match mill's GROUP against NBL Group Name ONLY,
-    // and mill's COMPANY against NBL Company Name ONLY (no cross-matching).
-    // Cross-matching caused false positives: e.g. a row for "BEST AGO /
-    // KETAPANG AGRO LESTARI" was incorrectly matched for mill
-    // "FIRST RESOURCES / KETAPANG AGRO LESTARI" because the company alias
-    // "KETAPANG AGRO LESTARI" was in the combined allAliases pool.
+    // Source: NBL registry.
+    // Matching rules:
+    //   - "ALL MILL" / "ALL SUBSIDIARIES" company values are wildcards — don't count
+    //     as a specific company constraint.
+    //   - If the NBL row specifies BOTH a real group AND a real company → BOTH must
+    //     match (AND). This prevents a row for "BEST AGO / KETAPANG AGRO LESTARI"
+    //     from matching a mill "FIRST RESOURCES / KETAPANG AGRO LESTARI".
+    //   - If only group is specified → group match is sufficient.
+    //   - If only company is specified (no group) → company match is sufficient.
+    var ALL_MILL_RE = /^all\s*(mill|subsidiar|subs?)/i;
     (lists.registry || []).forEach(function(r, i) {
       var gAliases = r._nblGroupAliases   || (r._nblGroup   ? [r._nblGroup]   : []);
-      var cAliases = r._nblCompanyAliases || (r._nblCompany ? [r._nblCompany] : []);
-      var groupHit   = !!(group   && gAliases.length && nblMatchesAnyAlias_(group,   gAliases));
-      var companyHit = !!(company && cAliases.length && nblMatchesAnyAlias_(company, cAliases));
-      if (!groupHit && !companyHit) return;
+      // Filter out wildcard company values ("ALL MILL", "ALL SUBSIDIARIES", etc.)
+      var rawCAliases = r._nblCompanyAliases || (r._nblCompany ? [r._nblCompany] : []);
+      var cAliases = rawCAliases.filter(function(a) { return !ALL_MILL_RE.test(String(a).trim()); });
+      var hasGroup   = gAliases.length > 0;
+      var hasCompany = cAliases.length > 0;
+      var groupHit   = !!(group   && hasGroup   && nblMatchesAnyAlias_(group,   gAliases));
+      var companyHit = !!(company && hasCompany && nblMatchesAnyAlias_(company, cAliases));
+      var matched;
+      if (hasGroup && hasCompany) {
+        matched = groupHit && companyHit; // both specified → both must match
+      } else if (hasGroup) {
+        matched = groupHit;               // group only → group match enough
+      } else if (hasCompany) {
+        matched = companyHit;             // company only → company match enough
+      } else {
+        matched = false;
+      }
+      if (!matched) return;
       var hitBy = [];
       if (groupHit)   hitBy.push('GROUP NAME');
       if (companyHit) hitBy.push('COMPANY NAME');
