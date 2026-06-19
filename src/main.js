@@ -7353,7 +7353,11 @@ function initDashboardApp() {
       } else if (hasGroup) {
         matched = groupHit;               // group only → group match enough
       } else if (hasCompany) {
-        matched = companyHit;             // company only → company match enough
+        // company-only row: only match mills that have no group identity.
+        // If the mill has a group, a company-only NBL entry could belong to a
+        // DIFFERENT group family with the same subsidiary name — skip it to
+        // prevent cross-group false positives.
+        matched = !group && companyHit;
       } else {
         matched = false;
       }
@@ -7448,13 +7452,6 @@ function initDashboardApp() {
     }
     var lists = await ensureNblListsForCheck_();
     var matches = millNblSourceMatchesForRow_(row || {}, lists);
-    // DEBUG: log matches so we can trace incorrect risers
-    if (matches.length) {
-      console.log('[NBL-DEBUG] mill:', row['GROUP NAME'], '/', row['COMPANY NAME'],
-        '→ matches:', matches.map(function(m) {
-          return '{riser:' + m.riser + ', by:' + m.by + ', target:' + m.target + ', src:' + m.source + '}';
-        }).join(' | '));
-    }
     var info = millNblByInfoFromMatches_(matches);
     info.matches = matches;
     return info;
