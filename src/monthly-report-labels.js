@@ -323,27 +323,39 @@ export function mrdSortBundlesByFacility_(bundles) {
 
 export function mrdFormatNblRisers_(item) {
   if (!item) return '—';
-  const matches = item.nblMatches || [];
-  const risers = [];
-  const seen = {};
-  matches.forEach(function(m) {
-    const r = String((m && m.riser) || '').trim();
-    if (!r) return;
-    const key = r.toLowerCase();
-    if (seen[key]) return;
-    seen[key] = true;
-    risers.push(r);
-  });
-  if (risers.length) {
-    return risers.sort(function(a, b) {
+
+  function dedupeRiserList_(list) {
+    const out = [];
+    const seen = {};
+    (list || []).forEach(function(r) {
+      const s = String(r || '').trim();
+      if (!s) return;
+      const k = s.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(s);
+    });
+    return out.sort(function(a, b) {
       return a.localeCompare(b, undefined, { sensitivity: 'base' });
-    }).join(', ');
+    });
   }
+
+  const matches = item.nblMatches || [];
+  if (matches.length) {
+    const risers = dedupeRiserList_(matches.map(function(m) {
+      return (m && m.riser) ? String(m.riser).trim() : '';
+    }));
+    if (risers.length) return risers.join(', ');
+  }
+
   const by = String(item.nblBy || '').trim();
   if (!by) return '—';
   if (/source unresolved/i.test(by)) return '—';
   const stripped = by.replace(/^NBL by\s+/i, '').trim();
-  return stripped || '—';
+  if (!stripped) return '—';
+  // Deduplicate the comma-separated string from nblBy as well
+  const parts = dedupeRiserList_(stripped.split(','));
+  return parts.join(', ') || '—';
 }
 
 export function mrdSortEmptyMillItems_(items) {
