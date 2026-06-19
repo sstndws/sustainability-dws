@@ -7367,10 +7367,16 @@ function initDashboardApp() {
       ));
       var companyHit = !!(company && hasCompany && nblMatchesAnyAlias_(company, cAliases));
       var matched;
-      if (hasGroup && hasCompany) {
-        matched = groupHit && companyHit; // both specified → both must match
-      } else if (hasGroup) {
-        matched = groupHit;               // group only → group match enough
+      if (hasGroup) {
+        // Group hit is sufficient — the company column in NBL is metadata (which
+        // specific subsidiary triggered the listing) not an additional filter.
+        // Requiring companyHit too was too strict: e.g. KENCANA AGRI / SAWINDO KENCANA
+        // would fail to match NBL row "KENCANA AGRI / LOKA INDAH LESTARI" even though
+        // SAWINDO KENCANA is also a KENCANA AGRI subsidiary.
+        // Cross-group false positives are prevented because groupHit uses fuzzy group
+        // matching (and exact company-as-group matching), so a different group like
+        // "BEST AGO" will never accidentally match "FIRST RESOURCES".
+        matched = groupHit;
       } else if (hasCompany) {
         // company-only row: only match mills that have no group identity.
         // If the mill has a group, a company-only NBL entry could belong to a
