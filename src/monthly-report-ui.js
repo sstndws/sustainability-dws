@@ -1038,7 +1038,10 @@ async function loadFacilityInBackground(gen, opts) {
 
 async function loadEudrInBackground(gen, opts) {
   opts = opts || {};
-  if (_eudrPending || !_deps.fetchEudrPotential) return;
+  if (!_deps.fetchEudrPotential) return;
+  // Skip only if currently in-flight; a previous run that returned 0 results should
+  // be retried (fetchEudrPotential no longer caches empty results).
+  if (_eudrPending) return;
   if (!opts.force && _snapshot && _snapshot.eudrPotential && _snapshot.eudrPotential.length && !_snapshot.eudrLoading) {
     return;
   }

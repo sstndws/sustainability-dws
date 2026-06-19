@@ -24255,11 +24255,20 @@ function initDashboardApp() {
           return [];
         },
         fetchEudrPotential: async function() {
-          if (_mrdEudrCache) return _mrdEudrCache;
+          // Only use cache when it has actual results; an empty cache may mean
+          // a prior fetch failed — don't block retries with a stale [].
+          if (_mrdEudrCache && _mrdEudrCache.length) return _mrdEudrCache;
           await ensureMillDataForEudr_();
+          // Load TTP with a 10-second timeout so a slow TTP fetch doesn't stall
+          // the entire EUDR computation (TTP is only needed for one criterion).
           if (!ttpLoaded) {
-            try { await loadTTPData(); } catch (ttpErr) {
-              console.warn('[MRD] TTP unavailable for EUDR:', ttpErr);
+            try {
+              await Promise.race([
+                loadTTPData(),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('TTP timeout')); }, 10000); }),
+              ]);
+            } catch (ttpErr) {
+              console.warn('[MRD] TTP unavailable for EUDR (proceeding without):', ttpErr && ttpErr.message);
             }
           }
           await loadEudrFormulaConfig_();
@@ -24283,7 +24292,8 @@ function initDashboardApp() {
               search: [eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'], eudrRow['PROVINCE'], eudrRow['SUPPLY TO']].join(' ').toLowerCase(),
             });
           });
-          _mrdEudrCache = out;
+          // Only cache non-empty results so a failed/empty fetch is retried next time.
+          if (out.length) _mrdEudrCache = out;
           return out;
         },
       });
