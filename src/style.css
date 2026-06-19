@@ -6391,7 +6391,7 @@ tr.pf-group-detail-row.hidden {
 .pf-ncol-period  { width: 8%; }
 .pf-ncol-status  { width: 12%; }
 .pf-ncol-num     { width: 11%; }
-.pf-ncol-pct     { width: 11%; }
+.pf-ncol-pct     { width: 9%; }
 .pf-nested-table th {
   background: transparent;
   color: #9a8080;
@@ -8360,6 +8360,21 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 #panel-monthly-report-detail .mrd-period-bar {
   margin-bottom: 10px;
 }
+#panel-monthly-report-detail .mrd-scope-text {
+  white-space: normal;
+  line-height: 1.45;
+  display: block;
+  width: 100%;
+  padding-top: 6px;
+}
+#panel-monthly-report-detail .mrd-period-hint {
+  display: block;
+  width: 100%;
+  font-size: 11px;
+  color: #9c8a8a;
+  line-height: 1.35;
+  padding-top: 2px;
+}
 #panel-monthly-report-detail .mrd-period-actions {
   display: flex;
   align-items: center;
@@ -8437,7 +8452,7 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 }
 #panel-monthly-report-detail .mrd-nbl-head {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 0.9fr;
   gap: 8px;
   padding: 0 10px 6px;
   font-size: 10px;
@@ -8658,6 +8673,10 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   gap: 8px;
 }
 #panel-monthly-report-detail .mrd-nbl-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.9fr;
+  gap: 8px;
+  align-items: start;
   padding: 10px 12px;
   border-radius: 8px;
   background: rgba(192, 57, 43, 0.04);
@@ -8671,9 +8690,14 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 }
 #panel-monthly-report-detail .mrd-nbl-item-co {
   display: block;
-  margin-top: 3px;
   font-size: 11px;
   color: #4a3030;
+}
+#panel-monthly-report-detail .mrd-nbl-item-riser {
+  display: block;
+  font-size: 11px;
+  color: #6a4040;
+  font-weight: 600;
 }
 #panel-monthly-report-detail .mrd-nbl-item-risk {
   display: inline-block;
@@ -8833,7 +8857,7 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 }
 #panel-monthly-report-detail .mrd-facility-kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }

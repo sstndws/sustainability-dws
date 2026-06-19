@@ -156,7 +156,7 @@ const BL_MONITORING_ENSURE_HEADERS = [
 // ── Supply Import Draft headers ──────────────────────────────
 const SUPPLY_DRAFT_HEADERS = [
   'draft_id', 'batch_id', 'status',        // 'draft' | 'submitted'
-  'quarter', 'year',
+  'month', 'year',
   'created_at', 'updated_at', 'created_by',
   'match_status',                           // 'matched' | 'new' | 'group_mismatch'
   'supply_type',                            // 'CPO' | 'PK'
@@ -165,7 +165,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'PERCENTAGE SUPPLY CPO',
   'PERCENTAGE SUPPLY PK',
   // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
-  'QUARTER', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
+  'MONTH', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
   'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
   'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
   'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'SCORE',
@@ -833,7 +833,7 @@ var MILL_IDENTITY_PLACEHOLDERS_ = { 'NO DATA': true, '-': true, '—': true, 'N/
 
 /** Kolom formula/default (SUPPLY %, dll.) tidak menentukan zona aktif vs kosong. */
 var MILL_NON_IDENTITY_HEADERS_ = {
-  'QUARTER': true, 'YEAR': true, 'SOURCE TYPE': true, 'TRADER NAME': true,
+  'MONTH': true, 'QUARTER': true, 'YEAR': true, 'SOURCE TYPE': true, 'TRADER NAME': true,
   'SUPPLY CPO': true, 'SUPPLY PK': true, 'PRODUCT SUPPLY': true,
   'PERCENTAGE SUPPLY CPO': true, 'PERCENTAGE SUPPLY PK': true,
   'PERCENTAGE': true, 'SUPPLY': true, 'SCORE': true, 'TOTAL SCORE': true,
@@ -1539,8 +1539,38 @@ function upsertQuestionnaireRow_(data) {
   return { success: true, mode: 'insert' };
 }
 
+function normalizeNblLegacyHeaders_(ws) {
+  if (!ws) return ws;
+  const lastCol = Math.max(ws.getLastColumn(), 1);
+  const headers = ws.getRange(1, 1, 1, lastCol).getValues()[0];
+  const renameMap = {
+    'raiser': 'Riser',
+    'riser': 'Riser',
+    'group name': 'Group Name NBL',
+    'group name nbl': 'Group Name NBL',
+    'company name': 'Company Name NBL',
+    'company name nbl': 'Company Name NBL',
+    'source': 'SOURCE',
+  };
+  let changed = false;
+  const out = headers.map(function(h) {
+    const trimmed = String(h || '').replace(/\s+/g, ' ').trim();
+    const canon = renameMap[trimmed.toLowerCase()];
+    if (canon && trimmed !== canon) {
+      changed = true;
+      return canon;
+    }
+    return trimmed;
+  });
+  if (changed) {
+    ws.getRange(1, 1, 1, out.length).setValues([out]);
+  }
+  return ws;
+}
+
 function ensureNblHeaders_() {
-  return ensureSheetHeadersGeneric_('nbl', NBL_HEADERS);
+  const ws = ensureSheetHeadersGeneric_('nbl', NBL_HEADERS);
+  return normalizeNblLegacyHeaders_(ws);
 }
 
 function ensureUnileverNblHeaders_() {
@@ -1705,11 +1735,17 @@ function readSddMainSupplierType_(main) {
 
 function millTtpPeriodPatch_(identity) {
   const out = {};
+  const m = String((identity || {})['MONTH'] || (identity || {})['Month'] || '').trim();
   const q = String((identity || {})['QUARTER'] || (identity || {})['Quarter'] || '').trim();
   const y = String((identity || {})['YEAR'] || (identity || {})['Year'] || '').trim();
-  if (q) {
-    out['Quarter'] = q;
-    out['QUARTER'] = q;
+  const qDerived = m ? 'Q' + Math.ceil(parseInt(m, 10) / 3) : q;
+  if (qDerived) {
+    out['Quarter'] = qDerived;
+    out['QUARTER'] = qDerived;
+  }
+  if (m) {
+    out['Month'] = m;
+    out['MONTH'] = m;
   }
   if (y) {
     out['Year'] = y;
@@ -2130,9 +2166,11 @@ function sanitizeMillTtpIdentity_(raw) {
   if (!out['COMPANY NAME']) throw new Error('COMPANY NAME is required for Traceability sync');
   if (!out['MILL NAME'])    throw new Error('MILL NAME is required for Traceability sync');
   if (!out['UML ID'])       throw new Error('UML ID is required for Traceability sync');
+  const m = clip(raw['MONTH'] || raw['Month']);
   const q = clip(raw['QUARTER'] || raw['Quarter']);
   const y = clip(raw['YEAR'] || raw['Year']);
-  if (q) out['QUARTER'] = q;
+  if (m) out['MONTH'] = m;
+  if (q) out['QUARTER'] = q; // backward compat
   if (y) out['YEAR'] = y;
   return out;
 }
@@ -2500,6 +2538,33 @@ function syncTtpFromMillOnboardingForTmlLine_(sid, tmlLineId, millIdentity, main
 //  TTP / TTM  ─ AUTO-INIT HEADERS
 // ═══════════════════════════════════════════════════════════
 
+function normalizeTtpLegacyHeaders_(ws) {
+  if (!ws) return ws;
+  const hdrRowInfo = detectTtpHeaderRow_(ws);
+  const headerRow = hdrRowInfo ? hdrRowInfo.headerRow : 1;
+  const lastCol = Math.max(ws.getLastColumn(), 1);
+  const headers = ws.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  let changed = false;
+  const out = headers.map(function(h, idx) {
+    const trimmed = String(h || '').replace(/\s+/g, ' ').trim();
+    const upper = trimmed.toUpperCase();
+    if (upper === 'GROUP NAME' || upper === 'GROUP NAME NBL') return trimmed;
+    if (trimmed === 'NAME' || trimmed === ' NAME' || upper === 'GROUP NAME') {
+      changed = true;
+      return 'GROUP NAME';
+    }
+    if (/^group\s*name$/i.test(trimmed)) {
+      changed = true;
+      return 'GROUP NAME';
+    }
+    return trimmed;
+  });
+  if (changed) {
+    ws.getRange(headerRow, 1, 1, out.length).setValues([out]);
+  }
+  return ws;
+}
+
 function ensureTtpHeaders_() {
   const sheet   = getSheet('ttp');
   const lastCol = sheet.getLastColumn();
@@ -2508,6 +2573,8 @@ function ensureTtpHeaders_() {
     sheet.getRange(1, 1, 1, TTP_HEADERS.length).setValues([TTP_HEADERS]);
     return sheet;
   }
+
+  normalizeTtpLegacyHeaders_(sheet);
 
   const hdrRowInfo = detectTtpHeaderRow_(sheet);
   const headerRow  = hdrRowInfo ? hdrRowInfo.headerRow : 1;
@@ -2548,9 +2615,25 @@ function detectHeaderRowByKeys_(sheet, requiredKeys, scanMaxRows) {
 function detectTtpHeaderRow_(sheet) {
   return detectHeaderRowByKeys_(
     sheet,
+    ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'FFB SUPPLIER NAME', 'CATEGORY'],
+    15
+  ) || detectHeaderRowByKeys_(
+    sheet,
     ['Quarter', 'Year', 'UML ID', 'FFB SUPPLIER NAME', 'CATEGORY'],
     15
   );
+}
+
+function looksLikeTtpYearOrQuarterValue_(s) {
+  var t = String(s || '').trim();
+  if (!t) return true;
+  if (/^(19|20)\d{2}$/.test(t)) return true;
+  if (/^Q[1-4]$/i.test(t)) return true;
+  return false;
+}
+
+function looksLikeTtpGroupNameValue_(s) {
+  return !looksLikeTtpYearOrQuarterValue_(s);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3106,16 +3189,23 @@ function getByMillId(millId) {
 
 // ═══════════════════════════════════════════════════════════
 //  GENERIC CRUD
-//  (+ Mill Quarter/Year: dashboard sends QUARTER/YEAR; sheet may use Quarter/Year)
+//  (+ Mill Month/Year: dashboard sends MONTH/YEAR; sheet may use Month/Year or Quarter/Year for legacy data)
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Map payload keys QUARTER / YEAR (from sustain-dashboard) onto the exact
- * header names present in row 1 of the Mill sheet (e.g. Quarter, Year).
+ * Map payload keys MONTH / YEAR (from sustain-dashboard) onto the exact
+ * header names present in row 1 of the Mill sheet (e.g. Month, Year).
+ * Also handles legacy QUARTER field for backward compatibility.
  */
 function resolveMillQuarterYearKeys_(data, headers) {
   if (!data || typeof data !== 'object' || !Array.isArray(headers)) return;
   var list = headers.map(function(x) { return String(x || '').trim(); });
+  function findMonthCol() {
+    for (var i = 0; i < list.length; i++) {
+      if (/^month$/i.test(list[i]) || /^bulan$/i.test(list[i])) return list[i];
+    }
+    return null;
+  }
   function findQuarterCol() {
     for (var i = 0; i < list.length; i++) {
       if (/^quarter$/i.test(list[i])) return list[i];
@@ -3135,8 +3225,15 @@ function resolveMillQuarterYearKeys_(data, headers) {
     }
     return null;
   }
+  var mCol = findMonthCol();
   var qCol = findQuarterCol();
   var yCol = findYearCol();
+  // Write MONTH to the Month column
+  if (mCol && data['MONTH'] !== undefined && String(data['MONTH']).trim() !== '' &&
+      (data[mCol] === undefined || String(data[mCol]).trim() === '')) {
+    data[mCol] = data['MONTH'];
+  }
+  // Legacy: if sheet still has Quarter column, map MONTH→quarter derivation
   if (qCol && data['QUARTER'] !== undefined && String(data['QUARTER']).trim() !== '' &&
       (data[qCol] === undefined || String(data[qCol]).trim() === '')) {
     data[qCol] = data['QUARTER'];
@@ -3147,17 +3244,155 @@ function resolveMillQuarterYearKeys_(data, headers) {
   }
 }
 
-/** Expose QUARTER / YEAR on getAll('mill') for clients that expect uppercase keys. */
+/** Expose MONTH / YEAR on getAll('mill') for clients that expect uppercase keys. */
 function mirrorMillQuarterYearOnRead_(obj) {
   if (!obj || typeof obj !== 'object') return;
+  // Mirror MONTH column
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    var t = String(k).trim();
+    if ((/^month$/i.test(t) || /^bulan$/i.test(t)) && obj['MONTH'] === undefined) obj['MONTH'] = obj[k];
+  });
+  // Legacy backward compat: expose QUARTER if sheet still has it
   Object.keys(obj).forEach(function(k) {
     if (k === '_row') return;
     if (/^quarter$/i.test(String(k).trim()) && obj['QUARTER'] === undefined) obj['QUARTER'] = obj[k];
   });
+  // Derive QUARTER from MONTH if QUARTER absent
+  if (obj['MONTH'] !== undefined && String(obj['MONTH']).trim() !== '' && obj['QUARTER'] === undefined) {
+    var mn = parseInt(String(obj['MONTH']).trim(), 10);
+    if (mn >= 1 && mn <= 12) obj['QUARTER'] = 'Q' + Math.ceil(mn / 3);
+  }
+  // Legacy: derive MONTH from QUARTER when MONTH column empty (Q1 → months 1-3 represented as 1)
+  if ((!obj['MONTH'] || String(obj['MONTH']).trim() === '') && obj['QUARTER'] !== undefined && String(obj['QUARTER']).trim() !== '') {
+    var qRaw = String(obj['QUARTER']).trim().toUpperCase().replace(/\s+/g, '');
+    var qm = qRaw.match(/^Q?([1-4])$/);
+    if (qm) obj['MONTH'] = String((parseInt(qm[1], 10) - 1) * 3 + 1);
+  }
   Object.keys(obj).forEach(function(k) {
     if (k === '_row') return;
     var t = String(k).trim();
     if ((t === 'Year' || t === 'YEAR') && obj['YEAR'] === undefined) obj['YEAR'] = obj[k];
+  });
+}
+
+function detectNblHeaderRow_(sheet) {
+  return detectHeaderRowByKeys_(
+    sheet,
+    ['Riser', 'Group Name NBL', 'Company Name NBL'],
+    12
+  ) || detectHeaderRowByKeys_(
+    sheet,
+    ['Raiser', 'Group Name', 'Company Name'],
+    12
+  );
+}
+
+/** Normalize NBL row keys to canonical Riser / Group Name NBL / Company Name NBL / SOURCE. */
+function mirrorNblFieldsOnRead_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    var nk = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+    var v = obj[k];
+    if (v === undefined || v === null || String(v).trim() === '') return;
+    var s = String(v).trim();
+    if ((nk === 'riser' || nk === 'raiser') && !String(obj['Riser'] || '').trim()) {
+      obj['Riser'] = s;
+    }
+    if ((/group\s*name(\s*nbl)?/.test(nk) || nk === 'group') && !String(obj['Group Name NBL'] || '').trim()) {
+      obj['Group Name NBL'] = s;
+    }
+    if ((/company\s*name(\s*nbl)?/.test(nk) || nk === 'company') && !String(obj['Company Name NBL'] || '').trim()) {
+      obj['Company Name NBL'] = s;
+    }
+    if (nk === 'source' && !String(obj['SOURCE'] || '').trim()) {
+      obj['SOURCE'] = s;
+    }
+  });
+}
+
+/** Positional fallback: NBL sheet columns A–D = Riser, Group, Company, Source. */
+function mirrorNblFieldsByPosition_(obj, row) {
+  if (!obj || !row || !row.length) return;
+  function cell(i) {
+    var v = row[i];
+    if (v === undefined || v === null) return '';
+    var s = String(v).trim();
+    return s && s !== '—' && s !== '-' ? s : '';
+  }
+  if (!String(obj['Riser'] || '').trim()) {
+    var r = cell(0);
+    if (r) obj['Riser'] = r;
+  }
+  if (!String(obj['Group Name NBL'] || '').trim()) {
+    var g = cell(1);
+    if (g) obj['Group Name NBL'] = g;
+  }
+  if (!String(obj['Company Name NBL'] || '').trim()) {
+    var c = cell(2);
+    if (c) obj['Company Name NBL'] = c;
+  }
+  if (!String(obj['SOURCE'] || '').trim()) {
+    var src = cell(3);
+    if (src) obj['SOURCE'] = src;
+  }
+}
+
+/** Sheet header sometimes truncates "GROUP NAME" → " NAME"; mirror to GROUP NAME on read. */
+function mirrorGroupNameOnRead_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  if (obj['GROUP NAME'] !== undefined && String(obj['GROUP NAME']).trim() !== '') return;
+  var candidates = [obj[' NAME'], obj['Group Name'], obj['Grup Name'], obj['COMPANY GROUP NAME']];
+  for (var i = 0; i < candidates.length; i++) {
+    var s = String(candidates[i] != null ? candidates[i] : '').trim();
+    if (s && s !== '—' && s !== '-') {
+      obj['GROUP NAME'] = s;
+      return;
+    }
+  }
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    var t = String(k).trim();
+    if (t === 'NAME' || /^group\s*name$/i.test(t)) {
+      var v = String(obj[k] != null ? obj[k] : '').trim();
+      if (v && v !== '—' && v !== '-') obj['GROUP NAME'] = v;
+    }
+  });
+}
+
+function mirrorMillGroupNameOnRead_(obj) {
+  mirrorGroupNameOnRead_(obj);
+}
+
+/** Header-aware TTP mirror — never map Year/Quarter into GROUP NAME. */
+function mirrorTtpFieldsByPosition_(obj, row, headers) {
+  if (!obj || !row || !row.length || !headers || !headers.length) return;
+  function cell(i) {
+    var v = row[i];
+    if (v === undefined || v === null) return '';
+    var s = String(v).trim();
+    return s && s !== '—' && s !== '-' ? s : '';
+  }
+  headers.forEach(function(h, j) {
+    var uk = String(h || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    var v = cell(j);
+    if (!v) return;
+    if (uk === 'GROUP NAME' && !String(obj['GROUP NAME'] || '').trim() && looksLikeTtpGroupNameValue_(v)) {
+      obj['GROUP NAME'] = v;
+    }
+    if (uk === 'COMPANY NAME' && !String(obj['COMPANY NAME'] || '').trim()) {
+      obj['COMPANY NAME'] = v;
+    }
+    if (uk === 'MILL NAME' && !String(obj['MILL NAME'] || '').trim()) {
+      obj['MILL NAME'] = v;
+    }
+    if (uk === 'FFB SUPPLIER GROUP NAME' && !String(obj['FFB SUPPLIER GROUP NAME'] || '').trim()) {
+      obj['FFB SUPPLIER GROUP NAME'] = v;
+    }
+    if (uk === 'FFB SUPPLIER NAME' && !String(obj['FFB SUPPLIER NAME'] || '').trim()) {
+      obj['FFB SUPPLIER NAME'] = v;
+    }
   });
 }
 
@@ -3212,6 +3447,16 @@ function getData(sheetKey) {
     }
   }
 
+  if (sheetKey === 'nbl') {
+    const hdr = detectNblHeaderRow_(sheet);
+    if (hdr && hdr.headers && hdr.headers.length) {
+      headerRowNum = hdr.headerRow;
+      headers = hdr.headers;
+      dataRows = rows.slice(headerRowNum);
+    }
+    headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
+  }
+
   // Preserve display formatting (e.g. volume "66.000") for Mill & BL Monitoring.
   const dispRows = (sheetKey === 'mill' || sheetKey === 'blMonitoring')
     ? range.getDisplayValues()
@@ -3237,6 +3482,17 @@ function getData(sheetKey) {
       }
     });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
+    if (sheetKey === 'mill') mirrorMillGroupNameOnRead_(obj);
+    if (sheetKey === 'ttp') {
+      mirrorGroupNameOnRead_(obj);
+      if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];
+      mirrorGroupNameOnRead_(obj);
+      mirrorTtpFieldsByPosition_(obj, row, headers);
+    }
+    if (sheetKey === 'nbl') {
+      mirrorNblFieldsOnRead_(obj);
+      mirrorNblFieldsByPosition_(obj, row);
+    }
     return obj;
   }).filter(function(obj) {
     if (sheetKey === 'facilityProfile') return facilityProfileRowHasContent_(obj);

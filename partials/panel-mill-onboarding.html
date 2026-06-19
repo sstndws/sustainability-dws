@@ -51,23 +51,23 @@
   <section class="mill-period-card" aria-label="Period filter Mill Registry">
     <div class="mill-period-card__head">
       <span class="mill-period-card__title">Period</span>
-      <span class="mill-period-card__hint">Filter registry by quarter &amp; year</span>
+      <span class="mill-period-card__hint">Filter registry by month &amp; year</span>
     </div>
     <div class="ttp-toolbar mill-period-toolbar">
-      <div class="ttp-dropdown-wrap mill-period-filter-wrap" id="millQuarterFilterWrap">
-        <button type="button" class="ttp-btn-filter" id="millBtnFilterQuarter" aria-expanded="false" aria-controls="millQuarterFilterPanel">
+      <div class="ttp-dropdown-wrap mill-period-filter-wrap" id="millMonthFilterWrap">
+        <button type="button" class="ttp-btn-filter" id="millBtnFilterMonth" aria-expanded="false" aria-controls="millMonthFilterPanel">
           <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-          Quarter
+          Month
           <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
-        <div class="ttp-dropdown-panel mill-period-filter-panel mill-dim-filter-surface" id="millQuarterFilterPanel" role="region" aria-label="Filter Quarter">
+        <div class="ttp-dropdown-panel mill-period-filter-panel mill-dim-filter-surface" id="millMonthFilterPanel" role="region" aria-label="Filter Month">
           <div class="ttp-dropdown-head">
-            <span class="ttp-dropdown-title">Quarter</span>
+            <span class="ttp-dropdown-title">Month</span>
             <div class="ttp-dropdown-actions">
-              <button type="button" data-mill-pdf-dim-reset="quarter">Reset</button>
+              <button type="button" data-mill-pdf-dim-reset="month">Reset</button>
             </div>
           </div>
-          <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListQuarter"></div>
+          <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListMonth"></div>
         </div>
       </div>
       <div class="ttp-dropdown-wrap mill-period-filter-wrap" id="millYearFilterWrap">
@@ -110,7 +110,7 @@
       <div class="supply-section__head">
         <div class="supply-section__intro">
           <h4 class="supply-section__title">Import Supply Data</h4>
-          <p class="supply-section__desc">Upload Excel CPO atau PK per periode. Company dengan quarter &amp; year sama otomatis digabung menjadi <strong>CPO+PK</strong>.</p>
+          <p class="supply-section__desc">Upload Excel CPO atau PK per periode. Company dengan month &amp; year sama otomatis digabung menjadi <strong>CPO+PK</strong>.</p>
         </div>
         <button type="button" class="btn-sm btn-filled supply-section__cta" id="btn-supply-import-open">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -123,7 +123,7 @@
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
         <p class="supply-empty__title">Belum ada draft import</p>
-        <p class="supply-empty__steps">1. Pilih jenis supply (CPO / PK)<br>2. Tentukan quarter &amp; year<br>3. Upload Excel → review di Task List</p>
+        <p class="supply-empty__steps">1. Pilih jenis supply (CPO / PK)<br>2. Tentukan month &amp; year<br>3. Upload Excel → review di Task List</p>
         <button type="button" class="supply-btn supply-btn--primary supply-empty__btn" data-action="open-supply-import">Mulai Import</button>
       </div>
     </section>
@@ -135,7 +135,7 @@
       <header class="supply-import-modal__header">
         <div>
           <h2 id="supply-import-modal-title" class="supply-import-modal__title">Import Supply Data</h2>
-          <p class="supply-import-modal__subtitle">Upload per jenis supply. Quarter &amp; year yang sama akan digabung per <strong>Company Name</strong>.</p>
+          <p class="supply-import-modal__subtitle">Upload per jenis supply. Month &amp; year yang sama akan digabung per <strong>Company Name</strong>.</p>
         </div>
         <button type="button" id="btn-supply-import-close" class="supply-import-modal__close" aria-label="Tutup">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -146,7 +146,7 @@
         <div class="supply-import-callout" role="note">
           <svg class="supply-import-callout__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <div>
-            <strong>Tip:</strong> Import CPO dulu, lalu PK dengan quarter &amp; year yang sama. Baris company yang cocok otomatis jadi <span class="supply-pill supply-pill--cpopk">CPO+PK</span>.
+            <strong>Tip:</strong> Import CPO dulu, lalu PK dengan month &amp; year yang sama. Baris company yang cocok otomatis jadi <span class="supply-pill supply-pill--cpopk">CPO+PK</span>.
           </div>
         </div>
 
@@ -172,13 +172,21 @@
           <div class="supply-import-step__label"><span class="supply-import-step__num">2</span> Periode</div>
           <div class="supply-import-period">
             <div class="supply-import-field">
-              <label class="supply-import-field__label" for="supply-import-quarter">Quarter</label>
-              <select id="supply-import-quarter" class="supply-import-select">
-                <option value="">— Pilih Quarter —</option>
-                <option value="Q1">Q1 · Jan–Mar</option>
-                <option value="Q2">Q2 · Apr–Jun</option>
-                <option value="Q3">Q3 · Jul–Sep</option>
-                <option value="Q4">Q4 · Okt–Des</option>
+              <label class="supply-import-field__label" for="supply-import-month">Month</label>
+              <select id="supply-import-month" class="supply-import-select">
+                <option value="">— Pilih Month —</option>
+                <option value="1">1 · Januari</option>
+                <option value="2">2 · Februari</option>
+                <option value="3">3 · Maret</option>
+                <option value="4">4 · April</option>
+                <option value="5">5 · Mei</option>
+                <option value="6">6 · Juni</option>
+                <option value="7">7 · Juli</option>
+                <option value="8">8 · Agustus</option>
+                <option value="9">9 · September</option>
+                <option value="10">10 · Oktober</option>
+                <option value="11">11 · November</option>
+                <option value="12">12 · Desember</option>
               </select>
             </div>
             <div class="supply-import-field">

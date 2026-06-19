@@ -82,16 +82,21 @@ export const MRD_EUDR_COLS = [
 
 export const MRD_FACILITY_COMPANY_COLS = [
   'Group Name', 'Company Name', 'Certification', 'No Buy List', 'Result Risk Level',
-  'Total Grievance', '% TRACEABLE',
+  'Total Grievance', '% TTM TRACEABLE', '% TTP TRACEABLE',
 ];
 
 export function facilityPctColLabel(isPk) {
-  return isPk ? '% PK TRACEABLE' : '% TRACEABLE';
+  return isPk ? '% TTP PK TRACEABLE' : '% TTP TRACEABLE';
+}
+
+export function facilityTtmColLabel(isPk) {
+  return isPk ? '% TTM PK TRACEABLE' : '% TTM TRACEABLE';
 }
 
 export function facilitySummaryColLabels(isPk) {
+  const ttm = facilityTtmColLabel(isPk);
   const pct = facilityPctColLabel(isPk);
-  return ['Facility', 'Companies', 'No Buy List', 'High Risk', 'Total Grievance', 'Est. ISPO Supply %', pct];
+  return ['Facility', 'Companies', 'No Buy List', 'High Risk', 'Total Grievance', 'Estimated ISPO Supply %', ttm, pct];
 }
 
 /** Short / wrapped PDF header labels so columns do not overlap on A4. */
@@ -113,10 +118,15 @@ const PDF_HEAD_SHORT = {
   'Verification Findings': 'Verification',
   'Corrective Action': 'Corrective',
   'Preventive Action': 'Preventive',
-  'Est. ISPO Supply %': 'ISPO\nSupply %',
+  'Estimated ISPO Supply %': 'Estimated\nISPO Supply %',
   '% TRACEABLE': '%\nTRACEABLE',
   '% PK TRACEABLE': '% PK\nTRACEABLE',
+  '% TTP TRACEABLE': '% TTP\nTRACEABLE',
+  '% TTP PK TRACEABLE': '% TTP\nPK',
+  '% TTM TRACEABLE': '% TTM\nTRACEABLE',
+  '% TTM PK TRACEABLE': '% TTM\nPK',
   'Company Group Name': 'Company\nGroup',
+  'NBL Riser': 'NBL\nRiser',
   'Last Update': 'Last\nUpdate',
   'Date Import': 'Date\nImport',
   'Company Name NBL': 'Company\nName',
@@ -150,4 +160,200 @@ export function pdfCellTrim(val, maxLen) {
 
 function pdfSanitizeText_(v) {
   return String(v == null ? '' : v).replace(/\s+/g, ' ').trim() || '—';
+}
+
+const MRD_MONTH_FULL_ = [
+  '', 'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+export const MRD_MONTH_SHORT_ = [
+  '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/** Full month name from 1–12. */
+export function mrdMonthFullName_(month) {
+  const m = parseInt(month, 10);
+  return MRD_MONTH_FULL_[m] || '';
+}
+
+/** Business week of month (days 1–7 → Wk 1, 8–14 → Wk 2, 15–21 → Wk 3, …). */
+export function mrdWeekOfMonth_(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return 1;
+  return Math.min(5, Math.ceil(d.getDate() / 7));
+}
+
+/**
+ * Official monthly reporting cutoff — always the 15th.
+ * Month selected → 15th of that month; year only → 15 Dec; else 15th of export month.
+ */
+export function mrdReportCutoffDate_(year, month, fallbackDate) {
+  const y = parseInt(year, 10);
+  const m = parseInt(month, 10);
+  if (y && m >= 1 && m <= 12) return new Date(y, m - 1, 15);
+  if (y) return new Date(y, 11, 15);
+  const fb = fallbackDate instanceof Date ? fallbackDate : new Date(fallbackDate || Date.now());
+  return new Date(fb.getFullYear(), fb.getMonth(), 15);
+}
+
+/** Human-readable report period for headers. */
+export function mrdPeriodDisplayLabel_(year, month) {
+  const y = String(year || '').trim();
+  const m = parseInt(month, 10);
+  if (y && m >= 1 && m <= 12) return mrdMonthFullName_(m) + ' ' + y;
+  if (y) return 'Full year ' + y;
+  return 'All periods';
+}
+
+/**
+ * Data lags one month behind the reporting period.
+ * e.g. January 2026 report → December 2025 data; February 2026 → January 2026.
+ */
+export function mrdDataPeriodFromReport_(reportYear, reportMonth) {
+  const ry = parseInt(reportYear, 10);
+  const rm = parseInt(reportMonth, 10);
+  if (!ry) return { year: '', month: '' };
+  if (!rm || rm < 1 || rm > 12) {
+    return { year: String(ry - 1), month: '' };
+  }
+  let dm = rm - 1;
+  let dy = ry;
+  if (dm < 1) {
+    dm = 12;
+    dy = ry - 1;
+  }
+  return { year: String(dy), month: String(dm) };
+}
+
+export function mrdFormatReportDate_(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * Monthly Report header copy — period, 15th cutoff, week-of-month (boss feedback).
+ * @returns {{ period, periodLine, cutoffLine, cutoffCompact, weekOfMonth, cutoffFormatted, exportedAt }}
+ */
+export function mrdReportHeaderMeta_(year, month, exportDate) {
+  const exportDt = exportDate instanceof Date ? exportDate : new Date(exportDate || Date.now());
+  const cutoff = mrdReportCutoffDate_(year, month, exportDt);
+  const week = mrdWeekOfMonth_(cutoff);
+  const cutoffMonthFull = mrdMonthFullName_(cutoff.getMonth() + 1);
+  const cutoffMonthShort = MRD_MONTH_SHORT_[cutoff.getMonth() + 1] || '';
+  const period = mrdPeriodDisplayLabel_(year, month);
+  const dataPeriod = mrdDataPeriodFromReport_(year, month);
+  const dataLabel = mrdPeriodDisplayLabel_(dataPeriod.year, dataPeriod.month);
+  const cutoffFormatted = mrdFormatReportDate_(cutoff);
+  const cutoffCompact = '15 ' + cutoffMonthShort + ' ' + cutoff.getFullYear();
+  return {
+    period: period,
+    dataPeriod: dataLabel,
+    periodLine: 'Reporting period: ' + period,
+    dataPeriodLine: 'Data period: ' + dataLabel,
+    cutoffLine: 'Reporting cutoff: ' + cutoffFormatted + ' · Week ' + week + ' of ' + cutoffMonthFull,
+    cutoffCompact: 'Cutoff ' + cutoffCompact + ' · Week ' + week,
+    weekOfMonth: week,
+    cutoffFormatted: cutoffFormatted,
+    exportedAt: exportDt.toLocaleString('en-GB', { hour12: false }),
+    dataYear: dataPeriod.year,
+    dataMonth: dataPeriod.month,
+  };
+}
+
+/** Case-insensitive A–Z compare for monthly report lists. */
+export function mrdLocaleCompare_(a, b) {
+  return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+}
+
+export function mrdSortSddRows_(rows) {
+  return rows.slice().sort(function(a, b) {
+    return mrdLocaleCompare_(sddCompanyName(a), sddCompanyName(b));
+  });
+}
+
+export function mrdSortMillItems_(items) {
+  return items.slice().sort(function(a, b) {
+    const ra = a.row || a;
+    const rb = b.row || b;
+    const g = mrdLocaleCompare_(ra['GROUP NAME'], rb['GROUP NAME']);
+    if (g !== 0) return g;
+    const c = mrdLocaleCompare_(ra['COMPANY NAME'], rb['COMPANY NAME']);
+    if (c !== 0) return c;
+    return mrdLocaleCompare_(ra['MILL NAME'], rb['MILL NAME']);
+  });
+}
+
+/** Grievance stays newest-first by date received. */
+export function mrdSortGrvItemsByDateDesc_(items) {
+  return items.slice().sort(function(a, b) {
+    const da = String((a.row || a)['Date Received'] || '');
+    const db = String((b.row || b)['Date Received'] || '');
+    return db.localeCompare(da);
+  });
+}
+
+export function mrdSortEudrItems_(items) {
+  return items.slice().sort(function(a, b) {
+    const ra = a.row || a;
+    const rb = b.row || b;
+    const g = mrdLocaleCompare_(ra['GROUP NAME'], rb['GROUP NAME']);
+    if (g !== 0) return g;
+    const c = mrdLocaleCompare_(ra['COMPANY NAME'], rb['COMPANY NAME']);
+    if (c !== 0) return c;
+    return mrdLocaleCompare_(ra['MILL NAME'], rb['MILL NAME']);
+  });
+}
+
+
+export function mrdSortFacilityCompanies_(companies) {
+  return companies || [];
+}
+
+export function mrdSortFacilityBundles_(bundles) {
+  return bundles || [];
+}
+
+export function mrdSortBundlesByFacility_(bundles) {
+  return bundles.slice().sort(function(a, b) {
+    return mrdLocaleCompare_(a.facility, b.facility);
+  });
+}
+
+export function mrdFormatNblRisers_(item) {
+  if (!item) return '—';
+  const matches = item.nblMatches || [];
+  const risers = [];
+  const seen = {};
+  matches.forEach(function(m) {
+    const r = String((m && m.riser) || '').trim();
+    if (!r) return;
+    const key = r.toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    risers.push(r);
+  });
+  if (risers.length) {
+    return risers.sort(function(a, b) {
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    }).join(', ');
+  }
+  const by = String(item.nblBy || '').trim();
+  if (!by) return '—';
+  if (/source unresolved/i.test(by)) return '—';
+  const stripped = by.replace(/^NBL by\s+/i, '').trim();
+  return stripped || '—';
+}
+
+export function mrdSortEmptyMillItems_(items) {
+  return items.slice().sort(function(a, b) {
+    const ra = a.millRow || a.row || a;
+    const rb = b.millRow || b.row || b;
+    const g = mrdLocaleCompare_(ra['GROUP NAME'], rb['GROUP NAME']);
+    if (g !== 0) return g;
+    const c = mrdLocaleCompare_(ra['COMPANY NAME'], rb['COMPANY NAME']);
+    if (c !== 0) return c;
+    return mrdLocaleCompare_(ra['MILL NAME'], rb['MILL NAME']);
+  });
 }
