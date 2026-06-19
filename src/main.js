@@ -24325,9 +24325,11 @@ function initDashboardApp() {
               search: [eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'], eudrRow['PROVINCE'], eudrRow['SUPPLY TO']].join(' ').toLowerCase(),
             });
           });
-          // Only cache non-empty results so a failed/empty fetch is retried next time.
-          if (out.length) _mrdEudrCache = out;
-          return out;
+          // Only cache when non-empty; never replace a fuller cache with a partial fetch.
+          if (out.length && (!_mrdEudrCache || out.length >= _mrdEudrCache.length)) {
+            _mrdEudrCache = out;
+          }
+          return out.length ? out : (_mrdEudrCache || []);
         },
       });
       _mrdInited = true;

@@ -124,6 +124,19 @@ function isHighRisk(val) {
   return String(val || '').toLowerCase().includes('high');
 }
 
+/** Same resolved risk as Mill Registry table (RESULT RISK LEVEL → RISK LEVEL). */
+function mrdResolvedRisk_(rowOrItem) {
+  const item = rowOrItem && rowOrItem.row ? rowOrItem : null;
+  const r = item ? item.row : rowOrItem;
+  if (item && String(item.risk || '').trim()) return String(item.risk).trim();
+  if (_deps && _deps.millResolvedRiskLevel && r) return _deps.millResolvedRiskLevel(r) || '';
+  return '';
+}
+
+function mrdIsHighRiskItem_(rowOrItem) {
+  return isHighRisk(mrdResolvedRisk_(rowOrItem));
+}
+
 function isNblYes(val) {
   return _deps && _deps.millIsNblYes_ ? _deps.millIsNblYes_(val) : /yes|nbl|no buy/i.test(String(val || ''));
 }
@@ -349,31 +362,29 @@ async function exportMonthlyReport_(exportOpts) {
 
     if (btn) btn.textContent = 'Building PDF…';
     const extra = await _deps.preparePdfExport({ sections: sections });
-    // Merge freshly-fetched extra.eudr into the snapshot so stats are correct even
-    // when the background load hadn't completed yet. Use extra.eudr only if non-empty
-    // (a truthy [] would otherwise shadow a previously-loaded _snapshot.eudrPotential).
-    const freshEudr = extra && extra.eudr && extra.eudr.length ? extra.eudr : null;
-    _snapshot = rebuildSnapshot_({ eudrPotential: freshEudr !== null ? freshEudr : undefined });
+    const prevEudr = (_snapshot && _snapshot.eudrPotential) || [];
+    const extraEudr = (extra && extra.eudr) || [];
+    let bestEudr = extraEudr.length >= prevEudr.length ? extraEudr.slice() : prevEudr.slice();
+    if (sections.includes('eudr') && _deps.fetchEudrPotential) {
+      try {
+        const fetched = await _deps.fetchEudrPotential();
+        if (Array.isArray(fetched) && fetched.length > bestEudr.length) bestEudr = fetched;
+      } catch (_) { /* keep bestEudr */ }
+    }
+    _snapshot = rebuildSnapshot_({ eudrPotential: bestEudr.length ? bestEudr : undefined });
     const s = _snapshot;
+
+    let exportSections = sections.slice();
+    if (exportSections.indexOf('mill') !== -1 && exportSections.indexOf('highRisk') === -1) {
+      exportSections.push('highRisk');
+    }
 
     const mills = await resolveAllNblForExport_(
       mrdSortMillItems_(filterForExport_(s.mills, function(item) { return matchesSearch(item.search); }))
     );
-    // highRiskMills must include ALL high-risk mills regardless of search filter.
-    // When no search is active, mills already contains every mill — reuse it.
-    // When a search IS active, resolve all s.mills in a separate pass.
-    const allMillsResolved = _search
-      ? await resolveAllNblForExport_(mrdSortMillItems_(s.mills || []))
-      : mills;
-    const highRiskMills = mrdSortMillItems_(allMillsResolved.filter(function(item) {
-      const r = item.row || {};
-      const rr = String(
-        r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
-        r['Result Risk Level'] != null ? r['Result Risk Level'] :
-        r['RISK LEVEL'] != null ? r['RISK LEVEL'] : item.risk || ''
-      ).toLowerCase();
-      return rr.includes('high');
-    }));
+    // Always resolve ALL mills for high-risk — use item.risk (same as main mill table).
+    const allMillsResolved = await resolveAllNblForExport_(mrdSortMillItems_(s.mills || []));
+    const highRiskMills = mrdSortMillItems_(allMillsResolved.filter(mrdIsHighRiskItem_));
     const nblMills = mrdSortMillItems_(mills.filter(function(item) {
       return isNblYes(item.nbl) && matchesSearch(item.search);
     }));
@@ -387,20 +398,21 @@ async function exportMonthlyReport_(exportOpts) {
       });
     }
 
-    // s.eudrPotential is authoritative: freshEudr was already merged into the
-    // snapshot at the rebuildSnapshot_ call above. Using extra.eudr directly
-    // could give a stale/partial list that disagrees with stats.eudrPotential.
-    const eudrSource = s.eudrPotential || [];
-    const eudrList = filterForExport_(eudrSource, function(item) { return matchesSearch(item.search); });
+    // Export always includes every EUDR potential row (no search filter).
+    const eudrList = s.eudrPotential || [];
+    const exportStats = Object.assign({}, s.stats, {
+      highRisk: highRiskMills.length,
+      eudrPotential: eudrList.length,
+    });
 
     const report = getReportPeriod_();
     await buildMonthlyReportPdfPair_({
       getJsPDF: _deps.getJsPDF,
       year: report.year,
       month: report.month,
-      sections: sections,
+      sections: exportSections,
       data: {
-        stats: s.stats,
+        stats: exportStats,
         facility: s.facility,
         sdd: mrdSortSddRows_(filterForExport_(s.sdd, function(r) {
           return matchesSearch([
@@ -625,18 +637,7 @@ function buildSnapshotSync(opts) {
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
   const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear) : {};
 
-  // Build highRiskMills from the same millRows array used for stats.highRisk.
-  // Read risk directly from the raw row to avoid any stale item.risk value.
-  const highRiskMillRows = millRows.filter(function(item) {
-    const r = item.row || {};
-    const rr = String(
-      r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
-      r['Result Risk Level'] != null ? r['Result Risk Level'] :
-      r['RISK LEVEL'] != null ? r['RISK LEVEL'] :
-      item.risk || ''
-    ).toLowerCase();
-    return rr.includes('high');
-  });
+  const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
 
   return {
     sdd: mrdSortSddRows_(sddFiltered),
@@ -671,14 +672,7 @@ function buildSnapshotSync(opts) {
       }).length,
       totalMills: mills.length,
       totalGroups: new Set(mills.map(function(r) { return r['GROUP NAME']; }).filter(Boolean)).size,
-      highRisk: mills.filter(function(r) {
-        const rr = String(
-          r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
-          r['Result Risk Level'] != null ? r['Result Risk Level'] :
-          r['RISK LEVEL'] != null ? r['RISK LEVEL'] : ''
-        ).toLowerCase();
-        return rr.includes('high');
-      }).length,
+      highRisk: mills.filter(function(r) { return mrdIsHighRiskItem_(r); }).length,
       nblMills: mills.filter(function(r) { return isNblYes(r['BUYER NO BUY LIST']); }).length,
       emptyTraceMills: emptyMills.length,
       grievances: grvRows.length,
@@ -731,6 +725,31 @@ function renderSddSection(data, loading) {
     alwaysShowTable: true,
     emptyRowText: 'No SDD records for this period.',
     note: '<p class="mrd-table-caption">' + esc(MRD_SDD_TABLE_TITLE) + '</p>' + limitNote(data.length, MRD_SDD_LIMIT),
+  });
+}
+
+function renderHighRiskSection(rows) {
+  const filtered = (rows || []).filter(function(item) {
+    return mrdIsHighRiskItem_(item) && matchesSearch(item.search);
+  });
+  const visible = mrdSortMillItems_(filtered).slice(0, MRD_ROW_LIMIT);
+  const cols = [
+    { label: 'Result Risk Level', title: 'Result Risk Level', thCls: 'mrd-th-wrap', hasData: function(row) { return hasCellValue(row._data.risk); }, render: function(row) { return riskPill(row._data.risk); } },
+    { label: 'Group Name', title: 'Group Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['GROUP NAME']; } },
+    { label: 'Company Name', title: 'Company Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['COMPANY NAME']; } },
+    { label: 'Mill Name', title: 'Mill Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['MILL NAME']; } },
+    { label: 'Province', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['PROVINCE']; } },
+    { label: 'No Buy List', title: 'No Buy List', thCls: 'mrd-th-wrap', hasData: function(row) { return isNblYes(row._data.nbl); }, render: function(row) {
+      return isNblYes(row._data.nbl) ? '<span class="mrd-pill mrd-pill--high">Yes</span>' : '';
+    }},
+  ];
+  const tableRows = visible.map(function(item) {
+    return { _data: item, _trClass: 'mrd-row--data mrd-row--high-risk' };
+  });
+  return renderSmartTable(cols, tableRows, {
+    empty: '<p class="mrd-empty">No high-risk mills for this period.</p>',
+    note: limitNote(filtered.length, MRD_ROW_LIMIT),
+    tableClass: 'mrd-table--wide mrd-table--high-risk',
   });
 }
 
@@ -1008,7 +1027,8 @@ function renderAll() {
   const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
   const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
   html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
-  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + stats.highRisk + ' high risk · ' + millPeriodLabel, renderMillSection(s.mills), '02');
+  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
+  html += sectionHtml('highRisk', 'High Risk Suppliers', stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
   html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
   html += flatSectionHtml('grv', 'Grievance Monitoring · ' + fullYearLabel, stats.grievances + ' grievances in ' + fullYearLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');

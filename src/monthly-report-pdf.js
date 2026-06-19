@@ -68,7 +68,7 @@ const PDF_LAYOUT = {
   autoTableTopMargin: 22,
 };
 
-const DEFAULT_SECTIONS = ['kpi', 'sdd', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
+const DEFAULT_SECTIONS = ['kpi', 'sdd', 'mill', 'highRisk', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
 const MIN_CONTENT_Y = 24;
 
 function pdfSanitize(v) {
@@ -458,6 +458,7 @@ const MRD_SECTION_LABELS = {
   kpi: 'Overview · Key metrics',
   sdd: 'Supplier Due Diligence',
   mill: 'Mill Onboarding',
+  highRisk: 'High Risk Suppliers',
   trace: 'Traceability Data',
   grv: 'Grievance Monitoring',
   nbl: 'Active NBL Mills',
@@ -580,83 +581,130 @@ function millDetailCells_(item) {
 
 function drawMillSection_(ctx, data, full) {
   const mills = mrdSortMillItems_(data.mills || []);
-  if (!mills.length && !(data.highRiskMills || []).length) return;
+  if (!mills.length) return;
   ctx.beginSection_('02 · Mill Onboarding', BRAND);
 
-  if (mills.length) {
-    if (full) {
-      const w = colWidths_([9, 13, 16, 15, 9, 7, 10, 9, 7, 15, 15], ctx.cW);
-      ctx.drawAutoTable_(
-        pdfTableHead(MRD_MILL_FULL_COLS),
-        mills.map(function(item) {
-          const r = item.row;
-          const d = millDetailCells_(item);
-          return [
-            pdfSanitize(item.risk),
-            pdfCellTrim(r['GROUP NAME'], 28),
-            pdfCellTrim(r['COMPANY NAME'], 32),
-            pdfCellTrim(r['MILL NAME'], 28),
-            pdfSanitize(r['PROVINCE']),
-            pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
-            d.supplierStatus,
-            d.certification,
-            d.grievances,
-            d.facilityCpo,
-            d.facilityPk,
-          ];
-        }),
-        BRAND,
-        {
-          0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-          3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
-          6: { cellWidth: w[6], fontSize: 6.5 }, 7: { cellWidth: w[7], fontSize: 6.5 },
-          8: { cellWidth: w[8] }, 9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
-        },
-        { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 12 }
-      );
-    } else {
-      const w = colWidths_([10, 15, 18, 18, 11, 10], ctx.cW);
-      ctx.drawAutoTable_(
-        pdfTableHead(MRD_MILL_SUMMARY_COLS),
-        mills.map(function(item) {
-          const r = item.row;
-          return [
-            pdfSanitize(item.risk),
-            pdfCellTrim(r['GROUP NAME'], 28),
-            pdfCellTrim(r['COMPANY NAME'], 32),
-            pdfCellTrim(r['MILL NAME'], 28),
-            pdfSanitize(r['PROVINCE']),
-            pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
-          ];
-        }),
-        BRAND,
-        {
-          0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-          3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
-        },
-        { headFontSize: 5.6, headMinHeight: 11 }
-      );
-    }
-  }
-
-  const highRisk = mrdSortMillItems_(data.highRiskMills || []);
-  if (highRisk.length) {
-    ctx.beginSubsection_('High Risk Suppliers', BRAND);
-    const hw = colWidths_([18, 22, 22, 14, 14], ctx.cW);
+  if (full) {
+    const w = colWidths_([9, 13, 16, 15, 9, 7, 10, 9, 7, 15, 15], ctx.cW);
     ctx.drawAutoTable_(
-      pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Result Risk Level', 'Province']),
-      highRisk.map(function(item) {
+      pdfTableHead(MRD_MILL_FULL_COLS),
+      mills.map(function(item) {
         const r = item.row;
+        const d = millDetailCells_(item);
         return [
-          pdfSanitize(r['GROUP NAME']), pdfSanitize(r['COMPANY NAME']), pdfSanitize(r['MILL NAME']),
-          pdfSanitize(item.risk), pdfSanitize(r['PROVINCE']),
+          pdfSanitize(item.risk),
+          pdfCellTrim(r['GROUP NAME'], 28),
+          pdfCellTrim(r['COMPANY NAME'], 32),
+          pdfCellTrim(r['MILL NAME'], 28),
+          pdfSanitize(r['PROVINCE']),
+          pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
+          d.supplierStatus,
+          d.certification,
+          d.grievances,
+          d.facilityCpo,
+          d.facilityPk,
         ];
       }),
       BRAND,
       {
-        0: { cellWidth: hw[0] }, 1: { cellWidth: hw[1] }, 2: { cellWidth: hw[2] },
-        3: { cellWidth: hw[3] }, 4: { cellWidth: hw[4] },
-      }
+        0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
+        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+        6: { cellWidth: w[6], fontSize: 6.5 }, 7: { cellWidth: w[7], fontSize: 6.5 },
+        8: { cellWidth: w[8] }, 9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
+      },
+      { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 12, showHeadEveryPage: true, rowPageBreak: 'auto' }
+    );
+  } else {
+    const w = colWidths_([10, 15, 18, 18, 11, 10], ctx.cW);
+    ctx.drawAutoTable_(
+      pdfTableHead(MRD_MILL_SUMMARY_COLS),
+      mills.map(function(item) {
+        const r = item.row;
+        return [
+          pdfSanitize(item.risk),
+          pdfCellTrim(r['GROUP NAME'], 28),
+          pdfCellTrim(r['COMPANY NAME'], 32),
+          pdfCellTrim(r['MILL NAME'], 28),
+          pdfSanitize(r['PROVINCE']),
+          pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
+        ];
+      }),
+      BRAND,
+      {
+        0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
+        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+      },
+      { headFontSize: 5.6, headMinHeight: 11, showHeadEveryPage: true, rowPageBreak: 'auto' }
+    );
+  }
+}
+
+function drawHighRiskSection_(ctx, data, full, noHeader) {
+  const rows = mrdSortMillItems_(data.highRiskMills || []);
+  if (!rows.length) return;
+  const stats = data.stats || {};
+  const doc = ctx.doc;
+
+  if (!noHeader) {
+    ctx.beginSection_('High Risk Suppliers', NBL_RED);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor.apply(doc, NBL_RED);
+    doc.text(String(rows.length) + ' mills · Result Risk Level = HIGH', ctx.mL, ctx.getY() + 3);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor.apply(doc, INK_MUTED);
+    doc.text('Separate from Mill Onboarding — ' + (stats.totalMills || 0) + ' total mills in period', ctx.mL, ctx.getY() + 8);
+    ctx.setY(ctx.getY() + 12);
+  }
+
+  if (full) {
+    const w = colWidths_([10, 14, 18, 18, 12, 8, 10, 10], ctx.cW);
+    ctx.drawAutoTable_(
+      pdfTableHead(['Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
+      rows.map(function(item) {
+        const r = item.row;
+        const d = millDetailCells_(item);
+        return [
+          pdfSanitize(item.risk),
+          pdfCellTrim(r['GROUP NAME'], 28),
+          pdfCellTrim(r['COMPANY NAME'], 32),
+          pdfCellTrim(r['MILL NAME'], 28),
+          pdfSanitize(r['PROVINCE']),
+          pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
+          d.supplierStatus,
+          d.certification,
+        ];
+      }),
+      NBL_RED,
+      {
+        0: { cellWidth: w[0], fontStyle: 'bold', textColor: NBL_RED },
+        1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] },
+        4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+        6: { cellWidth: w[6], fontSize: 6.5 }, 7: { cellWidth: w[7], fontSize: 6.5 },
+      },
+      { fontSize: 7, cellPadding: 2.5, headFontSize: 6, headMinHeight: 12, showHeadEveryPage: true, rowPageBreak: 'auto' }
+    );
+  } else {
+    const w = colWidths_([12, 18, 22, 22, 14], ctx.cW);
+    ctx.drawAutoTable_(
+      pdfTableHead(['Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
+      rows.map(function(item) {
+        const r = item.row;
+        return [
+          pdfSanitize(item.risk),
+          pdfSanitize(r['GROUP NAME']),
+          pdfSanitize(r['COMPANY NAME']),
+          pdfSanitize(r['MILL NAME']),
+          pdfSanitize(r['PROVINCE']),
+        ];
+      }),
+      NBL_RED,
+      {
+        0: { cellWidth: w[0], fontStyle: 'bold', textColor: NBL_RED },
+        1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
+      },
+      { showHeadEveryPage: true, rowPageBreak: 'auto', headFontSize: 6, headMinHeight: 11 }
     );
   }
 }
@@ -1026,7 +1074,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
       3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
       5: { cellWidth: w[5], fontSize: 6.5 },
     },
-    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11 }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.6, headMinHeight: 11, showHeadEveryPage: true, rowPageBreak: 'auto' }
   );
 }
 
@@ -1174,12 +1222,20 @@ function sectionSummaryConfig_(id, stats, data, year) {
     },
     mill: {
       num: '02', title: 'Mill Onboarding', accent: BRAND,
-      desc: (s.totalMills || 0) + ' mills · ' + (s.highRisk || 0) + ' high risk',
+      desc: (s.totalMills || 0) + ' mills in period',
       metrics: [
         { label: 'Total Mills', value: String(s.totalMills || 0), sub: (s.totalGroups || 0) + ' groups' },
-        { label: 'High Risk', value: String(s.highRisk || 0), hot: true },
         { label: 'Active NBL Mills', value: String(s.nblMills || 0) },
         { label: 'Groups', value: String(s.totalGroups || 0) },
+      ],
+    },
+    highRisk: {
+      num: '02A', title: 'High Risk Suppliers', accent: NBL_RED,
+      desc: (s.highRisk || 0) + ' mills · Result Risk Level = HIGH',
+      metrics: [
+        { label: 'High Risk', value: String(s.highRisk || 0), hot: true },
+        { label: 'Total Mills', value: String(s.totalMills || 0) },
+        { label: 'Active NBL', value: String(s.nblMills || 0) },
       ],
     },
     trace: {
@@ -1279,6 +1335,7 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year) {
     if (!cfg) return;
     drawSectionSummaryBlock_(ctx, id, cfg);
     if (id === 'sdd') drawSddSection_(ctx, data.sdd || [], true);
+    else if (id === 'highRisk') drawHighRiskSection_(ctx, data, false, true);
     else if (id === 'trace') { /* totals shown in metric cards above */ }
     else if (id === 'grv') drawGrvSection_(ctx, data.grv || [], false, true);
     else if (id === 'nbl') drawNblSummaryList_(ctx, data.nblAll || []);
@@ -1290,6 +1347,7 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year) {
 function drawDetailReportBody_(ctx, data, sections, year) {
   if (sections.indexOf('sdd') !== -1) drawSddSection_(ctx, data.sdd || []);
   if (sections.indexOf('mill') !== -1) drawMillSection_(ctx, data, true);
+  if (sections.indexOf('highRisk') !== -1) drawHighRiskSection_(ctx, data, true);
   if (sections.indexOf('trace') !== -1) drawTraceTotalsSection_(ctx, data.traceTotals || {}, year);
   if (sections.indexOf('grv') !== -1) drawGrvSection_(ctx, data.grv || [], true);
   if (sections.indexOf('nbl') !== -1) drawNblSection_(ctx, data.nblAll || []);
@@ -1410,6 +1468,7 @@ export const MRD_PDF_SECTIONS = [
   { id: 'kpi', label: 'Overview · KPI cards' },
   { id: 'sdd', label: MRD_SECTION_LABELS.sdd },
   { id: 'mill', label: MRD_SECTION_LABELS.mill },
+  { id: 'highRisk', label: MRD_SECTION_LABELS.highRisk },
   { id: 'trace', label: MRD_SECTION_LABELS.trace },
   { id: 'grv', label: MRD_SECTION_LABELS.grv },
   { id: 'nbl', label: MRD_SECTION_LABELS.nbl },
