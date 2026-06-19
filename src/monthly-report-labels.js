@@ -330,13 +330,22 @@ export function mrdFormatNblRisers_(item) {
     return String(v || '').split(/[,\/]/).map(function(s) { return s.trim(); }).filter(Boolean);
   }
 
+  // Stable dedup key: normalize dashes (incl. en/em-dash) + surrounding spaces,
+  // then lowercase. "GAR - Sinarmas", "GAR-SINARMAS", "GAR – Sinarmas" → "gar-sinarmas".
+  function riserKey_(v) {
+    return String(v || '').trim()
+      .replace(/\s*[-\u2013\u2014]\s*/g, '-')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  }
+
   function dedupeRiserList_(parts) {
     const out = [];
     const seen = {};
     (parts || []).forEach(function(r) {
       const s = String(r || '').trim();
       if (!s) return;
-      const k = s.toLowerCase();
+      const k = riserKey_(s);
       if (seen[k]) return;
       seen[k] = true;
       out.push(s);

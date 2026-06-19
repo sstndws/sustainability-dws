@@ -7376,13 +7376,22 @@ function initDashboardApp() {
     function splitRiserCell_(v) {
       return String(v || '').split(/[,\/]/).map(function(s) { return s.trim(); }).filter(Boolean);
     }
+    // Normalize a riser name to a stable dedup key:
+    // collapse spaces around hyphens/en-dashes/em-dashes, lowercase.
+    // e.g. "GAR - Sinarmas", "GAR-SINARMAS", "GAR – Sinarmas" → "gar-sinarmas"
+    function riserDedupeKey_(v) {
+      return String(v || '').trim()
+        .replace(/\s*[-\u2013\u2014]\s*/g, '-')  // normalize dash variants + surrounding spaces
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    }
     (matches || []).forEach(function(m) {
       var src = String(m && m.source ? m.source : '').trim();
       if (src === 'Unilever NBL') hasUnilever = true;
       var riser = String(m && m.riser ? m.riser : '').trim();
       if (!riser) return;
       splitRiserCell_(riser).forEach(function(part) {
-        var key = part.toLowerCase();
+        var key = riserDedupeKey_(part);
         if (seen[key]) return;
         seen[key] = true;
         risers.push(part);
