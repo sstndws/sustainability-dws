@@ -365,7 +365,20 @@ async function exportMonthlyReport_(exportOpts) {
     // build time via millResolvedRiskLevel and does not need NBL resolution.
     // highRiskMills is pre-computed in buildSnapshotSync alongside stats.highRisk —
     // guaranteed to match the summary KPI count exactly.
-    const highRiskMills = mrdSortMillItems_(s.highRiskMills || []);
+    // Fallback: re-filter s.mills by row-level risk if snapshot field is empty.
+    const highRiskMills = mrdSortMillItems_(
+      (s.highRiskMills && s.highRiskMills.length)
+        ? s.highRiskMills
+        : (s.mills || []).filter(function(item) {
+          const r = item.row || {};
+          const rr = String(
+            r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
+            r['Result Risk Level'] != null ? r['Result Risk Level'] :
+            r['RISK LEVEL'] != null ? r['RISK LEVEL'] : item.risk || ''
+          ).toLowerCase();
+          return rr.includes('high');
+        })
+    );
     const nblMills = mrdSortMillItems_(mills.filter(function(item) {
       return isNblYes(item.nbl) && matchesSearch(item.search);
     }));
@@ -617,9 +630,18 @@ function buildSnapshotSync(opts) {
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
   const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear) : {};
 
-  // Build highRiskMills from the same millRows array used for stats.highRisk —
-  // this guarantees s.highRiskMills.length === s.stats.highRisk by construction.
-  const highRiskMillRows = millRows.filter(function(item) { return isHighRisk(item.risk); });
+  // Build highRiskMills from the same millRows array used for stats.highRisk.
+  // Read risk directly from the raw row to avoid any stale item.risk value.
+  const highRiskMillRows = millRows.filter(function(item) {
+    const r = item.row || {};
+    const rr = String(
+      r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
+      r['Result Risk Level'] != null ? r['Result Risk Level'] :
+      r['RISK LEVEL'] != null ? r['RISK LEVEL'] :
+      item.risk || ''
+    ).toLowerCase();
+    return rr.includes('high');
+  });
 
   return {
     sdd: mrdSortSddRows_(sddFiltered),
@@ -654,7 +676,14 @@ function buildSnapshotSync(opts) {
       }).length,
       totalMills: mills.length,
       totalGroups: new Set(mills.map(function(r) { return r['GROUP NAME']; }).filter(Boolean)).size,
-      highRisk: mills.filter(function(r) { return isHighRisk(_deps.millResolvedRiskLevel(r)); }).length,
+      highRisk: mills.filter(function(r) {
+        const rr = String(
+          r['RESULT RISK LEVEL'] != null ? r['RESULT RISK LEVEL'] :
+          r['Result Risk Level'] != null ? r['Result Risk Level'] :
+          r['RISK LEVEL'] != null ? r['RISK LEVEL'] : ''
+        ).toLowerCase();
+        return rr.includes('high');
+      }).length,
       nblMills: mills.filter(function(r) { return isNblYes(r['BUYER NO BUY LIST']); }).length,
       emptyTraceMills: emptyMills.length,
       grievances: grvRows.length,
