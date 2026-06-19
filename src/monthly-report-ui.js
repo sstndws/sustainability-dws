@@ -7,7 +7,19 @@ import {
   MRD_SDD_TABLE_TITLE,
   MRD_SDD_COLS,
   MRD_GRV_SUMMARY_COLS,
+  MRD_MONTH_SHORT_,
   facilityPctColLabel,
+  facilityTtmColLabel,
+  mrdSortSddRows_,
+  mrdSortMillItems_,
+  mrdSortGrvItemsByDateDesc_,
+  mrdSortEudrItems_,
+  mrdSortFacilityBundles_,
+  mrdSortFacilityCompanies_,
+  mrdSortBundlesByFacility_,
+  mrdSortEmptyMillItems_,
+  mrdFormatNblRisers_,
+  mrdReportHeaderMeta_,
   normalizeSddCategory,
   sddStatusText,
   sddCompanyName,
@@ -22,8 +34,8 @@ let _deps = null;
 let _bound = false;
 let _snapshot = null;
 let _search = '';
-let _year = '2025';
-let _month = '';
+let _year = String(new Date().getFullYear());
+let _month = String(new Date().getMonth() + 1);
 let _expanded = new Set();
 let _loadGen = 0;
 let _eudrPending = false;
@@ -59,6 +71,37 @@ function esc(s) {
 function parseYear(v) {
   const n = parseInt(String(v || '').replace(/\D/g, ''), 10);
   return isNaN(n) ? '' : String(n);
+}
+
+/** Sync year/month from toolbar before export, header, or reload. */
+function syncPeriodFromUi_() {
+  const yearSel = document.getElementById('mrdYearSel');
+  const monthSel = document.getElementById('mrdMonthSel');
+  if (yearSel && yearSel.value) _year = yearSel.value;
+  if (monthSel) _month = monthSel.value;
+  return { year: _year, month: _month };
+}
+
+function applyDefaultMonthSelection_() {
+  const monthSel = document.getElementById('mrdMonthSel');
+  if (!monthSel) return;
+  if (!monthSel.value) {
+    monthSel.value = _month;
+  } else {
+    _month = monthSel.value;
+  }
+}
+
+/** Reporting period (UI) vs data period (lag 1 month). */
+function getReportPeriod_() {
+  syncPeriodFromUi_();
+  return { year: _year, month: _month };
+}
+
+function getDataPeriod_() {
+  const report = getReportPeriod_();
+  const meta = mrdReportHeaderMeta_(report.year, report.month);
+  return { year: meta.dataYear, month: meta.dataMonth };
 }
 
 function parseMonthFromDate(raw) {
@@ -295,6 +338,7 @@ async function exportMonthlyReport_(exportOpts) {
   if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
 
   try {
+    syncPeriodFromUi_();
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
       try {
         const rows = await withTimeout(_deps.fetchSddList(), 25000, 'SDD');
@@ -309,11 +353,14 @@ async function exportMonthlyReport_(exportOpts) {
     const s = _snapshot;
 
     const mills = await resolveAllNblForExport_(
-      filterForExport_(s.mills, function(item) { return matchesSearch(item.search); })
+      mrdSortMillItems_(filterForExport_(s.mills, function(item) { return matchesSearch(item.search); }))
     );
-    const highRiskMills = mills.filter(function(item) { return isHighRisk(item.risk); });
+    const highRiskMills = mrdSortMillItems_(mills.filter(function(item) { return isHighRisk(item.risk); }));
+    const nblMills = mrdSortMillItems_(mills.filter(function(item) {
+      return isNblYes(item.nbl) && matchesSearch(item.search);
+    }));
 
-    let facilityBundles = _deps.getFacilityBundles ? _deps.getFacilityBundles(_year) : [];
+    let facilityBundles = _deps.getFacilityBundles ? _deps.getFacilityBundles(getDataPeriod_().year) : [];
     if (_search) {
       const q = _search;
       facilityBundles = facilityBundles.filter(function(b) {
@@ -327,20 +374,21 @@ async function exportMonthlyReport_(exportOpts) {
       function(item) { return matchesSearch(item.search); }
     );
 
+    const report = getReportPeriod_();
     await buildMonthlyReportPdfPair_({
       getJsPDF: _deps.getJsPDF,
-      year: _year,
-      month: _month,
+      year: report.year,
+      month: report.month,
       sections: sections,
       data: {
         stats: s.stats,
         facility: s.facility,
-        sdd: filterForExport_(s.sdd, function(r) {
+        sdd: mrdSortSddRows_(filterForExport_(s.sdd, function(r) {
           return matchesSearch([
             r['SCR - Screening Status'], r['Group Name'], r['Grup Name'], r['Mill Name'],
             r.supplier_type, r.updated_at,
           ].join(' ').toLowerCase());
-        }),
+        })),
         mills: mills,
         highRiskMills: highRiskMills,
         emptyMills: filterForExport_(s.emptyMills, function(item) {
@@ -350,13 +398,10 @@ async function exportMonthlyReport_(exportOpts) {
         }),
         traceRows: filterForExport_(s.traceRows, function(item) { return matchesSearch(item.search); }),
         traceTotals: s.traceTotals || {},
-        grv: filterForExport_(s.grv, function(item) { return matchesSearch(item.search); }),
-        nblAll: filterForExport_(
-          s.mills.filter(function(item) { return isNblYes(item.nbl); }),
-          function(item) { return matchesSearch(item.search); }
-        ),
-        facilityBundles: facilityBundles,
-        eudrPotential: eudrList,
+        grv: mrdSortGrvItemsByDateDesc_(filterForExport_(s.grv, function(item) { return matchesSearch(item.search); })),
+        nblAll: nblMills,
+        facilityBundles: mrdSortFacilityBundles_(facilityBundles),
+        eudrPotential: mrdSortEudrItems_(eudrList),
       },
     });
 
@@ -419,6 +464,10 @@ function mrdBindExportModalOnce_() {
 
 function buildSnapshotSync(opts) {
   opts = opts || {};
+  const reportPeriod = getReportPeriod_();
+  const dataPeriod = getDataPeriod_();
+  const dataYear = dataPeriod.year;
+  const dataMonth = dataPeriod.month;
   const millData = (_deps.getMillData() || []);
   const ttpData = (_deps.getTtpData() || []);
   const ttpFields = _deps.getTtpFields() || [];
@@ -429,21 +478,43 @@ function buildSnapshotSync(opts) {
   const eudrInput = opts.eudrPotential != null ? opts.eudrPotential : [];
 
   const millYear = _deps.millYearVal;
-  const mills = millData.filter(function(r) {
-    const y = parseYear(millYear(r));
-    return (!_year || !y || y === _year);
-  });
+  const millMonth = _deps.millMonthVal;
+
+  function filterMillsByPeriod_(targetYear, targetMonth) {
+    return millData.filter(function(r) {
+      const y = parseYear(millYear(r));
+      if (targetYear && y && y !== targetYear) return false;
+      if (targetMonth && millMonth) {
+        const m = String(millMonth(r) || '').trim();
+        if (m && m !== targetMonth) return false;
+      }
+      return true;
+    });
+  }
+
+  // Mill Onboarding: 1-month lag. If that yields 0 results, fall back to report month.
+  let mills = filterMillsByPeriod_(dataYear, dataMonth);
+  let millEffectiveYear = dataYear;
+  let millEffectiveMonth = dataMonth;
+  if (!mills.length && (reportPeriod.year || reportPeriod.month)) {
+    const fallback = filterMillsByPeriod_(reportPeriod.year, reportPeriod.month);
+    if (fallback.length) {
+      mills = fallback;
+      millEffectiveYear = reportPeriod.year;
+      millEffectiveMonth = reportPeriod.month;
+    }
+  }
 
   const sddFiltered = sddInput.filter(function(r) {
     const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
     if (st !== 'draft' && st !== 'submitted') return false;
-    if (_year) {
+    if (dataYear) {
       const upd = String(r.updated_at || r['SCR - Last Updated'] || '').slice(0, 4);
-      if (upd && upd !== _year) return false;
+      if (upd && upd !== dataYear) return false;
     }
-    if (_month) {
+    if (dataMonth) {
       const m = parseMonthFromDate(r.updated_at || r['SCR - Last Updated']);
-      if (m && m !== _month) return false;
+      if (m && m !== dataMonth) return false;
     }
     return true;
   });
@@ -454,7 +525,7 @@ function buildSnapshotSync(opts) {
 
   const ttpFiltered = ttpData.filter(function(r) {
     const y = parseYear(r[yearCol] || millYear(r));
-    return !_year || !y || y === _year;
+    return !dataYear || !y || y === dataYear;
   });
 
   const millKeys = new Map();
@@ -481,9 +552,7 @@ function buildSnapshotSync(opts) {
     });
     if (!hasSupplier) emptyMills.push({ millRow: millRow, rows: rows });
   });
-  emptyMills.sort(function(a, b) {
-    return String(a.millRow['MILL NAME'] || '').localeCompare(String(b.millRow['MILL NAME'] || ''));
-  });
+  const emptyMillsSorted = mrdSortEmptyMillItems_(emptyMills);
 
   const millRows = mills.map(function(r) {
     const cacheKey = [r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME']].join('|');
@@ -503,19 +572,16 @@ function buildSnapshotSync(opts) {
     };
   });
 
-  const grvRows = grvData.filter(function(r) {
-    if (_year) {
+  // Grievance: full data year (no month filter — shows entire year's grievances)
+  const grvRows = mrdSortGrvItemsByDateDesc_(grvData.filter(function(r) {
+    if (dataYear) {
       const dr = String(r['Date Received'] || '').slice(0, 4);
-      if (dr && dr !== _year) return false;
-    }
-    if (_month) {
-      const m = parseMonthFromDate(r['Date Received']);
-      if (m && m !== _month) return false;
+      if (dr && dr !== dataYear) return false;
     }
     return true;
   }).map(function(r) {
     return { row: r, search: Object.keys(r).map(function(k) { return r[k]; }).join(' ').toLowerCase() };
-  });
+  }));
 
   const nblAll = [];
   nblReg.forEach(function(r) {
@@ -538,20 +604,22 @@ function buildSnapshotSync(opts) {
   });
 
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
-  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(_year) : {};
+  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear) : {};
 
   return {
-    sdd: sddFiltered,
-    mills: millRows,
+    sdd: mrdSortSddRows_(sddFiltered),
+    mills: mrdSortMillItems_(millRows),
     millsTotal: millRows.length,
-    emptyMills: emptyMills,
-    traceRows: _deps.buildTraceRows ? _deps.buildTraceRows(mills, ttpFiltered, ttpByMill, supplierCol) : [],
+    millEffectiveYear: millEffectiveYear,
+    millEffectiveMonth: millEffectiveMonth,
+    emptyMills: emptyMillsSorted,
+    traceRows: mrdSortMillItems_(_deps.buildTraceRows ? _deps.buildTraceRows(mills, ttpFiltered, ttpByMill, supplierCol) : []),
     traceTotals: traceTotals,
     ttpByMill: ttpByMill,
     grv: grvRows,
     nblAll: nblAll,
     facility: facility,
-    eudrPotential: eudrInput,
+    eudrPotential: mrdSortEudrItems_(eudrInput),
     eudrLoading: !!opts.eudrLoading,
     sddLoading: !!opts.sddLoading,
     facilityBundles: opts.facilityBundles != null ? opts.facilityBundles : _facilityBundles,
@@ -731,9 +799,9 @@ function renderTraceSection(traceTotals, stats) {
 }
 
 function renderNblSection(millRows) {
-  const filtered = millRows.filter(function(item) {
+  const filtered = mrdSortMillItems_(millRows.filter(function(item) {
     return isNblYes(item.nbl) && matchesSearch(item.search);
-  });
+  }));
   if (!filtered.length) {
     return '<p class="mrd-empty">No active NBL mills for this period.</p>';
   }
@@ -743,6 +811,7 @@ function renderNblSection(millRows) {
       return '<div class="mrd-nbl-item">'
         + '<span class="mrd-nbl-item-grp">' + esc(r['GROUP NAME'] || '—') + '</span>'
         + '<span class="mrd-nbl-item-co">' + esc(r['COMPANY NAME'] || '—') + '</span>'
+        + '<span class="mrd-nbl-item-riser">' + esc(mrdFormatNblRisers_(item)) + '</span>'
         + '</div>';
     }).join('');
   }
@@ -750,7 +819,7 @@ function renderNblSection(millRows) {
   if (filtered.length > MRD_ROW_LIMIT) {
     html += limitNote(filtered.length, MRD_ROW_LIMIT);
   }
-  const nblHead = '<div class="mrd-nbl-head"><span>Company Group Name</span><span>Company Name</span></div>';
+  const nblHead = '<div class="mrd-nbl-head"><span>Company Group Name</span><span>Company Name</span><span>NBL Riser</span></div>';
   const visible = filtered.slice(0, MRD_ROW_LIMIT);
   const visHalf = Math.ceil(visible.length / 2);
   html += '<div class="mrd-nbl-grid">'
@@ -792,9 +861,9 @@ function renderGrvSection(rows) {
 
 function renderFacilitySection(bundles, loading) {
   if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading facility performance…</p>';
-  const active = (bundles || []).filter(function(b) {
+  const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) {
     return (b.companies || []).length > 0 && hasCellValue(b.facility);
-  });
+  }));
   if (!active.length) return '<p class="mrd-empty">No facility performance data for this period.</p>';
 
   return active.map(function(bundle) {
@@ -802,12 +871,14 @@ function renderFacilitySection(bundles, loading) {
     const accent = isPk ? 'pk' : 'cpo';
     const sum = bundle.summary || {};
     const pctLabel = facilityPctColLabel(isPk);
+    const ttmLabel = facilityTtmColLabel(isPk);
     const facilityPct = (bundle.traceCalc && bundle.traceCalc.formatted)
       ? bundle.traceCalc.formatted
       : (isPk ? (sum.avgPk || '—') : (sum.avgCpo || '—'));
-    const companies = (bundle.companies || []).slice().sort(function(a, b) {
-      return String(a.company || '').localeCompare(String(b.company || ''), undefined, { sensitivity: 'base' });
-    });
+    const facilityTtm = (bundle.ttmCalc && bundle.ttmCalc.formatted)
+      ? bundle.ttmCalc.formatted
+      : (sum.avgTtm || '0%');
+    const companies = mrdSortFacilityCompanies_(bundle.companies || []);
     const visible = companies.filter(function(c) {
       return matchesSearch([bundle.facility, c.company, c.group, c.certification, c.riskLevel].join(' ').toLowerCase());
     }).slice(0, MRD_ROW_LIMIT);
@@ -816,7 +887,8 @@ function renderFacilitySection(bundles, loading) {
       { l: 'No Buy List', v: String(sum.nblYes || 0) },
       { l: 'High Risk', v: String(sum.highRisk || 0), warn: (sum.highRisk || 0) > 0 },
       { l: 'Total Grievance', v: String(sum.grievanceSum || 0) },
-      { l: 'Est. ISPO Supply %', v: sum.ispoPct || '—' },
+      { l: 'Estimated ISPO Supply %', v: sum.ispoPct || '—' },
+      { l: ttmLabel, v: facilityTtm, pct: true },
       { l: pctLabel, v: facilityPct, pct: true },
     ];
     const kpiHtml = kpis.map(function(k) {
@@ -826,7 +898,7 @@ function renderFacilitySection(bundles, loading) {
     }).join('');
 
     const cols = [
-      { label: 'Group Name', raw: function(c) { return c.group; } },
+      { label: 'Group Name', always: true, raw: function(c) { return c.group || c['GROUP NAME'] || ''; } },
       { label: 'Company Name', always: true, raw: function(c) { return c.company; } },
       { label: 'Certification', raw: function(c) { return c.certification; } },
       { label: 'No Buy List', hasData: function(c) { return isNblYes(c.nbl); }, render: function(c) {
@@ -834,6 +906,7 @@ function renderFacilitySection(bundles, loading) {
       }},
       { label: 'Result Risk Level', hasData: function(c) { return hasCellValue(c.riskLevel); }, render: function(c) { return riskPill(c.riskLevel); } },
       { label: 'Total Grievance', hasData: function(c) { return !isZeroish(c.grievance); }, raw: function(c) { return c.grievance; }, tdCls: 'mrd-td-num' },
+      { label: ttmLabel, always: true, render: function(c) { return formatPctNum_(c.ttmPctNum != null ? c.ttmPctNum : 0); }, tdCls: 'mrd-td-pct' },
       { label: pctLabel, always: true, render: function(c) { return formatPctNum_(c.ttpPctNum); }, tdCls: 'mrd-td-pct' },
     ];
     const table = renderSmartTable(cols, visible, {
@@ -846,7 +919,9 @@ function renderFacilitySection(bundles, loading) {
       + '<div class="mrd-facility-head">'
       + '<span class="mrd-facility-badge">' + esc(isPk ? 'PK' : 'CPO') + '</span>'
       + '<span class="mrd-facility-name">' + esc(bundle.facility) + '</span>'
-      + '<span class="mrd-facility-meta">' + esc(companies.length) + ' companies · ' + esc(facilityPct) + ' ' + esc(pctLabel.replace('% ', '')) + '</span>'
+      + '<span class="mrd-facility-meta">' + esc(companies.length) + ' companies · '
+      + esc(facilityTtm) + ' ' + esc(ttmLabel.replace('% ', '')) + ' · '
+      + esc(facilityPct) + ' ' + esc(pctLabel.replace('% ', '')) + '</span>'
       + '</div>'
       + '<div class="mrd-facility-kpi-row">' + kpiHtml + '</div>'
       + table
@@ -879,10 +954,17 @@ function renderAll() {
   const s = _snapshot;
   const stats = s.stats || {};
   let html = '';
-  html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done', renderSddSection(s.sdd, s.sddLoading), '01');
-  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + stats.highRisk + ' high risk', renderMillSection(s.mills), '02');
-  html += sectionHtml('trace', 'Traceability Data ' + _year, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
-  html += flatSectionHtml('grv', 'Grievance Monitoring', stats.grievances + ' in period', renderGrvSection(s.grv), '04');
+  const dataPeriod = getDataPeriod_();
+  // Mill period may differ from data period when fallback to report month was used
+  const millMonthForLabel = s.millEffectiveMonth || dataPeriod.month;
+  const millYearForLabel = s.millEffectiveYear || dataPeriod.year;
+  const dataMonthLabel = millMonthForLabel ? (MRD_MONTH_SHORT_[parseInt(millMonthForLabel, 10)] || millMonthForLabel) : '';
+  const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
+  const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
+  html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
+  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + stats.highRisk + ' high risk · ' + millPeriodLabel, renderMillSection(s.mills), '02');
+  html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
+  html += flatSectionHtml('grv', 'Grievance Monitoring · ' + fullYearLabel, stats.grievances + ' grievances in ' + fullYearLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
   html += sectionHtml('facility', 'Facility Performance', 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading), '06');
   html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential mills', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
@@ -892,9 +974,9 @@ function renderAll() {
 function updateScopeText(extra) {
   const el = document.getElementById('mrdScopeText');
   if (!el) return;
-  const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const mLabel = _month ? monthNames[parseInt(_month, 10)] : 'All months';
-  let txt = 'Period: ' + (_year || 'All years') + ' · ' + mLabel;
+  const report = getReportPeriod_();
+  const meta = mrdReportHeaderMeta_(report.year, report.month);
+  let txt = meta.periodLine + ' · ' + meta.dataPeriodLine + ' · ' + meta.cutoffLine;
   if (_snapshot) {
     txt += ' · ' + _snapshot.stats.totalMills + ' mills · ' + _snapshot.stats.sddSubmitted + ' SDD submitted';
   }
@@ -928,7 +1010,7 @@ async function loadFacilityInBackground(gen, opts) {
   try {
     if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport();
     if (gen !== _loadGen) return;
-    _facilityBundles = _deps.getFacilityBundles(_year) || [];
+    _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(getDataPeriod_().year) || []);
     if (_snapshot) {
       _snapshot.facilityBundles = _facilityBundles;
       _snapshot.facilityLoading = false;
@@ -1003,12 +1085,32 @@ async function loadMillInBackground(gen) {
   }
 }
 
+async function resolveNblMillsForSnapshot_() {
+  if (!_snapshot || !_deps.ensureNblLists || !_deps.resolveNblBy) return;
+  const pending = (_snapshot.mills || []).filter(function(item) {
+    return isNblYes(item.nbl) && !item.nblBy;
+  });
+  if (!pending.length) return;
+  try {
+    const lists = await _deps.ensureNblLists();
+    pending.forEach(function(item) {
+      const info = _deps.resolveNblBy(item.row, lists);
+      item.nblBy = info.label || '';
+      item.nblMatches = info.matches || [];
+      if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
+    });
+    scheduleRenderAll();
+  } catch (_) { /* NBL riser lookup is optional for display */ }
+}
+
 async function loadSupplementalInBackground(gen) {
   if (!_deps.ensureSupplementalData) return;
   try {
     await withTimeout(_deps.ensureSupplementalData(), 45000, 'Traceability & grievance');
     if (gen !== _loadGen) return;
     _snapshot = rebuildSnapshot_({});
+    await resolveNblMillsForSnapshot_();
+    if (gen !== _loadGen) return;
     scheduleRenderAll();
     updateScopeText();
   } catch (err) {
@@ -1061,6 +1163,7 @@ async function loadAndRender(opts) {
   opts = opts || {};
   const force = !!opts.force;
   const gen = ++_loadGen;
+  syncPeriodFromUi_();
   const errEl = document.getElementById('mrdError');
   if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
 
@@ -1110,6 +1213,7 @@ function bindOnce() {
   if (!panel) return;
 
   populateYearSelect();
+  applyDefaultMonthSelection_();
 
   const yearSel = document.getElementById('mrdYearSel');
   const monthSel = document.getElementById('mrdMonthSel');
@@ -1118,7 +1222,7 @@ function bindOnce() {
   if (yearSel && !yearSel._mrdBound) {
     yearSel._mrdBound = true;
     yearSel.addEventListener('change', function() {
-      _year = yearSel.value || '2025';
+      _year = yearSel.value || String(new Date().getFullYear());
       _nblByCache.clear();
       _facilityBundles = [];
       loadAndRender();

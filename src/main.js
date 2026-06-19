@@ -3927,8 +3927,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwcb8GQYQPdCEnmlOF-XgAZ80pUf3mMoeH5o2BOh6vnOS5Ev9ivUEqgYq2MfD-389v8Og/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwcb8GQYQPdCEnmlOF-XgAZ80pUf3mMoeH5o2BOh6vnOS5Ev9ivUEqgYq2MfD-389v8Og';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxA6EJvtalO9-Ir6KwagEZ_0bcxeydEJQtu2skdknis49x5ui-zg_x1OAKd2_-I8SZTgw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxA6EJvtalO9-Ir6KwagEZ_0bcxeydEJQtu2skdknis49x5ui-zg_x1OAKd2_-I8SZTgw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5297,7 +5297,7 @@ function initDashboardApp() {
     window.refreshSavedScreeningListGlobal();
   }
 
-  const MILL_FIELDS = ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
+  const MILL_FIELDS = ['MONTH','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
   let modalTaskKey = ''; // submission_id dari SDD yang di-add via Task List
   let modalTaskLineId = ''; // line_id TML untuk TRADER mill list (satu submission, banyak mill)
@@ -5394,7 +5394,7 @@ function initDashboardApp() {
   };
 
   const FIELD_SECTIONS = [
-    { title: 'Identitas Mill', fields: ['QUARTER','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
+    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
     { title: 'Legalitas', fields: ['HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','LEGALITY'], totalField: 'SCORE', totalLabel: 'Score (auto)' },
     { title: 'Spatial & Peat', fields: ['DEFORESTATION SPATIAL','BURN AREA SPATIAL','PEAT','MILL LOC','COMPLIMENT/NOT COMPLIMENT'] },
     { title: 'Grievances', fields: ['DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT'], totalField: 'TOTAL GRIEVANCES', totalLabel: 'Total Grievances (auto)' },
@@ -5670,7 +5670,8 @@ function initDashboardApp() {
         : 'MILL';
       if (sddMain) {
         const period = resolveSddPeriodFromMainRow_(sddMain);
-        if (period.quarter) data['QUARTER'] = period.quarter;
+        if (period.month) data['MONTH'] = period.month;
+        else if (period.quarter) data['MONTH'] = period.quarter; // backward compat
         if (period.year) data['YEAR'] = period.year;
         data['SOURCE TYPE'] = supplierType;
         if (supplierType === 'TRADER') {
@@ -5733,7 +5734,7 @@ function initDashboardApp() {
             'COMPANY NAME': String(data['COMPANY NAME'] || '').trim(),
             'MILL NAME': String(data['MILL NAME'] || '').trim(),
             'UML ID': String(data['UML ID'] || '').trim(),
-            'QUARTER': String(data['QUARTER'] || '').trim(),
+            'MONTH': String(data['MONTH'] || data['QUARTER'] || '').trim(),
             'YEAR': String(data['YEAR'] || '').trim(),
           };
           try {
@@ -5955,16 +5956,71 @@ function initDashboardApp() {
     return String(k || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
   }
 
+  function pickMillMonthDirect_(row) {
+    if (!row || typeof row !== 'object') return 0;
+    const tryVals = [row['MONTH'], row['Month'], row['month']];
+    for (let i = 0; i < tryVals.length; i++) {
+      const v = tryVals[i];
+      if (v != null && String(v).trim() !== '') {
+        const n = parseMillMonthSort(v);
+        if (n >= 1 && n <= 12) return n;
+      }
+    }
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      const nk = millHeaderNorm_(k);
+      if (nk === 'month' || nk === 'bulan') {
+        const n = parseMillMonthSort(row[k]);
+        if (n >= 1 && n <= 12) return n;
+      }
+    }
+    return 0;
+  }
+
+  function pickMillQuarterDirect_(row) {
+    if (!row || typeof row !== 'object') return 0;
+    const tryVals = [row['QUARTER'], row['Quarter'], row['quarter']];
+    for (let i = 0; i < tryVals.length; i++) {
+      const qn = parseMillQuarterSort(tryVals[i]);
+      if (qn >= 1 && qn <= 4) return qn;
+    }
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (k === '_row' || (String(k).length && String(k)[0] === '_')) continue;
+      const nk = millHeaderNorm_(k);
+      if (nk === 'quarter' || nk === 'qtr' || nk === 'kuartal') {
+        const qn = parseMillQuarterSort(row[k]);
+        if (qn >= 1 && qn <= 4) return qn;
+      }
+    }
+    return 0;
+  }
+
   /**
-   * Resolve Quarter / Year from row regardless of exact header spelling.
-   * Direct keys first, then scan all properties (handles "Quarter ", "QUARTER", "Kuartal", etc.).
+   * Resolve Month / Year from row regardless of exact header spelling.
+   * Supports both new MONTH column (1-12) and legacy QUARTER column for backward compat.
    */
   function pickMillColumnValue_(row, wanted) {
     if (!row || typeof row !== 'object') return '';
     wanted = String(wanted || '').toLowerCase();
-    const tryVals = wanted === 'quarter'
-      ? [row['QUARTER'], row['Quarter'], row['quarter']]
-      : [row['YEAR'], row['Year'], row['year']];
+    let tryVals;
+    if (wanted === 'month') {
+      const direct = pickMillMonthDirect_(row);
+      if (direct) return String(direct);
+      const covered = millMonthsCoveredByRow_(row);
+      if (covered.length) return String(covered[0]);
+      return '';
+    }
+    if (wanted === 'quarter') {
+      const direct = pickMillMonthDirect_(row);
+      if (direct) return 'Q' + Math.ceil(direct / 3);
+      tryVals = [row['QUARTER'], row['Quarter'], row['quarter']];
+    } else {
+      tryVals = [row['YEAR'], row['Year'], row['year']];
+    }
     for (let i = 0; i < tryVals.length; i++) {
       const v = tryVals[i];
       if (v != null && String(v).trim() !== '') return String(v).trim();
@@ -5990,6 +6046,11 @@ function initDashboardApp() {
     return '';
   }
 
+  /** Primary: reads MONTH column (1-12). */
+  function millMonthVal(row) {
+    return pickMillColumnValue_(row, 'month');
+  }
+  /** Legacy alias: derives quarter from MONTH, falls back to QUARTER column. */
   function millQuarterVal(row) {
     return pickMillColumnValue_(row, 'quarter');
   }
@@ -6003,6 +6064,13 @@ function initDashboardApp() {
     const n = parseInt(s, 10);
     return isNaN(n) ? 0 : n;
   }
+  /** Parse month value (1-12) from stored string. Returns 0 if unparseable. */
+  function parseMillMonthSort(v) {
+    const s = String(v || '').trim();
+    const n = parseInt(s, 10);
+    if (!isNaN(n) && n >= 1 && n <= 12) return n;
+    return 0;
+  }
   function parseMillQuarterSort(v) {
     const s = String(v || '').trim().toUpperCase().replace(/\s+/g, '');
     let m = s.match(/^Q([1-4])$/);
@@ -6015,9 +6083,40 @@ function initDashboardApp() {
     if (m) return parseInt(m[1], 10);
     return 99;
   }
+  /** Month number → short label e.g. "Jan", "Feb". */
+  function millMonthLabel_(n) {
+    const NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return (n >= 1 && n <= 12) ? NAMES[n - 1] : String(n || '—');
+  }
+  function pickMillGroupName_(row) {
+    if (!row || typeof row !== 'object') return '';
+    const direct = [
+      row['GROUP NAME'], row['Group Name'], row['Grup Name'], row['GRUP NAME'],
+      row[' NAME'], row['COMPANY GROUP NAME'], row['Company Group Name'],
+    ];
+    for (let i = 0; i < direct.length; i++) {
+      const s = String(direct[i] != null ? direct[i] : '').trim();
+      if (s && s !== '—' && s !== '-') return s;
+    }
+    const keys = Object.keys(row);
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      if (!k || k === '_row' || String(k)[0] === '_') continue;
+      const t = String(k).trim();
+      if (t === 'NAME' || /^group\s*name$/i.test(t)) {
+        const s = String(row[k] || '').trim();
+        if (s && s !== '—' && s !== '-') return s;
+      }
+    }
+    return '';
+  }
+
   function normalizeMillApiRow(row) {
     if (!row || typeof row !== 'object') return row;
     const o = Object.assign({}, row);
+    const m = pickMillColumnValue_(o, 'month');
+    if (m) o['MONTH'] = m;
+    // backward compat: derive QUARTER from MONTH for any legacy code that reads QUARTER
     const q = pickMillColumnValue_(o, 'quarter');
     if (q) o['QUARTER'] = q;
     const y = pickMillColumnValue_(o, 'year');
@@ -6029,6 +6128,9 @@ function initDashboardApp() {
     if (pe && !o['PRIORITY ENGAGEMENT']) o['PRIORITY ENGAGEMENT'] = pe;
     if (sign && !o['PRIORITY ENGAGEMENT']) o['PRIORITY ENGAGEMENT'] = sign;
     if (o['PRIORITY ENGAGEMENT'] && !o['SIGN']) o['SIGN'] = o['PRIORITY ENGAGEMENT'];
+
+    const group = pickMillGroupName_(o);
+    if (group) o['GROUP NAME'] = group;
 
     return o;
   }
@@ -6061,9 +6163,9 @@ function initDashboardApp() {
     if (!row || typeof row !== 'object') return row;
     const nblLower = String(row['BUYER NO BUY LIST'] || '').toLowerCase();
     const searchBlob = [
-      row['QUARTER'],
+      row['MONTH'],
       row['YEAR'],
-      row['Quarter'],
+      row['Month'],
       row['Year'],
       row['MILL NAME'],
       row['GROUP NAME'],
@@ -6089,7 +6191,7 @@ function initDashboardApp() {
 
   // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
   const MILL_PDF_EXPORT_COLS = [
-    { key: 'QUARTER', label: 'Quarter' },
+    { key: 'MONTH', label: 'Month' },
     { key: 'YEAR', label: 'Year' },
     { key: 'GROUP NAME', label: 'Group' },
     { key: 'COMPANY NAME', label: 'Company' },
@@ -6106,15 +6208,15 @@ function initDashboardApp() {
     { key: 'FACILITY NAME PK', label: 'Facility PK' },
     { key: 'PRODUCT SUPPLY', label: 'Product Supply' },
   ];
-  const MILL_PDF_COL_DEFAULT_KEYS = ['QUARTER', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
+  const MILL_PDF_COL_DEFAULT_KEYS = ['MONTH', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
   let millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
   let millPdfDimFilters = {
-    quarter: new Set(),
+    month: new Set(),
     year: new Set(),
     group: new Set(),
     province: new Set(),
   };
-  let millPdfDimOptions = { quarter: [], year: [], group: [], province: [] };
+  let millPdfDimOptions = { month: [], year: [], group: [], province: [] };
 
   function millPdfEscHtml(s) {
     return String(s === undefined || s === null ? '' : s)
@@ -6127,7 +6229,34 @@ function initDashboardApp() {
   }
 
   function millPdfLabelForToken(tok) {
-    return tok === '__EMPTY__' ? '(kosong)' : tok;
+    if (tok === '__EMPTY__') return '(kosong)';
+    const n = parseInt(String(tok).trim(), 10);
+    if (n >= 1 && n <= 12) return millMonthLabel_(n);
+    return tok;
+  }
+
+  /** Months represented by a row: explicit MONTH, or all months in legacy QUARTER. */
+  function millMonthsCoveredByRow_(row) {
+    if (!row || typeof row !== 'object') return [];
+    const direct = pickMillMonthDirect_(row);
+    if (direct >= 1 && direct <= 12) return [direct];
+    const qn = pickMillQuarterDirect_(row);
+    if (qn >= 1 && qn <= 4) {
+      const start = (qn - 1) * 3 + 1;
+      return [start, start + 1, start + 2];
+    }
+    return [];
+  }
+
+  function ensureMillPdfDimFilters_() {
+    if (!millPdfDimFilters || typeof millPdfDimFilters !== 'object') {
+      millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
+      return;
+    }
+    if (!millPdfDimFilters.month) millPdfDimFilters.month = new Set();
+    if (!millPdfDimFilters.year) millPdfDimFilters.year = new Set();
+    if (!millPdfDimFilters.group) millPdfDimFilters.group = new Set();
+    if (!millPdfDimFilters.province) millPdfDimFilters.province = new Set();
   }
 
   function millRegistryChipFilter() {
@@ -6141,7 +6270,7 @@ function initDashboardApp() {
   ];
 
   function getMillFilterCellValue(row, colKey) {
-    if (colKey === 'QUARTER') return String(millQuarterVal(row) || '—');
+    if (colKey === 'MONTH') return String(millMonthVal(row) || '—');
     if (colKey === 'YEAR') return String(millYearVal(row) || '—');
     return String((row && row[colKey]) || '—').trim() || '—';
   }
@@ -6178,11 +6307,17 @@ function initDashboardApp() {
   }
 
   function millRowMatchesPdfDimFilters(d) {
-    const qTok = millPdfTokenForCell(millQuarterVal(d));
+    ensureMillPdfDimFilters_();
     const yTok = millPdfTokenForCell(millYearVal(d));
     const gTok = millPdfTokenForCell(d['GROUP NAME']);
     const pTok = millPdfTokenForCell(d['PROVINCE']);
-    if (millPdfDimFilters.quarter.size && !millPdfDimFilters.quarter.has(qTok)) return false;
+    if (millPdfDimFilters.month.size) {
+      const covered = millMonthsCoveredByRow_(d);
+      const monthMatch = covered.some(function(m) {
+        return millPdfDimFilters.month.has(millPdfTokenForCell(String(m)));
+      });
+      if (!monthMatch && !(covered.length === 0 && millPdfDimFilters.month.has('__EMPTY__'))) return false;
+    }
     if (millPdfDimFilters.year.size && !millPdfDimFilters.year.has(yTok)) return false;
     if (millPdfDimFilters.group.size && !millPdfDimFilters.group.has(gTok)) return false;
     if (millPdfDimFilters.province.size && !millPdfDimFilters.province.has(pTok)) return false;
@@ -6196,15 +6331,15 @@ function initDashboardApp() {
         const ya = parseMillYearSort(millYearVal(a));
         const yb = parseMillYearSort(millYearVal(b));
         if (ya !== yb) return millSortAsc ? (ya - yb) : (yb - ya);
-        const qa = parseMillQuarterSort(millQuarterVal(a));
-        const qb = parseMillQuarterSort(millQuarterVal(b));
-        return millSortAsc ? (qa - qb) : (qb - qa);
+        const ma = parseMillMonthSort(millMonthVal(a));
+        const mb = parseMillMonthSort(millMonthVal(b));
+        return millSortAsc ? (ma - mb) : (mb - ma);
       });
-    } else if (millSortKey === 'QUARTER') {
+    } else if (millSortKey === 'MONTH') {
       sorted = filtered.slice().sort(function(a, b) {
-        const qa = parseMillQuarterSort(millQuarterVal(a));
-        const qb = parseMillQuarterSort(millQuarterVal(b));
-        if (qa !== qb) return millSortAsc ? (qa - qb) : (qb - qa);
+        const ma = parseMillMonthSort(millMonthVal(a));
+        const mb = parseMillMonthSort(millMonthVal(b));
+        if (ma !== mb) return millSortAsc ? (ma - mb) : (mb - ma);
         const ya = parseMillYearSort(millYearVal(a));
         const yb = parseMillYearSort(millYearVal(b));
         return millSortAsc ? (ya - yb) : (yb - ya);
@@ -6412,19 +6547,26 @@ function initDashboardApp() {
   }
 
   function collectMillPdfDimTokens_() {
-    const sq = new Set(); const sy = new Set(); const sg = new Set(); const sp = new Set();
+    const sm = new Set(); const sy = new Set(); const sg = new Set(); const sp = new Set();
     allData.forEach(function(row) {
-      sq.add(millPdfTokenForCell(millQuarterVal(row)));
+      const covered = millMonthsCoveredByRow_(row);
+      if (covered.length) {
+        covered.forEach(function(m) { sm.add(millPdfTokenForCell(String(m))); });
+      } else {
+        sm.add(millPdfTokenForCell(millMonthVal(row)));
+      }
       sy.add(millPdfTokenForCell(millYearVal(row)));
       sg.add(millPdfTokenForCell(row['GROUP NAME']));
       sp.add(millPdfTokenForCell(row['PROVINCE']));
     });
-    function sortQuarterTokens(arr) {
+    function sortMonthTokens(arr) {
       return arr.slice().sort(function(a, b) {
         if (a === '__EMPTY__') return 1;
         if (b === '__EMPTY__') return -1;
-        const c = parseMillQuarterSort(a) - parseMillQuarterSort(b);
-        return c !== 0 ? c : String(a).localeCompare(String(b), 'id');
+        const na = parseMillMonthSort(a);
+        const nb = parseMillMonthSort(b);
+        if (na && nb) return na - nb;
+        return String(a).localeCompare(String(b), 'id');
       });
     }
     function sortYearTokens(arr) {
@@ -6442,7 +6584,7 @@ function initDashboardApp() {
         return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
       });
     }
-    millPdfDimOptions.quarter = sortQuarterTokens(Array.from(sq));
+    millPdfDimOptions.month = sortMonthTokens(Array.from(sm));
     millPdfDimOptions.year = sortYearTokens(Array.from(sy));
     millPdfDimOptions.group = sortStrTokens(Array.from(sg));
     millPdfDimOptions.province = sortStrTokens(Array.from(sp));
@@ -6478,7 +6620,7 @@ function initDashboardApp() {
 
   function millPdfRebuildDimPanels() {
     collectMillPdfDimTokens_();
-    renderMillPdfDimListEl('quarter', 'millPdfDimListQuarter');
+    renderMillPdfDimListEl('month', 'millPdfDimListMonth');
     renderMillPdfDimListEl('year', 'millPdfDimListYear');
     renderMillPdfDimListEl('group', 'millPdfDimListGroup');
     renderMillPdfDimListEl('province', 'millPdfDimListProvince');
@@ -6504,7 +6646,7 @@ function initDashboardApp() {
   }
 
   function millPdfResetAllDims() {
-    millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+    millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
     document.querySelectorAll('.mill-dim-filter-surface input[data-mill-pdf-val]').forEach(function(cb) { cb.checked = false; });
     updateMillPdfExportScope();
     scheduleRenderMillTable();
@@ -6591,7 +6733,7 @@ function initDashboardApp() {
   function closeMillToolbarDropdowns_(exceptPanelId) {
     const pairs = [
       ['millPdfBtnFilterDims', 'millPdfFilterDimsPanel'],
-      ['millBtnFilterQuarter', 'millQuarterFilterPanel'],
+      ['millBtnFilterMonth', 'millMonthFilterPanel'],
       ['millBtnFilterYear', 'millYearFilterPanel'],
       ['millPdfBtnCols', 'millPdfColsPanel'],
     ];
@@ -6605,13 +6747,14 @@ function initDashboardApp() {
   }
 
   (function bindMillPdfToolbarOnce() {
+    ensureMillPdfDimFilters_();
     const btnPdf = document.getElementById('btn-mill-export-pdf');
     const bFilter = document.getElementById('millPdfBtnFilterDims');
-    const bQuarter = document.getElementById('millBtnFilterQuarter');
+    const bMonth = document.getElementById('millBtnFilterMonth');
     const bYear = document.getElementById('millBtnFilterYear');
     const bCols = document.getElementById('millPdfBtnCols');
     const pFilter = document.getElementById('millPdfFilterDimsPanel');
-    const pQuarter = document.getElementById('millQuarterFilterPanel');
+    const pMonth = document.getElementById('millMonthFilterPanel');
     const pYear = document.getElementById('millYearFilterPanel');
     const pCols = document.getElementById('millPdfColsPanel');
     const gSearch = document.getElementById('millPdfGroupSearch');
@@ -6633,7 +6776,7 @@ function initDashboardApp() {
     }
 
     bindMillDimDropdown_('millPdfBtnFilterDims', 'millPdfFilterDimsPanel');
-    if (bQuarter && pQuarter) bindMillDimDropdown_('millBtnFilterQuarter', 'millQuarterFilterPanel');
+    if (bMonth && pMonth) bindMillDimDropdown_('millBtnFilterMonth', 'millMonthFilterPanel');
     if (bYear && pYear) bindMillDimDropdown_('millBtnFilterYear', 'millYearFilterPanel');
     bCols.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -6650,7 +6793,7 @@ function initDashboardApp() {
       document.addEventListener('click', function(e) {
         const wraps = [
           document.getElementById('millPdfFilterWrap'),
-          document.getElementById('millQuarterFilterWrap'),
+          document.getElementById('millMonthFilterWrap'),
           document.getElementById('millYearFilterWrap'),
           document.getElementById('millPdfColWrap'),
         ];
@@ -6829,7 +6972,7 @@ function initDashboardApp() {
       if (!soft) {
         loading.style.display = 'none';
         table.style.display = 'table';
-        millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+        millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
         millPdfRebuildDimPanels();
       }
       millDataLoaded = true;
@@ -6848,7 +6991,7 @@ function initDashboardApp() {
 
   function cloneMillPdfDimFilters_() {
     return {
-      quarter: new Set(millPdfDimFilters.quarter || []),
+      month: new Set(millPdfDimFilters.month || []),
       year: new Set(millPdfDimFilters.year || []),
       group: new Set(millPdfDimFilters.group || []),
       province: new Set(millPdfDimFilters.province || []),
@@ -6959,6 +7102,7 @@ function initDashboardApp() {
   function renderMillTable() {
     const body = document.getElementById('millTableBody');
     if (!body) return;
+    ensureMillPdfDimFilters_();
     bindMillTableDelegationOnce();
     bindMillHeaderFiltersOnce();
     const baseFiltered = millRowsAfterRegistryDimFilters();
@@ -7036,9 +7180,9 @@ function initDashboardApp() {
     const ya = parseMillYearSort(millYearVal(a));
     const yb = parseMillYearSort(millYearVal(b));
     if (ya !== yb) return yb - ya;
-    const qa = parseMillQuarterSort(millQuarterVal(a));
-    const qb = parseMillQuarterSort(millQuarterVal(b));
-    return qb - qa;
+    const ma = parseMillMonthSort(millMonthVal(a));
+    const mb = parseMillMonthSort(millMonthVal(b));
+    return mb - ma;
   }
 
   function millProfileSortYearTokDesc_(toks) {
@@ -7049,11 +7193,11 @@ function initDashboardApp() {
     });
   }
 
-  function millProfileSortQuarterTokDesc_(toks) {
+  function millProfileSortMonthTokDesc_(toks) {
     return toks.slice().sort(function(a, b) {
       if (a === '__EMPTY__') return 1;
       if (b === '__EMPTY__') return -1;
-      return parseMillQuarterSort(b) - parseMillQuarterSort(a);
+      return parseMillMonthSort(b) - parseMillMonthSort(a);
     });
   }
 
@@ -7063,14 +7207,14 @@ function initDashboardApp() {
     return millProfileSortYearTokDesc_(Array.from(s));
   }
 
-  function millProfileCollectQuarterToksForYear_(siblings, yearTok) {
+  function millProfileCollectMonthToksForYear_(siblings, yearTok) {
     const s = new Set();
     siblings.forEach(function(r) {
       if (millPdfTokenForCell(millYearVal(r)) === yearTok) {
-        s.add(millPdfTokenForCell(millQuarterVal(r)));
+        s.add(millPdfTokenForCell(millMonthVal(r)));
       }
     });
-    return millProfileSortQuarterTokDesc_(Array.from(s));
+    return millProfileSortMonthTokDesc_(Array.from(s));
   }
 
   function millProfileFillSelectToks_(sel, toks) {
@@ -7081,10 +7225,10 @@ function initDashboardApp() {
     }).join('');
   }
 
-  function millProfileFindRowByPeriodTok_(siblings, yTok, qTok) {
+  function millProfileFindRowByPeriodTok_(siblings, yTok, mTok) {
     for (let i = 0; i < siblings.length; i++) {
       const r = siblings[i];
-      if (millPdfTokenForCell(millYearVal(r)) === yTok && millPdfTokenForCell(millQuarterVal(r)) === qTok) {
+      if (millPdfTokenForCell(millYearVal(r)) === yTok && millPdfTokenForCell(millMonthVal(r)) === mTok) {
         return r;
       }
     }
@@ -7160,8 +7304,20 @@ function initDashboardApp() {
     return false;
   }
 
+  /**
+   * Check if a mill name matches ANY alias in the NBL alias array.
+   * Handles "/" multi-alias cells like "CBI/Citra Borneo Indah".
+   */
+  function nblMatchesAnyAlias_(millName, aliases) {
+    if (!millName || !aliases || !aliases.length) return false;
+    for (var i = 0; i < aliases.length; i++) {
+      if (millNameSimilarLoose_(millName, aliases[i])) return true;
+    }
+    return false;
+  }
+
   function millNblSourceMatchesForRow_(row, lists) {
-    var group = String(row && row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
+    var group   = String(row && row['GROUP NAME']   != null ? row['GROUP NAME']   : '').trim();
     var company = String(row && row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
     var out = [];
     var seen = {};
@@ -7172,13 +7328,16 @@ function initDashboardApp() {
       out.push(item);
     }
 
-    // Source: NBL registry (Group/Company)
+    // Source: NBL registry — match mill's GROUP/COMPANY against all "/" aliases
     (lists.registry || []).forEach(function(r, i) {
-      var groupHit = !!(group && (millNameSimilarLoose_(group, r._nblGroup) || millNameSimilarLoose_(group, r._nblCompany)));
-      var companyHit = !!(company && (millNameSimilarLoose_(company, r._nblGroup) || millNameSimilarLoose_(company, r._nblCompany)));
+      var gAliases = r._nblGroupAliases   || (r._nblGroup   ? [r._nblGroup]   : []);
+      var cAliases = r._nblCompanyAliases || (r._nblCompany ? [r._nblCompany] : []);
+      var allAliases = gAliases.concat(cAliases);
+      var groupHit   = !!(group   && nblMatchesAnyAlias_(group,   allAliases));
+      var companyHit = !!(company && nblMatchesAnyAlias_(company, allAliases));
       if (!groupHit && !companyHit) return;
       var hitBy = [];
-      if (groupHit) hitBy.push('GROUP NAME');
+      if (groupHit)   hitBy.push('GROUP NAME');
       if (companyHit) hitBy.push('COMPANY NAME');
       pushOnce_('nbl-' + i, {
         source: 'NBL',
@@ -7188,13 +7347,14 @@ function initDashboardApp() {
       });
     });
 
-    // Source: Unilever NBL (match by GROUP/COMPANY vs Unilever COMPANY)
+    // Source: Unilever NBL — match by GROUP/COMPANY vs Unilever COMPANY aliases
     (lists.unilever || []).forEach(function(r, i) {
-      var groupHit = !!(group && millNameSimilarLoose_(group, r._nblCompany));
-      var companyHit = !!(company && millNameSimilarLoose_(company, r._nblCompany));
+      var cAliases = r._nblCompanyAliases || (r._nblCompany ? [r._nblCompany] : []);
+      var groupHit   = !!(group   && nblMatchesAnyAlias_(group,   cAliases));
+      var companyHit = !!(company && nblMatchesAnyAlias_(company, cAliases));
       if (!groupHit && !companyHit) return;
       var hitBy = [];
-      if (groupHit) hitBy.push('GROUP NAME');
+      if (groupHit)   hitBy.push('GROUP NAME');
       if (companyHit) hitBy.push('COMPANY NAME');
       pushOnce_('uni-' + i, {
         source: 'Unilever NBL',
@@ -7515,9 +7675,9 @@ function initDashboardApp() {
     const siblings = millProfileVariantRows_ || [];
     if (!siblings.length) return null;
     const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
-    if (!ySel || !qSel) return siblings[0];
-    const row = millProfileFindRowByPeriodTok_(siblings, ySel.value, qSel.value);
+    const mSel = document.getElementById('millProfileMonthSel');
+    if (!ySel || !mSel) return siblings[0];
+    const row = millProfileFindRowByPeriodTok_(siblings, ySel.value, mSel.value);
     return row || siblings[0];
   }
 
@@ -7540,9 +7700,9 @@ function initDashboardApp() {
       const doc = new JsPDFLib({ unit: 'mm', format: 'a4' });
       const title = String(row['COMPANY NAME'] || row['MILL NAME'] || 'Mill Profile').trim() || 'Mill Profile';
       const group = String(row['GROUP NAME'] || '').trim();
-      const quarter = String(millQuarterVal(row) || '').trim();
+      const month = String(millMonthVal(row) || '').trim();
       const year = String(millYearVal(row) || '').trim();
-      const periodText = (year || quarter) ? ('Period: ' + [year, quarter ? ('Q' + quarter) : ''].filter(Boolean).join(' ')) : '';
+      const periodText = (year || month) ? ('Period: ' + [year ? year : '', month ? (millMonthLabel_(parseInt(month, 10)) + ' (' + month + ')') : ''].filter(Boolean).join(' ')) : '';
       const sections = [
         { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
         { title: 'Legality', fields: [['LEGALITY', 'Legality'], ['MILL LOC', 'Mill Location']] },
@@ -7657,17 +7817,17 @@ function initDashboardApp() {
   function millProfileSyncBodyToQySelections_(changeSourceId) {
     const siblings = millProfileVariantRows_;
     const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
-    if (!siblings || !siblings.length || !ySel || !qSel) return;
+    const mSel = document.getElementById('millProfileMonthSel');
+    if (!siblings || !siblings.length || !ySel || !mSel) return;
     if (changeSourceId === 'millProfileYearSel') {
       const yTok = ySel.value;
-      const qToks = millProfileCollectQuarterToksForYear_(siblings, yTok);
-      millProfileFillSelectToks_(qSel, qToks);
-      if (qSel.options.length) qSel.selectedIndex = 0;
+      const mToks = millProfileCollectMonthToksForYear_(siblings, yTok);
+      millProfileFillSelectToks_(mSel, mToks);
+      if (mSel.options.length) mSel.selectedIndex = 0;
     }
     const yTok = ySel.value;
-    const qTok = qSel.value;
-    const row = millProfileFindRowByPeriodTok_(siblings, yTok, qTok) || siblings[0];
+    const mTok = mSel.value;
+    const row = millProfileFindRowByPeriodTok_(siblings, yTok, mTok) || siblings[0];
     if (!row) return;
     millProfileUpdateHeaderFromRow_(row);
     millProfileRenderBody_(row);
@@ -7690,9 +7850,9 @@ function initDashboardApp() {
     const mpOverlay = document.getElementById('millProfileOverlay');
     const yBar = document.getElementById('millProfileQyBar');
     const ySel = document.getElementById('millProfileYearSel');
-    const qSel = document.getElementById('millProfileQuarterSel');
+    const mSel = document.getElementById('millProfileMonthSel');
 
-    if (yBar && ySel && qSel) {
+    if (yBar && ySel && mSel) {
       yBar.hidden = false;
       const yearToks = millProfileCollectYearToks_(millProfileVariantRows_);
       millProfileFillSelectToks_(ySel, yearToks);
@@ -7700,20 +7860,20 @@ function initDashboardApp() {
       if (yearToks.indexOf(yTokChosen) !== -1) ySel.value = yTokChosen;
       else if (ySel.options.length) ySel.selectedIndex = 0;
       const yTok = ySel.value;
-      const qToks = millProfileCollectQuarterToksForYear_(millProfileVariantRows_, yTok);
-      millProfileFillSelectToks_(qSel, qToks);
-      const qTokChosen = millPdfTokenForCell(millQuarterVal(chosen));
-      if (qToks.indexOf(qTokChosen) !== -1) qSel.value = qTokChosen;
-      else if (qSel.options.length) qSel.selectedIndex = 0;
+      const mToks = millProfileCollectMonthToksForYear_(millProfileVariantRows_, yTok);
+      millProfileFillSelectToks_(mSel, mToks);
+      const mTokChosen = millPdfTokenForCell(millMonthVal(chosen));
+      if (mToks.indexOf(mTokChosen) !== -1) mSel.value = mTokChosen;
+      else if (mSel.options.length) mSel.selectedIndex = 0;
     }
 
     let yTokFinal = millPdfTokenForCell(millYearVal(chosen));
-    let qTokFinal = millPdfTokenForCell(millQuarterVal(chosen));
-    if (ySel && qSel) {
+    let mTokFinal = millPdfTokenForCell(millMonthVal(chosen));
+    if (ySel && mSel) {
       yTokFinal = ySel.value;
-      qTokFinal = qSel.value;
+      mTokFinal = mSel.value;
     }
-    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, qTokFinal) || chosen;
+    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, mTokFinal) || chosen;
     millProfileUpdateHeaderFromRow_(displayRow);
     millProfileRenderBody_(displayRow);
 
@@ -7739,7 +7899,7 @@ function initDashboardApp() {
     });
     mpo.addEventListener('change', function(e) {
       const t = e.target;
-      if (!t || (t.id !== 'millProfileYearSel' && t.id !== 'millProfileQuarterSel')) return;
+      if (!t || (t.id !== 'millProfileYearSel' && t.id !== 'millProfileMonthSel')) return;
       e.stopPropagation();
       millProfileSyncBodyToQySelections_(t.id);
     });
@@ -9494,6 +9654,12 @@ function initDashboardApp() {
 
   function ttpRowField_(row, patterns) {
     if (!row) return '—';
+    if (patterns && patterns.some(function(p) {
+      return typeof p === 'string' && normalizeTtpHeaderKey_(p) === 'FFB SUPPLIER GROUP NAME';
+    })) {
+      const ffbGroup = pickTtpFfbSupplierGroupName_(row);
+      if (ffbGroup) return ffbGroup;
+    }
     const col = ttpPickField_(patterns);
     if (col) {
       const v = row[col];
@@ -9605,7 +9771,7 @@ function initDashboardApp() {
     const supplier = ttpRowField_(row, ['FFB SUPPLIER NAME']);
     const mill = ttpRowField_(row, ['MILL NAME']);
     const company = ttpRowField_(row, ['COMPANY NAME']);
-    const group = ttpRowField_(row, ['GROUP NAME']);
+    const group = ttpGroupNameForRow_(row);
 
     titleEl.textContent = supplier !== '—' ? supplier : 'Supplier detail';
     const subParts = [group, company, mill].filter(function(p) { return p && p !== '—'; });
@@ -9663,9 +9829,109 @@ function initDashboardApp() {
     }
   })();
 
+  function ttpLooksLikeBadGroupName_(s) {
+    const t = String(s || '').trim();
+    if (!t || t === '—' || t === '-') return true;
+    if (/^(19|20)\d{2}$/.test(t)) return true;
+    if (/^Q[1-4]$/i.test(t)) return true;
+    return false;
+  }
+
+  function pickTtpFfbSupplierGroupName_(row) {
+    if (!row || typeof row !== 'object') return '';
+    const direct = [row['FFB SUPPLIER GROUP NAME'], row['FFB SUPPLIER GROUP']];
+    for (let i = 0; i < direct.length; i++) {
+      const s = String(direct[i] != null ? direct[i] : '').trim();
+      if (s && s !== '—' && s !== '-') return s;
+    }
+    for (const k of Object.keys(row)) {
+      if (k === '_row' || k === '_sddSearchBlob') continue;
+      const u = normalizeTtpHeaderKey_(k);
+      if (u === 'FFB SUPPLIER GROUP NAME' || (u.includes('FFB') && u.includes('SUPPLIER') && u.includes('GROUP'))) {
+        const s = String(row[k] || '').trim();
+        if (s && s !== '—' && s !== '-') return s;
+      }
+    }
+    return '';
+  }
+
+  function normalizeTtpApiRow_(row) {
+    if (!row || typeof row !== 'object') return row;
+    const o = Object.assign({}, row);
+    if (ttpLooksLikeBadGroupName_(o['GROUP NAME'])) delete o['GROUP NAME'];
+    let group = pickMillGroupName_(o);
+    if (ttpLooksLikeBadGroupName_(group)) group = '';
+    if (group) o['GROUP NAME'] = group;
+    const ffbGroup = pickTtpFfbSupplierGroupName_(o);
+    if (ffbGroup) o['FFB SUPPLIER GROUP NAME'] = ffbGroup;
+    return o;
+  }
+
+  function ttpEnrichGroupFromMill_(row) {
+    if (!row || typeof row !== 'object') return row;
+    const existing = pickMillGroupName_(row);
+    if (existing && !ttpLooksLikeBadGroupName_(existing)) return row;
+    if (ttpLooksLikeBadGroupName_(row['GROUP NAME'])) delete row['GROUP NAME'];
+    if (!Array.isArray(allData) || !allData.length) return row;
+    const co = String(row['COMPANY NAME'] || row['Company Name'] || '').trim().toLowerCase();
+    const mi = String(row['MILL NAME'] || row['Mill Name'] || '').trim().toLowerCase();
+    if (!co && !mi) return row;
+    for (let i = 0; i < allData.length; i++) {
+      const r = allData[i];
+      const rc = String(r['COMPANY NAME'] || '').trim().toLowerCase();
+      const rm = String(r['MILL NAME'] || '').trim().toLowerCase();
+      const g = String(r['GROUP NAME'] || '').trim();
+      if (!g) continue;
+      if (co && mi && rc === co && rm === mi) {
+        row['GROUP NAME'] = g;
+        return row;
+      }
+      if (co && rc === co && (!mi || rm === mi)) {
+        row['GROUP NAME'] = g;
+        return row;
+      }
+    }
+    return row;
+  }
+
+  function ttpRebuildFieldsFromData_() {
+    const keys = [];
+    const seen = new Set();
+    (ttpData || []).forEach(function(row) {
+      Object.keys(row || {}).forEach(function(k) {
+        if (k === '_row' || k === '_sddSearchBlob' || seen.has(k)) return;
+        seen.add(k);
+        keys.push(k);
+      });
+    });
+    if (keys.length) {
+      ttpFields = keys;
+      if (!ttpFields.includes('GROUP NAME') && (ttpData || []).some(function(r) { return r['GROUP NAME']; })) {
+        const codeIdx = ttpFields.findIndex(function(h) { return normalizeTtpHeaderKey_(h) === 'COMPANY CODE'; });
+        ttpFields.splice(codeIdx >= 0 ? codeIdx + 1 : 0, 0, 'GROUP NAME');
+      }
+    }
+  }
+
+  function ttpGroupNameForRow_(row) {
+    if (!row) return '—';
+    let g = pickMillGroupName_(row);
+    if (ttpLooksLikeBadGroupName_(g)) g = '';
+    if (!g) {
+      g = pickMillGroupName_(ttpEnrichGroupFromMill_(Object.assign({}, row)));
+    }
+    if (ttpLooksLikeBadGroupName_(g)) g = '';
+    return g || '—';
+  }
+
   function applyTtpDataFromApi_(rawRows) {
-    ttpData = Array.isArray(rawRows) ? rawRows : [];
-    ttpFields = ttpData.length > 0 ? Object.keys(ttpData[0]).filter(function(k) { return k !== '_row'; }) : ttpFields;
+    ttpData = (Array.isArray(rawRows) ? rawRows : []).map(function(row) {
+      return normalizeTtpApiRow_(row);
+    });
+    ttpData = ttpData.map(function(row) {
+      return ttpEnrichGroupFromMill_(row);
+    });
+    ttpRebuildFieldsFromData_();
     ttpData = ttpData.map(function(row) {
       return prepareTtpRowPerfCache(row, ttpFields);
     });
@@ -9913,8 +10179,8 @@ function initDashboardApp() {
     let gIdx = 0;
     groups.forEach((rows, millName) => {
       const first     = rows[0];
-      const groupName = first[groupCol]   || '—';
-      const compName  = first[companyCol] || '—';
+      const groupName = ttpGroupNameForRow_(first);
+      const compName  = ttpRowField_(first, ['COMPANY NAME']) || '—';
       const displayMill = (millCol && first[millCol] && String(first[millCol]).trim())
         ? String(first[millCol]).trim()
         : (millName === '(No Mill Name)' ? '' : millName);
@@ -9990,9 +10256,9 @@ function initDashboardApp() {
         : ' title="View supplier detail"';
       return ''
         + '<tr class="mill-row-clickable ttp-flat-row" data-flat-idx="' + i + '"' + titleAttr + '>'
-        + '<td>' + escHtml(d[groupCol] || '—') + '</td>'
-        + '<td>' + escHtml(d[companyCol] || '—') + '</td>'
-        + '<td><span class="mill-name">' + escHtml(d[millCol] || '—') + '</span></td>'
+        + '<td>' + escHtml(ttpGroupNameForRow_(d)) + '</td>'
+        + '<td>' + escHtml(ttpRowField_(d, ['COMPANY NAME'])) + '</td>'
+        + '<td><span class="mill-name">' + escHtml(ttpRowField_(d, ['MILL NAME'])) + '</span></td>'
         + '<td><span class="ttp-pct-val">' + escHtml(String(cpoPct)) + '</span></td>'
         + '<td><span class="ttp-pct-val">' + escHtml(String(pkPct)) + '</span></td>'
         + '<td><span class="ttp-category-val">' + escHtml(category) + '</span></td>'
@@ -13108,6 +13374,57 @@ function initDashboardApp() {
     }
   }
 
+  /**
+   * Detect year/quarter period from a BL row's date fields so we can
+   * fall back to live ttpData when stored JSON links are missing.
+   */
+  function blDetectPeriodFromBlRow_(blRow) {
+    const dateFields = ['BL DATE', 'RECEIVED DATE', 'SENT TO REVIEW (DATE)'];
+    for (let i = 0; i < dateFields.length; i++) {
+      const raw = String(blRow[dateFields[i]] || '').trim();
+      if (!raw || raw === '—') continue;
+      const iso = dashNormalizeToIso(raw);
+      if (!iso) continue;
+      const m = iso.match(/^(\d{4})-(\d{2})/);
+      if (!m) continue;
+      const year = m[1];
+      const month = parseInt(m[2], 10);
+      const quarter = 'Q' + Math.ceil(month / 3);
+      if ((ttpData || []).some(function(r) {
+        return ttpYearToken_(r) === year && ttpQuarterToken_(r) === quarter;
+      })) return { year: year, quarter: quarter };
+      if ((ttpData || []).some(function(r) { return ttpYearToken_(r) === year; })) {
+        return { year: year, quarter: '' };
+      }
+    }
+    return null;
+  }
+
+  /** Return live TTM link rows for display, falling back to ttpData by period when JSON is empty. */
+  function blResolveLiveTtmLinks_(blRow) {
+    if ((blRow._ttmLinks || []).length) return blRow._ttmLinks;
+    const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
+    if (!period || !period.year) return [];
+    return (ttpData || []).filter(function(r) {
+      if (ttpYearToken_(r) !== period.year) return false;
+      if (period.quarter && ttpQuarterToken_(r) !== period.quarter) return false;
+      return true;
+    }).map(buildBlTtmCandidate_);
+  }
+
+  /** Return live TTP link rows for display, falling back to ttpData by period when JSON is empty. */
+  function blResolveLiveTtpLinks_(blRow) {
+    if ((blRow._ttpLinks || []).length) return blRow._ttpLinks;
+    const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
+    if (!period || !period.year) return [];
+    return (ttpData || []).filter(function(r) {
+      if (ttpYearToken_(r) !== period.year) return false;
+      if (period.quarter && ttpQuarterToken_(r) !== period.quarter) return false;
+      const candidate = buildBlTtpCandidate_(r);
+      return !!(candidate['FFB SUPPLIER NAME'] && candidate['FFB SUPPLIER NAME'] !== '—');
+    }).map(buildBlTtpCandidate_);
+  }
+
   function buildBlLinkedTableHtml_(cols, rows) {
     if (!rows || !rows.length) {
       return '<div class="bl-linked-empty">No linked data</div>';
@@ -13158,12 +13475,15 @@ function initDashboardApp() {
         + '</div>';
     }).join('');
 
+    const ttmDisplayLinks = blResolveLiveTtmLinks_(row);
+    const ttpDisplayLinks = blResolveLiveTtpLinks_(row);
+
     bodyEl.innerHTML = ''
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">' + (isDecl ? 'Declaration' : 'Shipping') + '</div><div class="bl-detail-grid">' + blGrid + '</div></div>'
-      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(row['TTM'] || blTtmCountLabel_((row._ttmLinks || []).length) || '—') + '</div>'
-      + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, row._ttmLinks || []) + '</div>'
-      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(row['TTP'] || blTtpCountLabel_((row._ttpLinks || []).length) || '—') + '</div>'
-      + buildBlLinkedTableHtml_(BL_TTP_DETAIL_COLS, row._ttpLinks || []) + '</div>';
+      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(row['TTM'] || blTtmCountLabel_(ttmDisplayLinks.length) || '—') + '</div>'
+      + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, ttmDisplayLinks) + '</div>'
+      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(row['TTP'] || blTtpCountLabel_(ttpDisplayLinks.length) || '—') + '</div>'
+      + buildBlLinkedTableHtml_(BL_TTP_DETAIL_COLS, ttpDisplayLinks) + '</div>';
 
     document.body.classList.add('bl-detail-open');
     lockBlOverlayScroll_();
@@ -16980,7 +17300,11 @@ function initDashboardApp() {
     });
   }
 
-  function nblPickField_(row, keys) {
+  function nblNormHeaderKey_(k) {
+    return String(k || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function nblPickField_(row, keys, pattern) {
     for (var i = 0; i < keys.length; i++) {
       var v = row[keys[i]];
       if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
@@ -16988,42 +17312,70 @@ function initDashboardApp() {
     var norm = {};
     Object.keys(row || {}).forEach(function(k) {
       if (k === '_row') return;
-      norm[String(k).trim().toLowerCase()] = row[k];
+      norm[nblNormHeaderKey_(k)] = row[k];
     });
     for (var j = 0; j < keys.length; j++) {
-      var lk = String(keys[j]).trim().toLowerCase();
+      var lk = nblNormHeaderKey_(keys[j]);
       if (norm[lk] !== undefined && norm[lk] !== null && String(norm[lk]).trim() !== '') {
         return String(norm[lk]).trim();
+      }
+    }
+    if (pattern) {
+      for (var ok in row) {
+        if (!Object.prototype.hasOwnProperty.call(row, ok) || ok === '_row') continue;
+        var nk = nblNormHeaderKey_(ok);
+        if (!pattern.test(nk)) continue;
+        var pv = row[ok];
+        if (pv !== undefined && pv !== null && String(pv).trim() !== '') return String(pv).trim();
       }
     }
     return '';
   }
 
+  /**
+   * Split a cell value by "/" into individual name aliases.
+   * "Citra Borneo Indah/CBI" → ["Citra Borneo Indah", "CBI"]
+   * Trims each part and filters blanks. If no "/", returns [original].
+   */
+  function nblSplitAliases_(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return [];
+    var parts = s.split('/').map(function(p) { return p.trim(); }).filter(Boolean);
+    return parts.length ? parts : [s];
+  }
+
   function prepareNblRegistryRow_(d) {
-    d._nblRiser = nblPickField_(d, ['Riser', 'Raiser']);
-    d._nblGroup = nblPickField_(d, ['Group Name NBL', 'Group Name']);
-    d._nblCompany = nblPickField_(d, ['Company Name NBL', 'Company Name']);
-    d._nblSource = nblPickField_(d, ['SOURCE', 'Source']);
+    d._nblRiser   = nblPickField_(d, ['Riser', 'Raiser'], /^(riser|raiser)$/);
+    d._nblGroup   = nblPickField_(d, ['Group Name NBL', 'Group Name'], /group\s*name(\s*nbl)?|^group$/);
+    d._nblCompany = nblPickField_(d, ['Company Name NBL', 'Company Name'], /company\s*name(\s*nbl)?|^company$/);
+    d._nblSource  = nblPickField_(d, ['SOURCE', 'Source'], /^source$/);
+    // Aliases: split by "/" so "CBI/Citra Borneo Indah" → ["CBI", "Citra Borneo Indah"]
+    d._nblGroupAliases   = nblSplitAliases_(d._nblGroup);
+    d._nblCompanyAliases = nblSplitAliases_(d._nblCompany);
+    // Include all aliases in the search blob for free-text search
     d._nblSearchBlob = [d._nblRiser, d._nblGroup, d._nblCompany, d._nblSource]
+      .concat(d._nblGroupAliases, d._nblCompanyAliases)
       .join(' ').toLowerCase();
     return d;
   }
 
   function prepareNblUnileverRow_(d) {
-    d._nblRiser = nblPickField_(d, ['Riser', 'RISER', 'NO.', 'NO', 'No.']);
-    d._nblNo = d._nblRiser;
-    d._nblUml = nblPickField_(d, ['UML ID']);
-    d._nblCompany = nblPickField_(d, ['COMPANY NAME', 'Company Name']);
-    d._nblMill = nblPickField_(d, ['MILL NAME', 'Mill Name']);
-    d._nblCountry = nblPickField_(d, ['COUNTRY', 'Country']);
+    d._nblRiser    = nblPickField_(d, ['Riser', 'RISER', 'NO.', 'NO', 'No.']);
+    d._nblNo       = d._nblRiser;
+    d._nblUml      = nblPickField_(d, ['UML ID']);
+    d._nblCompany  = nblPickField_(d, ['COMPANY NAME', 'Company Name']);
+    d._nblMill     = nblPickField_(d, ['MILL NAME', 'Mill Name']);
+    d._nblCountry  = nblPickField_(d, ['COUNTRY', 'Country']);
     d._nblProvince = nblPickField_(d, ['PROVINCE', 'Province']);
     d._nblDistrict = nblPickField_(d, ['DISTRICT / REGENCY', 'DISTRICT/REGENCY', 'District / Regency']);
-    d._nblLat = nblPickField_(d, ['LAT.', 'LAT', 'Latitude', 'Lat']);
-    d._nblLong = nblPickField_(d, ['LONG.', 'LONG', 'Longitude', 'Long']);
+    d._nblLat      = nblPickField_(d, ['LAT.', 'LAT', 'Latitude', 'Lat']);
+    d._nblLong     = nblPickField_(d, ['LONG.', 'LONG', 'Longitude', 'Long']);
+    // Support "/" aliases in Unilever company names too
+    d._nblCompanyAliases = nblSplitAliases_(d._nblCompany);
     d._nblSearchBlob = [
       d._nblRiser, d._nblNo, d._nblUml, d._nblCompany, d._nblMill, d._nblCountry,
       d._nblProvince, d._nblDistrict, d._nblLat, d._nblLong,
-    ].join(' ').toLowerCase();
+    ].concat(d._nblCompanyAliases).join(' ').toLowerCase();
     return d;
   }
 
@@ -17887,8 +18239,10 @@ function initDashboardApp() {
     if (navItem) navItem.classList.add('active');
     const grp = document.getElementById('navGroupTrace');
     if (grp && !grp.classList.contains('open')) grp.classList.add('open');
-    if (name === 'mill-onboarding' && allData.length) {
-      if (currentFilter === 'Task List') {
+    if (name === 'mill-onboarding') {
+      if (!millDataLoaded || !allData.length) {
+        loadMillData({ force: !millDataLoaded });
+      } else if (currentFilter === 'Task List') {
         currentFilter = 'All';
         filterChipEls.forEach(function(c) { c.classList.toggle('active', c.dataset.filter === 'All'); });
         const taskPanel = document.getElementById('mill-task-list-panel');
@@ -17959,15 +18313,104 @@ function initDashboardApp() {
       });
     }
 
-    function pfFormatQuarter_(v) {
-      const n = parseMillQuarterSort(v);
-      return n ? 'Q' + n : (String(v || '').trim() || '—');
+    function pfFormatMonth_(v) {
+      const n = parseMillMonthSort(v);
+      return n ? millMonthLabel_(n) + ' (' + n + ')' : (String(v || '').trim() || '—');
     }
 
     function pfCompanyCoordValue_(row) {
       return String(
         (row && (row['COORDINATES'] || row['Coordinates'] || row['Coordinate'] || row['COORDINATE'])) || ''
       ).trim();
+    }
+
+    function pfIsValidCompanyName_(name) {
+      const s = String(name || '').trim();
+      return !!s && s !== '—';
+    }
+
+    function pfIsValidCoord_(coord) {
+      const s = String(coord || '').trim();
+      if (!s || s === '—') return false;
+      if (/^(n\/a|na|none|null|-+)$/i.test(s)) return false;
+      return true;
+    }
+
+    function pfQtyForCompanyAtFacility_(suppliedLookup, facilityKey, company) {
+      const hit = pfFindSuppliedPlantEntry_(suppliedLookup, facilityKey);
+      if (!hit || !hit.entry || !hit.entry.sellers) return 0;
+      const sellers = hit.entry.sellers;
+      let total = 0;
+      Object.keys(sellers).forEach(function(sk) {
+        if (pfSellerMatchesCompany_(sk, company.companyKey) || pfSellerMatchesCompany_(sk, company.company)) {
+          total += sellers[sk] || 0;
+        }
+      });
+      return total;
+    }
+
+    /** TTM traceable: 100% only when company name, coordinates, and supplied qty are all present. */
+    function pfCalcTtmPctNum_(company, suppliedLookup, facilityKey) {
+      if (!pfIsValidCompanyName_(company.company)) return 0;
+      if (!pfIsValidCoord_(company.coordinate)) return 0;
+      if (pfQtyForCompanyAtFacility_(suppliedLookup, facilityKey, company) <= 0) return 0;
+      return 100;
+    }
+
+    function pfApplyTtmPctToCompanies_(companies, suppliedLookup, facilityKey) {
+      (companies || []).forEach(function(c) {
+        c.ttmPctNum = pfCalcTtmPctNum_(c, suppliedLookup, facilityKey);
+      });
+    }
+
+    /** Weighted facility TTM % from supplied volume (0/100 per seller). */
+    function pfCalcTtmFacilityTrace_(companies, suppliedLookup, facilityKey) {
+      const hit = pfFindSuppliedPlantEntry_(suppliedLookup, facilityKey);
+      const supEntry = hit ? hit.entry : null;
+      if (!supEntry || !supEntry.sellers) {
+        let ttmSum = 0;
+        let validN = 0;
+        (companies || []).forEach(function(c) {
+          if (!isNaN(c.ttmPctNum)) { ttmSum += c.ttmPctNum; validN++; }
+        });
+        const pct = validN > 0 ? ttmSum / validN : 0;
+        return {
+          pct: pct,
+          formatted: ttpFormatCellPct_(pct),
+          source: 'company-fallback',
+          note: 'No supply data — avg of ' + validN + ' company TTM value(s)',
+        };
+      }
+      let traceableQty = 0;
+      const totalQty = supEntry.totalQty;
+      let sellersWithTtm = 0;
+      let sellerCount = 0;
+      Object.keys(supEntry.sellers).forEach(function(sellerKey) {
+        const qty = supEntry.sellers[sellerKey];
+        if (!qty) return;
+        sellerCount++;
+        const company = (companies || []).find(function(c) {
+          return pfSellerMatchesCompany_(sellerKey, c.companyKey) || pfSellerMatchesCompany_(sellerKey, c.company);
+        });
+        const ttmPct = company ? pfCalcTtmPctNum_(company, suppliedLookup, facilityKey) : 0;
+        if (ttmPct > 0) sellersWithTtm++;
+        traceableQty += qty * (ttmPct / 100);
+      });
+      const pct = totalQty > 0 ? (traceableQty / totalQty) * 100 : 0;
+      const source = sellerCount && sellersWithTtm < sellerCount ? 'supply-partial' : 'supply';
+      const note = source === 'supply-partial'
+        ? sellersWithTtm + ' of ' + sellerCount + ' suppliers TTM traceable; unmatched counted as 0%'
+        : 'Weighted avg from Supplied volume — ' + sellerCount + ' supplier(s)';
+      return {
+        totalQty: totalQty,
+        traceableQty: traceableQty,
+        pct: pct,
+        formatted: ttpFormatCellPct_(pct),
+        sellerCount: sellerCount,
+        sellersWithTtm: sellersWithTtm,
+        source: source,
+        note: note,
+      };
     }
 
     /** Loose facility key — "KCP BTG" ↔ "KCP - BTG". */
@@ -18054,6 +18497,11 @@ function initDashboardApp() {
       return hit ? hit._row : null;
     }
 
+    function pfCompanyGroupValue_(r) {
+      const g = pickMillGroupName_(r);
+      return g || '—';
+    }
+
     function pfSellerDisplayName_(sellerUpper, suppliedRows) {
       const rows = suppliedRows || [];
       for (let i = 0; i < rows.length; i++) {
@@ -18068,14 +18516,14 @@ function initDashboardApp() {
       const pkEntry = ttpPkLookup[coUpper];
       const ttpPkPctNum = pkEntry ? (pkEntry.sum / pkEntry.count) : NaN;
       return {
-        quarter:    pfFormatQuarter_(millQuarterVal(r)),
+        month:      pfFormatMonth_(millMonthVal(r)),
         year:       String(millYearVal(r) || '').trim() || '—',
-        quarterRaw: millQuarterVal(r),
+        monthRaw:   millMonthVal(r),
         yearRaw:    millYearVal(r),
         millRowNum: r._row,
         company:    String(r['COMPANY NAME'] || '').trim() || '—',
         companyKey: coUpper,
-        group:      String(r['GROUP NAME'] || '').trim() || '—',
+        group:      pfCompanyGroupValue_(r),
         nbl:        String(r['BUYER NO BUY LIST'] || '').trim() || '—',
         riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
         grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
@@ -18092,7 +18540,7 @@ function initDashboardApp() {
      */
     function pfMergeSuppliedPkSellers_(byFacility, suppliedLookup, millRows, ttpPkLookup, ttpCertLookup, suppliedRows) {
       const period = pfGetPeriodFilters_();
-      const qRaw = period.q || '';
+      const mRaw = period.m || '';
       const yRaw = period.y || '';
       const plantLabels = {};
       (suppliedRows || []).forEach(function(r) {
@@ -18137,9 +18585,9 @@ function initDashboardApp() {
           const pct = pfTtpPkPctForSeller_(ttpPkLookup, sellerKey);
           const certs = pfTtpCertsForCompany_(ttpCertLookup, sellerKey);
           group.companies.push({
-            quarter: qRaw ? ('Q' + qRaw) : '—',
+            month: mRaw ? pfFormatMonth_(mRaw) : '—',
             year: yRaw || '—',
-            quarterRaw: qRaw,
+            monthRaw: mRaw,
             yearRaw: yRaw,
             millRowNum: null,
             company: pfSellerDisplayName_(sellerKey, suppliedRows),
@@ -18158,9 +18606,11 @@ function initDashboardApp() {
       });
     }
 
-    function pfQuarterMatchesFilter_(rowQ, filterQ) {
-      if (!filterQ) return true;
-      return String(parseMillQuarterSort(rowQ) || '') === String(filterQ);
+    function pfMonthMatchesFilter_(rowM, filterM) {
+      if (!filterM) return true;
+      const rowN = parseMillMonthSort(rowM);
+      const filterN = parseInt(String(filterM), 10);
+      return rowN === filterN;
     }
 
     function pfYearMatchesFilter_(rowY, filterY) {
@@ -18170,30 +18620,30 @@ function initDashboardApp() {
       return rowNorm === filterNorm;
     }
 
-    /** Newest Quarter + Year found in Mill Onboarding (allData). */
+    /** Newest Month + Year found in Mill Onboarding (allData). */
     function pfDetectLatestMillPeriod_() {
       let bestY = 0;
-      let bestQ = 0;
+      let bestM = 0;
       (allData || []).forEach(function(r) {
         const y = parseMillYearSort(millYearVal(r));
-        const q = parseMillQuarterSort(millQuarterVal(r));
-        if (!y || q === 99) return;
-        if (y > bestY || (y === bestY && q > bestQ)) {
+        const m = parseMillMonthSort(millMonthVal(r));
+        if (!y || !m) return;
+        if (y > bestY || (y === bestY && m > bestM)) {
           bestY = y;
-          bestQ = q;
+          bestM = m;
         }
       });
       return {
         year: bestY ? String(bestY) : '',
-        quarter: bestQ ? String(bestQ) : '',
+        month: bestM ? String(bestM) : '',
       };
     }
 
     function pfGetPeriodFilters_() {
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
       return {
-        q: qSel ? String(qSel.value || '').trim() : '',
+        m: mSel ? String(mSel.value || '').trim() : '',
         y: ySel ? String(ySel.value || '').trim() : '',
       };
     }
@@ -18208,12 +18658,11 @@ function initDashboardApp() {
 
     function pfMillRowPeriodSortKey_(r) {
       const y = parseMillYearSort(millYearVal(r));
-      const q = parseMillQuarterSort(millQuarterVal(r));
-      if (!y && q === 99) return -1;
-      return y * 10 + (q === 99 ? 0 : q);
+      const m = parseMillMonthSort(millMonthVal(r));
+      return y * 100 + (m || 0);
     }
 
-    /** One Mill Onboarding row per mill — keep highest Year/Q; ties → later sheet row. */
+    /** One Mill Onboarding row per mill — keep highest Year/Month; ties → later sheet row. */
     function pfDedupeMillRowsLatest_(rows) {
       const byId = new Map();
       rows.forEach(function(r) {
@@ -18236,21 +18685,21 @@ function initDashboardApp() {
 
     /**
      * Mill Onboarding rows for Facility Performance:
-     * - Quarter/Year filter set → rows for that period (year-only → latest Q in that year per mill)
-     * - All → latest Q+Y per mill (no duplicate historical rows)
+     * - Month/Year filter set → rows for that period (year-only → latest month in that year per mill)
+     * - All → latest Month+Year per mill (no duplicate historical rows)
      */
     function pfMillRowsForBuild_() {
       const rows = (allData || []).slice();
-      const qFilter = pfGetPeriodFilters_().q;
+      const mFilter = pfGetPeriodFilters_().m;
       const yFilter = pfGetPeriodFilters_().y;
 
-      if (qFilter || yFilter) {
+      if (mFilter || yFilter) {
         const filtered = rows.filter(function(r) {
-          if (qFilter && !pfQuarterMatchesFilter_(millQuarterVal(r), qFilter)) return false;
+          if (mFilter && !pfMonthMatchesFilter_(millMonthVal(r), mFilter)) return false;
           if (yFilter && !pfYearMatchesFilter_(millYearVal(r), yFilter)) return false;
           return true;
         });
-        if (yFilter && !qFilter) return pfDedupeMillRowsLatest_(filtered);
+        if (yFilter && !mFilter) return pfDedupeMillRowsLatest_(filtered);
         return filtered;
       }
       return pfDedupeMillRowsLatest_(rows);
@@ -18259,9 +18708,9 @@ function initDashboardApp() {
     let _pfDefaultPeriodApplied = false;
     function pfApplyDefaultPeriodIfNeeded_() {
       if (_pfDefaultPeriodApplied) return;
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
-      if (!qSel || !ySel) return;
+      if (!mSel || !ySel) return;
       const latest = pfDetectLatestMillPeriod_();
       if (latest.year) {
         let hasYearOpt = false;
@@ -18276,7 +18725,7 @@ function initDashboardApp() {
         }
         ySel.value = latest.year;
       }
-      if (latest.quarter) qSel.value = String(latest.quarter);
+      if (latest.month) mSel.value = String(latest.month);
       _pfDefaultPeriodApplied = true;
     }
 
@@ -18289,7 +18738,25 @@ function initDashboardApp() {
     let _pfSuppliedPkSheets = [];
     let _pfSuppliedPkData   = [];
     let _pfSuppliedPkLoaded = false;
+    let _pfSuppliedCpoPeriodKey = '';
+    let _pfSuppliedPkPeriodKey = '';
     let _pfAllPkGroups      = [];
+
+    function pfPeriodCacheKey_() {
+      const p = pfGetPeriodFilters_();
+      return String(p.m || 'all') + '|' + String(p.y || 'all');
+    }
+
+    function pfWithTimeout_(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise(function(_, reject) {
+          setTimeout(function() {
+            reject(new Error((label || 'Request') + ' timeout (' + ms + 'ms)'));
+          }, ms);
+        }),
+      ]);
+    }
 
     function pfCollapseAllDetails_(body) {
       if (!body) return;
@@ -18398,28 +18865,33 @@ function initDashboardApp() {
 
     /**
      * Determine the appropriate Supplied CPO sheet name(s) to load
-     * based on current Quarter/Year filter dropdowns.
+     * based on current Month/Year filter dropdowns.
      * Returns an array of sheet names to load (may be multiple).
+     * Sheet naming convention: "SUPPLIED CPO M{m} {y}" or "SUPPLIED CPO {y}".
      */
     function pfResolveSuppliedCpoSheets_() {
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
-      const q = qSel ? qSel.value.trim() : '';
+      const m = mSel ? mSel.value.trim() : '';
       const y = ySel ? ySel.value.trim() : '';
 
       if (!_pfSuppliedCpoSheets.length) return [];
 
-      // Q + Y selected  →  "SUPPLIED CPO Q{q} {y}"
-      if (q && y) {
-        const target = ('SUPPLIED CPO Q' + q + ' ' + y).toUpperCase();
+      // M + Y selected  →  "SUPPLIED CPO M{m} {y}" or "SUPPLIED CPO {month_name} {y}"
+      if (m && y) {
+        const padM = String(parseInt(m, 10)).padStart(2, '0');
+        const targets = [
+          ('SUPPLIED CPO M' + m + ' ' + y).toUpperCase(),
+          ('SUPPLIED CPO M' + padM + ' ' + y).toUpperCase(),
+        ];
         const exact = _pfSuppliedCpoSheets.find(function(n) {
-          return n.trim().toUpperCase() === target;
+          return targets.indexOf(n.trim().toUpperCase()) !== -1;
         });
         if (exact) return [exact];
       }
 
-      // Only Y selected  →  prefer annual "SUPPLIED CPO {y}", fallback to all Qn y
-      if (!q && y) {
+      // Only Y selected  →  prefer annual "SUPPLIED CPO {y}", fallback to all sheets for that year
+      if (!m && y) {
         const annual = _pfSuppliedCpoSheets.find(function(n) {
           return n.trim().toUpperCase() === ('SUPPLIED CPO ' + y).toUpperCase();
         });
@@ -18438,10 +18910,12 @@ function initDashboardApp() {
      * Caches: re-fetches only when sheet selection changes.
      */
     async function pfLoadSuppliedCpo_() {
-      // First time: get sheet list from backend
+      const periodKey = pfPeriodCacheKey_();
+      if (_pfSuppliedCpoData.length && _pfSuppliedCpoPeriodKey === periodKey) return;
+
       if (!_pfSuppliedCpoLoaded) {
         try {
-          const names = await apiGetAction_('listSuppliedCpoSheets');
+          const names = await pfWithTimeout_(apiGetAction_('listSuppliedCpoSheets'), 30000, 'Supplied CPO sheets');
           _pfSuppliedCpoSheets = Array.isArray(names) ? names : [];
         } catch (e) {
           console.warn('[Performa Facility] listSuppliedCpoSheets failed:', e);
@@ -18451,16 +18925,20 @@ function initDashboardApp() {
       }
 
       const sheetNames = pfResolveSuppliedCpoSheets_();
-      if (!sheetNames.length) { _pfSuppliedCpoData = []; return; }
+      if (!sheetNames.length) {
+        _pfSuppliedCpoData = [];
+        _pfSuppliedCpoPeriodKey = periodKey;
+        return;
+      }
 
-      // Load all resolved sheets concurrently
       try {
-        const results = await Promise.all(sheetNames.map(function(sn) {
+        const results = await pfWithTimeout_(Promise.all(sheetNames.map(function(sn) {
           return apiGetAction_('getSuppliedCpo', { sheet: sn });
-        }));
+        })), 45000, 'Supplied CPO data');
         _pfSuppliedCpoData = [].concat.apply([], results.map(function(r) {
           return Array.isArray(r) ? r : [];
         }));
+        _pfSuppliedCpoPeriodKey = periodKey;
       } catch (e) {
         console.warn('[Performa Facility] getSuppliedCpo failed:', e);
         _pfSuppliedCpoData = [];
@@ -18531,20 +19009,21 @@ function initDashboardApp() {
       return best;
     }
 
-    /** Resolve which Supplied PK sheet(s) to load for current Q/Y filter. */
+    /** Resolve which Supplied PK sheet(s) to load for current Month/Year filter. */
     function pfResolveSuppliedPkSheets_() {
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
-      const q = qSel ? qSel.value.trim() : '';
+      const m = mSel ? mSel.value.trim() : '';
       const y = ySel ? ySel.value.trim() : '';
       if (!_pfSuppliedPkSheets.length) return [];
       const toUpper = function(n) { return n.trim().toUpperCase(); };
-      if (q && y) {
-        const target = ('SUPPLIED PK Q' + q + ' ' + y).toUpperCase();
-        const exact  = _pfSuppliedPkSheets.find(function(n) { return toUpper(n) === target; });
+      if (m && y) {
+        const padM = String(parseInt(m, 10)).padStart(2, '0');
+        const targets = [('SUPPLIED PK M' + m + ' ' + y).toUpperCase(), ('SUPPLIED PK M' + padM + ' ' + y).toUpperCase()];
+        const exact  = _pfSuppliedPkSheets.find(function(n) { return targets.indexOf(toUpper(n)) !== -1; });
         if (exact) return [exact];
       }
-      if (!q && y) {
+      if (!m && y) {
         const annual = _pfSuppliedPkSheets.find(function(n) { return toUpper(n) === ('SUPPLIED PK ' + y).toUpperCase(); });
         if (annual) return [annual];
         return _pfSuppliedPkSheets.filter(function(n) { return toUpper(n).includes(y.toUpperCase()); });
@@ -18554,9 +19033,12 @@ function initDashboardApp() {
 
     /** Fetch Supplied PK data for currently selected period. */
     async function pfLoadSuppliedPk_() {
+      const periodKey = pfPeriodCacheKey_();
+      if (_pfSuppliedPkData.length && _pfSuppliedPkPeriodKey === periodKey) return;
+
       if (!_pfSuppliedPkLoaded) {
         try {
-          const names = await apiGetAction_('listSuppliedPkSheets');
+          const names = await pfWithTimeout_(apiGetAction_('listSuppliedPkSheets'), 30000, 'Supplied PK sheets');
           _pfSuppliedPkSheets = Array.isArray(names) ? names : [];
         } catch (e) {
           console.warn('[Performa Facility] listSuppliedPkSheets failed:', e);
@@ -18565,14 +19047,19 @@ function initDashboardApp() {
         _pfSuppliedPkLoaded = true;
       }
       const sheetNames = pfResolveSuppliedPkSheets_();
-      if (!sheetNames.length) { _pfSuppliedPkData = []; return; }
+      if (!sheetNames.length) {
+        _pfSuppliedPkData = [];
+        _pfSuppliedPkPeriodKey = periodKey;
+        return;
+      }
       try {
-        const results = await Promise.all(sheetNames.map(function(sn) {
+        const results = await pfWithTimeout_(Promise.all(sheetNames.map(function(sn) {
           return apiGetAction_('getSuppliedPk', { sheet: sn });
-        }));
+        })), 45000, 'Supplied PK data');
         _pfSuppliedPkData = [].concat.apply([], results.map(function(r) {
           return Array.isArray(r) ? r : [];
         }));
+        _pfSuppliedPkPeriodKey = periodKey;
       } catch (e) {
         console.warn('[Performa Facility] getSuppliedPk failed:', e);
         _pfSuppliedPkData = [];
@@ -18742,14 +19229,14 @@ function initDashboardApp() {
         const ttpPctNum = ttpEntry ? (ttpEntry.sum / ttpEntry.count) : NaN;
 
         const company = {
-          quarter:    pfFormatQuarter_(millQuarterVal(r)),
+          month:      pfFormatMonth_(millMonthVal(r)),
           year:       String(millYearVal(r) || '').trim() || '—',
-          quarterRaw: millQuarterVal(r),
+          monthRaw:   millMonthVal(r),
           yearRaw:    millYearVal(r),
           millRowNum: r._row,
           company:    String(r['COMPANY NAME']        || '').trim() || '—',
           companyKey: coUpper,
-          group:      String(r['GROUP NAME']          || '').trim() || '—',
+          group:      pfCompanyGroupValue_(r),
           nbl:        String(r['BUYER NO BUY LIST']   || '').trim() || '—',
           riskLevel:  String(r['RESULT RISK LEVEL']   || '').trim() || '—',
           grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
@@ -18770,6 +19257,7 @@ function initDashboardApp() {
 
       // For each facility, calculate % traceable from Supplied CPO
       byFacility.forEach(function(g) {
+        pfApplyTtmPctToCompanies_(g.companies, suppliedLookup, g.facilityKey);
         const supEntry = suppliedLookup[g.facilityKey];
         if (!supEntry || !hasSupplied) {
           g.traceCalc = null;
@@ -18802,6 +19290,8 @@ function initDashboardApp() {
         g.ispoCalc = supEntry && hasSupplied
           ? pfCalcIspoSupplyPct_(supEntry, ttpCertLookup, millIspoLookup)
           : null;
+        g.ttmCalc = pfCalcTtmFacilityTrace_(g.companies, suppliedLookup, g.facilityKey);
+        g.ttmSource = g.ttmCalc.source;
       });
 
       return Array.from(byFacility.values())
@@ -18848,6 +19338,7 @@ function initDashboardApp() {
 
       // Calculate % PK traceable per facility
       byFacility.forEach(function(g) {
+        pfApplyTtmPctToCompanies_(g.companies, suppliedLookup, g.facilityKey);
         const supHit = pfFindSuppliedPlantEntry_(suppliedLookup, g.facilityKey);
         const supEntry = supHit ? supHit.entry : null;
         if (!supEntry || !hasSupplied) {
@@ -18878,6 +19369,8 @@ function initDashboardApp() {
         g.ispoCalc = supEntry && hasSupplied
           ? pfCalcIspoSupplyPct_(supEntry, ttpCertLookup, millIspoLookup)
           : null;
+        g.ttmCalc = pfCalcTtmFacilityTrace_(g.companies, suppliedLookup, g.facilityKey);
+        g.ttmSource = g.ttmCalc.source;
       });
 
       return Array.from(byFacility.values())
@@ -18916,7 +19409,10 @@ function initDashboardApp() {
       }
       const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
       const ispoNote = g.ispoCalc ? g.ispoCalc.note : '';
-      return { nblYes, highRisk, grievanceSum, avgPk, ispoPct: ispoPct, ispoNote: ispoNote, traceSource: src, traceNote };
+      const avgTtm = g.ttmCalc ? g.ttmCalc.formatted : '0%';
+      const ttmNote = g.ttmCalc ? g.ttmCalc.note : '';
+      const ttmSource = g.ttmSource || 'company-fallback';
+      return { nblYes, highRisk, grievanceSum, avgPk, avgTtm, ispoPct: ispoPct, ispoNote: ispoNote, traceSource: src, traceNote, ttmSource, ttmNote };
     }
 
     /** Nested detail table for PK facilities. */
@@ -19006,7 +19502,8 @@ function initDashboardApp() {
     /** Nested detail table for PK facilities. */
     function pfPkNestedTableHtml_(companies) {
       const rows = companies.map(function(c) {
-        const pctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
+        const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
+        const ttmPctStr = !isNaN(c.ttmPctNum) ? ttpFormatCellPct_(c.ttmPctNum) : '0%';
         return '<tr class="pf-nested-row">'
           + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
           + pfCompanyCellHtml_(c)
@@ -19014,7 +19511,8 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">'   + escHtml(c.nbl)     + '</td>'
           + '<td class="pf-td-plain">'   + escHtml(c.riskLevel) + '</td>'
           + '<td class="pf-td-num">'     + escHtml(String(c.grievance)) + '</td>'
-          + '<td class="pf-td-num">'     + pfCpoPctHtml_(pctStr) + '</td>'
+          + '<td class="pf-td-num">'     + pfCpoPctHtml_(ttmPctStr) + '</td>'
+          + '<td class="pf-td-num">'     + pfCpoPctHtml_(ttpPctStr) + '</td>'
           + '</tr>';
       }).join('');
       return '<div class="pf-detail-wrap pf-detail-wrap--pk">'
@@ -19023,12 +19521,14 @@ function initDashboardApp() {
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-group"/><col class="pf-ncol-company"/><col class="pf-ncol-cert"/>'
         + '<col class="pf-ncol-status"/><col class="pf-ncol-status"/>'
-        + '<col class="pf-ncol-num"/><col class="pf-ncol-pct"/>'
+        + '<col class="pf-ncol-num"/><col class="pf-ncol-pct"/><col class="pf-ncol-pct"/>'
         + '</colgroup><thead><tr>'
         + '<th class="pf-th-left">Group Name</th><th class="pf-th-left">Company Name</th>'
         + '<th class="pf-th-left">Certification</th>'
         + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
-        + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% PK TRACEABLE</th>'
+        + '<th class="pf-th-right">Total Grievance</th>'
+        + '<th class="pf-th-right" title="Traceability to Mill — company name, coordinates, and supplied quantity must all be present">% TTM TRACEABLE</th>'
+        + '<th class="pf-th-right" title="Traceability to Plantation — from TTM/TTP data">% TTP TRACEABLE</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
 
@@ -19053,7 +19553,7 @@ function initDashboardApp() {
       if (pkCountEl) pkCountEl.textContent = filtered.length + ' KCP facility · ' + filtered.reduce(function(s,g){return s+g.companies.length;}, 0) + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#9C8A8A;">'
           + 'No PK data matches the current filters.'
           + '</td></tr>';
         if (loading) loading.style.display = 'none';
@@ -19086,11 +19586,12 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">'  + highLabel                 + '</td>'
           + '<td class="pf-td-num">'    + grvLabel                  + '</td>'
           + '<td class="pf-td-num">'    + pfIspoPctHtml_(g.ispoCalc) + '</td>'
+          + '<td class="pf-td-num">'    + pfCpoPctHtml_(sum.avgTtm, sum.ttmSource, sum.ttmNote) + '</td>'
           + '<td class="pf-td-num">'    + pfCpoPctHtml_(sum.avgPk, sum.traceSource, sum.traceNote) + '</td>'
           + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('pk', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="8" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="9" class="pf-group-detail-cell">' + pfPkNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -19152,16 +19653,22 @@ function initDashboardApp() {
 
       const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
       const ispoNote = g.ispoCalc ? g.ispoCalc.note : '';
+      const avgTtm = g.ttmCalc ? g.ttmCalc.formatted : '0%';
+      const ttmNote = g.ttmCalc ? g.ttmCalc.note : '';
+      const ttmSource = g.ttmSource || 'company-fallback';
       return {
         nblYes: nblYes,
         highRisk: highRisk,
         grievanceSum: grievanceSum,
         avgCpo: avgCpo,
+        avgTtm: avgTtm,
         supQtyFmt: supQtyFmt,
         ispoPct: ispoPct,
         ispoNote: ispoNote,
         traceSource: src,
         traceNote: traceNote,
+        ttmSource: ttmSource,
+        ttmNote: ttmNote,
       };
     }
 
@@ -19217,6 +19724,7 @@ function initDashboardApp() {
     function pfNestedTableHtml_(companies) {
       const rows = companies.map(function(c) {
         const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
+        const ttmPctStr = !isNaN(c.ttmPctNum) ? ttpFormatCellPct_(c.ttmPctNum) : '0%';
         return '<tr class="pf-nested-row">'
           + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
           + pfCompanyCellHtml_(c)
@@ -19224,6 +19732,7 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">' + escHtml(c.nbl) + '</td>'
           + '<td class="pf-td-plain">' + escHtml(c.riskLevel) + '</td>'
           + '<td class="pf-td-num">' + escHtml(String(c.grievance)) + '</td>'
+          + '<td class="pf-td-num">' + pfCpoPctHtml_(ttmPctStr) + '</td>'
           + '<td class="pf-td-num">' + pfCpoPctHtml_(ttpPctStr) + '</td>'
           + '</tr>';
       }).join('');
@@ -19233,19 +19742,21 @@ function initDashboardApp() {
         + '<table class="pf-nested-table"><colgroup>'
         + '<col class="pf-ncol-group" /><col class="pf-ncol-company" /><col class="pf-ncol-cert" />'
         + '<col class="pf-ncol-status" /><col class="pf-ncol-status" />'
-        + '<col class="pf-ncol-num" /><col class="pf-ncol-pct" />'
+        + '<col class="pf-ncol-num" /><col class="pf-ncol-pct" /><col class="pf-ncol-pct" />'
         + '</colgroup><thead><tr>'
         + '<th class="pf-th-left">Group Name</th><th class="pf-th-left">Company Name</th>'
         + '<th class="pf-th-left">Certification</th>'
         + '<th class="pf-th-center">No Buy List</th><th class="pf-th-center">Result Risk Level</th>'
-        + '<th class="pf-th-right">Total Grievance</th><th class="pf-th-right">% TRACEABLE</th>'
+        + '<th class="pf-th-right">Total Grievance</th>'
+        + '<th class="pf-th-right" title="Traceability to Mill — company name, coordinates, and supplied quantity must all be present">% TTM TRACEABLE</th>'
+        + '<th class="pf-th-right" title="Traceability to Plantation — from TTM/TTP data">% TTP TRACEABLE</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
 
     function pfApplyFilters_(groups) {
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
-      const qFilter = qSel ? qSel.value : '';
+      const mFilter = mSel ? mSel.value : '';
       const yFilter = ySel ? ySel.value : '';
       const searchQ = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
 
@@ -19256,20 +19767,22 @@ function initDashboardApp() {
           companies: companies,
           traceCalc: g.traceCalc,
           traceSource: g.traceSource,
+          ttmCalc: g.ttmCalc,
+          ttmSource: g.ttmSource,
           ispoCalc: g.ispoCalc,
         };
       }
 
       return groups.map(function(g) {
         let companies = g.companies.filter(function(c) {
-          if (!pfQuarterMatchesFilter_(c.quarterRaw, qFilter)) return false;
+          if (!pfMonthMatchesFilter_(c.monthRaw, mFilter)) return false;
           if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
           return true;
         });
         if (searchQ) {
           if (g.facility.toLowerCase().includes(searchQ)) return mapGroup_(g, companies);
           companies = companies.filter(function(c) {
-            return [c.company, c.group, c.quarter, c.year].some(function(v) {
+            return [c.company, c.group, c.month, c.year].some(function(v) {
               return String(v).toLowerCase().includes(searchQ);
             });
           });
@@ -19321,7 +19834,7 @@ function initDashboardApp() {
       if (scope)   scope.textContent   = filtered.length + ' facility · ' + totalCompanies + ' company';
 
       if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9C8A8A;">'
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#9C8A8A;">'
           + 'No data matches the current filters.'
           + '</td></tr>';
         if (loading) loading.style.display = 'none';
@@ -19356,11 +19869,12 @@ function initDashboardApp() {
           + '<td class="pf-td-plain">' + highLabel + '</td>'
           + '<td class="pf-td-num">' + grvLabel + '</td>'
           + '<td class="pf-td-num">' + pfIspoPctHtml_(g.ispoCalc) + '</td>'
+          + '<td class="pf-td-num">' + pfCpoPctHtml_(sum.avgTtm, sum.ttmSource, sum.ttmNote) + '</td>'
           + '<td class="pf-td-num">' + pfCpoPctHtml_(sum.avgCpo, sum.traceSource, sum.traceNote) + '</td>'
           + '<td class="pf-td-actions">' + pfExportRowBtnHtml_('cpo', g.facilityKey || g.facility.toUpperCase()) + '</td>'
           + '</tr>';
         html += '<tr class="pf-group-detail-row hidden" data-parent="' + groupId + '">'
-          + '<td colspan="8" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
+          + '<td colspan="9" class="pf-group-detail-cell">' + pfNestedTableHtml_(g.companies) + '</td></tr>';
         gIdx++;
       });
 
@@ -19383,11 +19897,13 @@ function initDashboardApp() {
         await Promise.all([
           allData && allData.length ? Promise.resolve() : loadMillData(),
           ttpLoaded ? Promise.resolve() : loadTTPData(),
-          cplLoaded ? Promise.resolve() : loadCompanyProfileListData(),
         ]);
         pfPopulateYears_();
         pfApplyDefaultPeriodIfNeeded_();
-        // Load CPO + PK supplied for selected (default = latest) Quarter/Year
+        _pfAllGroups   = pfBuildRows_();
+        _pfAllPkGroups = pfBuildPkGroups_();
+        pfRenderTable_(_pfAllGroups);
+        pfRenderPkTable_(_pfAllPkGroups);
         await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
         _pfAllGroups   = pfBuildRows_();
         _pfAllPkGroups = pfBuildPkGroups_();
@@ -19404,7 +19920,7 @@ function initDashboardApp() {
 
     window.initPerformaFacility_ = function initPerformaFacility_() {
       const searchEl = document.getElementById('pfSearch');
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
 
       // Search: re-render both CPO and PK tables
@@ -19416,16 +19932,18 @@ function initDashboardApp() {
         });
       }
 
-      // Quarter/Year change: reload supplied CPO + PK data for the new period, then rebuild
+      // Month/Year change: reload supplied CPO + PK data for the new period, then rebuild
       async function onPeriodChange_() {
-        _pfSuppliedCpoLoaded = false; // force re-fetch on next load
+        _pfSuppliedCpoLoaded = false;
         _pfSuppliedPkLoaded  = false;
+        _pfSuppliedCpoPeriodKey = '';
+        _pfSuppliedPkPeriodKey = '';
         await pfLoadAndRender_();
       }
 
-      if (qSel && !qSel._pfBound) {
-        qSel._pfBound = true;
-        qSel.addEventListener('change', onPeriodChange_);
+      if (mSel && !mSel._pfBound) {
+        mSel._pfBound = true;
+        mSel.addEventListener('change', onPeriodChange_);
       }
       if (ySel && !ySel._pfBound) {
         ySel._pfBound = true;
@@ -19438,12 +19956,14 @@ function initDashboardApp() {
         resetBtn._pfBound = true;
         resetBtn.addEventListener('click', async function() {
           const latest = pfDetectLatestMillPeriod_();
-          if (qSel) qSel.value = latest.quarter ? String(latest.quarter) : '';
+          if (mSel) mSel.value = latest.month ? String(latest.month) : '';
           if (ySel) ySel.value = latest.year || '';
           const searchEl2 = document.getElementById('pfSearch');
           if (searchEl2) searchEl2.value = '';
           _pfSuppliedCpoLoaded = false;
           _pfSuppliedPkLoaded  = false;
+          _pfSuppliedCpoPeriodKey = '';
+          _pfSuppliedPkPeriodKey = '';
           await pfLoadAndRender_();
         });
       }
@@ -19455,11 +19975,12 @@ function initDashboardApp() {
     };
 
     function pfPeriodLabel_() {
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const ySel = document.getElementById('pfYearSel');
-      const q = qSel ? qSel.value : '';
+      const m = mSel ? mSel.value : '';
       const y = ySel ? ySel.value : '';
-      if (q && y) return 'Q' + q + ' ' + y;
+      if (m && y) return millMonthLabel_(parseInt(m, 10)) + ' ' + y;
+      if (m) return 'Month ' + m;
       if (y) return 'Year ' + y;
       return 'All Periods';
     }
@@ -19689,6 +20210,8 @@ function initDashboardApp() {
             companies: filtered.companies,
             traceCalc: full.traceCalc,
             traceSource: full.traceSource,
+            ttmCalc: full.ttmCalc,
+            ttmSource: full.ttmSource,
             ispoCalc: full.ispoCalc,
           };
         }
@@ -19772,7 +20295,7 @@ function initDashboardApp() {
           return y + 11;
         }
 
-        function drawFacilityHero_(g, badge, facilityPct, pctLabel, companiesCount, y, accent) {
+        function drawFacilityHero_(g, badge, facilityPct, pctLabel, facilityTtm, ttmLabel, companiesCount, y, accent) {
           y = ensureSpace_(y, 22);
           doc.setDrawColor.apply(doc, BORDER);
           doc.setFillColor.apply(doc, BG_SOFT);
@@ -19794,7 +20317,9 @@ function initDashboardApp() {
           doc.setFontSize(9);
           doc.setTextColor.apply(doc, INK_MUTED);
           doc.text(
-            pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '   ·   ' + companiesCount + ' companies',
+            ttmLabel + ': ' + pfPdfSanitize_(facilityTtm) + '   ·   '
+              + pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '   ·   '
+              + companiesCount + ' companies',
             pageW - mR - 4,
             y + 11,
             { align: 'right' }
@@ -19802,13 +20327,14 @@ function initDashboardApp() {
           return y + 22;
         }
 
-        function drawKpiCards_(y, sum, facilityPct, pctLabel, accent) {
+        function drawKpiCards_(y, sum, facilityPct, pctLabel, facilityTtm, ttmLabel, accent) {
           y = ensureSpace_(y, 22);
           const items = [
             { label: 'No Buy List', value: sum.nblYes > 0 ? String(sum.nblYes) + ' Yes' : '0' },
             { label: 'High Risk', value: String(sum.highRisk || 0) },
             { label: 'Total Grievance', value: String(sum.grievanceSum || 0) },
             { label: 'Est. ISPO Supply %', value: pfPdfSanitize_(sum.ispoPct || '—') },
+            { label: ttmLabel, value: pfPdfSanitize_(facilityTtm) },
             { label: pctLabel, value: pfPdfSanitize_(facilityPct) },
           ];
           const gap = 3;
@@ -20476,7 +21002,7 @@ function initDashboardApp() {
           return widths;
         }
 
-        function drawCompanyTable_(companies, startY, pctLabel, accent) {
+        function drawCompanyTable_(companies, startY, ttmLabel, pctLabel, accent) {
           let y = drawSectionTitle_('Company Performance Breakdown', startY, accent);
 
           const tableHead = [[
@@ -20488,6 +21014,7 @@ function initDashboardApp() {
             'NBL',
             'Risk',
             'Grievance',
+            ttmLabel,
             pctLabel,
           ]];
           const tableBody = companies.map(function(c) {
@@ -20500,11 +21027,12 @@ function initDashboardApp() {
               pfPdfSanitize_(c.nbl),
               pfPdfSanitize_(c.riskLevel),
               pfPdfSanitize_(c.grievance),
+              !isNaN(c.ttmPctNum) ? ttpFormatCellPct_(c.ttmPctNum) : '0%',
               !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—',
             ];
           });
 
-          const colW = pfPdfColWidths_([5, 17, 13, 13, 13, 8, 9, 7, 15]);
+          const colW = pfPdfColWidths_([5, 15, 12, 12, 12, 7, 8, 7, 11, 11]);
 
           doc.autoTable(Object.assign({}, pfPdfTableBase_(), {
             head: tableHead,
@@ -20525,6 +21053,7 @@ function initDashboardApp() {
               6: { cellWidth: colW[6], halign: 'center' },
               7: { cellWidth: colW[7], halign: 'right' },
               8: { cellWidth: colW[8], halign: 'right', fontStyle: 'bold' },
+              9: { cellWidth: colW[9], halign: 'right', fontStyle: 'bold' },
             },
             didParseCell: function(data) {
               if (data.section !== 'body') return;
@@ -20562,7 +21091,8 @@ function initDashboardApp() {
           const isPk = sel.type === 'pk';
           const accent = isPk ? PK_GREEN : BRAND;
           const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
-          const pctLabel = isPk ? '% PK Traceable' : '% Traceable';
+          const pctLabel = isPk ? '% TTP PK TRACEABLE' : '% TTP TRACEABLE';
+          const ttmLabel = isPk ? '% TTM PK TRACEABLE' : '% TTM TRACEABLE';
           const badge = isPk ? 'PK' : 'CPO';
 
           const g = findGroup(sel.type, sel.facilityKey);
@@ -20570,6 +21100,7 @@ function initDashboardApp() {
 
           const sum = sumFn(g);
           const facilityPct = isPk ? sum.avgPk : sum.avgCpo;
+          const facilityTtm = sum.avgTtm || '0%';
           const companies = pfAssignCompanyMapIndexes_(g.companies.slice().sort(function(a, b) {
             return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
           }));
@@ -20580,11 +21111,11 @@ function initDashboardApp() {
             y = drawReportHeader_(true);
           }
 
-          y = drawFacilityHero_(g, badge, facilityPct, pctLabel, companies.length, y, accent);
+          y = drawFacilityHero_(g, badge, facilityPct, pctLabel, facilityTtm, ttmLabel, companies.length, y, accent);
           y = await drawProfileSection_(profiles, y, accent);
-          y = drawKpiCards_(y, sum, facilityPct, pctLabel, accent);
+          y = drawKpiCards_(y, sum, facilityPct, pctLabel, facilityTtm, ttmLabel, accent);
           y = await drawUnifiedFacilityMap_(profiles, companies, g.facility, y, accent);
-          y = drawCompanyTable_(companies, y, pctLabel, accent);
+          y = drawCompanyTable_(companies, y, ttmLabel, pctLabel, accent);
         }
 
         drawFooters_();
@@ -20621,21 +21152,26 @@ function initDashboardApp() {
     }
 
     window.mrdPreparePfDataForReport_ = async function() {
-      if (!cplLoaded) await loadCompanyProfileListData();
-      await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
+      await Promise.all([
+        (!allData || !allData.length) && typeof loadMillData === 'function' ? loadMillData() : Promise.resolve(),
+        !ttpLoaded && typeof loadTTPData === 'function' ? loadTTPData().catch(function() {}) : Promise.resolve(),
+        !cplLoaded ? loadCompanyProfileListData() : Promise.resolve(),
+        pfLoadSuppliedCpo_(),
+        pfLoadSuppliedPk_(),
+      ]);
     };
 
     window.mrdGetFacilityBundlesForReport_ = function(yearFilter) {
       const ySel = document.getElementById('pfYearSel');
-      const qSel = document.getElementById('pfQuarterSel');
+      const mSel = document.getElementById('pfMonthSel');
       const prevY = ySel ? ySel.value : '';
-      const prevQ = qSel ? qSel.value : '';
+      const prevM = mSel ? mSel.value : '';
       if (ySel && yearFilter) ySel.value = yearFilter;
-      if (qSel) qSel.value = '';
-      const cpoGroups = pfFilterGroupsByYear_(pfApplyFilters_(pfBuildRows_()), yearFilter);
-      const pkGroups = pfFilterGroupsByYear_(pfApplyFilters_(pfBuildPkGroups_()), yearFilter);
+      if (mSel) mSel.value = '';
+      const cpoGroups = pfFilterGroupsByYear_(pfBuildRows_(), yearFilter);
+      const pkGroups = pfFilterGroupsByYear_(pfBuildPkGroups_(), yearFilter);
       if (ySel) ySel.value = prevY;
-      if (qSel) qSel.value = prevQ;
+      if (mSel) mSel.value = prevM;
       const bundles = [];
       cpoGroups.forEach(function(g) {
         bundles.push({
@@ -20646,6 +21182,8 @@ function initDashboardApp() {
           summary: pfGroupSummary_(g),
           traceCalc: g.traceCalc || null,
           traceSource: g.traceSource || '',
+          ttmCalc: g.ttmCalc || null,
+          ttmSource: g.ttmSource || '',
           ispoCalc: g.ispoCalc || null,
           profiles: pfCplRowsForPlant_(g.facilityKey || g.facility),
         });
@@ -20659,6 +21197,8 @@ function initDashboardApp() {
           summary: pfPkGroupSummary_(g),
           traceCalc: g.traceCalc || null,
           traceSource: g.traceSource || '',
+          ttmCalc: g.ttmCalc || null,
+          ttmSource: g.ttmSource || '',
           ispoCalc: g.ispoCalc || null,
           profiles: pfCplRowsForPlant_(g.facilityKey || g.facility),
         });
@@ -20804,7 +21344,7 @@ function initDashboardApp() {
     allData = [];
     allDataRaw = [];
     millDataLoaded = false;
-    millPdfDimFilters = { quarter: new Set(), year: new Set(), group: new Set(), province: new Set() };
+    millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
     millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
     millPdfRebuildDimPanels();
     millPdfRenderColPanel();
@@ -20949,7 +21489,8 @@ function initDashboardApp() {
   function applySddPeriodToMillPayload_(payload, mainRow) {
     const out = Object.assign({}, payload || {});
     const period = resolveSddPeriodFromMainRow_(mainRow);
-    if (period.quarter) out['QUARTER'] = period.quarter;
+    if (period.month) out['MONTH'] = period.month;
+    else if (period.quarter) out['MONTH'] = period.quarter; // backward compat
     if (period.year) out['YEAR'] = period.year;
     return out;
   }
@@ -22119,9 +22660,9 @@ function initDashboardApp() {
     return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
-  function supplyPeriodKey_(quarter, year) {
-    const q = String(quarter || '').trim().toUpperCase().replace(/^Q/i, 'Q');
-    return q + '|' + String(year || '').trim();
+  function supplyPeriodKey_(month, year) {
+    const m = String(month || '').trim();
+    return m + '|' + String(year || '').trim();
   }
 
   function supplyCompanyKey_(company) {
@@ -22215,7 +22756,7 @@ function initDashboardApp() {
         result.push(b);
         return;
       }
-      const pk = supplyPeriodKey_(b.quarter, b.year);
+      const pk = supplyPeriodKey_(b.month || b.quarter, b.year);
       if (!openByPeriod[pk]) {
         openByPeriod[pk] = b;
         result.push(b);
@@ -22554,10 +23095,11 @@ function initDashboardApp() {
     return '<span class="supply-match-pill supply-match-pill--new">Baru</span>';
   }
 
-  function supplyFindOpenPeriodBatch_(quarter, year) {
+  function supplyFindOpenPeriodBatch_(month, year) {
     return (window._supplyDraftBatches || []).find(function(b) {
+      const bPeriod = b.month || b.quarter || '';
       return b.status !== 'submitted'
-        && supplyPeriodKey_(b.quarter, b.year) === supplyPeriodKey_(quarter, year);
+        && supplyPeriodKey_(bPeriod, b.year) === supplyPeriodKey_(month, year);
     }) || null;
   }
 
@@ -22573,18 +23115,18 @@ function initDashboardApp() {
   }
 
   function supplyRefreshPeriodHint_() {
-    const quarterSel = document.getElementById('supply-import-quarter');
+    const monthSel = document.getElementById('supply-import-month');
     const yearSel = document.getElementById('supply-import-year');
     const hintEl = document.getElementById('supply-import-period-hint');
     if (!hintEl) return;
-    const q = quarterSel ? quarterSel.value : '';
+    const m = monthSel ? monthSel.value : '';
     const y = yearSel ? yearSel.value : '';
-    if (!q || !y) {
+    if (!m || !y) {
       hintEl.hidden = true;
       hintEl.textContent = '';
       return;
     }
-    const batch = supplyFindOpenPeriodBatch_(q, y);
+    const batch = supplyFindOpenPeriodBatch_(m, y);
     if (!batch) {
       hintEl.hidden = true;
       hintEl.textContent = '';
@@ -22593,12 +23135,13 @@ function initDashboardApp() {
     const kind = String(batch.supply_type || 'CPO').toUpperCase();
     const importKind = supplyImportType_();
     const rowCount = (batch.rows || []).length;
+    const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
     if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
-      hintEl.textContent = 'Draft ' + q + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini akan memperbarui baris company yang sama.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini akan memperbarui baris company yang sama.';
     } else if ((kind === 'CPO' && importKind === 'PK') || (kind === 'PK' && importKind === 'CPO')) {
-      hintEl.textContent = 'Draft ' + q + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' akan digabung per Company Name → CPO+PK.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' akan digabung per Company Name → CPO+PK.';
     } else {
-      hintEl.textContent = 'Draft ' + q + ' ' + y + ' sudah ada (' + rowCount + ' baris). Baris baru akan ditambahkan atau diperbarui.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris). Baris baru akan ditambahkan atau diperbarui.';
     }
     hintEl.hidden = false;
   }
@@ -22702,17 +23245,17 @@ function initDashboardApp() {
     }
     if (fileInput) fileInput.addEventListener('change', function() { if (this.files[0]) handleSupplyFile_(this.files[0]); });
 
-    // ── Quarter/Year validation → enable proceed btn ──────────────────────────
-    const quarterSel = document.getElementById('supply-import-quarter');
+    // ── Month/Year validation → enable proceed btn ───────────────────────────
+    const monthSel = document.getElementById('supply-import-month');
     function checkProceedReady_() {
-      const q = quarterSel ? quarterSel.value : '';
+      const m = monthSel ? monthSel.value : '';
       const y = yearSel ? yearSel.value : '';
       const hasData = window._supplyImportParsedRows && window._supplyImportParsedRows.length > 0;
-      supplySetProceedReady_(!!(q && y && hasData));
+      supplySetProceedReady_(!!(m && y && hasData));
       supplyRefreshPeriodHint_();
     }
-    if (quarterSel) quarterSel.addEventListener('change', checkProceedReady_);
-    if (yearSel)    yearSel.addEventListener('change', checkProceedReady_);
+    if (monthSel) monthSel.addEventListener('change', checkProceedReady_);
+    if (yearSel)  yearSel.addEventListener('change', checkProceedReady_);
 
     const typeWrap = document.getElementById('supply-import-type-wrap');
     if (typeWrap) {
@@ -22731,10 +23274,11 @@ function initDashboardApp() {
     // ── Proceed → build task list ─────────────────────────────────────────────
     const proceedBtn = document.getElementById('btn-supply-import-proceed');
     if (proceedBtn) proceedBtn.addEventListener('click', function() {
-      const q = quarterSel ? quarterSel.value : '';
+      const m = monthSel ? monthSel.value : '';
       const y = yearSel ? yearSel.value : '';
       const supplyType = supplyImportType_();
-      if (!q || !y || !window._supplyImportParsedRows) return;
+      if (!m || !y || !window._supplyImportParsedRows) return;
+      const q = m;
       proceedBtn.disabled = true;
       const prevTxt = proceedBtn.textContent;
       proceedBtn.textContent = 'Memproses…';
@@ -22819,11 +23363,11 @@ function initDashboardApp() {
 
           buildImportPreview_(window._supplyImportParsedRows, supplyType);
 
-          const quarterSel = document.getElementById('supply-import-quarter');
-          const yearSel    = document.getElementById('supply-import-year');
-          const q = quarterSel ? quarterSel.value : '';
-          const y = yearSel ? yearSel.value : '';
-          supplySetProceedReady_(!!(q && y && window._supplyImportParsedRows.length));
+          const monthSel2  = document.getElementById('supply-import-month');
+          const yearSel2   = document.getElementById('supply-import-year');
+          const m2 = monthSel2 ? monthSel2.value : '';
+          const y2 = yearSel2 ? yearSel2.value : '';
+          supplySetProceedReady_(!!(m2 && y2 && window._supplyImportParsedRows.length));
           supplyRefreshPeriodHint_();
         } catch (ex) {
           errCb('Failed to read file: ' + ex.message);
@@ -22854,9 +23398,9 @@ function initDashboardApp() {
           return '<th>' + escHtml(h) + '</th>';
         }).join('') + '</tr>';
 
-    const quarterSel = document.getElementById('supply-import-quarter');
+    const monthSel3 = document.getElementById('supply-import-month');
     const yearSel = document.getElementById('supply-import-year');
-    const q = quarterSel ? quarterSel.value : '';
+    const q = monthSel3 ? monthSel3.value : '';
     const y = yearSel ? yearSel.value : '';
     const mergeableN = (q && y) ? supplyCountMergeableImportRows_(parsedRows, q, y) : 0;
 
@@ -22888,7 +23432,7 @@ function initDashboardApp() {
   // State: current open/editing draft batches
   window._supplyDraftBatches = window._supplyDraftBatches || [];
 
-  async function buildSupplyTaskList_(parsedRows, quarter, year, supplyType) {
+  async function buildSupplyTaskList_(parsedRows, month, year, supplyType) {
     if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
       await loadMillData();
     }
@@ -22900,7 +23444,7 @@ function initDashboardApp() {
 
     let batch = (window._supplyDraftBatches || []).find(function(b) {
       return b.status !== 'submitted'
-        && supplyPeriodKey_(b.quarter, b.year) === supplyPeriodKey_(quarter, year);
+        && supplyPeriodKey_(b.month || b.quarter, b.year) === supplyPeriodKey_(month, year);
     });
     const batchId = batch ? batch.batch_id : ('batch-' + Date.now());
     let mergedCount = 0;
@@ -22908,7 +23452,7 @@ function initDashboardApp() {
     if (!batch) {
       batch = {
         batch_id: batchId,
-        quarter: quarter,
+        month: month,
         year: year,
         supply_type: kind,
         rows: [],
@@ -22927,12 +23471,12 @@ function initDashboardApp() {
         draft_id:       batchId + '_' + Date.now() + '_' + idx,
         batch_id:       batchId,
         status:         'draft',
-        quarter:        quarter,
+        month:          month,
         year:           year,
         supply_type:    kind,
         SUPPLY_TYPE:    kind,
         match_status:   found.status,
-        QUARTER:        quarter,
+        MONTH:          month,
         YEAR:           String(year),
         SUPPLY_QTY:     r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG,
         SUPPLY_PERCENTAGE: r.SUPPLY_PCT,
@@ -22949,7 +23493,7 @@ function initDashboardApp() {
         draft._mill_row = profile._row;
         const PREFILL_SKIP = new Set([
           pctField, SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
-          'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
+          'MONTH', 'QUARTER', 'YEAR', 'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
           'FACILITY NAME CPO', 'FACILITY NAME PK', 'TRADER NAME', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
         ]);
         (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
@@ -23003,12 +23547,12 @@ function initDashboardApp() {
     batch.supply_type = supplyCombineSupplyTypes_(batch.supply_type, kind);
     renderSupplyDraftList_();
 
-    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: batch.rows, meta: { quarter, year, supply_type: batch.supply_type } })
+    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: batch.rows, meta: { month, year, supply_type: batch.supply_type } })
       .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
 
     if (mergedCount > 0 && typeof window.showSddToast === 'function') {
       window.showSddToast(
-        mergedCount + ' baris company sama di ' + quarter + ' ' + year + ' digabung → supply CPO+PK.',
+        mergedCount + ' baris company sama di ' + millMonthLabel_(parseInt(month, 10)) + ' ' + year + ' digabung → supply CPO+PK.',
         'success'
       );
     }
@@ -23045,7 +23589,7 @@ function initDashboardApp() {
       return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
         + '<div class="supply-batch-card-head">'
         + '<div class="supply-batch-card-meta">'
-        + '<span class="supply-batch-period">' + escHtml(b.quarter) + ' · ' + escHtml(b.year) + '</span>'
+        + '<span class="supply-batch-period">' + escHtml(b.month ? (millMonthLabel_(parseInt(b.month, 10)) + ' ' + b.month) : (b.quarter || '')) + ' · ' + escHtml(b.year) + '</span>'
         + typeBadge
         + statusBadge
         + '<div class="supply-batch-stats">'
@@ -23233,7 +23777,8 @@ function initDashboardApp() {
       }
     });
 
-    if (batch.quarter) prefill['QUARTER'] = batch.quarter;
+    if (batch.month) prefill['MONTH'] = String(batch.month);
+    else if (batch.quarter) prefill['MONTH'] = String(batch.quarter); // backward compat
     if (batch.year) prefill['YEAR'] = String(batch.year);
     if (draftRow['GROUP NAME']) prefill['GROUP NAME'] = draftRow['GROUP NAME'];
     if (draftRow['COMPANY NAME']) prefill['COMPANY NAME'] = draftRow['COMPANY NAME'];
@@ -23275,7 +23820,8 @@ function initDashboardApp() {
     }
 
     if (action === 'delete-batch') {
-      if (!confirm('Delete draft batch ' + batch.quarter + ' ' + batch.year + '? This cannot be undone.')) return;
+      const batchPeriodLabel = (batch.month ? (millMonthLabel_(parseInt(batch.month, 10)) + ' ' + batch.month) : (batch.quarter || '')) + ' ' + (batch.year || '');
+      if (!confirm('Delete draft batch ' + batchPeriodLabel + '? This cannot be undone.')) return;
       window._supplyDraftBatches = window._supplyDraftBatches.filter(function(b) { return b.batch_id !== bId; });
       renderSupplyDraftList_();
       apiPost({ action: 'deleteSupplyDraft', batch_id: bId })
@@ -23624,6 +24170,7 @@ function initDashboardApp() {
       initMonthlyReport_({
         escHtml: escHtml,
         millYearVal: millYearVal,
+        millMonthVal: millMonthVal,
         millQuarterVal: millQuarterVal,
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
