@@ -7353,7 +7353,18 @@ function initDashboardApp() {
       });
       var hasGroup   = gAliases.length > 0;
       var hasCompany = cAliases.length > 0;
-      var groupHit   = !!(group   && hasGroup   && nblMatchesAnyAlias_(group,   gAliases));
+      // groupHit: mill GROUP fuzzy-matches NBL group (normal case: SALIM, INDONUSA, etc.)
+      //        OR mill COMPANY *exactly* matches NBL group (company listed as group in NBL,
+      //           e.g. NBL has Group="Surya Panen Subur" but mill has Group="Agrina Sawit Persada",
+      //           Company="Surya Panen Subur").
+      //           Exact-only to prevent fuzzy false positives (e.g. "KETAPANG AGRO LESTARI"
+      //           would fuzzy-match "ASTRA AGRO LESTARI" if we used fuzzy here).
+      var groupHit = !!(hasGroup && (
+        (group   && nblMatchesAnyAlias_(group, gAliases)) ||
+        (company && gAliases.some(function(g) {
+          return normalizeLooseKey(String(g)) === normalizeLooseKey(company);
+        }))
+      ));
       var companyHit = !!(company && hasCompany && nblMatchesAnyAlias_(company, cAliases));
       var matched;
       if (hasGroup && hasCompany) {
