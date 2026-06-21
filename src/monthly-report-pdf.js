@@ -17,7 +17,6 @@ import {
   facilitySummaryColLabels,
   pdfTableHead,
   pdfHeadRow,
-  pdfCellTrim,
   normalizeSddCategory,
   sddStatusText,
   sddCompanyName,
@@ -110,8 +109,8 @@ function pdfMillOnboardingRows_(data) {
   return mrdSortMillItems_((data.mills || []).filter(isHighRiskMillPdf_));
 }
 
-/** Summary PDF mill table — no Risk Level column (subtitle states high-risk count). */
-const MRD_MILL_SUMMARY_PDF_COLS = MRD_MILL_SUMMARY_COLS.slice(1);
+/** Summary PDF mill table includes Result Risk Level (HIGH). */
+const MRD_MILL_SUMMARY_PDF_COLS = MRD_MILL_SUMMARY_COLS;
 
 function pdfMillRiskCell_(item) {
   const risk = String(item && item.risk || '').trim();
@@ -714,10 +713,10 @@ function millDetailCells_(item) {
   const r = item.row;
   return {
     supplierStatus: pdfSanitize(r['SUPPLIER STATUS']),
-    certification: pdfCellTrim(r['CERTIFICATION'], 36),
+    certification: pdfSanitize(r['CERTIFICATION']),
     grievances: pdfSanitize(r['TOTAL GRIEVANCES']),
-    facilityCpo: pdfCellTrim(r['FACILITY NAME CPO'], 44),
-    facilityPk: pdfCellTrim(r['FACILITY NAME PK'], 44),
+    facilityCpo: pdfSanitize(r['FACILITY NAME CPO']),
+    facilityPk: pdfSanitize(r['FACILITY NAME PK']),
     nblBy: pdfSanitize(item.nblBy),
   };
 }
@@ -744,9 +743,9 @@ function drawMillSection_(ctx, data, full, noHeader) {
       const d = millDetailCells_(item);
       return [
         pdfMillRiskCell_(item),
-        pdfCellTrim(r['GROUP NAME'], 28),
-        pdfCellTrim(r['COMPANY NAME'], 32),
-        pdfCellTrim(r['MILL NAME'], 28),
+        pdfSanitize(r['GROUP NAME']),
+        pdfSanitize(r['COMPANY NAME']),
+        pdfSanitize(r['MILL NAME']),
         pdfSanitize(r['PROVINCE']),
         pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
         d.supplierStatus,
@@ -770,25 +769,27 @@ function drawMillSection_(ctx, data, full, noHeader) {
       { fontSize: 6.5, cellPadding: 1.6, headFontSize: 5.6, headMinHeight: 10 }
     );
   } else {
-    const w = colWidths_([16, 20, 20, 14, 12], ctx.cW);
+    const w = colWidths_([10, 15, 18, 18, 11, 10], ctx.cW);
     ctx.drawTableComplete_(
       pdfTableHead(MRD_MILL_SUMMARY_PDF_COLS),
       mills.map(function(item) {
         const r = item.row;
         return [
-          pdfCellTrim(r['GROUP NAME'], 28),
-          pdfCellTrim(r['COMPANY NAME'], 32),
-          pdfCellTrim(r['MILL NAME'], 28),
+          pdfMillRiskCell_(item),
+          pdfSanitize(r['GROUP NAME']),
+          pdfSanitize(r['COMPANY NAME']),
+          pdfSanitize(r['MILL NAME']),
           pdfSanitize(r['PROVINCE']),
           pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
         ];
       }),
       BRAND,
       {
-        0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
+        0: { cellWidth: w[0], fontStyle: 'bold', textColor: NBL_RED },
+        1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] },
+        4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
       },
-      { headFontSize: 5.6, headMinHeight: 10, batchSize: 24 }
+      { headFontSize: 5.6, headMinHeight: 10 }
     );
   }
 }
@@ -820,9 +821,9 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       const d = millDetailCells_(item);
       return [
         pdfSanitize(item.risk),
-        pdfCellTrim(r['GROUP NAME'], 28),
-        pdfCellTrim(r['COMPANY NAME'], 32),
-        pdfCellTrim(r['MILL NAME'], 28),
+        pdfSanitize(r['GROUP NAME']),
+        pdfSanitize(r['COMPANY NAME']),
+        pdfSanitize(r['MILL NAME']),
         pdfSanitize(r['PROVINCE']),
         pdfSanitize(isNblYes_(item.nbl) ? 'Yes' : item.nbl),
         d.supplierStatus,
@@ -890,9 +891,9 @@ function drawTraceSection_(ctx, data, year, full, noHeader) {
   const body = rows.map(function(item) {
     const r = item.row;
     return [
-      pdfCellTrim(r['GROUP NAME'], 28),
-      pdfCellTrim(r['COMPANY NAME'], 32),
-      pdfCellTrim(r['MILL NAME'], 28),
+      pdfSanitize(r['GROUP NAME']),
+      pdfSanitize(r['COMPANY NAME']),
+      pdfSanitize(r['MILL NAME']),
       pdfSanitize(r['PROVINCE']),
       fmtTracePct_(item.ttmCpo),
       fmtTracePct_(item.ttmPk),
@@ -980,13 +981,13 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
         pdfSanitize(r['Grievance Category']),
         pdfSanitize(r['Complainant']),
         pdfSanitize(r['Grievance Subject Group']),
-        pdfCellTrim(r['Grievance Subject'] || r['Subject'], 48),
+        pdfSanitize(r['Grievance Subject'] || r['Subject']),
         pdfSanitize(r['Risk Classification']),
         pdfSanitize(r['Grievance Status']),
-        pdfCellTrim(r['Grievance Description'], 320),
-        pdfCellTrim(r['Verification Findings'], 120),
-        pdfCellTrim(r['Corrective Action'], 120),
-        pdfCellTrim(r['Preventive Action'], 120),
+        pdfSanitize(r['Grievance Description']),
+        pdfSanitize(r['Verification Findings']),
+        pdfSanitize(r['Corrective Action']),
+        pdfSanitize(r['Preventive Action']),
       ];
     }),
     GRV_PURPLE,
