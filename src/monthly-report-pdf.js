@@ -25,6 +25,7 @@ import {
   mrdSortMillItems_,
   mrdSortGrvItemsByDateDesc_,
   mrdSortEudrItems_,
+  eudrCombinedSupply_,
   mrdSortFacilityBundles_,
   mrdSortBundlesByFacility_,
   mrdSortFacilityCompanies_,
@@ -998,7 +999,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
   if (!rows.length) return;
   if (!noHeader) ctx.beginSection_('04 · Grievance Monitoring', GRV_PURPLE);
   if (!full) {
-    const w = colWidths_([11, 10, 12, 11, 14, 8, 10, 10], ctx.cW);
+    const w = colWidths_([11, 10, 12, 11, 14, 10, 10], ctx.cW);
     ctx.drawAutoTable_(
       pdfTableHead(MRD_GRV_SUMMARY_COLS),
       rows.map(function(item) {
@@ -1009,7 +1010,6 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
           pdfSanitize(r['Complainant']),
           pdfSanitize(grvGroupName_(r)),
           pdfSanitize(r['Grievance Subject'] || r['Subject']),
-          pdfSanitize(r['Total Score']),
           pdfSanitize(r['Risk Classification']),
           pdfSanitize(r['Grievance Status']),
         ];
@@ -1017,8 +1017,8 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
       GRV_PURPLE,
       {
         0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5], halign: 'center' },
-        6: { cellWidth: w[6] }, 7: { cellWidth: w[7] },
+        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+        6: { cellWidth: w[6] },
       },
       { fontSize: 6.5, cellPadding: 2, headFontSize: 5.5, headMinHeight: 11 }
     );
@@ -1032,7 +1032,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
     return;
   }
 
-  const w = colWidths_([8, 8, 8, 9, 9, 10, 7, 8, 8, 12, 10, 10, 10], ctx.cW);
+  const w = colWidths_([8, 8, 8, 9, 9, 10, 8, 8, 12, 10, 10, 10], ctx.cW);
   ctx.drawAutoTable_(
     pdfTableHead(MRD_GRV_DETAIL_COLS),
     rows.map(function(item) {
@@ -1044,7 +1044,6 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
         pdfSanitize(r['Complainant']),
         pdfSanitize(grvGroupName_(r)),
         pdfSanitize(r['Grievance Subject'] || r['Subject']),
-        pdfSanitize(r['Total Score']),
         pdfSanitize(r['Risk Classification']),
         pdfSanitize(r['Grievance Status']),
         pdfSanitize(r['Grievance Description']),
@@ -1056,10 +1055,10 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
     GRV_PURPLE,
     {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-      3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] }, 6: { cellWidth: w[6], halign: 'center' },
-      7: { cellWidth: w[7] }, 8: { cellWidth: w[8], fontSize: 6.5 }, 9: { cellWidth: w[9], fontSize: 6.5 },
-      10: { cellWidth: w[10], fontSize: 6.5 }, 11: { cellWidth: w[11], fontSize: 6.5 },
-      12: { cellWidth: w[12], fontSize: 6.5 },
+      3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+      6: { cellWidth: w[6] }, 7: { cellWidth: w[7] }, 8: { cellWidth: w[8], fontSize: 6.5 },
+      9: { cellWidth: w[9], fontSize: 6.5 }, 10: { cellWidth: w[10], fontSize: 6.5 },
+      11: { cellWidth: w[11], fontSize: 6.5 },
     },
     { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 12, rowPageBreak: 'auto' }
   );
@@ -1315,13 +1314,12 @@ function drawEudrSection_(ctx, rows, noHeader) {
   rows = mrdSortEudrItems_(rows);
   if (!rows.length) return;
   if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
-  const w = colWidths_([12, 18, 20, 20, 14, 16], ctx.cW);
+  const w = colWidths_([12, 18, 18, 14, 38], ctx.cW);
   const body = rows.map(function(item) {
     const r = item.row;
     return [
       pdfSanitize(r['GROUP NAME']), pdfSanitize(r['COMPANY NAME']), pdfSanitize(r['MILL NAME']),
-      pdfSanitize(r['PROVINCE']), pdfSanitize(r['SUPPLY TO']),
-      'Potential',
+      pdfSanitize(r['PROVINCE']), pdfSanitize(eudrCombinedSupply_(r)),
     ];
   });
   ctx.drawTableComplete_(
@@ -1330,8 +1328,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
     EUDR_TEAL,
     {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-      3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
-      5: { cellWidth: w[5], fontSize: 6.5 },
+      3: { cellWidth: w[3] }, 4: { cellWidth: w[4], fontSize: 6.5 },
     },
     { fontSize: 6.5, cellPadding: 1.6, headFontSize: 5.6, headMinHeight: 10 }
   );

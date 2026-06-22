@@ -15107,12 +15107,21 @@ function initDashboardApp() {
     return s === '' ? '—' : s;
   }
 
-  /** Supply To = Facility Name CPO dari Mill Onboarding (bukan Facility PK). */
+  /** Supply To = Facility Name CPO dari Mill Onboarding. */
   function eudrSupplyToFromMill_(r) {
     return eudrPickField_(r, [
       'FACILITY NAME CPO',
       'Facility Name CPO',
       'Facility CPO',
+    ]);
+  }
+
+  /** PK supply = Facility Name PK dari Mill Onboarding. */
+  function eudrSupplyPkFromMill_(r) {
+    return eudrPickField_(r, [
+      'FACILITY NAME PK',
+      'Facility Name PK',
+      'Facility PK',
     ]);
   }
 
@@ -15146,10 +15155,12 @@ function initDashboardApp() {
       const key = eudrEntityKey_(group, company, mill);
       const cap = eudrMillCapacityFromMill_(r);
       const supply = eudrSupplyToFromMill_(r);
+      const supplyPk = eudrSupplyPkFromMill_(r);
       if (seen.has(key)) {
         const prev = seen.get(key);
         prev['MILL CAPACITY'] = eudrMergePreferNonEmpty_(prev['MILL CAPACITY'], cap);
         prev['SUPPLY TO'] = eudrMergePreferNonEmpty_(prev['SUPPLY TO'], supply);
+        prev['SUPPLY TO PK'] = eudrMergePreferNonEmpty_(prev['SUPPLY TO PK'], supplyPk);
         if (!prev['UML ID']) prev['UML ID'] = String(r['UML ID'] || '').trim();
         if (!prev['PROVINCE']) prev['PROVINCE'] = String(r['PROVINCE'] || r['Province'] || '').trim();
         return;
@@ -15161,6 +15172,7 @@ function initDashboardApp() {
         'UML ID': String(r['UML ID'] || '').trim(),
         'PROVINCE': String(r['PROVINCE'] || r['Province'] || '').trim(),
         'SUPPLY TO': supply,
+        'SUPPLY TO PK': supplyPk,
         'MILL CAPACITY': cap,
         _entityKey: key,
       });
@@ -15222,7 +15234,7 @@ function initDashboardApp() {
     eudrAttachTtpMetrics_(d);
     d._eudrSearchBlob = [
       d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME'], d['UML ID'],
-      d['PROVINCE'], d['SUPPLY TO'], d['MILL CAPACITY'], d.STATUS,
+      d['PROVINCE'], d['SUPPLY TO'], d['SUPPLY TO PK'], d['MILL CAPACITY'], d.STATUS,
       d._eudrOwnPlasmaPctLabel,
     ].concat(EUDR_SHEET_FIELD_KEYS.map(function(k) { return d[k]; }))
       .map(function(x) { return String(x || '').toLowerCase(); }).join(' ');
@@ -24353,7 +24365,7 @@ function initDashboardApp() {
               row: eudrRow,
               search: [
                 eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'],
-                eudrRow['PROVINCE'], eudrRow['SUPPLY TO'],
+                eudrRow['PROVINCE'], eudrRow['SUPPLY TO'], eudrRow['SUPPLY TO PK'],
               ].join(' ').toLowerCase(),
             };
           }

@@ -14,6 +14,7 @@ import {
   mrdSortMillItems_,
   mrdSortGrvItemsByDateDesc_,
   mrdSortEudrItems_,
+  eudrCombinedSupply_,
   mrdSortFacilityBundles_,
   mrdSortFacilityCompanies_,
   mrdSortBundlesByFacility_,
@@ -916,9 +917,8 @@ function renderGrvSection(rows) {
     { key: 'Complainant', label: MRD_GRV_SUMMARY_COLS[2], always: true },
     { key: 'Grievance Subject Group', label: MRD_GRV_SUMMARY_COLS[3], always: true, group: true },
     { key: 'Grievance Subject', label: MRD_GRV_SUMMARY_COLS[4], altKey: 'Subject', always: true },
-    { key: 'Total Score', label: MRD_GRV_SUMMARY_COLS[5], always: true },
-    { key: 'Risk Classification', label: MRD_GRV_SUMMARY_COLS[6], pill: 'risk', always: true },
-    { key: 'Grievance Status', label: MRD_GRV_SUMMARY_COLS[7], pill: 'grv', always: true },
+    { key: 'Risk Classification', label: MRD_GRV_SUMMARY_COLS[5], pill: 'risk', always: true },
+    { key: 'Grievance Status', label: MRD_GRV_SUMMARY_COLS[6], pill: 'grv', always: true },
   ];
   const cols = fieldDefs.map(function(f) {
     return {
@@ -1018,8 +1018,7 @@ function renderEudrSection(rows, loading) {
     { label: 'Company Name', raw: function(item) { return item.row['COMPANY NAME']; } },
     { label: 'Mill Name', raw: function(item) { return item.row['MILL NAME']; } },
     { label: 'Province', raw: function(item) { return item.row['PROVINCE']; } },
-    { label: 'Supply To', raw: function(item) { return item.row['SUPPLY TO']; } },
-    { label: 'Status', always: true, render: function() { return statusPill('Potential', 'eudr'); } },
+    { label: 'CPO / PK Supply', raw: function(item) { return eudrCombinedSupply_(item.row); } },
   ];
   return renderSmartTable(cols, filtered, {
     empty: '<p class="mrd-empty">No mills with Potential status.</p>',

@@ -67,12 +67,12 @@ export const MRD_MILL_FULL_COLS = [
 
 export const MRD_GRV_SUMMARY_COLS = [
   'Date Received', 'Category', 'Complainant', 'Group', 'Grievance Subject',
-  'Total Score', 'Risk Classification', 'Grievance Status',
+  'Risk Classification', 'Grievance Status',
 ];
 
 export const MRD_GRV_DETAIL_COLS = [
   'Grievance ID', 'Date Received', 'Category', 'Complainant', 'Group', 'Grievance Subject',
-  'Total Score', 'Risk Classification', 'Grievance Status', 'Grievance Description', 'Verification Findings',
+  'Risk Classification', 'Grievance Status', 'Grievance Description', 'Verification Findings',
   'Corrective Action', 'Preventive Action',
 ];
 
@@ -84,8 +84,19 @@ export function grvGroupName_(r) {
 }
 
 export const MRD_EUDR_COLS = [
-  'Group Name', 'Company Name', 'Mill Name', 'Province', 'Supply To', 'Status',
+  'Group Name', 'Company Name', 'Mill Name', 'Province', 'CPO / PK Supply',
 ];
+
+/** CPO + PK facility supply in one cell (from EUDR / mill onboarding). */
+export function eudrCombinedSupply_(row) {
+  const r = row || {};
+  const cpo = String(r['SUPPLY TO'] || r['SUPPLY TO CPO'] || '').trim();
+  const pk = String(r['SUPPLY TO PK'] || '').trim();
+  const parts = [];
+  if (cpo) parts.push('CPO: ' + cpo);
+  if (pk) parts.push('PK: ' + pk);
+  return parts.length ? parts.join(' · ') : '—';
+}
 
 export const MRD_TRACE_DETAIL_COLS = [
   'Group Name', 'Company Name', 'Mill Name', 'Province',
@@ -124,7 +135,6 @@ const PDF_HEAD_SHORT = {
   'Facility Name PK': 'Facility\nPK',
   'Date Received': 'Date\nReceived',
   'Grievance Subject': 'Grievance\nSubject',
-  'Total Score': 'Total\nScore',
   'Risk Classification': 'Risk\nClass.',
   'Grievance Status': 'Grievance\nStatus',
   'Grievance Description': 'Description',
@@ -144,6 +154,7 @@ const PDF_HEAD_SHORT = {
   '% TTP PK': '% TTP\nPK',
   'Supplier Data': 'Supplier\nData',
   'Company Group Name': 'Company\nGroup',
+  'CPO / PK Supply': 'CPO /\nPK Supply',
   'NBL Riser': 'NBL\nRiser',
   'Last Update': 'Last\nUpdate',
   'Date Import': 'Date\nImport',
