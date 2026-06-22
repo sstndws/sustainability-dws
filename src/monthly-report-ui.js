@@ -419,11 +419,7 @@ async function exportMonthlyReport_(exportOpts) {
         })),
         mills: millsForPdf,
         highRiskMills: highRiskMills,
-        emptyMills: filterForExport_(s.emptyMills, function(item) {
-          return matchesSearch([
-            item.millRow['GROUP NAME'], item.millRow['COMPANY NAME'], item.millRow['MILL NAME'],
-          ].join(' ').toLowerCase());
-        }),
+        emptyMills: s.emptyMills || [],
         traceRows: s.traceRows || [],
         traceTotals: s.traceTotals || {},
         grv: mrdSortGrvItemsByDateDesc_(filterForExport_(s.grv, function(item) { return matchesSearch(item.search); })),

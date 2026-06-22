@@ -10,7 +10,6 @@ import {
   MRD_GRV_SUMMARY_COLS,
   MRD_GRV_DETAIL_COLS,
   MRD_EUDR_COLS,
-  MRD_TRACE_DETAIL_COLS,
   MRD_FACILITY_COMPANY_COLS,
   facilityPctColLabel,
   facilityTtmColLabel,
@@ -29,6 +28,7 @@ import {
   mrdSortFacilityBundles_,
   mrdSortBundlesByFacility_,
   mrdSortFacilityCompanies_,
+  mrdSortEmptyMillItems_,
   mrdFormatNblRisers_,
   mrdReportHeaderMeta_,
 } from './monthly-report-labels.js';
@@ -126,9 +126,54 @@ export function mrdPdfSectionsNoDupHighRisk_(sections) {
   return sections.filter(function(id) { return id !== 'highRisk'; });
 }
 
-function fmtTracePct_(n) {
-  if (n == null || isNaN(n)) return '—';
-  return (Math.round(n * 10) / 10) + '%';
+function drawUntraceableMillsTable_(ctx, emptyMills) {
+  const rows = mrdSortEmptyMillItems_(emptyMills || []);
+  const count = rows.length;
+  ctx.beginSubsection_('Untraceable Mills (' + count + ')', NBL_RED);
+  const doc = ctx.doc;
+  const note = count
+    ? count + ' mill' + (count === 1 ? '' : 's')
+      + ' without FFB supplier data in TTP — full list below (count shown in Summary Overview).'
+    : 'All mills have supplier traceability data for this period.';
+  const noteLines = doc.splitTextToSize(note, ctx.cW);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor.apply(doc, INK_MUTED);
+  doc.text(noteLines, ctx.mL, ctx.getY() + 2);
+  ctx.setY(ctx.getY() + noteLines.length * PDF_LAYOUT.descLineH + 4);
+  if (!count) return;
+
+  const w = colWidths_([22, 26, 26, 14], ctx.cW);
+  ctx.drawTableComplete_(
+    pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province']),
+    rows.map(function(item) {
+      const r = item.millRow || item.row || item;
+      return [
+        pdfSanitize(r['GROUP NAME']),
+        pdfSanitize(r['COMPANY NAME']),
+        pdfSanitize(r['MILL NAME']),
+        pdfSanitize(r['PROVINCE']),
+      ];
+    }),
+    NBL_RED,
+    {
+      0: { cellWidth: w[0] }, 1: { cellWidth: w[1] },
+      2: { cellWidth: w[2] }, 3: { cellWidth: w[3] },
+    },
+    { fontSize: 6.5, cellPadding: 1.6, headFontSize: 5.5, headMinHeight: 10 }
+  );
+}
+
+function drawTraceSection_(ctx, data, year, full, noHeader) {
+  const totals = data.traceTotals || {};
+  if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
+  drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
+    cols: 4,
+    cardH: 18,
+    gapAfter: full ? 4 : 0,
+  });
+  if (!full) return;
+  drawUntraceableMillsTable_(ctx, data.emptyMills);
 }
 
 function pctFmt_(n) {
@@ -877,45 +922,6 @@ function traceMetricCards_(t) {
   ];
 }
 
-function drawTraceSection_(ctx, data, year, full, noHeader) {
-  const totals = data.traceTotals || {};
-  const rows = mrdSortMillItems_(data.traceRows || []);
-  if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
-  drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
-    cols: 4,
-    cardH: 18,
-    gapAfter: full && rows.length ? 2 : 0,
-  });
-  if (!full || !rows.length) return;
-  const w = colWidths_([11, 14, 14, 10, 9, 9, 9, 9, 10], ctx.cW);
-  const body = rows.map(function(item) {
-    const r = item.row;
-    return [
-      pdfSanitize(r['GROUP NAME']),
-      pdfSanitize(r['COMPANY NAME']),
-      pdfSanitize(r['MILL NAME']),
-      pdfSanitize(r['PROVINCE']),
-      fmtTracePct_(item.ttmCpo),
-      fmtTracePct_(item.ttmPk),
-      fmtTracePct_(item.ttpCpo),
-      fmtTracePct_(item.ttpPk),
-      item.hasSupplier ? 'Yes' : 'No',
-    ];
-  });
-  ctx.drawTableComplete_(
-    pdfTableHead(MRD_TRACE_DETAIL_COLS),
-    body,
-    TRACE_ORANGE,
-    {
-      0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
-      3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
-      6: { cellWidth: w[6] }, 7: { cellWidth: w[7] },
-      8: { cellWidth: w[8], halign: 'center' },
-    },
-    { fontSize: 6.5, cellPadding: 1.6, headFontSize: 5.5, headMinHeight: 10 }
-  );
-}
-
 function drawTraceTotalsSection_(ctx, totals, year, noHeader) {
   drawTraceSection_(ctx, { traceTotals: totals, traceRows: [] }, year, false, noHeader);
 }
@@ -1341,10 +1347,14 @@ function drawFacilitySummaryTables_(ctx, facility) {
 
 function websiteKpiItems_(stats) {
   const s = stats || {};
+  const untrace = s.emptyTraceMills != null ? s.emptyTraceMills : 0;
+  const untraceSub = untrace > 0
+    ? untrace + ' untraceable mill' + (untrace === 1 ? '' : 's') + ' in Detail'
+    : 'all mills have suppliers';
   return [
     { label: 'SDD Requested', value: String(s.sddRequested != null ? s.sddRequested : (s.sddTotal || 0)), sub: (s.sddDone != null ? s.sddDone : (s.sddSubmitted || 0)) + ' done' },
     { label: 'Total Mills', value: String(s.totalMills != null ? s.totalMills : 0), sub: (s.totalGroups || 0) + ' groups' },
-    { label: 'Untraceable Mills', value: String(s.emptyTraceMills != null ? s.emptyTraceMills : 0), sub: 'mills without suppliers', hot: (s.emptyTraceMills || 0) > 0 },
+    { label: 'Untraceable Mills', value: String(untrace), sub: untraceSub, hot: untrace > 0 },
     { label: 'EUDR Potential', value: String(s.eudrPotential != null ? s.eudrPotential : 0), sub: 'by formula' },
   ];
 }
@@ -1390,9 +1400,9 @@ function drawMetricCardGrid_(ctx, items, opts) {
     doc.text(item.value, x + cardW / 2, cy + 12.5, { align: 'center' });
 
     if (item.sub) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor.apply(doc, INK_LIGHT);
+      doc.setFont('helvetica', item.hot ? 'bold' : 'normal');
+      doc.setFontSize(item.hot ? 6.4 : 5.8);
+      doc.setTextColor.apply(doc, item.hot ? NBL_RED : INK_LIGHT);
       doc.text(String(item.sub), x + cardW / 2, cy + 16.5, { align: 'center' });
     }
   });
@@ -1436,7 +1446,9 @@ function sectionSummaryConfig_(id, stats, data, year) {
     },
     trace: {
       num: '03', title: 'Traceability Data ' + pdfSanitize(year), accent: TRACE_ORANGE,
-      desc: 'TTM (mill coordinates) · TTP (supplier traceability) · ' + (s.emptyTraceMills || 0) + ' mills without supplier',
+      desc: 'TTM (mill coordinates) · TTP (supplier traceability) · '
+        + (s.emptyTraceMills || 0) + ' untraceable mill' + ((s.emptyTraceMills || 0) === 1 ? '' : 's')
+        + ' — full list in Detail report',
       metrics: (function() {
         const t = data.traceTotals || {};
         const cards = traceMetricCards_(t);
