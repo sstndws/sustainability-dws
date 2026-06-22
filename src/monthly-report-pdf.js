@@ -1474,7 +1474,6 @@ function drawMetricCardGrid_(ctx, items, opts) {
     const cardH = item.cardH || defaultCardH;
     const accent = item.hot ? NBL_RED : (item.accent || opts.accent || BRAND);
     const valueColor = item.hot ? NBL_RED : (item.valueColor || accent || INK);
-    const hasHint = !!item.subHint;
 
     doc.setDrawColor.apply(doc, BORDER);
     doc.setFillColor.apply(doc, WHITE);
