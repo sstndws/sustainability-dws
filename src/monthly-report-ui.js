@@ -50,6 +50,7 @@ let _sddCache = [];
 let _facilityBundles = [];
 let _lastTtpCount = 0;
 let _eudrFetchOk = false;
+let _ttpFetchOk = false;
 let _renderRaf = 0;
 
 function scheduleRenderAll() {
@@ -569,7 +570,7 @@ function buildSnapshotSync(opts) {
     if (!millKeys.has(key)) millKeys.set(key, r);
   });
 
-  const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpFiltered, millCol, groupCol, companyCol);
+  const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpData, millCol, groupCol, companyCol);
 
   const ttpByMill = ttpMillMaps.byMillName;
 
@@ -685,14 +686,29 @@ function buildSnapshotSync(opts) {
   };
 }
 
-function renderKpis(stats) {
+function renderKpis(stats, opts) {
+  opts = opts || {};
   const el = document.getElementById('mrdKpiRow');
   if (!el) return;
+  const tracePending = !!opts.tracePending;
+  const eudrPending = !!opts.eudrPending;
+  const untraceN = tracePending ? '…' : stats.emptyTraceMills;
+  const eudrN = eudrPending ? '…' : stats.eudrPotential;
   const items = [
     { n: stats.sddRequested != null ? stats.sddRequested : stats.sddTotal, l: 'SDD Requested', s: (stats.sddDone != null ? stats.sddDone : stats.sddSubmitted) + ' done' },
     { n: stats.totalMills, l: 'Total Mills', s: stats.totalGroups + ' groups' },
-    { n: stats.emptyTraceMills, l: 'Untraceable Mills', s: 'mills without suppliers', hot: stats.emptyTraceMills > 0 },
-    { n: stats.eudrPotential, l: 'EUDR Potential', s: 'by formula' },
+    {
+      n: untraceN,
+      l: 'Untraceable Mills',
+      s: tracePending ? 'loading traceability…' : 'mills without suppliers',
+      hot: !tracePending && stats.emptyTraceMills > 0,
+    },
+    {
+      n: eudrN,
+      l: 'EUDR Potential',
+      s: eudrPending ? 'loading EUDR…' : 'by formula',
+      hot: !eudrPending && stats.eudrPotential > 0,
+    },
   ];
   el.innerHTML = items.map(function(it) {
     return '<div class="stat-card' + (it.hot ? ' mrd-stat-hot' : '') + '">'
@@ -1013,7 +1029,10 @@ function renderEudrSection(rows, loading) {
 
 function renderAll() {
   if (!_snapshot) return;
-  renderKpis(_snapshot.stats);
+  renderKpis(_snapshot.stats, {
+    tracePending: !!_snapshot.supplementalLoading || !_ttpFetchOk,
+    eudrPending: !!_snapshot.eudrLoading || _eudrPending || !_eudrFetchOk,
+  });
   const sections = document.getElementById('mrdSections');
   if (!sections) return;
   const s = _snapshot;
@@ -1131,6 +1150,7 @@ async function loadEudrInBackground(gen, opts) {
     }
   } finally {
     _eudrPending = false;
+    _eudrFetchOk = true;
     if (_snapshot && _snapshot.eudrLoading) {
       _snapshot.eudrLoading = false;
       scheduleRenderAll();
@@ -1154,6 +1174,7 @@ function rebuildSnapshot_(opts) {
 
 function rebuildMonthlyReportSnapshot_() {
   if (!_deps) return;
+  _ttpFetchOk = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0) > 0;
   _snapshot = rebuildSnapshot_({});
   scheduleRenderAll();
   updateScopeText();
@@ -1198,8 +1219,12 @@ async function resolveNblMillsForSnapshot_() {
 
 async function loadSupplementalInBackground(gen) {
   if (!_deps.ensureSupplementalData) return;
+  if (_snapshot) {
+    _snapshot.supplementalLoading = true;
+    scheduleRenderAll();
+  }
   try {
-    await withTimeout(_deps.ensureSupplementalData(), 45000, 'Traceability & grievance');
+    await withTimeout(_deps.ensureSupplementalData(), 120000, 'Traceability & grievance');
     if (gen !== _loadGen) return;
     _snapshot = rebuildSnapshot_({});
     await resolveNblMillsForSnapshot_();
@@ -1208,7 +1233,13 @@ async function loadSupplementalInBackground(gen) {
     updateScopeText();
   } catch (err) {
     if (gen !== _loadGen) return;
-    updateScopeText('supplemental data: timeout — refresh to try again');
+    updateScopeText('supplemental data: timeout — click Refresh to try again');
+  } finally {
+    _ttpFetchOk = true;
+    if (_snapshot) {
+      _snapshot.supplementalLoading = false;
+      scheduleRenderAll();
+    }
   }
 }
 
@@ -1255,7 +1286,10 @@ function startBackgroundLoads_(gen, force) {
 async function loadAndRender(opts) {
   opts = opts || {};
   const force = !!opts.force;
-  if (force) _eudrFetchOk = false;
+  if (force) {
+    _eudrFetchOk = false;
+    _ttpFetchOk = false;
+  }
   const gen = ++_loadGen;
   syncPeriodFromUi_();
   const errEl = document.getElementById('mrdError');
@@ -1392,8 +1426,8 @@ export function initMonthlyReport_(deps) {
   window.refreshMonthlyReport_ = function(opts) {
     opts = opts || {};
     const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
-    const ttpStale = ttpLen !== _lastTtpCount;
     const eudrStale = !_eudrFetchOk && !_eudrPending;
+    const ttpStale = ttpLen !== _lastTtpCount || !_ttpFetchOk;
     const traceSuspicious = _snapshot && _snapshot.stats
       && _snapshot.stats.totalMills > 0
       && _snapshot.stats.emptyTraceMills >= _snapshot.stats.totalMills
