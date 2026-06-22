@@ -127,10 +127,14 @@ export function mrdPdfSectionsNoDupHighRisk_(sections) {
   return sections.filter(function(id) { return id !== 'highRisk'; });
 }
 
-function drawUntraceableMillsTable_(ctx, emptyMills) {
+function drawUntraceableMillsTable_(ctx, emptyMills, asSubsection) {
   const rows = mrdSortEmptyMillItems_(emptyMills || []);
   const count = rows.length;
-  ctx.beginSection_('03 · Untraceable Mills (' + count + ')', NBL_RED);
+  if (asSubsection) {
+    ctx.beginSubsection_('Untraceable Mills (' + count + ')', NBL_RED);
+  } else {
+    ctx.beginSection_('03 · Untraceable Mills (' + count + ')', NBL_RED);
+  }
   const doc = ctx.doc;
   const note = count
     ? count + ' mill' + (count === 1 ? '' : 's')
@@ -174,19 +178,26 @@ function drawUntraceableMillsTable_(ctx, emptyMills) {
 function drawTraceSection_(ctx, data, year, full, noHeader) {
   const totals = data.traceTotals || {};
   const cardH = 18;
+  const kpiBlockNeed = 11 + PDF_LAYOUT.afterSectionBar + cardH + 4;
   if (full) {
-    drawUntraceableMillsTable_(ctx, data.emptyMills);
-    const traceBlockNeed = PDF_LAYOUT.subsectionGap + 11 + PDF_LAYOUT.afterSectionBar + cardH + 2;
-    ctx.ensureBlockFits_(traceBlockNeed);
-    ctx.beginSubsection_('Traceability Data · ' + pdfSanitize(year), TRACE_ORANGE);
-  } else if (!noHeader) {
+    ctx.ensureBlockFits_(kpiBlockNeed);
+    ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
+    drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
+      cols: 4,
+      cardH: cardH,
+      gapAfter: 4,
+      keepWithHeader: true,
+    });
+    drawUntraceableMillsTable_(ctx, data.emptyMills, true);
+    return;
+  }
+  if (!noHeader) {
     ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
   }
   drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
     cols: 4,
     cardH: cardH,
     gapAfter: 0,
-    keepWithHeader: full,
   });
 }
 
