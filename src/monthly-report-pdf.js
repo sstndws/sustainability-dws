@@ -1391,21 +1391,50 @@ function drawFacilitySummaryTables_(ctx, facility) {
   drawFacilitySummaryFromBundles_(ctx, []);
 }
 
+const OVERVIEW_KPI_CARD_H = 22;
+
 function websiteKpiItems_(stats) {
   const s = stats || {};
   const untrace = s.emptyTraceMills != null ? s.emptyTraceMills : 0;
+  const sddDone = s.sddDone != null ? s.sddDone : (s.sddSubmitted || 0);
+  const highRisk = s.highRisk != null ? s.highRisk : 0;
+  const eudr = s.eudrPotential != null ? s.eudrPotential : 0;
   return [
-    { label: 'SDD Requested', value: String(s.sddRequested != null ? s.sddRequested : (s.sddTotal || 0)), sub: (s.sddDone != null ? s.sddDone : (s.sddSubmitted || 0)) + ' done' },
-    { label: 'Total Mills', value: String(s.totalMills != null ? s.totalMills : 0), sub: (s.totalGroups || 0) + ' groups' },
+    {
+      label: 'SDD Requested',
+      value: String(s.sddRequested != null ? s.sddRequested : (s.sddTotal || 0)),
+      sub: sddDone + ' done',
+      subHint: 'Supplier Due Diligence · section 01',
+      cardH: OVERVIEW_KPI_CARD_H,
+      valueColor: BRAND,
+    },
+    {
+      label: 'Total Mills',
+      value: String(s.totalMills != null ? s.totalMills : 0),
+      sub: (s.totalGroups || 0) + ' groups',
+      subHint: highRisk > 0 ? highRisk + ' high-risk mills in Detail' : 'Mill onboarding · section 02',
+      cardH: OVERVIEW_KPI_CARD_H,
+      valueColor: BRAND,
+      hot: highRisk > 0,
+    },
     {
       label: 'Untraceable Mills',
       value: String(untrace),
-      sub: 'mills without supplier data',
-      subHint: untrace > 0 ? 'Full list in Detail report' : '',
+      sub: untrace > 0 ? 'mills without supplier data' : 'all mills have suppliers',
+      subHint: untrace > 0 ? 'Full list in Detail report' : 'Traceability · section 03',
       hot: untrace > 0,
-      cardH: untrace > 0 ? 22 : undefined,
+      cardH: OVERVIEW_KPI_CARD_H,
+      valueColor: BRAND,
     },
-    { label: 'EUDR Potential', value: String(s.eudrPotential != null ? s.eudrPotential : 0), sub: 'by formula' },
+    {
+      label: 'EUDR Potential',
+      value: String(eudr),
+      sub: 'by formula',
+      subHint: eudr > 0 ? 'Full list in Detail report' : 'No EUDR potential this period',
+      cardH: OVERVIEW_KPI_CARD_H,
+      valueColor: BRAND,
+      hot: eudr > 0,
+    },
   ];
 }
 
@@ -1468,7 +1497,7 @@ function drawMetricCardGrid_(ctx, items, opts) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.6);
       doc.setTextColor.apply(doc, INK_LIGHT);
-      doc.text(String(item.sub), x + cardW / 2, cy + (hasHint ? 16 : 16.5), { align: 'center' });
+      doc.text(String(item.sub), x + cardW / 2, cy + 16, { align: 'center' });
     }
     if (item.subHint) {
       doc.setFont('helvetica', 'italic');
@@ -1669,7 +1698,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
     docSetSubhead_(ctx, 'Overview');
     drawMetricCardGrid_(ctx, websiteKpiItems_(stats), {
       cols: 4,
-      cardH: 16,
+      cardH: OVERVIEW_KPI_CARD_H,
       gap: PDF_LAYOUT.cardGap,
       gapAfter: 0,
     });
