@@ -31,6 +31,7 @@ import {
   mrdSortEmptyMillItems_,
   mrdFormatNblRisers_,
   mrdReportHeaderMeta_,
+  grvGroupName_,
 } from './monthly-report-labels.js';
 
 const BRAND = [139, 26, 26];
@@ -995,7 +996,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
           pdfSanitize(r['Date Received']),
           pdfSanitize(r['Grievance Category']),
           pdfSanitize(r['Complainant']),
-          pdfSanitize(r['Grievance Subject Group']),
+          pdfSanitize(grvGroupName_(r)),
           pdfSanitize(r['Grievance Subject'] || r['Subject']),
           pdfSanitize(r['Risk Classification']),
           pdfSanitize(r['Grievance Status']),
@@ -1028,7 +1029,7 @@ function drawGrvSection_(ctx, rows, full, noHeader) {
         pdfSanitize(r['Date Received']),
         pdfSanitize(r['Grievance Category']),
         pdfSanitize(r['Complainant']),
-        pdfSanitize(r['Grievance Subject Group']),
+        pdfSanitize(grvGroupName_(r)),
         pdfSanitize(r['Grievance Subject'] || r['Subject']),
         pdfSanitize(r['Risk Classification']),
         pdfSanitize(r['Grievance Status']),

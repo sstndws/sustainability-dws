@@ -20,6 +20,7 @@ import {
   mrdSortEmptyMillItems_,
   mrdFormatNblRisers_,
   mrdReportHeaderMeta_,
+  grvGroupName_,
   normalizeSddCategory,
   sddStatusText,
   sddCompanyName,
@@ -893,7 +894,7 @@ function renderGrvSection(rows) {
     { key: 'Date Received', label: MRD_GRV_SUMMARY_COLS[0], always: true },
     { key: 'Grievance Category', label: MRD_GRV_SUMMARY_COLS[1], always: true },
     { key: 'Complainant', label: MRD_GRV_SUMMARY_COLS[2], always: true },
-    { key: 'Grievance Subject Group', label: MRD_GRV_SUMMARY_COLS[3], always: true },
+    { key: 'Grievance Subject Group', label: MRD_GRV_SUMMARY_COLS[3], always: true, group: true },
     { key: 'Grievance Subject', label: MRD_GRV_SUMMARY_COLS[4], altKey: 'Subject', always: true },
     { key: 'Risk Classification', label: MRD_GRV_SUMMARY_COLS[5], pill: 'risk', always: true },
     { key: 'Grievance Status', label: MRD_GRV_SUMMARY_COLS[6], pill: 'grv', always: true },
@@ -903,6 +904,7 @@ function renderGrvSection(rows) {
       label: f.label,
       always: true,
       render: function(item) {
+        if (f.group) return esc(grvGroupName_(item.row));
         const v = item.row[f.key] || (f.altKey ? item.row[f.altKey] : '');
         if (f.pill === 'grv') return statusPill(v, 'grv');
         if (f.pill === 'risk') return riskPill(v);

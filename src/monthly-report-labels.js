@@ -76,6 +76,13 @@ export const MRD_GRV_DETAIL_COLS = [
   'Corrective Action', 'Preventive Action',
 ];
 
+export function grvGroupName_(r) {
+  const row = (r && r.row) || r || {};
+  return String(
+    row['Grievance Subject Group'] || row['Group'] || row['GRIEVANCE SUBJECT GROUP'] || ''
+  ).trim() || '—';
+}
+
 export const MRD_EUDR_COLS = [
   'Group Name', 'Company Name', 'Mill Name', 'Province', 'Supply To', 'Status',
 ];

@@ -3312,6 +3312,52 @@ function mirrorNblFieldsOnRead_(obj) {
   });
 }
 
+/** Grievance sheet col J — header may be "Group" or "Grievance Subject Group". */
+function grievanceGroupHeader_(headers) {
+  for (var i = 0; i < (headers || []).length; i++) {
+    var h = String(headers[i] || '').replace(/\s+/g, ' ').trim();
+    if (/^group$/i.test(h) || /^grievance subject group$/i.test(h)) return h;
+  }
+  return '';
+}
+
+function mirrorGrvFieldsOnRead_(obj, headers, row) {
+  if (!obj || typeof obj !== 'object') return;
+  var groupHeader = grievanceGroupHeader_(headers);
+  var val = '';
+  if (groupHeader && obj[groupHeader] != null && String(obj[groupHeader]).trim() !== '') {
+    val = String(obj[groupHeader]).trim();
+  } else if (row && row.length > 9) {
+    var pos = formatApiCellValue_(row[9]);
+    if (pos != null && String(pos).trim() !== '') val = String(pos).trim();
+  }
+  Object.keys(obj).forEach(function(k) {
+    if (k === '_row') return;
+    var nk = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+    if ((nk === 'group' || nk === 'grievance subject group') && !val) {
+      var v = obj[k];
+      if (v != null && String(v).trim() !== '') val = String(v).trim();
+    }
+  });
+  if (!val) return;
+  obj['Grievance Subject Group'] = val;
+  obj['Group'] = val;
+  if (groupHeader) obj[groupHeader] = val;
+}
+
+/** Map form field "Grievance Subject Group" to actual sheet header on write. */
+function resolveGrvGroupFieldKeys_(data, headers) {
+  if (!data || typeof data !== 'object') return;
+  var groupHeader = grievanceGroupHeader_(headers);
+  var val = String(
+    data['Grievance Subject Group'] || data['Group'] || (groupHeader ? data[groupHeader] : '') || ''
+  ).trim();
+  if (!groupHeader) return;
+  data[groupHeader] = val;
+  data['Grievance Subject Group'] = val;
+  data['Group'] = val;
+}
+
 /** Positional fallback: NBL sheet columns A–D = Riser, Group, Company, Source. */
 function mirrorNblFieldsByPosition_(obj, row) {
   if (!obj || !row || !row.length) return;
@@ -3493,6 +3539,9 @@ function getData(sheetKey) {
       mirrorNblFieldsOnRead_(obj);
       mirrorNblFieldsByPosition_(obj, row);
     }
+    if (sheetKey === 'grievance') {
+      mirrorGrvFieldsOnRead_(obj, headers, row);
+    }
     return obj;
   }).filter(function(obj) {
     if (sheetKey === 'facilityProfile') return facilityProfileRowHasContent_(obj);
@@ -3562,6 +3611,7 @@ function addRow(sheetKey, data) {
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
     return { success: true, row: targetRow };
   }
+  if (sheetKey === 'grievance') resolveGrvGroupFieldKeys_(data, headers);
   const newRow  = headers.map(function(h) {
     return coerceSheetDateValue_(data[h] !== undefined ? data[h] : '');
   });
@@ -3601,6 +3651,7 @@ function updateRow(sheetKey, rowNum, data) {
     stampEudrRowMeta_(data, callerEmail_(), nowIso_());
   }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
+  if (sheetKey === 'grievance') resolveGrvGroupFieldKeys_(data, headers);
   const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
   const updated = headers.map(function(h, j) {
     var v = data[h] !== undefined ? data[h] : current[j];

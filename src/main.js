@@ -10976,11 +10976,22 @@ function initDashboardApp() {
       + '</div>';
   }
 
+  function grvGroupCell_(d) {
+    return String(
+      d['Grievance Subject Group'] || d['Group'] || d['GRIEVANCE SUBJECT GROUP'] || ''
+    ).trim() || '—';
+  }
+
   function prepareGrvRowPerfCache(row) {
     if (!row || typeof row !== 'object') return row;
+    const groupVal = grvGroupCell_(row);
+    if (groupVal !== '—') {
+      row['Grievance Subject Group'] = groupVal;
+      row['Group'] = groupVal;
+    }
     row._sddSearchBlob = GRV_FIELDS.map(function(f) {
       return String(row[f] || '').toLowerCase();
-    }).join('|');
+    }).join('|') + '|' + groupVal.toLowerCase();
     row._grvDateReceivedTs = grvDateSortKey_(row['Date Received']);
     return row;
   }
@@ -11170,7 +11181,7 @@ function initDashboardApp() {
           <td class="grv-cell-date">${grvDateCellHtml_(d['Date Received'])}</td>
           <td>${escHtml(d['Grievance Category'] || '—')}</td>
           <td><span class="mill-name">${escHtml(d['Complainant'] || '—')}</span></td>
-          <td>${escHtml(d['Grievance Subject Group'] || '—')}</td>
+          <td>${escHtml(grvGroupCell_(d))}</td>
           <td>${escHtml(d['Grievance Subject'] || '—')}</td>
           <td>${riskBadge(d['Risk Classification'])}</td>
           <td>${statusBadgeGrv(d['Grievance Status'])}</td>
