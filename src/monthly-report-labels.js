@@ -393,6 +393,73 @@ export function mrdFormatNblRisers_(item) {
   return dedupeRiserList_(stripped.split(',').map(function(s) { return s.trim(); })).join(', ') || '—';
 }
 
+/** Normalized group|company|mill key for TTP ↔ mill onboarding joins. */
+export function mrdNormalizeMillKey_(group, company, mill) {
+  return [group, company, mill].map(function(x) {
+    return String(x || '').trim().toLowerCase();
+  }).join('|');
+}
+
+export function mrdResolveTtpSupplierCol_(ttpFields) {
+  const fields = ttpFields || [];
+  if (!fields.length) return 'FFB SUPPLIER NAME';
+  const exact = fields.find(function(h) {
+    const u = String(h || '').toUpperCase().replace(/\s+/g, ' ');
+    return u === 'FFB SUPPLIER NAME';
+  });
+  if (exact) return exact;
+  const loose = fields.find(function(h) {
+    const u = String(h || '').toUpperCase();
+    return /FFB/.test(u) && /SUPPLIER/.test(u) && /NAME/.test(u) && !/GROUP/.test(u);
+  });
+  return loose || 'FFB SUPPLIER NAME';
+}
+
+export function mrdTtpRowHasSupplier_(row, supplierCol) {
+  if (!row || typeof row !== 'object') return false;
+  const col = supplierCol || 'FFB SUPPLIER NAME';
+  const direct = String(row[col] || '').trim();
+  if (direct && direct !== '—' && direct !== '-') return true;
+  for (const k of Object.keys(row)) {
+    if (k === '_row' || k === '_sddSearchBlob' || (String(k).length && String(k)[0] === '_')) continue;
+    const u = String(k).toUpperCase().replace(/\s+/g, ' ');
+    if (u === 'FFB SUPPLIER NAME' || (u.includes('FFB') && u.includes('SUPPLIER') && u.includes('NAME') && !u.includes('GROUP'))) {
+      const v = String(row[k] || '').trim();
+      if (v && v !== '—' && v !== '-') return true;
+    }
+  }
+  return false;
+}
+
+export function mrdBuildTtpByMillMaps_(ttpRows, millCol, groupCol, companyCol) {
+  const byComposite = new Map();
+  const byMillName = new Map();
+  (ttpRows || []).forEach(function(r) {
+    const mill = String(r[millCol] || r['MILL NAME'] || '').trim();
+    const composite = mrdNormalizeMillKey_(
+      r[groupCol] || r['GROUP NAME'],
+      r[companyCol] || r['COMPANY NAME'],
+      mill
+    );
+    if (!byComposite.has(composite)) byComposite.set(composite, []);
+    byComposite.get(composite).push(r);
+    if (mill) {
+      if (!byMillName.has(mill)) byMillName.set(mill, []);
+      byMillName.get(mill).push(r);
+    }
+  });
+  return { byComposite: byComposite, byMillName: byMillName };
+}
+
+export function mrdTtpRowsForMill_(maps, millRow) {
+  if (!maps || !millRow) return [];
+  const composite = mrdNormalizeMillKey_(millRow['GROUP NAME'], millRow['COMPANY NAME'], millRow['MILL NAME']);
+  const fromComposite = maps.byComposite.get(composite);
+  if (fromComposite && fromComposite.length) return fromComposite;
+  const millName = String(millRow['MILL NAME'] || '').trim();
+  return (millName && maps.byMillName.get(millName)) || [];
+}
+
 export function mrdSortEmptyMillItems_(items) {
   return items.slice().sort(function(a, b) {
     const ra = a.millRow || a.row || a;

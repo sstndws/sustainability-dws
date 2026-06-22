@@ -3,6 +3,12 @@ import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
 import { renderMillProfileSummaryPdf } from './mill-profile-pdf-summary.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
+import {
+  mrdBuildTtpByMillMaps_,
+  mrdTtpRowsForMill_,
+  mrdTtpRowHasSupplier_,
+  mrdResolveTtpSupplierCol_,
+} from './monthly-report-labels.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 import {
   dashDateFieldHtml,
@@ -10007,6 +10013,9 @@ function initDashboardApp() {
       }) || '% PK TRACEABLE';
     })(ttpFields);
     ttpCategoryCol = pickTtpCategoryCol_(ttpFields);
+    if (typeof window.rebuildMonthlyReportSnapshot_ === 'function') {
+      window.rebuildMonthlyReportSnapshot_();
+    }
   }
 
   async function reloadTTPDataSoft_() {
@@ -10033,14 +10042,13 @@ function initDashboardApp() {
     const loading = document.getElementById('ttp-loading');
     const errorEl = document.getElementById('ttp-error');
     const table = document.getElementById('ttpTable');
-    if (!loading || !errorEl || !table) {
-      console.warn('[dashboard] TTP panel DOM missing; skip loadTTPData.');
-      return;
-    }
+    const hasUi = !!(loading && errorEl && table);
     try {
-      loading.style.display = 'block';
-      errorEl.style.display = 'none';
-      table.style.display = 'none';
+      if (hasUi) {
+        loading.style.display = 'block';
+        errorEl.style.display = 'none';
+        table.style.display = 'none';
+      }
       const rawRows = await apiGet('ttp');
       if (!millDataLoaded) {
         await loadMillData().catch(function(err) {
@@ -10049,35 +10057,41 @@ function initDashboardApp() {
       }
       ttpLoaded = true;
       applyTtpDataFromApi_(rawRows);
-      document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
-      ttpSyncTableLayoutClass_();
-      loading.style.display = 'none';
-      table.style.display = 'table';
-      // reset selection state on fresh load
-      ttpSelectedCompanies = null;
-      ttpColFilterMode = 'ttm';
-      buildCompanyDropdown();
-      buildColumnModePanel();
-      document.getElementById('btn-export-ttp-xlsx').disabled = false;
-      ttpViewMode = 'grouped';
-      buildTtpPeriodDropdowns_();
-      bindTtpPeriodBarOnce_();
-      refreshTtpPeriodDashboard_();
-    } catch(err) {
-      loading.style.display = 'none';
-      errorEl.style.display = 'block';
-      errorEl.innerHTML = '<span>' + escHtml('Failed to load data: ' + err.message) + '</span>'
-        + ' <button type="button" class="btn btn-sm" id="ttp-retry-load" style="margin-left:8px;">Try again</button>';
-      const retryBtn = document.getElementById('ttp-retry-load');
-      if (retryBtn) {
-        retryBtn.addEventListener('click', function() {
-          ttpLoadPromise = null;
-          ttpLoaded = false;
-          loadTTPData();
-        });
+      if (hasUi) {
+        document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
+        ttpSyncTableLayoutClass_();
+        loading.style.display = 'none';
+        table.style.display = 'table';
+        // reset selection state on fresh load
+        ttpSelectedCompanies = null;
+        ttpColFilterMode = 'ttm';
+        buildCompanyDropdown();
+        buildColumnModePanel();
+        document.getElementById('btn-export-ttp-xlsx').disabled = false;
+        ttpViewMode = 'grouped';
+        buildTtpPeriodDropdowns_();
+        bindTtpPeriodBarOnce_();
+        refreshTtpPeriodDashboard_();
       }
-      const mixSection = document.getElementById('ttpCategoryMixSection');
-      if (mixSection) mixSection.hidden = true;
+    } catch(err) {
+      if (hasUi) {
+        loading.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorEl.innerHTML = '<span>' + escHtml('Failed to load data: ' + err.message) + '</span>'
+          + ' <button type="button" class="btn btn-sm" id="ttp-retry-load" style="margin-left:8px;">Try again</button>';
+        const retryBtn = document.getElementById('ttp-retry-load');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', function() {
+            ttpLoadPromise = null;
+            ttpLoaded = false;
+            loadTTPData();
+          });
+        }
+        const mixSection = document.getElementById('ttpCategoryMixSection');
+        if (mixSection) mixSection.hidden = true;
+      } else {
+        console.warn('[TTP] Load failed (no panel UI):', err && err.message ? err.message : err);
+      }
     }
   }
 
@@ -16936,6 +16950,11 @@ function initDashboardApp() {
       loading.style.display = 'none';
       table.style.display = 'table';
       scheduleRenderEudrTable_();
+      _mrdEudrCache = null;
+      if (typeof window.__mrdResetEudrFetch_ === 'function') window.__mrdResetEudrFetch_();
+      if (typeof window.rebuildMonthlyReportSnapshot_ === 'function') {
+        window.rebuildMonthlyReportSnapshot_();
+      }
     } catch (err) {
       loading.style.display = 'none';
       errorEl.style.display = 'block';
@@ -24134,6 +24153,8 @@ function initDashboardApp() {
   function mrdBuildTraceRowsForReport_(mills, ttpRows, ttpByMill, supplierCol) {
     const cpoCol = ttpPctCol || '% CPO TRACEABLE';
     const pkCol = ttpPkPctCol || '% PK TRACEABLE';
+    const resolvedSupplierCol = supplierCol || mrdResolveTtpSupplierCol_(ttpFields);
+    const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpRows, 'MILL NAME', 'GROUP NAME', 'COMPANY NAME');
     const ttpCpoLk = {};
     const ttpPkLk = {};
     (ttpRows || []).forEach(function(r) {
@@ -24156,8 +24177,7 @@ function initDashboardApp() {
       const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
       const cpoEntry = ttpCpoLk[coUpper];
       const pkEntry = ttpPkLk[coUpper];
-      const millName = String(r['MILL NAME'] || '').trim();
-      const subRows = (ttpByMill && typeof ttpByMill.get === 'function') ? (ttpByMill.get(millName) || []) : [];
+      const subRows = mrdTtpRowsForMill_(ttpMillMaps, r);
       return {
         row: r,
         ttmCpo: mrdMillTtmRowPct_(r, 'cpo'),
@@ -24165,7 +24185,7 @@ function initDashboardApp() {
         ttpCpo: cpoEntry ? cpoEntry.sum / cpoEntry.count : NaN,
         ttpPk: pkEntry ? pkEntry.sum / pkEntry.count : NaN,
         hasSupplier: subRows.some(function(tr) {
-          return !!(supplierCol && String(tr[supplierCol] || '').trim());
+          return mrdTtpRowHasSupplier_(tr, resolvedSupplierCol);
         }),
         search: [r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'], r['PROVINCE']].join(' ').toLowerCase(),
       };
@@ -24260,7 +24280,7 @@ function initDashboardApp() {
         },
         ensureSupplementalData: async function() {
           const tasks = [];
-          if (!ttpLoaded) tasks.push(loadTTPData());
+          if (!ttpLoaded || !(ttpData && ttpData.length)) tasks.push(loadTTPData());
           if (!grvLoaded) tasks.push(loadGrvData());
           if (!nblRegistryLoaded && !nblRegistryData.length) tasks.push(loadNoBuyListData());
           if (tasks.length) await Promise.all(tasks);
@@ -24283,7 +24303,10 @@ function initDashboardApp() {
           }
           return ensureNblListsForCheck_();
         },
-        clearEudrCache: function() { _mrdEudrCache = null; },
+        clearEudrCache: function() {
+          _mrdEudrCache = null;
+          if (typeof window.__mrdResetEudrFetch_ === 'function') window.__mrdResetEudrFetch_();
+        },
         resolveNblBy: function(row, lists) {
           const matches = millNblSourceMatchesForRow_(row, lists || { registry: [], unilever: [] });
           const info = millNblByInfoFromMatches_(matches);
@@ -24323,13 +24346,29 @@ function initDashboardApp() {
           return [];
         },
         fetchEudrPotential: async function() {
-          // Only use cache when it has actual results; an empty cache may mean
-          // a prior fetch failed — don't block retries with a stale [].
           if (_mrdEudrCache && _mrdEudrCache.length) return _mrdEudrCache;
+
+          function mrdEudrPotentialItem_(eudrRow) {
+            return {
+              row: eudrRow,
+              search: [
+                eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'],
+                eudrRow['PROVINCE'], eudrRow['SUPPLY TO'],
+              ].join(' ').toLowerCase(),
+            };
+          }
+
+          function mrdFilterPotentialRows_(rows) {
+            const out = [];
+            (rows || []).forEach(function(eudrRow) {
+              if (eudrGetDisplayStatus_(eudrRow) !== 'Potential') return;
+              out.push(mrdEudrPotentialItem_(eudrRow));
+            });
+            return out;
+          }
+
           await ensureMillDataForEudr_();
-          // Load TTP with a 10-second timeout so a slow TTP fetch doesn't stall
-          // the entire EUDR computation (TTP is only needed for one criterion).
-          if (!ttpLoaded) {
+          if (!ttpLoaded || !(ttpData && ttpData.length)) {
             try {
               await Promise.race([
                 loadTTPData(),
@@ -24340,27 +24379,25 @@ function initDashboardApp() {
             }
           }
           await loadEudrFormulaConfig_();
+          eudrClearStatusCache_();
+
+          if (eudrLoaded && Array.isArray(eudrRows) && eudrRows.length) {
+            const fromPanel = mrdFilterPotentialRows_(eudrRows);
+            if (fromPanel.length) {
+              _mrdEudrCache = fromPanel;
+              return fromPanel;
+            }
+          }
+
           const mills = eudrBuildMillRegistry_();
           var raw = [];
-          try { raw = await apiGet('eudrPotential'); } catch (getErr) {
+          try {
+            raw = await apiGet('eudrPotential');
+          } catch (getErr) {
             console.warn('[MRD] EUDR sheet:', getErr);
           }
           const rows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
-          const millMap = new Map();
-          (allData || []).forEach(function(m) {
-            millMap.set(eudrEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME']), m);
-          });
-          const out = [];
-          rows.forEach(function(eudrRow) {
-            const key = eudrRow._entityKey || eudrEntityKey_(eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME']);
-            const millRow = millMap.get(key) || null;
-            if (eudrComputeStatus_(millRow, eudrRow).status !== 'Potential') return;
-            out.push({
-              row: eudrRow,
-              search: [eudrRow['GROUP NAME'], eudrRow['COMPANY NAME'], eudrRow['MILL NAME'], eudrRow['PROVINCE'], eudrRow['SUPPLY TO']].join(' ').toLowerCase(),
-            });
-          });
-          // Only cache when non-empty; never replace a fuller cache with a partial fetch.
+          const out = mrdFilterPotentialRows_(rows);
           if (out.length && (!_mrdEudrCache || out.length >= _mrdEudrCache.length)) {
             _mrdEudrCache = out;
           }

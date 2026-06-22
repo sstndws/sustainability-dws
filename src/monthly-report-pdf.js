@@ -1540,9 +1540,29 @@ function sectionSummaryConfig_(id, stats, data, year) {
       num: '02', title: 'Mill Onboarding', accent: BRAND,
       desc: (s.highRisk || 0) + ' high-risk mills',
       metrics: [
-        { label: 'High Risk Mills', value: String(s.highRisk || 0), hot: (s.highRisk || 0) > 0 },
-        { label: 'Total Mills', value: String(s.totalMills || 0), sub: (s.totalGroups || 0) + ' groups' },
-        { label: 'Active NBL Mills', value: String(s.nblMills || 0) },
+        {
+          label: 'High Risk Mills',
+          value: String(s.highRisk || 0),
+          sub: 'Result Risk Level HIGH',
+          subHint: (s.highRisk || 0) > 0 ? 'Listed below' : 'No high-risk mills',
+          hot: (s.highRisk || 0) > 0,
+          valueColor: BRAND,
+        },
+        {
+          label: 'Total Mills',
+          value: String(s.totalMills || 0),
+          sub: (s.totalGroups || 0) + ' groups',
+          subHint: 'Onboarded mills this period',
+          valueColor: BRAND,
+        },
+        {
+          label: 'Active NBL Mills',
+          value: String(s.nblMills || 0),
+          sub: 'on No Buy List',
+          subHint: (s.nblMills || 0) > 0 ? 'See section 05' : 'No active NBL mills',
+          hot: (s.nblMills || 0) > 0,
+          valueColor: BRAND,
+        },
       ],
     },
     highRisk: {
@@ -1621,8 +1641,8 @@ function sectionSummaryConfig_(id, stats, data, year) {
 function drawSectionSummaryBlock_(ctx, sectionId, cfg) {
   if (!cfg) return;
   const cols = Math.min(4, cfg.metrics.length);
+  const cardH = OVERVIEW_KPI_CARD_H;
   const cardRows = Math.ceil(cfg.metrics.length / cols);
-  const cardH = 15;
   const gridH = cardRows * cardH + Math.max(0, cardRows - 1) * PDF_LAYOUT.cardGap;
   const doc = ctx.doc;
   const descLines = doc.splitTextToSize(String(cfg.desc || ''), ctx.cW);

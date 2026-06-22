@@ -18,6 +18,10 @@ import {
   mrdSortFacilityCompanies_,
   mrdSortBundlesByFacility_,
   mrdSortEmptyMillItems_,
+  mrdResolveTtpSupplierCol_,
+  mrdTtpRowHasSupplier_,
+  mrdBuildTtpByMillMaps_,
+  mrdTtpRowsForMill_,
   mrdFormatNblRisers_,
   mrdReportHeaderMeta_,
   grvGroupName_,
@@ -44,6 +48,8 @@ let _facilityPending = false;
 let _nblByCache = new Map();
 let _sddCache = [];
 let _facilityBundles = [];
+let _lastTtpCount = 0;
+let _eudrFetchOk = false;
 let _renderRaf = 0;
 
 function scheduleRenderAll() {
@@ -545,7 +551,9 @@ function buildSnapshotSync(opts) {
   });
 
   const millCol = ttpFields.find(function(h) { return String(h).toUpperCase() === 'MILL NAME'; }) || 'MILL NAME';
-  const supplierCol = ttpFields.find(function(h) { return /FFB SUPPLIER NAME/i.test(h); }) || '';
+  const groupCol = ttpFields.find(function(h) { return String(h).toUpperCase() === 'GROUP NAME'; }) || 'GROUP NAME';
+  const companyCol = ttpFields.find(function(h) { return String(h).toUpperCase() === 'COMPANY NAME'; }) || 'COMPANY NAME';
+  const supplierCol = mrdResolveTtpSupplierCol_(ttpFields);
   const yearCol = ttpFields.find(function(h) { return String(h).toUpperCase() === 'YEAR'; }) || 'YEAR';
 
   const ttpFiltered = ttpData.filter(function(r) {
@@ -561,19 +569,15 @@ function buildSnapshotSync(opts) {
     if (!millKeys.has(key)) millKeys.set(key, r);
   });
 
-  const ttpByMill = new Map();
-  ttpFiltered.forEach(function(r) {
-    const mill = String(r[millCol] || '').trim() || '(No Mill Name)';
-    if (!ttpByMill.has(mill)) ttpByMill.set(mill, []);
-    ttpByMill.get(mill).push(r);
-  });
+  const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpFiltered, millCol, groupCol, companyCol);
+
+  const ttpByMill = ttpMillMaps.byMillName;
 
   const emptyMills = [];
   millKeys.forEach(function(millRow) {
-    const millName = String(millRow['MILL NAME'] || '').trim();
-    const rows = ttpByMill.get(millName) || [];
+    const rows = mrdTtpRowsForMill_(ttpMillMaps, millRow);
     const hasSupplier = rows.some(function(r) {
-      return !!(supplierCol && String(r[supplierCol] || '').trim());
+      return mrdTtpRowHasSupplier_(r, supplierCol);
     });
     if (!hasSupplier) emptyMills.push({ millRow: millRow, rows: rows });
   });
@@ -1097,10 +1101,8 @@ async function loadFacilityInBackground(gen, opts) {
 async function loadEudrInBackground(gen, opts) {
   opts = opts || {};
   if (!_deps.fetchEudrPotential) return;
-  // Skip only if currently in-flight; a previous run that returned 0 results should
-  // be retried (fetchEudrPotential no longer caches empty results).
   if (_eudrPending) return;
-  if (!opts.force && _snapshot && _snapshot.eudrPotential && _snapshot.eudrPotential.length && !_snapshot.eudrLoading) {
+  if (!opts.force && _eudrFetchOk && _snapshot && _snapshot.eudrPotential && _snapshot.eudrPotential.length && !_snapshot.eudrLoading) {
     return;
   }
   _eudrPending = true;
@@ -1111,16 +1113,21 @@ async function loadEudrInBackground(gen, opts) {
   try {
     const eudr = await _deps.fetchEudrPotential();
     if (gen !== _loadGen || !_snapshot) return;
+    _eudrFetchOk = true;
     _snapshot.eudrPotential = eudr;
     _snapshot.eudrLoading = false;
     _snapshot.stats.eudrPotential = eudr.length;
     scheduleRenderAll();
     updateScopeText();
-  } catch (_) {
+  } catch (err) {
     if (_snapshot) {
       _snapshot.eudrLoading = false;
-      if (gen === _loadGen) _snapshot.eudrPotential = [];
+      if (gen === _loadGen) {
+        _snapshot.eudrPotential = [];
+        _snapshot.stats.eudrPotential = 0;
+      }
       scheduleRenderAll();
+      updateScopeText('EUDR: ' + (err && err.message ? err.message : 'failed to load'));
     }
   } finally {
     _eudrPending = false;
@@ -1133,7 +1140,7 @@ async function loadEudrInBackground(gen, opts) {
 
 function rebuildSnapshot_(opts) {
   const prev = _snapshot || {};
-  return buildSnapshotSync({
+  const snap = buildSnapshotSync({
     sddRows: opts.sddRows != null ? opts.sddRows : _sddCache,
     eudrPotential: opts.eudrPotential != null ? opts.eudrPotential : (prev.eudrPotential || []),
     eudrLoading: opts.eudrLoading != null ? opts.eudrLoading : !!prev.eudrLoading,
@@ -1141,6 +1148,18 @@ function rebuildSnapshot_(opts) {
     facilityBundles: opts.facilityBundles != null ? opts.facilityBundles : (prev.facilityBundles || _facilityBundles),
     facilityLoading: opts.facilityLoading != null ? opts.facilityLoading : !!prev.facilityLoading,
   });
+  _lastTtpCount = (_deps && _deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
+  return snap;
+}
+
+function rebuildMonthlyReportSnapshot_() {
+  if (!_deps) return;
+  _snapshot = rebuildSnapshot_({});
+  scheduleRenderAll();
+  updateScopeText();
+  if (!_eudrFetchOk && !_eudrPending && _deps.fetchEudrPotential) {
+    loadEudrInBackground(_loadGen, {});
+  }
 }
 
 async function loadMillInBackground(gen) {
@@ -1236,6 +1255,7 @@ function startBackgroundLoads_(gen, force) {
 async function loadAndRender(opts) {
   opts = opts || {};
   const force = !!opts.force;
+  if (force) _eudrFetchOk = false;
   const gen = ++_loadGen;
   syncPeriodFromUi_();
   const errEl = document.getElementById('mrdError');
@@ -1371,13 +1391,22 @@ export function initMonthlyReport_(deps) {
   _deps = deps;
   window.refreshMonthlyReport_ = function(opts) {
     opts = opts || {};
-    if (!opts.force && _snapshot) {
+    const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
+    const ttpStale = ttpLen !== _lastTtpCount;
+    const eudrStale = !_eudrFetchOk && !_eudrPending;
+    const traceSuspicious = _snapshot && _snapshot.stats
+      && _snapshot.stats.totalMills > 0
+      && _snapshot.stats.emptyTraceMills >= _snapshot.stats.totalMills
+      && ttpLen > 0;
+    if (!opts.force && _snapshot && !ttpStale && !eudrStale && !traceSuspicious) {
       renderAll();
       updateScopeText();
       return;
     }
     loadAndRender(opts);
   };
+  window.rebuildMonthlyReportSnapshot_ = rebuildMonthlyReportSnapshot_;
+  window.__mrdResetEudrFetch_ = function() { _eudrFetchOk = false; };
   window.exportMonthlyReport_ = exportMonthlyReport_;
   bindOnce();
   loadAndRender();
