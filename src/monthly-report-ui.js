@@ -14,7 +14,8 @@ import {
   mrdSortMillItems_,
   mrdSortGrvItemsByDateDesc_,
   mrdSortEudrItems_,
-  eudrCombinedSupply_,
+  eudrCpoSupply_,
+  eudrPkSupply_,
   mrdSortFacilityBundles_,
   mrdSortFacilityCompanies_,
   mrdSortBundlesByFacility_,
@@ -1018,7 +1019,8 @@ function renderEudrSection(rows, loading) {
     { label: 'Company Name', raw: function(item) { return item.row['COMPANY NAME']; } },
     { label: 'Mill Name', raw: function(item) { return item.row['MILL NAME']; } },
     { label: 'Province', raw: function(item) { return item.row['PROVINCE']; } },
-    { label: 'CPO / PK Supply', raw: function(item) { return eudrCombinedSupply_(item.row); } },
+    { label: 'CPO Supply', raw: function(item) { return eudrCpoSupply_(item.row); } },
+    { label: 'PK Supply', raw: function(item) { return eudrPkSupply_(item.row); } },
   ];
   return renderSmartTable(cols, filtered, {
     empty: '<p class="mrd-empty">No mills with Potential status.</p>',

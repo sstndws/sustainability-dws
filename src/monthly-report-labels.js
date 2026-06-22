@@ -84,18 +84,24 @@ export function grvGroupName_(r) {
 }
 
 export const MRD_EUDR_COLS = [
-  'Group Name', 'Company Name', 'Mill Name', 'Province', 'CPO / PK Supply',
+  'Group Name', 'Company Name', 'Mill Name', 'Province', 'CPO Supply', 'PK Supply',
 ];
 
-/** CPO + PK facility supply in one cell (from EUDR / mill onboarding). */
-export function eudrCombinedSupply_(row) {
+function eudrSupplyValue_(row, kind) {
   const r = row || {};
-  const cpo = String(r['SUPPLY TO'] || r['SUPPLY TO CPO'] || '').trim();
-  const pk = String(r['SUPPLY TO PK'] || '').trim();
-  const parts = [];
-  if (cpo) parts.push('CPO: ' + cpo);
-  if (pk) parts.push('PK: ' + pk);
-  return parts.length ? parts.join(' · ') : '—';
+  const raw = kind === 'pk'
+    ? r['SUPPLY TO PK']
+    : (r['SUPPLY TO'] || r['SUPPLY TO CPO']);
+  const s = String(raw == null ? '' : raw).trim();
+  return s || '—';
+}
+
+export function eudrCpoSupply_(row) {
+  return eudrSupplyValue_(row, 'cpo');
+}
+
+export function eudrPkSupply_(row) {
+  return eudrSupplyValue_(row, 'pk');
 }
 
 export const MRD_TRACE_DETAIL_COLS = [
@@ -154,7 +160,8 @@ const PDF_HEAD_SHORT = {
   '% TTP PK': '% TTP\nPK',
   'Supplier Data': 'Supplier\nData',
   'Company Group Name': 'Company\nGroup',
-  'CPO / PK Supply': 'CPO /\nPK Supply',
+  'CPO Supply': 'CPO\nSupply',
+  'PK Supply': 'PK\nSupply',
   'NBL Riser': 'NBL\nRiser',
   'Last Update': 'Last\nUpdate',
   'Date Import': 'Date\nImport',

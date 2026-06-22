@@ -25,7 +25,8 @@ import {
   mrdSortMillItems_,
   mrdSortGrvItemsByDateDesc_,
   mrdSortEudrItems_,
-  eudrCombinedSupply_,
+  eudrCpoSupply_,
+  eudrPkSupply_,
   mrdSortFacilityBundles_,
   mrdSortBundlesByFacility_,
   mrdSortFacilityCompanies_,
@@ -1314,12 +1315,12 @@ function drawEudrSection_(ctx, rows, noHeader) {
   rows = mrdSortEudrItems_(rows);
   if (!rows.length) return;
   if (!noHeader) ctx.beginSection_('07 · EUDR Potential', EUDR_TEAL);
-  const w = colWidths_([12, 18, 18, 14, 38], ctx.cW);
+  const w = colWidths_([11, 16, 16, 12, 22, 22], ctx.cW);
   const body = rows.map(function(item) {
     const r = item.row;
     return [
       pdfSanitize(r['GROUP NAME']), pdfSanitize(r['COMPANY NAME']), pdfSanitize(r['MILL NAME']),
-      pdfSanitize(r['PROVINCE']), pdfSanitize(eudrCombinedSupply_(r)),
+      pdfSanitize(r['PROVINCE']), pdfSanitize(eudrCpoSupply_(r)), pdfSanitize(eudrPkSupply_(r)),
     ];
   });
   ctx.drawTableComplete_(
@@ -1329,6 +1330,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
     {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] },
       3: { cellWidth: w[3] }, 4: { cellWidth: w[4], fontSize: 6.5 },
+      5: { cellWidth: w[5], fontSize: 6.5 },
     },
     { fontSize: 6.5, cellPadding: 1.6, headFontSize: 5.6, headMinHeight: 10 }
   );
