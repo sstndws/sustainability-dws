@@ -129,7 +129,7 @@ export function mrdPdfSectionsNoDupHighRisk_(sections) {
 function drawUntraceableMillsTable_(ctx, emptyMills) {
   const rows = mrdSortEmptyMillItems_(emptyMills || []);
   const count = rows.length;
-  ctx.beginSubsection_('Untraceable Mills (' + count + ')', NBL_RED);
+  ctx.beginSection_('03 · Untraceable Mills (' + count + ')', NBL_RED);
   const doc = ctx.doc;
   const note = count
     ? count + ' mill' + (count === 1 ? '' : 's')
@@ -144,7 +144,7 @@ function drawUntraceableMillsTable_(ctx, emptyMills) {
   if (!count) return;
 
   const w = colWidths_([22, 26, 26, 14], ctx.cW);
-  ctx.drawPagedAutoTable_(
+  ctx.drawFlowingTableChunks_(
     pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province']),
     rows.map(function(item) {
       const r = item.millRow || item.row || item;
@@ -165,16 +165,19 @@ function drawUntraceableMillsTable_(ctx, emptyMills) {
       cellPadding: 1.6,
       headFontSize: 5.5,
       headMinHeight: 10,
-      maxSingleRows: 0,
-      chunkSize: 30,
+      chunkSize: 15,
     }
   );
 }
 
 function drawTraceSection_(ctx, data, year, full, noHeader) {
   const totals = data.traceTotals || {};
-  if (!noHeader) ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
-  if (full) drawUntraceableMillsTable_(ctx, data.emptyMills);
+  if (full) {
+    drawUntraceableMillsTable_(ctx, data.emptyMills);
+    ctx.beginSubsection_('Traceability Data · ' + pdfSanitize(year), TRACE_ORANGE);
+  } else if (!noHeader) {
+    ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
+  }
   drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
     cols: 4,
     cardH: 18,
@@ -613,6 +616,34 @@ function createPdfContext_(jsPDFLib, opts) {
     }
   }
 
+  /** Chunk large tables; continue on same page when space allows (no forced blank pages). */
+  function drawFlowingTableChunks_(head, allBody, accent, colStyles, opts) {
+    opts = opts || {};
+    if (!allBody.length) return;
+    const chunkSize = opts.chunkSize || 15;
+    const minRowBlock = 14;
+    let idx = 0;
+    while (idx < allBody.length) {
+      resetAutoTableState_();
+      let showHead = 'never';
+      if (idx === 0) {
+        showHead = 'firstPage';
+      } else if (y + minRowBlock > pageH - mFoot - 8) {
+        doc.addPage();
+        afterPageBreak_();
+        showHead = 'firstPage';
+      }
+      const end = Math.min(idx + chunkSize, allBody.length);
+      const isLast = end >= allBody.length;
+      drawAutoTable_(head, allBody.slice(idx, end), accent, colStyles, Object.assign({}, opts, {
+        showHead: showHead,
+        rowPageBreak: 'auto',
+        gapAfter: isLast ? (opts.gapAfter == null ? 2 : opts.gapAfter) : 0,
+      }));
+      idx = end;
+    }
+  }
+
   ctx.beginSection_ = beginSection_;
   ctx.beginSubsection_ = beginSubsection_;
   ctx.beginFacilityBlock_ = beginFacilityBlock_;
@@ -626,6 +657,7 @@ function createPdfContext_(jsPDFLib, opts) {
   ctx.pruneBlankPages_ = pruneBlankPages_;
   ctx.newPage_ = newPage_;
   ctx.drawPagedAutoTable_ = drawPagedAutoTable_;
+  ctx.drawFlowingTableChunks_ = drawFlowingTableChunks_;
   ctx.markContent_ = markContent_;
   ctx.setY = function(v) { y = v; markContent_(v); };
   ctx.getY = function() { return y; };
