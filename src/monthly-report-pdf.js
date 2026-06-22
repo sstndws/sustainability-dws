@@ -172,16 +172,20 @@ function drawUntraceableMillsTable_(ctx, emptyMills) {
 
 function drawTraceSection_(ctx, data, year, full, noHeader) {
   const totals = data.traceTotals || {};
+  const cardH = 18;
   if (full) {
     drawUntraceableMillsTable_(ctx, data.emptyMills);
+    const traceBlockNeed = PDF_LAYOUT.subsectionGap + 11 + PDF_LAYOUT.afterSectionBar + cardH + 2;
+    ctx.ensureBlockFits_(traceBlockNeed);
     ctx.beginSubsection_('Traceability Data · ' + pdfSanitize(year), TRACE_ORANGE);
   } else if (!noHeader) {
     ctx.beginSection_('03 · Traceability Data ' + pdfSanitize(year), TRACE_ORANGE);
   }
   drawMetricCardGrid_(ctx, traceMetricCards_(totals), {
     cols: 4,
-    cardH: 18,
+    cardH: cardH,
     gapAfter: 0,
+    keepWithHeader: full,
   });
 }
 
@@ -1420,7 +1424,7 @@ function drawMetricCardGrid_(ctx, items, opts) {
   const blockH = rowHeights.reduce(function(sum, h, ri) {
     return sum + h + (ri > 0 ? gap : 0);
   }, 0);
-  ctx.ensureSpace_(blockH + 2);
+  if (!opts.keepWithHeader) ctx.ensureSpace_(blockH + 2);
   const y0 = ctx.getY();
   const rowTops = [];
   let accY = y0;
