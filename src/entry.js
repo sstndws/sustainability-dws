@@ -33,7 +33,7 @@ window.SDD_SECURE_MODE = SECURE_GAS;
 if (!SECURE_GAS) {
   // Dev / legacy only — production must use VITE_SECURE_GAS=true (no GAS URL in browser).
   const SDD_LATEST_WEBAPP_URL =
-    'https://script.google.com/macros/s/AKfycbxA6EJvtalO9-Ir6KwagEZ_0bcxeydEJQtu2skdknis49x5ui-zg_x1OAKd2_-I8SZTgw/exec';
+    'https://script.google.com/macros/s/AKfycby5xGzL3rKkimKg2Im0GHMXHzyDCPa9Tb-o1ENBqtz5HwNw-AcOh0T7apByBISwp2y6RA/exec';
   try {
     localStorage.setItem('SDD_WEBAPP_URL', SDD_LATEST_WEBAPP_URL);
   } catch (e) {
