@@ -696,7 +696,7 @@ function doPost(e) {
     if (action === 'addTtpBatch') return respond(addTtpBatch_(body.rows || []));
     if (action === 'upsertBlReference') return respond(upsertBlReferenceItem_(body.type, body.name));
     if (action === 'seedBlReference') return respond(seedBlReferenceDefaults_());
-    if (action === 'add')    return respond(addRow(sheetKey, body.data || {}));
+    if (action === 'add')    return respond(addRow(sheetKey, body.data || {}, body.insertAfter));
     if (action === 'update') return respond(updateRow(sheetKey, body.row, body.data || {}));
     if (action === 'delete') {
       var multi = body.rows;
@@ -4035,7 +4035,7 @@ function getData(sheetKey) {
   });
 }
 
-function addRow(sheetKey, data) {
+function addRow(sheetKey, data, insertAfter) {
   const sheet   = getSheet(sheetKey);
   let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   if (sheetKey === 'ttp') {
@@ -4081,7 +4081,12 @@ function addRow(sheetKey, data) {
     resolveMillQuarterYearKeys_(data, headers);
     const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
     forceCoordStrings_(headers, newRow);
-    const targetRow = millFindNextAppendRow_(sheet, headers);
+    var targetRow;
+    if (insertAfter != null && insertAfter !== '' && Number(insertAfter) >= 1) {
+      targetRow = Number(insertAfter) + 1;
+    } else {
+      targetRow = millFindNextAppendRow_(sheet, headers);
+    }
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
     return { success: true, row: targetRow };
   }
@@ -5150,24 +5155,196 @@ function supplyFacilityMatchesGs_(plant, facRaw) {
   return false;
 }
 
-/**
- * Find Mill Onboarding Profile row by COMPANY NAME only.
- */
-function findMillRowForSupplySubmit_(millData, millHeaders, row) {
-  var targetRow = Number(row.target_mill_row || row._mill_row || 0);
-  if (targetRow >= 2) return targetRow;
+function millRowToObjectGs_(rowArr, headers) {
+  var obj = {};
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i] || '').trim();
+    if (h) obj[h] = rowArr[i];
+  }
+  return obj;
+}
 
-  var excelCo = String(row['COMPANY NAME'] || '').trim();
-  if (!excelCo) return 0;
+function millFieldHasValueGs_(obj, field) {
+  var v = obj[field];
+  return v !== undefined && v !== null && String(v).trim() !== '';
+}
 
+function millRowSupplyKindGs_(obj) {
+  var hasCpo = millFieldHasValueGs_(obj, 'SUPPLY CPO') || millFieldHasValueGs_(obj, 'PERCENTAGE SUPPLY CPO');
+  var hasPk = millFieldHasValueGs_(obj, 'SUPPLY PK') || millFieldHasValueGs_(obj, 'PERCENTAGE SUPPLY PK');
+  if (hasCpo && hasPk) return 'BOTH';
+  if (hasPk) return 'PK';
+  if (hasCpo) return 'CPO';
+  return 'NONE';
+}
+
+function supplySubmitKindFromDraftGs_(row) {
+  var st = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase();
+  var pctCpo = row['PERCENTAGE SUPPLY CPO'];
+  var pctPk = row['PERCENTAGE SUPPLY PK'];
+  var hasCpo = st.indexOf('CPO') >= 0 || (pctCpo !== undefined && pctCpo !== null && String(pctCpo).trim() !== '');
+  var hasPk = st.indexOf('PK') >= 0 || (pctPk !== undefined && pctPk !== null && String(pctPk).trim() !== '');
+  var qtyCpo = row['SUPPLY CPO'];
+  var qtyPk = row['SUPPLY PK'];
+  if (!hasCpo && qtyCpo !== undefined && qtyCpo !== null && String(qtyCpo).trim() !== '') hasCpo = true;
+  if (!hasPk && qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '') hasPk = true;
+  if (hasCpo && hasPk) return 'BOTH';
+  if (hasPk) return 'PK';
+  return 'CPO';
+}
+
+function findMillRowsByCompanyGs_(millData, millHeaders, companyName) {
   var coCol = millHeaders.indexOf('COMPANY NAME');
-  if (coCol < 0) return 0;
-
+  if (coCol < 0) return [];
+  var want = String(companyName || '').trim();
+  if (!want) return [];
+  var out = [];
   for (var r = 1; r < millData.length; r++) {
     var sheetCo = String(millData[r][coCol] || '').trim();
-    if (supplyNameMatchesGs_(excelCo, sheetCo)) return r + 1;
+    if (supplyNameMatchesGs_(want, sheetCo)) {
+      out.push({ sheetRow: r + 1, obj: millRowToObjectGs_(millData[r], millHeaders) });
+    }
   }
-  return 0;
+  return out;
+}
+
+/** Row to update for this supply type, or 0 if a new row should be inserted below. */
+function findMillRowForSupplyUpdateGs_(millData, millHeaders, row, submitKind) {
+  var matches = findMillRowsByCompanyGs_(millData, millHeaders, row['COMPANY NAME']);
+  if (!matches.length) return { updateRow: 0, insertAfter: 0 };
+
+  var targetRef = Number(row.target_mill_row || row._mill_row || 0);
+  var lastCompanyRow = matches[matches.length - 1].sheetRow;
+  var cpoRow = 0;
+  var pkRow = 0;
+  var bothRow = 0;
+  var noneRow = 0;
+
+  for (var i = 0; i < matches.length; i++) {
+    var kind = millRowSupplyKindGs_(matches[i].obj);
+    if (kind === 'BOTH') bothRow = matches[i].sheetRow;
+    else if (kind === 'CPO') cpoRow = matches[i].sheetRow;
+    else if (kind === 'PK') pkRow = matches[i].sheetRow;
+    else if (kind === 'NONE' && !noneRow) noneRow = matches[i].sheetRow;
+  }
+
+  if (submitKind === 'BOTH') {
+    if (bothRow) return { updateRow: bothRow, insertAfter: 0 };
+    if (targetRef >= 2) return { updateRow: targetRef, insertAfter: 0 };
+    return { updateRow: lastCompanyRow, insertAfter: 0 };
+  }
+
+  if (submitKind === 'CPO') {
+    if (cpoRow || bothRow) return { updateRow: cpoRow || bothRow, insertAfter: 0 };
+    if (pkRow) return { updateRow: 0, insertAfter: pkRow };
+    if (noneRow) return { updateRow: noneRow, insertAfter: 0 };
+    return { updateRow: 0, insertAfter: targetRef >= 2 ? targetRef : lastCompanyRow };
+  }
+
+  if (submitKind === 'PK') {
+    if (pkRow || bothRow) return { updateRow: pkRow || bothRow, insertAfter: 0 };
+    if (cpoRow) return { updateRow: 0, insertAfter: cpoRow };
+    if (noneRow) return { updateRow: noneRow, insertAfter: 0 };
+    return { updateRow: 0, insertAfter: targetRef >= 2 ? targetRef : lastCompanyRow };
+  }
+
+  return { updateRow: 0, insertAfter: 0 };
+}
+
+function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
+  var out = {};
+  var k;
+  for (k in baseObj) {
+    if (baseObj.hasOwnProperty(k)) out[k] = baseObj[k];
+  }
+  for (k in patch) {
+    if (patch.hasOwnProperty(k)) out[k] = patch[k];
+  }
+  if (submitKind === 'CPO') {
+    out['SUPPLY PK'] = '';
+    out['PERCENTAGE SUPPLY PK'] = '';
+    out['FACILITY NAME PK'] = '';
+    out['PRODUCT SUPPLY'] = 'CPO';
+  } else if (submitKind === 'PK') {
+    out['SUPPLY CPO'] = '';
+    out['PERCENTAGE SUPPLY CPO'] = '';
+    out['FACILITY NAME CPO'] = '';
+    out['PRODUCT SUPPLY'] = 'PK';
+  }
+  return out;
+}
+
+function buildSupplyPatchFromDraftGs_(row) {
+  var supplyType = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase();
+  var pctCpo = row['PERCENTAGE SUPPLY CPO'];
+  var pctPk  = row['PERCENTAGE SUPPLY PK'];
+  var hasCpo = pctCpo !== undefined && pctCpo !== null && String(pctCpo).trim() !== '';
+  var hasPk  = pctPk !== undefined && pctPk !== null && String(pctPk).trim() !== '';
+  if (!hasCpo && supplyType.indexOf('CPO') >= 0) {
+    pctCpo = row.SUPPLY_PERCENTAGE || '';
+    hasCpo = String(pctCpo).trim() !== '';
+  }
+  if (!hasPk && supplyType.indexOf('PK') >= 0) {
+    pctPk = row.SUPPLY_PERCENTAGE || '';
+    hasPk = String(pctPk).trim() !== '';
+  }
+
+  var patch = {};
+  if (hasCpo || supplyType.indexOf('CPO') >= 0) {
+    patch['PERCENTAGE SUPPLY CPO'] = hasCpo ? pctCpo : '';
+    if (row['FACILITY NAME CPO']) patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
+  }
+  if (hasPk || supplyType.indexOf('PK') >= 0) {
+    patch['PERCENTAGE SUPPLY PK'] = hasPk ? pctPk : '';
+    if (row['FACILITY NAME PK']) patch['FACILITY NAME PK'] = row['FACILITY NAME PK'];
+  }
+  if (!hasCpo && !hasPk) {
+    var pctField = supplyType === 'PK' ? 'PERCENTAGE SUPPLY PK' : 'PERCENTAGE SUPPLY CPO';
+    var pctVal = row[pctField];
+    if (pctVal === undefined || pctVal === null || String(pctVal).trim() === '') {
+      pctVal = row.SUPPLY_PERCENTAGE || '';
+    }
+    patch[pctField] = pctVal;
+    if (supplyType === 'PK' && row['FACILITY NAME PK']) {
+      patch['FACILITY NAME PK'] = row['FACILITY NAME PK'];
+    }
+    if (supplyType === 'CPO' && row['FACILITY NAME CPO']) {
+      patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
+    }
+  }
+
+  var psTokens = [];
+  if (hasCpo || supplyType.indexOf('CPO') >= 0) psTokens.push('CPO');
+  if (hasPk || supplyType.indexOf('PK') >= 0) psTokens.push('PK');
+  if (psTokens.length) {
+    patch['PRODUCT SUPPLY'] = psTokens.length > 1 ? 'CPO, PK' : psTokens[0];
+  } else if (row['PRODUCT SUPPLY']) {
+    patch['PRODUCT SUPPLY'] = row['PRODUCT SUPPLY'];
+  }
+
+  var qtyCpo = row['SUPPLY CPO'];
+  var qtyPk  = row['SUPPLY PK'];
+  if ((qtyCpo === undefined || qtyCpo === null || String(qtyCpo).trim() === '') && row.SUPPLY_QTY && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
+    qtyCpo = row.SUPPLY_QTY;
+  }
+  if ((qtyPk === undefined || qtyPk === null || String(qtyPk).trim() === '') && row.SUPPLY_QTY && (hasPk || supplyType.indexOf('PK') >= 0)) {
+    qtyPk = row.SUPPLY_QTY;
+  }
+  if (qtyCpo !== undefined && qtyCpo !== null && String(qtyCpo).trim() !== '' && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
+    patch['SUPPLY CPO'] = qtyCpo;
+  }
+  if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '' && (hasPk || supplyType.indexOf('PK') >= 0)) {
+    patch['SUPPLY PK'] = qtyPk;
+  }
+  return patch;
+}
+
+/**
+ * @deprecated use findMillRowForSupplyUpdateGs_
+ */
+function findMillRowForSupplySubmit_(millData, millHeaders, row) {
+  var plan = findMillRowForSupplyUpdateGs_(millData, millHeaders, row, supplySubmitKindFromDraftGs_(row));
+  return plan.updateRow || plan.insertAfter || 0;
 }
 
 function submitSupplyDraft_(batchId, rows) {
@@ -5210,76 +5387,22 @@ function submitSupplyDraft_(batchId, rows) {
       return;
     }
 
-    var sheetRowNum = findMillRowForSupplySubmit_(millData, millHeaders, row);
-    if (!sheetRowNum) {
-      errors.push((row['COMPANY NAME'] || '') + ' / ' + (row['MILL NAME'] || '') + ': tidak ditemukan di Mill Onboarding Profile');
-      return;
-    }
-
-    var supplyType = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase();
-    var pctCpo = row['PERCENTAGE SUPPLY CPO'];
-    var pctPk  = row['PERCENTAGE SUPPLY PK'];
-    var hasCpo = pctCpo !== undefined && pctCpo !== null && String(pctCpo).trim() !== '';
-    var hasPk  = pctPk !== undefined && pctPk !== null && String(pctPk).trim() !== '';
-    if (!hasCpo && supplyType.indexOf('CPO') >= 0) {
-      pctCpo = row.SUPPLY_PERCENTAGE || '';
-      hasCpo = String(pctCpo).trim() !== '';
-    }
-    if (!hasPk && supplyType.indexOf('PK') >= 0) {
-      pctPk = row.SUPPLY_PERCENTAGE || '';
-      hasPk = String(pctPk).trim() !== '';
-    }
-
-    var patch = {};
-    if (hasCpo || supplyType === 'CPO') {
-      patch['PERCENTAGE SUPPLY CPO'] = hasCpo ? pctCpo : '';
-      if (row['FACILITY NAME CPO']) patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
-    }
-    if (hasPk || supplyType === 'PK') {
-      patch['PERCENTAGE SUPPLY PK'] = hasPk ? pctPk : '';
-      if (row['FACILITY NAME PK']) patch['FACILITY NAME PK'] = row['FACILITY NAME PK'];
-    }
-    if (!hasCpo && !hasPk) {
-      var pctField = supplyType === 'PK' ? 'PERCENTAGE SUPPLY PK' : 'PERCENTAGE SUPPLY CPO';
-      var pctVal = row[pctField];
-      if (pctVal === undefined || pctVal === null || String(pctVal).trim() === '') {
-        pctVal = row.SUPPLY_PERCENTAGE || '';
-      }
-      patch[pctField] = pctVal;
-      if (supplyType === 'PK' && row['FACILITY NAME PK']) {
-        patch['FACILITY NAME PK'] = row['FACILITY NAME PK'];
-      }
-      if (supplyType === 'CPO' && row['FACILITY NAME CPO']) {
-        patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
-      }
-    }
-
-    var psTokens = [];
-    if (hasCpo || supplyType.indexOf('CPO') >= 0) psTokens.push('CPO');
-    if (hasPk || supplyType.indexOf('PK') >= 0) psTokens.push('PK');
-    if (psTokens.length) {
-      patch['PRODUCT SUPPLY'] = psTokens.length > 1 ? 'CPO, PK' : psTokens[0];
-    } else if (row['PRODUCT SUPPLY']) {
-      patch['PRODUCT SUPPLY'] = row['PRODUCT SUPPLY'];
-    }
-
-    var qtyCpo = row['SUPPLY CPO'];
-    var qtyPk  = row['SUPPLY PK'];
-    if ((qtyCpo === undefined || qtyCpo === null || String(qtyCpo).trim() === '') && row.SUPPLY_QTY && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
-      qtyCpo = row.SUPPLY_QTY;
-    }
-    if ((qtyPk === undefined || qtyPk === null || String(qtyPk).trim() === '') && row.SUPPLY_QTY && (hasPk || supplyType.indexOf('PK') >= 0)) {
-      qtyPk = row.SUPPLY_QTY;
-    }
-    if (qtyCpo !== undefined && qtyCpo !== null && String(qtyCpo).trim() !== '' && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
-      patch['SUPPLY CPO'] = qtyCpo;
-    }
-    if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '' && (hasPk || supplyType.indexOf('PK') >= 0)) {
-      patch['SUPPLY PK'] = qtyPk;
-    }
+    var submitKind = supplySubmitKindFromDraftGs_(row);
+    var patch = buildSupplyPatchFromDraftGs_(row);
+    var plan = findMillRowForSupplyUpdateGs_(millData, millHeaders, row, submitKind);
 
     try {
-      updateRow('mill', sheetRowNum, patch);
+      if (plan.updateRow) {
+        updateRow('mill', plan.updateRow, patch);
+      } else if (plan.insertAfter) {
+        var baseObj = millRowToObjectGs_(millData[plan.insertAfter - 1], millHeaders);
+        var newData = mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind === 'BOTH' ? 'BOTH' : submitKind);
+        var addRes = addRow('mill', newData, plan.insertAfter);
+        millData = millSheet.getDataRange().getValues();
+      } else {
+        errors.push((row['COMPANY NAME'] || '') + ' / ' + (row['MILL NAME'] || '') + ': tidak ditemukan di Mill Onboarding Profile');
+        return;
+      }
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
       return;

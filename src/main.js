@@ -23582,13 +23582,8 @@ function initDashboardApp() {
       const target = openByPeriod[pk];
       if (!target.batch_id && b.batch_id) target.batch_id = b.batch_id;
       (b.rows || []).forEach(function(srcRow) {
-        const matches = supplyFindDraftRowsForMergeByCompany_(target, srcRow['COMPANY NAME']);
-        if (matches.length) {
-          supplyMergeDraftRows_(matches[0], srcRow);
-        } else {
-          if (!target.rows) target.rows = [];
-          target.rows.push(srcRow);
-        }
+        if (!target.rows) target.rows = [];
+        target.rows.push(srcRow);
       });
       target.supply_type = supplyCombineSupplyTypes_(target.supply_type, b.supply_type);
     });
@@ -23931,13 +23926,71 @@ function initDashboardApp() {
     });
   }
 
+  function supplyGetMillProfileByRow_(rowNum) {
+    if (!rowNum) return null;
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    for (let i = 0; i < src.length; i++) {
+      if (src[i]._row === rowNum) return src[i];
+    }
+    return null;
+  }
+
+  function supplyMillRowSupplyKind_(profile) {
+    if (!profile) return 'NONE';
+    const hasCpo = millSupplyCpoQty_(profile) > 0
+      || String(profile['PERCENTAGE SUPPLY CPO'] || '').trim() !== '';
+    const hasPk = millSupplyPkQty_(profile) > 0
+      || String(profile['PERCENTAGE SUPPLY PK'] || '').trim() !== '';
+    if (hasCpo && hasPk) return 'BOTH';
+    if (hasPk) return 'PK';
+    if (hasCpo) return 'CPO';
+    return 'NONE';
+  }
+
+  function supplyShouldAppendMillRow_(draftRow, batch, profile) {
+    if (!profile || !draftRow) return false;
+    const kind = supplyResolveKindFromDraft_(draftRow, batch);
+    if (kind === 'CPO+PK') return false;
+    const rowKind = supplyMillRowSupplyKind_(profile);
+    if (kind === 'PK' && rowKind === 'CPO') return true;
+    if (kind === 'CPO' && rowKind === 'PK') return true;
+    return false;
+  }
+
+  function supplyBuildAppendMillPayload_(payload, draftRow, batch, existingProfile) {
+    const kind = supplyResolveKindFromDraft_(draftRow, batch);
+    const out = millStripComputedFromSavePayload_(Object.assign({}, existingProfile || {}, payload || {}));
+    delete out._row;
+    delete out._sddSearchBlob;
+    if (kind === 'PK') {
+      out['SUPPLY CPO'] = '';
+      out['PERCENTAGE SUPPLY CPO'] = '';
+      out['FACILITY NAME CPO'] = '';
+      out['PRODUCT SUPPLY'] = 'PK';
+    } else if (kind === 'CPO') {
+      out['SUPPLY PK'] = '';
+      out['PERCENTAGE SUPPLY PK'] = '';
+      out['FACILITY NAME PK'] = '';
+      out['PRODUCT SUPPLY'] = 'CPO';
+    }
+    return out;
+  }
+
   async function supplyCommitDraftRowToMill_(batch, draftRow, data) {
     const payload = supplyPrepareMillSavePayload_(data, batch);
     supplyValidateMillPayloadForSubmit_(payload);
     supplyCopyModalIntoDraftRow_(draftRow, payload, batch);
 
     let millRow = draftRow.target_mill_row || draftRow._mill_row;
-    if (millRow) {
+    const existingProfile = millRow ? supplyGetMillProfileByRow_(millRow) : null;
+    const shouldAppend = millRow && supplyShouldAppendMillRow_(draftRow, batch, existingProfile);
+
+    if (shouldAppend) {
+      const appendPayload = supplyBuildAppendMillPayload_(payload, draftRow, batch, existingProfile);
+      const addRes = await apiPost({ action: 'add', sheet: 'mill', data: appendPayload, insertAfter: millRow });
+      millRow = addRes && addRes.row ? addRes.row : millRow;
+      if (typeof loadMillData === 'function') await loadMillData({ force: true });
+    } else if (millRow) {
       await apiPost({ action: 'update', sheet: 'mill', row: millRow, data: payload });
     } else {
       await apiPost({ action: 'add', sheet: 'mill', data: payload });
@@ -24299,9 +24352,9 @@ function initDashboardApp() {
     const rowCount = (batch.rows || []).length;
     const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
     if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini akan memperbarui baris company yang sama.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini menambah baris baru (tidak mengganti baris yang sudah ada).';
     } else if ((kind === 'CPO' && importKind === 'PK') || (kind === 'PK' && importKind === 'CPO')) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' akan digabung per Company Name → CPO+PK.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' menambah baris terpisah per company — submit ke sheet juga baris baru di bawah.';
     } else {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris). Baris baru akan ditambahkan atau diperbarui.';
     }
@@ -24615,7 +24668,6 @@ function initDashboardApp() {
 
     let batch = supplyFindOpenPeriodBatch_(month, year);
     const batchId = batch ? batch.batch_id : ('batch-' + Date.now());
-    let mergedCount = 0;
 
     if (!batch) {
       batch = {
@@ -24681,15 +24733,6 @@ function initDashboardApp() {
     }
 
     parsedRows.forEach(function(r, idx) {
-      const names = supplyResolveNamesFromExcel_(r);
-      const existingRows = supplyFindDraftRowsForMergeByCompany_(batch, names.company);
-      if (existingRows.length) {
-        existingRows.forEach(function(existing) {
-          supplyApplyImportToDraftRow_(existing, r, kind, pctField, facField, batch);
-        });
-        mergedCount += existingRows.length;
-        return;
-      }
       batch.rows.push(buildDraftFromExcel_(r, idx));
     });
 
@@ -24702,13 +24745,6 @@ function initDashboardApp() {
 
     apiPost({ action: 'saveSupplyDraft', batch_id: batch.batch_id, rows: batch.rows, meta: { month, year, supply_type: batch.supply_type } })
       .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
-
-    if (mergedCount > 0 && typeof window.showSddToast === 'function') {
-      window.showSddToast(
-        mergedCount + ' baris company sama di ' + millMonthLabel_(parseInt(month, 10)) + ' ' + year + ' digabung → supply CPO+PK.',
-        'success'
-      );
-    }
   }
 
   function ensureMillTaskListPanelOpen_() {

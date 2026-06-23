@@ -110,7 +110,7 @@
       <div class="supply-section__head">
         <div class="supply-section__intro">
           <h4 class="supply-section__title">Import Supply Data</h4>
-          <p class="supply-section__desc">Upload Excel CPO atau PK per periode. Company dengan month &amp; year sama otomatis digabung menjadi <strong>CPO+PK</strong>.</p>
+          <p class="supply-section__desc">Upload Excel CPO atau PK per periode. Company yang sama tetap <strong>baris terpisah</strong> (CPO &amp; PK tidak digabung). Submit PK setelah CPO menambah baris baru di sheet, bukan mengganti baris CPO.</p>
         </div>
         <button type="button" class="btn-sm btn-filled supply-section__cta" id="btn-supply-import-open">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -149,7 +149,7 @@
             <strong>Format Excel (kolom A–F):</strong>
             PLANT · CATEGORY · COMPANY GROUP NAME · COMPANY NAME · MILL NAME · <strong>QTY SUPPLY</strong>
             <br>
-            <strong>Tip:</strong> Import CPO dulu, lalu PK dengan month &amp; year yang sama. Baris company yang cocok otomatis jadi <span class="supply-pill supply-pill--cpopk">CPO+PK</span>.
+            <strong>Tip:</strong> Import CPO dulu, lalu PK dengan month &amp; year yang sama. Company sama = <strong>baris terpisah</strong> di Task List. Submit ke Mill Onboarding: PK ditambah <strong>di bawah</strong> baris CPO (tidak menimpa).
           </div>
         </div>
 
