@@ -5456,7 +5456,7 @@ function initDashboardApp() {
     'RECOMMENDATION LEVEL': ['Approved','Conditional','Not Approved'],
     'VOLUME SUPPLY STATUS': ['Active','Inactive'],
     'COMPLIMENT/NOT COMPLIMENT': ['Compliment','Not Compliment'],
-    'MILL LOC': ['Inside Concession','Outside Concession'],
+    'MILL LOC': ['APL','Non APL'],
     'BUYER NO BUY LIST': ['Yes','No'],
   };
 
