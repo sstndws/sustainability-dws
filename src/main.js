@@ -3944,7 +3944,7 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxo5IObidudc7LRA9BQw1LDFDpV-4yXRs_cQe2lu6sjXY2hpU3t50dRDPhCe0iJ8cWwJw/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -5314,7 +5314,7 @@ function initDashboardApp() {
     window.refreshSavedScreeningListGlobal();
   }
 
-  const MILL_FIELDS = ['MONTH','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
+  const MILL_FIELDS = ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH','LEGALITY','DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT','TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
 
   /** Sheet formulas — hide from Mill Onboarding UI; do not overwrite on save. */
   const MILL_SHEET_COMPUTED_FIELDS = new Set([
@@ -5513,8 +5513,18 @@ function initDashboardApp() {
     });
   }
 
+  function millSourceTypeValFromRow_(row) {
+    if (!row) return '';
+    const direct = String(row['SOURCE TYPE'] || row['Source Type'] || '').trim();
+    if (direct) return direct.toUpperCase();
+    const legacy = String(row['TRADER NAME'] || row['Trader Name'] || '').trim();
+    if (/^(MILL|TRADER|REFINERY|KCP)$/i.test(legacy)) return legacy.toUpperCase();
+    if (legacy && !/^no\s*data$/i.test(legacy) && legacy.length <= 24) return legacy.toUpperCase();
+    return '';
+  }
+
   const FIELD_SECTIONS = [
-    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','TRADER NAME','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
+    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
     { title: 'Legalitas', fields: ['HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','LEGALITY'] },
     { title: 'Spatial & Peat', fields: ['DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH','MILL LOC'] },
     { title: 'Grievances', fields: ['DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES','HUMAN RIGHT','SAFETY','SOCIAL','ENVIRONMENT'] },
@@ -5655,6 +5665,9 @@ function initDashboardApp() {
       html += `<div class="mill-form-section"><div class="mill-form-section-title">${sec.title}</div><div class="mill-form-grid">`;
       visibleFields.forEach(f => {
         let val = data ? (data[f] || '') : '';
+        if (f === 'SOURCE TYPE' && data) {
+          val = millSourceTypeValFromRow_(data) || val;
+        }
         if (f === 'MILL CAPACITY (TON/HOUR)' && data) {
           val = millCapacityFromRow_(data) || val;
         }
@@ -5854,7 +5867,6 @@ function initDashboardApp() {
       }
     } else if (modalSheet === 'mill' && modalMode === 'add' && !data['SOURCE TYPE']) {
       data['SOURCE TYPE'] = 'MILL';
-      if (!String(data['TRADER NAME'] || '').trim()) data['TRADER NAME'] = 'No Data';
     }
     try {
       const postSaveFocus = capturePostSaveFocus_(modalSheet, data);
@@ -6460,6 +6472,7 @@ function initDashboardApp() {
       millPickField_(row, ['GROUP NAME', 'Group Name', 'COMPANY GROUP NAME', 'Company Group Name']),
       pickMillCompanyName_(row),
       millPickField_(row, ['PROVINCE', 'Province']),
+      millPickField_(row, ['SOURCE TYPE', 'Source Type']),
       millPickField_(row, ['TRADER NAME', 'Trader Name']),
       millPickField_(row, ['UML ID', 'UML Id', 'UML_ID']),
       millPickField_(row, ['COMPANY CODE', 'Company Code']),
@@ -7859,7 +7872,7 @@ function initDashboardApp() {
       {
         title: 'Mill Identity',
         fields: [
-          ['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'],
+          ['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['SOURCE TYPE','Source Type'],
           ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'],
           ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)'],
         ]
@@ -7905,6 +7918,8 @@ function initDashboardApp() {
             let val = '';
             if (key === 'LEGALITY') {
               val = millProfileLegalityFromScore_(d);
+            } else if (key === 'SOURCE TYPE') {
+              val = millSourceTypeValFromRow_(d);
             } else if (MILL_HA_WIDTH_FIELDS.has(key)) {
               const raw = millProfileResolveField_(d, key);
               const tier = millHaWidthTier_(raw);
@@ -7965,7 +7980,7 @@ function initDashboardApp() {
       const year = String(millYearVal(row) || '').trim();
       const periodText = (year || month) ? ('Period: ' + [year ? year : '', month ? (millMonthLabel_(parseInt(month, 10)) + ' (' + month + ')') : ''].filter(Boolean).join(' ')) : '';
       const sections = [
-        { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['TRADER NAME','Trader Name'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
+        { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['SOURCE TYPE','Source Type'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
         { title: 'Legality', fields: [['LEGALITY', 'Legality'], ['MILL LOC', 'Mill Location']] },
         { title: 'Certification', fields: [['CERTIFICATION','Certification']] },
         { title: 'Spatial', fields: [['DEFORESTATION WIDTH','Deforestation Width (Ha)'], ['BURN AREA WIDTH','Burn Area Width (Ha)'], ['PEAT WIDTH','Peat Width (Ha)']] },
@@ -8015,6 +8030,9 @@ function initDashboardApp() {
         }
         if (key === 'SUPPLIER STATUS') {
           return millProfileTitleCaseWords_(row['SUPPLIER STATUS']);
+        }
+        if (key === 'SOURCE TYPE') {
+          return valOrDash(millSourceTypeValFromRow_(row));
         }
         if (key === 'LEGALITY') {
           return valOrDash(millProfileLegalityFromScore_(row));
@@ -23558,7 +23576,7 @@ function initDashboardApp() {
   function supplyApplyImportToDraftRow_(existing, r, kind, pctField, facField, batch) {
     existing[pctField] = r.SUPPLY_PCT;
     supplyApplyPlantToDraftFacility_(existing, r.PLANT, kind);
-    if (r.CATEGORY && !existing['TRADER NAME']) existing['TRADER NAME'] = r.CATEGORY;
+    if (r.CATEGORY && !existing['SOURCE TYPE']) existing['SOURCE TYPE'] = String(r.CATEGORY).trim().toUpperCase();
     supplyApplyParsedQtyToDraft_(existing, r, kind);
     existing.supply_type = supplyCombineSupplyTypes_(existing.supply_type, kind);
     existing.SUPPLY_TYPE = existing.supply_type;
@@ -23586,7 +23604,7 @@ function initDashboardApp() {
     if (source.SUPPLY_QTY != null && String(source.SUPPLY_QTY).trim() !== '') {
       target.SUPPLY_QTY = source.SUPPLY_QTY;
     }
-    if (source['TRADER NAME'] && !target['TRADER NAME']) target['TRADER NAME'] = source['TRADER NAME'];
+    if (source['SOURCE TYPE'] && !target['SOURCE TYPE']) target['SOURCE TYPE'] = source['SOURCE TYPE'];
     target.supply_type = supplyCombineSupplyTypes_(target.supply_type, source.supply_type || source.SUPPLY_TYPE);
     target.SUPPLY_TYPE = target.supply_type;
     target['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(target);
@@ -23790,7 +23808,7 @@ function initDashboardApp() {
       pctField, SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
       'MONTH', 'QUARTER', 'YEAR',
       'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
-      'FACILITY NAME CPO', 'FACILITY NAME PK', 'TRADER NAME',
+      'FACILITY NAME CPO', 'FACILITY NAME PK', 'SOURCE TYPE',
       'SUPPLY CPO', 'SUPPLY PK', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
       facField,
     ]);
@@ -23800,6 +23818,7 @@ function initDashboardApp() {
   function supplyCopyProfileIntoDraft_(draftRow, profile, batch) {
     if (!draftRow || !profile) return;
     const skip = supplyDraftProfileSkipFields_(draftRow, batch);
+    if (!String(draftRow['SOURCE TYPE'] || '').trim()) skip.delete('SOURCE TYPE');
     (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
       if (skip.has(f)) return;
       if (millIsSheetComputedField_(f)) return;
@@ -23872,10 +23891,12 @@ function initDashboardApp() {
       const v = draftRow[f];
       if (v !== undefined && v !== null && String(v).trim() !== '') prefill[f] = v;
     });
-    ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'TRADER NAME', 'PROVINCE'].forEach(function(k) {
+    ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'SOURCE TYPE', 'PROVINCE'].forEach(function(k) {
       const v = draftRow[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') prefill[k] = v;
     });
+    const st = millSourceTypeValFromRow_(draftRow);
+    if (st) prefill['SOURCE TYPE'] = st;
     return prefill;
   }
 
@@ -23909,9 +23930,8 @@ function initDashboardApp() {
 
   function supplyPrepareMillSavePayload_(data, batch, draftRow) {
     const payload = millStripComputedFromSavePayload_(Object.assign({}, data || {}));
-    if (!payload['SOURCE TYPE']) payload['SOURCE TYPE'] = 'MILL';
-    const trader = String(payload['TRADER NAME'] || '').trim();
-    if (!trader || /^mill$/i.test(trader)) payload['TRADER NAME'] = 'No Data';
+    const sourceType = millSourceTypeValFromRow_(payload) || 'MILL';
+    payload['SOURCE TYPE'] = sourceType;
     if (batch) {
       if (batch.month && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.month);
       else if (batch.quarter && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.quarter);
@@ -23987,14 +24007,16 @@ function initDashboardApp() {
     return 'NONE';
   }
 
-  function supplyShouldAppendMillRow_(draftRow, batch, profile) {
-    if (!profile || !draftRow) return false;
-    const kind = supplyResolveKindFromDraft_(draftRow, batch);
-    if (kind === 'CPO+PK') return false;
-    const rowKind = supplyMillRowSupplyKind_(profile);
-    if (kind === 'PK' && rowKind === 'CPO') return true;
-    if (kind === 'CPO' && rowKind === 'PK') return true;
-    return false;
+  function supplyFindInsertAfterMillRow_(draftRow) {
+    const targetRef = Number(draftRow.target_mill_row || draftRow._mill_row || 0);
+    if (targetRef >= 2) return targetRef;
+    const company = draftRow['COMPANY NAME'];
+    let last = 0;
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    src.forEach(function(r) {
+      if (supplyCompanyMatchesProfile_(company, r) && r._row > last) last = r._row;
+    });
+    return last;
   }
 
   function supplyBuildAppendMillPayload_(payload, draftRow, batch, existingProfile) {
@@ -24021,22 +24043,25 @@ function initDashboardApp() {
     supplyValidateMillPayloadForSubmit_(payload);
     supplyCopyModalIntoDraftRow_(draftRow, payload, batch);
 
-    let millRow = draftRow.target_mill_row || draftRow._mill_row;
-    const existingProfile = millRow ? supplyGetMillProfileByRow_(millRow) : null;
-    const shouldAppend = millRow && supplyShouldAppendMillRow_(draftRow, batch, existingProfile);
+    const insertAfter = supplyFindInsertAfterMillRow_(draftRow);
+    const baseProfile = insertAfter ? supplyGetMillProfileByRow_(insertAfter) : null;
+    let millRow = null;
 
-    if (shouldAppend) {
-      const appendPayload = supplyBuildAppendMillPayload_(payload, draftRow, batch, existingProfile);
-      const addRes = await apiPost({ action: 'add', sheet: 'mill', data: appendPayload, insertAfter: millRow });
-      millRow = addRes && addRes.row ? addRes.row : millRow;
+    if (insertAfter) {
+      const appendPayload = baseProfile
+        ? supplyBuildAppendMillPayload_(payload, draftRow, batch, baseProfile)
+        : payload;
+      const addRes = await apiPost({ action: 'add', sheet: 'mill', data: appendPayload, insertAfter: insertAfter });
+      millRow = addRes && addRes.row ? addRes.row : null;
       if (typeof loadMillData === 'function') await loadMillData({ force: true });
-    } else if (millRow) {
-      await apiPost({ action: 'update', sheet: 'mill', row: millRow, data: payload });
     } else {
-      await apiPost({ action: 'add', sheet: 'mill', data: payload });
+      const addRes = await apiPost({ action: 'add', sheet: 'mill', data: payload });
+      millRow = addRes && addRes.row ? addRes.row : null;
       if (typeof loadMillData === 'function') await loadMillData({ force: true });
-      supplyRematchDraftRow_(draftRow, batch);
-      millRow = draftRow.target_mill_row || draftRow._mill_row;
+      if (!millRow) {
+        supplyRematchDraftRow_(draftRow, batch);
+        millRow = draftRow.target_mill_row || draftRow._mill_row;
+      }
     }
     if (!millRow) {
       throw new Error('Profil mill tidak ditemukan setelah submit. Coba Re-match batch.');
@@ -24044,13 +24069,12 @@ function initDashboardApp() {
     draftRow.match_status = 'matched';
     draftRow.target_mill_row = millRow;
     draftRow._mill_row = millRow;
-
-    const res = await apiPost({ action: 'submitSupplyDraft', batch_id: batch.batch_id, rows: [draftRow] });
     draftRow._submitted = true;
     draftRow.status = 'submitted';
     draftRow._profile_draft_saved = false;
     draftRow.profile_draft_saved = '';
     supplyNormalizeBatchSubmittedState_(batch);
+    const res = await apiPost({ action: 'saveSupplyDraft', batch_id: batch.batch_id, rows: [draftRow], meta: {} });
     return res;
   }
 
@@ -24744,7 +24768,7 @@ function initDashboardApp() {
       supplyApplyParsedQtyToDraft_(draft, r, kind);
       draft[pctField] = r.SUPPLY_PCT;
       supplyApplyPlantToDraftFacility_(draft, r.PLANT, kind);
-      draft['TRADER NAME']  = r.CATEGORY;
+      draft['SOURCE TYPE'] = r.CATEGORY ? String(r.CATEGORY).trim().toUpperCase() : '';
       draft['GROUP NAME']   = names.group || (profile ? (profile['GROUP NAME'] || '') : '');
       draft['COMPANY NAME'] = names.company;
       draft['MILL NAME']    = names.mill;
@@ -24914,7 +24938,7 @@ function initDashboardApp() {
       ['COMPANY NAME',    'Company Name'],
       ['MILL NAME',       'Mill Name'],
       ['GROUP NAME',      'Group Name'],
-      ['TRADER NAME',     'Category'],
+      ['SOURCE TYPE',     'Source Type'],
       ['SUPPLY CPO',      'Qty CPO'],
       ['SUPPLY PK',       'Qty PK'],
       ['PROVINCE',        'Province'],
@@ -24939,12 +24963,13 @@ function initDashboardApp() {
       const typePills  = supplyRowTypePillsHtml_(row);
       const cells = SHOW_COLS.map(function(c) {
         const key = c[0];
-        const val = row[key] != null ? row[key] : '';
+        let val = row[key] != null ? row[key] : '';
+        if (key === 'SOURCE TYPE') val = millSourceTypeValFromRow_(row) || val;
         if (key === 'COMPANY NAME') {
           return '<td class="supply-batch-td--company">'
             + escHtml(String(val || '—')) + typePills + matchBadge + '</td>';
         }
-        if (!isSubmitted && !isRowDone && (key === 'TRADER NAME' || key === 'GROUP NAME')) {
+        if (!isSubmitted && !isRowDone && (key === 'SOURCE TYPE' || key === 'GROUP NAME')) {
           return '<td class="supply-batch-td--input">'
             + '<input class="supply-inline-input" data-batch="' + escHtml(batch.batch_id) + '" data-row="' + i + '" data-field="' + escHtml(key) + '"'
             + ' value="' + escHtml(String(val || '')) + '">'
@@ -25057,7 +25082,7 @@ function initDashboardApp() {
       });
       if (!matchedRows.length) { alert('No matched rows pending submission.'); return; }
       const kind = String(batch.supply_type || (matchedRows[0] && matchedRows[0].supply_type) || 'CPO').toUpperCase();
-      const confirmMsg = 'Update ' + matchedRows.length + ' matched rows di Mill Profile? (Supply/risk dihitung otomatis di sheet)';
+      const confirmMsg = 'Tambah ' + matchedRows.length + ' baris baru di Mill Profile? (Data lama tidak diubah; supply/risk dihitung otomatis di sheet)';
       if (!confirm(confirmMsg)) return;
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
@@ -25070,7 +25095,7 @@ function initDashboardApp() {
           renderSupplyDraftList_();
           if (typeof loadMillData === 'function') loadMillData({ force: true });
           const errNote = (res.errors && res.errors.length) ? ('\nNote: ' + res.errors.slice(0, 3).join('; ')) : '';
-          alert('✓ ' + (res.submitted || matchedRows.length) + ' rows updated in Mill Profile.' + errNote);
+          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris baru ditambahkan di Mill Profile.' + errNote);
         })
         .catch(function(err) {
           btn.textContent = '✓ Submit Matched'; btn.disabled = false;
@@ -25222,6 +25247,7 @@ function initDashboardApp() {
           (b.rows || []).forEach(function(row) {
             batchType = supplyCombineSupplyTypes_(batchType, row.supply_type || row.SUPPLY_TYPE || 'CPO');
             supplyNormalizeDraftQtyFields_(row);
+            supplyApplyPlantToDraftFacility_(row, row.PLANT, row.supply_type || row.SUPPLY_TYPE);
             supplyApplyDraftRowStatus_(row);
             row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
           });

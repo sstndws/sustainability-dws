@@ -168,7 +168,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'PERCENTAGE SUPPLY CPO',
   'PERCENTAGE SUPPLY PK',
   // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
-  'MONTH', 'YEAR', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME',
+  'MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'GROUP NAME',
   'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
   'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
   'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'SCORE',
@@ -5208,47 +5208,30 @@ function findMillRowsByCompanyGs_(millData, millHeaders, companyName) {
   return out;
 }
 
-/** Row to update for this supply type, or 0 if a new row should be inserted below. */
-function findMillRowForSupplyUpdateGs_(millData, millHeaders, row, submitKind) {
+/** Always insert below an existing company row — never update in place. */
+function findMillRowForSupplyInsertGs_(millData, millHeaders, row) {
   var matches = findMillRowsByCompanyGs_(millData, millHeaders, row['COMPANY NAME']);
-  if (!matches.length) return { updateRow: 0, insertAfter: 0 };
-
   var targetRef = Number(row.target_mill_row || row._mill_row || 0);
-  var lastCompanyRow = matches[matches.length - 1].sheetRow;
-  var cpoRow = 0;
-  var pkRow = 0;
-  var bothRow = 0;
-  var noneRow = 0;
-
-  for (var i = 0; i < matches.length; i++) {
-    var kind = millRowSupplyKindGs_(matches[i].obj);
-    if (kind === 'BOTH') bothRow = matches[i].sheetRow;
-    else if (kind === 'CPO') cpoRow = matches[i].sheetRow;
-    else if (kind === 'PK') pkRow = matches[i].sheetRow;
-    else if (kind === 'NONE' && !noneRow) noneRow = matches[i].sheetRow;
+  var insertAfter = 0;
+  if (targetRef >= 2) {
+    insertAfter = targetRef;
+  } else if (matches.length) {
+    insertAfter = matches[matches.length - 1].sheetRow;
   }
+  return { insertAfter: insertAfter };
+}
 
-  if (submitKind === 'BOTH') {
-    if (bothRow) return { updateRow: bothRow, insertAfter: 0 };
-    if (targetRef >= 2) return { updateRow: targetRef, insertAfter: 0 };
-    return { updateRow: lastCompanyRow, insertAfter: 0 };
+function buildMillRowFromSupplyDraftGs_(row, patch, submitKind, millHeaders) {
+  var out = {};
+  var i;
+  for (i = 0; i < millHeaders.length; i++) {
+    var h = millHeaders[i];
+    if (!h) continue;
+    var v = row[h];
+    if (v !== undefined && v !== null && String(v).trim() !== '') out[h] = v;
   }
-
-  if (submitKind === 'CPO') {
-    if (cpoRow || bothRow) return { updateRow: cpoRow || bothRow, insertAfter: 0 };
-    if (pkRow) return { updateRow: 0, insertAfter: pkRow };
-    if (noneRow) return { updateRow: noneRow, insertAfter: 0 };
-    return { updateRow: 0, insertAfter: targetRef >= 2 ? targetRef : lastCompanyRow };
-  }
-
-  if (submitKind === 'PK') {
-    if (pkRow || bothRow) return { updateRow: pkRow || bothRow, insertAfter: 0 };
-    if (cpoRow) return { updateRow: 0, insertAfter: cpoRow };
-    if (noneRow) return { updateRow: noneRow, insertAfter: 0 };
-    return { updateRow: 0, insertAfter: targetRef >= 2 ? targetRef : lastCompanyRow };
-  }
-
-  return { updateRow: 0, insertAfter: 0 };
+  if (!out['GROUP NAME'] && row['COMPANY GROUP NAME']) out['GROUP NAME'] = row['COMPANY GROUP NAME'];
+  return mergeMillIdentityWithSupplyPatchGs_(out, patch, submitKind === 'BOTH' ? 'BOTH' : submitKind);
 }
 
 function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
@@ -5358,11 +5341,11 @@ function buildSupplyPatchFromDraftGs_(row) {
 }
 
 /**
- * @deprecated use findMillRowForSupplyUpdateGs_
+ * @deprecated use findMillRowForSupplyInsertGs_
  */
 function findMillRowForSupplySubmit_(millData, millHeaders, row) {
-  var plan = findMillRowForSupplyUpdateGs_(millData, millHeaders, row, supplySubmitKindFromDraftGs_(row));
-  return plan.updateRow || plan.insertAfter || 0;
+  var plan = findMillRowForSupplyInsertGs_(millData, millHeaders, row);
+  return plan.insertAfter || 0;
 }
 
 function submitSupplyDraft_(batchId, rows) {
@@ -5407,19 +5390,18 @@ function submitSupplyDraft_(batchId, rows) {
 
     var submitKind = supplySubmitKindFromDraftGs_(row);
     var patch = buildSupplyPatchFromDraftGs_(row);
-    var plan = findMillRowForSupplyUpdateGs_(millData, millHeaders, row, submitKind);
+    var plan = findMillRowForSupplyInsertGs_(millData, millHeaders, row);
 
     try {
-      if (plan.updateRow) {
-        updateRow('mill', plan.updateRow, patch);
-      } else if (plan.insertAfter) {
+      if (plan.insertAfter > 0) {
         var baseObj = millRowToObjectGs_(millData[plan.insertAfter - 1], millHeaders);
         var newData = mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind === 'BOTH' ? 'BOTH' : submitKind);
-        var addRes = addRow('mill', newData, plan.insertAfter);
+        addRow('mill', newData, plan.insertAfter);
         millData = millSheet.getDataRange().getValues();
       } else {
-        errors.push((row['COMPANY NAME'] || '') + ' / ' + (row['MILL NAME'] || '') + ': tidak ditemukan di Mill Onboarding Profile');
-        return;
+        var newRowData = buildMillRowFromSupplyDraftGs_(row, patch, submitKind, millHeaders);
+        addRow('mill', newRowData);
+        millData = millSheet.getDataRange().getValues();
       }
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
