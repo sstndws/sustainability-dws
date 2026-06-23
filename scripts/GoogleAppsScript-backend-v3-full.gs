@@ -5106,8 +5106,18 @@ function supplyMillYearTok_(row) {
   return String(row['YEAR'] || row['Year'] || row['year'] || '').trim();
 }
 
+function supplyNormalizePlantValueGs_(raw) {
+  var s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  s = s.replace(/[\r\n]+/g, ', ');
+  s = s.replace(/\s*[,;/|]+\s*/g, ', ');
+  s = s.replace(/,\s*,+/g, ', ');
+  s = s.replace(/^,\s*|,\s*$/g, '');
+  return s.trim();
+}
+
 function supplySplitFacilitiesGs_(raw) {
-  return String(raw || '').trim().split(/[,;\/]+/).map(function(f) {
+  return supplyNormalizePlantValueGs_(raw).split(/,\s*/).map(function(f) {
     return f.trim();
   }).filter(function(f) { return f && !/^total$/i.test(f); });
 }
@@ -5260,7 +5270,7 @@ function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
 function supplyFacilityFromDraftGs_(row, field, submitKind) {
   var direct = String(row[field] || '').trim();
   if (direct) return direct;
-  var plant = String(row.PLANT || '').trim();
+  var plant = supplyNormalizePlantValueGs_(row.PLANT || '');
   if (!plant) return '';
   if (field === 'FACILITY NAME PK' && (submitKind === 'PK' || submitKind === 'BOTH')) return plant;
   if (field === 'FACILITY NAME CPO' && (submitKind === 'CPO' || submitKind === 'BOTH')) return plant;

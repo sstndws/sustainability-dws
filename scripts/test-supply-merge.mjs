@@ -54,5 +54,18 @@ assert(batch.rows[1].supply_type === 'PK', 'PK row is PK only');
 
 assert(supplyFindDraftRowsForMergeByCompany_(batch, 'ABDI BORNEO PLANTATIONS').length === 2, 'two rows same company');
 
+function supplyNormalizePlantValue_(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  s = s.replace(/[\r\n]+/g, ', ');
+  s = s.replace(/\s*[,;/|]+\s*/g, ', ');
+  s = s.replace(/,\s*,+/g, ', ');
+  s = s.replace(/^,\s*|,\s*$/g, '');
+  return s.trim();
+}
+assert(supplyNormalizePlantValue_('KCP A, KCP B') === 'KCP A, KCP B', 'multi KCP stays one string');
+assert(supplyNormalizePlantValue_('KCP A\nKCP B') === 'KCP A, KCP B', 'newline KCPs normalize to one string');
+assert(supplyNormalizePlantValue_('KCP A / KCP B') === 'KCP A, KCP B', 'slash KCPs normalize to one string');
+
 console.log('Supply separate-row tests:', passed, 'passed,', failed, 'failed');
 process.exit(failed ? 1 : 0);

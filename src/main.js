@@ -3944,7 +3944,7 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxo5IObidudc7LRA9BQw1LDFDpV-4yXRs_cQe2lu6sjXY2hpU3t50dRDPhCe0iJ8cWwJw/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzqcKkQl3er105n5LfN1YttxqV5K6t6FsmwmmSbLVzkuOssZ3sKpJ2yjtQXae8kxfkbdw/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -23545,17 +23545,28 @@ function initDashboardApp() {
     }
   }
 
+  /** Satu sel Excel boleh berisi beberapa KCP (KCP A, KCP B) — tetap satu string, tidak dipecah jadi baris. */
+  function supplyNormalizePlantValue_(raw) {
+    let s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    s = s.replace(/[\r\n]+/g, ', ');
+    s = s.replace(/\s*[,;/|]+\s*/g, ', ');
+    s = s.replace(/,\s*,+/g, ', ');
+    s = s.replace(/^,\s*|,\s*$/g, '');
+    return s.trim();
+  }
+
   function supplyFacilityFieldForKind_(kind) {
     const k = String(kind || 'CPO').toUpperCase();
     return (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
   }
 
-  /** Excel PLANT → FACILITY NAME CPO (import CPO) or FACILITY NAME PK (import PK). */
+  /** Excel PLANT → FACILITY NAME CPO (import CPO) or FACILITY NAME PK (import PK); multi-KCP tetap satu nilai. */
   function supplyApplyPlantToDraftFacility_(draft, plant, kind) {
     if (!draft) return;
     const k = String(kind || draft.supply_type || draft.SUPPLY_TYPE || 'CPO').toUpperCase();
     const singleKind = (k === 'PK' || (supplyRowHasPk_(draft) && !supplyRowHasCpo_(draft))) ? 'PK' : 'CPO';
-    const p = String(plant != null ? plant : draft.PLANT || '').trim();
+    const p = supplyNormalizePlantValue_(plant != null ? plant : draft.PLANT || '');
     if (!p) return;
     draft.PLANT = p;
     draft[supplyFacilityFieldForKind_(singleKind)] = p;
@@ -23564,8 +23575,8 @@ function initDashboardApp() {
   function supplyFacilityFromDraftRow_(row, field, kind) {
     if (!row) return '';
     const direct = String(row[field] || '').trim();
-    if (direct) return direct;
-    const plant = String(row.PLANT || '').trim();
+    if (direct) return supplyNormalizePlantValue_(direct);
+    const plant = supplyNormalizePlantValue_(row.PLANT || '');
     if (!plant) return '';
     const k = String(kind || row.supply_type || row.SUPPLY_TYPE || 'CPO').toUpperCase();
     if (field === 'FACILITY NAME PK' && (k === 'PK' || k.indexOf('PK') >= 0)) return plant;
@@ -23677,7 +23688,7 @@ function initDashboardApp() {
   }
 
   function supplySplitFacilities_(raw) {
-    return String(raw || '').trim().split(/[,;\/]+/).map(function(f) {
+    return supplyNormalizePlantValue_(raw).split(/,\s*/).map(function(f) {
       return f.trim();
     }).filter(function(f) {
       return f && !/^total$/i.test(f);
@@ -23938,7 +23949,7 @@ function initDashboardApp() {
       if (batch.year && !String(payload['YEAR'] || '').trim()) payload['YEAR'] = String(batch.year);
     }
     const kind = supplyResolveKindFromDraft_(draftRow || payload, batch);
-    const plant = String(payload.PLANT || (draftRow && draftRow.PLANT) || '').trim();
+    const plant = supplyNormalizePlantValue_(payload.PLANT || (draftRow && draftRow.PLANT) || '');
     if (plant) {
       const facField = supplyFacilityFieldForKind_(kind === 'CPO+PK' ? (draftRow && draftRow.supply_type) || 'CPO' : kind);
       if (!String(payload[facField] || '').trim()) payload[facField] = plant;
@@ -24144,14 +24155,14 @@ function initDashboardApp() {
   function supplyCalcPercentages_(parsedRows) {
     const byPlant = {};
     parsedRows.forEach(function(r) {
-      const plant = String(r.PLANT || '').trim() || '_';
+      const plant = supplyNormalizePlantValue_(r.PLANT || '') || '_';
       const qty = supplyParseQty_(r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG);
       if (isNaN(qty) || qty <= 0) return;
       if (!byPlant[plant]) byPlant[plant] = 0;
       byPlant[plant] += qty;
     });
     parsedRows.forEach(function(r) {
-      const plant = String(r.PLANT || '').trim() || '_';
+      const plant = supplyNormalizePlantValue_(r.PLANT || '') || '_';
       const qty = supplyParseQty_(r.SUPPLY_QTY != null ? r.SUPPLY_QTY : r.SUM_QTY_KG);
       const sum = byPlant[plant] || 0;
       if (!isNaN(qty) && qty > 0 && sum > 0) {
@@ -24318,8 +24329,9 @@ function initDashboardApp() {
       const coGroupCell = colCoGroup >= 0 ? String(r[colCoGroup] != null ? r[colCoGroup] : '').trim() : '';
       const legacyGroup = colGroup >= 0 ? String(r[colGroup] != null ? r[colGroup] : '').trim() : '';
       let excelGroup = coGroupCell || legacyGroup;
-      if (plant) lastPlant = plant;
+      if (plant) lastPlant = supplyNormalizePlantValue_(plant);
       else plant = lastPlant;
+      plant = supplyNormalizePlantValue_(plant);
       if (excelGroup) lastCoGroup = excelGroup;
       else excelGroup = lastCoGroup;
 
