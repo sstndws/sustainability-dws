@@ -162,6 +162,8 @@ const SUPPLY_DRAFT_HEADERS = [
   'supply_type',                            // 'CPO' | 'PK'
   'target_mill_row',
   'SUPPLY_QTY',
+  'SUPPLY CPO',
+  'SUPPLY PK',
   'PERCENTAGE SUPPLY CPO',
   'PERCENTAGE SUPPLY PK',
   // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
@@ -170,7 +172,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
   'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'SCORE',
   'MILL LOC', 'COMPLIMENT/NOT COMPLIMENT',
-  'DEFORESTATION SPATIAL', 'BURN AREA SPATIAL', 'PEAT', 'LEGALITY',
+  'DEFORESTATION WIDTH', 'BURN AREA WIDTH', 'PEAT WIDTH', 'LEGALITY',
   'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
   'HUMAN RIGHT', 'SAFETY', 'SOCIAL', 'ENVIRONMENT', 'TOTAL GRIEVANCES',
   'NDPE', 'HRDD', 'TOTAL POLICY',
@@ -212,6 +214,18 @@ const CONTACT_SUPPLIER_HEADERS = [
   'approved_at',
   'updated_at',
   'updated_by',
+];
+
+/** Grievance Monitoring — risk score columns (auto-added to sheet row 1 when missing). */
+const GRIEVANCE_RISK_HEADERS = [
+  'Publish Grievance',
+  'Subject Grievance',
+  'Repeat Grievance',
+  'Consequence',
+  'Group Scale',
+  'No Response',
+  'Total Score',
+  'Risk Classification',
 ];
 
 /** Facility Profile / Company Profile List (tab: Facility Profile). */
@@ -613,18 +627,26 @@ function doGet(e) {
       if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
       if (sheetKey === 'eudrStatusFormula') ensureEudrStatusFormulaHeaders_();
       if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
+      if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
     if (action === 'ping') {
+      var grvHdr = false;
+      try {
+        grvHdr = !!ensureGrievanceRiskHeaders_();
+      } catch (grvErr) {
+        grvHdr = false;
+      }
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-eudr-formula-threshold',
+        version: 'v3-grievance-risk-headers',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
         eudrStatusFormula: !!resolveSheetTabName_('eudrStatusFormula'),
+        grievanceRiskHeaders: grvHdr,
       });
     }
     if (action === 'getSubmissionById')    return respond(getSubmissionById(e.parameter.submission_id));
@@ -665,6 +687,7 @@ function doPost(e) {
     if (sheetKey === 'questionnaireMonitoring') ensureQuestionnaireMonitoringHeaders_();
     if (sheetKey === 'eudrPotential') ensureEudrPotentialHeaders_();
     if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
+    if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
     if (action === 'upsertQuestionnaire') return respond(upsertQuestionnaireRow_(body.data || {}));
     if (action === 'syncEudrPotential') return respond(syncEudrPotentialRows_(body.mills || []));
     if (action === 'upsertEudr') return respond(upsertEudrPotentialRow_(body.data || {}));
@@ -3312,6 +3335,70 @@ function mirrorNblFieldsOnRead_(obj) {
   });
 }
 
+function normalizeGrievanceHeaderCell_(h) {
+  return String(h || '').replace(/\s+/g, ' ').trim();
+}
+
+function grievanceSheetHasHeader_(headers, name) {
+  var want = normalizeGrievanceHeaderCell_(name).toLowerCase();
+  for (var i = 0; i < (headers || []).length; i++) {
+    var t = normalizeGrievanceHeaderCell_(headers[i]).toLowerCase();
+    if (!t) continue;
+    if (t === want) return true;
+    if (want === 'consequence' && t === 'consequense') return true;
+  }
+  return false;
+}
+
+/**
+ * Ensure risk-classification columns exist on Grievance Monitoring (row 1).
+ * Inserts after "Grievance Description" when present, else before "Verification Findings", else appends.
+ */
+function ensureGrievanceRiskHeaders_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var name = SHEETS.grievance;
+  if (!name) return null;
+  var ws = ss.getSheetByName(name);
+  if (!ws) {
+    ws = ss.insertSheet(name);
+    ws.getRange(1, 1, 1, GRIEVANCE_RISK_HEADERS.length).setValues([GRIEVANCE_RISK_HEADERS]);
+    return ws;
+  }
+
+  var lastCol = Math.max(ws.getLastColumn(), 1);
+  if (ws.getLastRow() === 0) {
+    ws.getRange(1, 1, 1, GRIEVANCE_RISK_HEADERS.length).setValues([GRIEVANCE_RISK_HEADERS]);
+    return ws;
+  }
+
+  var headers = ws.getRange(1, 1, 1, lastCol).getValues()[0].map(normalizeGrievanceHeaderCell_);
+
+  for (var c = 0; c < headers.length; c++) {
+    if (/^consequense$/i.test(headers[c]) && !grievanceSheetHasHeader_(headers, 'Consequence')) {
+      ws.getRange(1, c + 1).setValue('Consequence');
+      headers[c] = 'Consequence';
+    }
+  }
+
+  var missing = GRIEVANCE_RISK_HEADERS.filter(function(h) {
+    return !grievanceSheetHasHeader_(headers, h);
+  });
+  if (!missing.length) return ws;
+
+  var descIdx = -1;
+  var verIdx = -1;
+  for (var i = 0; i < headers.length; i++) {
+    var u = headers[i].toLowerCase();
+    if (descIdx < 0 && u === 'grievance description') descIdx = i;
+    if (verIdx < 0 && u === 'verification findings') verIdx = i;
+  }
+  var insertAt1 = descIdx >= 0 ? descIdx + 2 : (verIdx >= 0 ? verIdx + 1 : headers.length + 1);
+
+  ws.insertColumnsBefore(insertAt1, missing.length);
+  ws.getRange(1, insertAt1, 1, missing.length).setValues([missing]);
+  return ws;
+}
+
 /** Grievance sheet col J — header may be "Group" or "Grievance Subject Group". */
 function grievanceGroupHeader_(headers) {
   for (var i = 0; i < (headers || []).length; i++) {
@@ -3416,6 +3503,34 @@ function mirrorMillGroupNameOnRead_(obj) {
   mirrorGroupNameOnRead_(obj);
 }
 
+function mirrorMillCompanyNameOnRead_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  var val = String(obj['COMPANY NAME'] || obj['Company Name'] || '').trim();
+  if (!val) {
+    Object.keys(obj).forEach(function(k) {
+      if (k === '_row') return;
+      var nk = String(k).replace(/\s+/g, ' ').trim();
+      if (!/^company(\s*name)?$/i.test(nk)) return;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb/i.test(nk)) return;
+      var v = String(obj[k] || '').trim();
+      if (v && v !== '—' && v !== '-') val = v;
+    });
+  }
+  if (!val) {
+    Object.keys(obj).forEach(function(k) {
+      if (k === '_row') return;
+      var nk = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (nk.indexOf('company') === -1 || nk.indexOf('name') === -1) return;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb|mill/i.test(nk)) return;
+      var v = String(obj[k] || '').trim();
+      if (v && v !== '—' && v !== '-') val = v;
+    });
+  }
+  if (!val) return;
+  obj['COMPANY NAME'] = val;
+  obj['Company Name'] = val;
+}
+
 /** Header-aware TTP mirror — never map Year/Quarter into GROUP NAME. */
 function mirrorTtpFieldsByPosition_(obj, row, headers) {
   if (!obj || !row || !row.length || !headers || !headers.length) return;
@@ -3450,7 +3565,8 @@ function mirrorTtpFieldsByPosition_(obj, row, headers) {
 /** SUPPLY CPO/PK: use stored numeric value (getValues), not display string — avoids "66,000" vs "66.000" ambiguity. */
 function millSupplyUsesRawNumber_(header) {
   var u = String(header || '').trim().toUpperCase();
-  return u === 'SUPPLY CPO' || u === 'SUPPLY PK';
+  return u === 'SUPPLY CPO' || u === 'SUPPLY PK'
+    || u === 'DEFORESTATION WIDTH' || u === 'BURN AREA WIDTH' || u === 'PEAT WIDTH';
 }
 
 /** Date-only cells from Sheets → stable yyyy-MM-dd for API (avoids UTC off-by-one in JSON). */
@@ -3471,6 +3587,7 @@ function coerceSheetDateValue_(value) {
 }
 
 function getData(sheetKey) {
+  if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
   const sheet = getSheet(sheetKey);
   const range = sheet.getDataRange();
   const rows  = range.getValues();
@@ -3534,6 +3651,7 @@ function getData(sheetKey) {
     });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     if (sheetKey === 'mill') mirrorMillGroupNameOnRead_(obj);
+    if (sheetKey === 'mill') mirrorMillCompanyNameOnRead_(obj);
     if (sheetKey === 'ttp') {
       mirrorGroupNameOnRead_(obj);
       if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];
@@ -3616,7 +3734,11 @@ function addRow(sheetKey, data) {
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
     return { success: true, row: targetRow };
   }
-  if (sheetKey === 'grievance') resolveGrvGroupFieldKeys_(data, headers);
+  if (sheetKey === 'grievance') {
+    ensureGrievanceRiskHeaders_();
+    headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    resolveGrvGroupFieldKeys_(data, headers);
+  }
   const newRow  = headers.map(function(h) {
     return coerceSheetDateValue_(data[h] !== undefined ? data[h] : '');
   });
@@ -3628,6 +3750,7 @@ function updateRow(sheetKey, rowNum, data) {
   const sheet = getSheet(sheetKey);
   const r     = Number(rowNum);
   if (!r || r < 2) throw new Error('Invalid row number for update: ' + rowNum);
+  if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
   let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   if (sheetKey === 'ttp') {
     const hdr = detectTtpHeaderRow_(sheet);
@@ -4768,6 +4891,21 @@ function submitSupplyDraft_(batchId, rows) {
       patch['PRODUCT SUPPLY'] = psTokens.length > 1 ? 'CPO, PK' : psTokens[0];
     } else if (row['PRODUCT SUPPLY']) {
       patch['PRODUCT SUPPLY'] = row['PRODUCT SUPPLY'];
+    }
+
+    var qtyCpo = row['SUPPLY CPO'];
+    var qtyPk  = row['SUPPLY PK'];
+    if ((qtyCpo === undefined || qtyCpo === null || String(qtyCpo).trim() === '') && row.SUPPLY_QTY && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
+      qtyCpo = row.SUPPLY_QTY;
+    }
+    if ((qtyPk === undefined || qtyPk === null || String(qtyPk).trim() === '') && row.SUPPLY_QTY && (hasPk || supplyType.indexOf('PK') >= 0)) {
+      qtyPk = row.SUPPLY_QTY;
+    }
+    if (qtyCpo !== undefined && qtyCpo !== null && String(qtyCpo).trim() !== '' && (hasCpo || supplyType.indexOf('CPO') >= 0)) {
+      patch['SUPPLY CPO'] = qtyCpo;
+    }
+    if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '' && (hasPk || supplyType.indexOf('PK') >= 0)) {
+      patch['SUPPLY PK'] = qtyPk;
     }
 
     try {
