@@ -3939,8 +3939,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwEMGraPR4dRO0BNkf5esMVzyEKPuo7Cjg-iScx1Jv7Tw8eVUousYL_86yZZhIlxPYB/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwEMGraPR4dRO0BNkf5esMVzyEKPuo7Cjg-iScx1Jv7Tw8eVUousYL_86yZZhIlxPYB';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwhCjPjWxI4dHTURpPY1jZOflPJ8JVmyKR6yhLBlTpu8IfbQHBrFmQwdO9zNN3S0bAlew/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwhCjPjWxI4dHTURpPY1jZOflPJ8JVmyKR6yhLBlTpu8IfbQHBrFmQwdO9zNN3S0bAlew';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -8288,7 +8288,11 @@ function initDashboardApp() {
   }
 
   function ttpQuarterToken_(row) {
-    const q = millQuarterVal(row);
+    let q = millQuarterVal(row);
+    if (!q) {
+      const cc = String(row['COMPANY CODE'] || '').trim();
+      if (/^Q[1-4]$/i.test(cc)) q = cc;
+    }
     if (!q) return '';
     const n = parseMillQuarterSort(q);
     if (n >= 1 && n <= 4) return 'Q' + n;
@@ -8296,7 +8300,15 @@ function initDashboardApp() {
   }
 
   function ttpYearToken_(row) {
-    const y = millYearVal(row);
+    let y = millYearVal(row);
+    if (!y) {
+      const cc = String(row['COMPANY CODE'] || '').trim();
+      if (/^(19|20)\d{2}$/.test(cc)) y = cc;
+    }
+    if (!y) {
+      const gn = String(row['GROUP NAME'] || '').trim();
+      if (/^(19|20)\d{2}$/.test(gn)) y = gn;
+    }
     if (!y) return '';
     const n = parseMillYearSort(y);
     return n ? String(n) : String(y).trim();
@@ -8683,6 +8695,7 @@ function initDashboardApp() {
 
   function ttpIsDataRow_(row) {
     if (!row || typeof row !== 'object') return false;
+    if (ttpLooksLikeHeaderEchoRow_(row)) return false;
     if (row._sddSearchBlob && /total traceable cpo|total traceable pk/.test(row._sddSearchBlob)) {
       return false;
     }
@@ -8693,14 +8706,10 @@ function initDashboardApp() {
       const v = String(row[k] || '').trim();
       if (/^total traceable/i.test(v)) return false;
     }
-    function ok(v) {
-      const s = String(v || '').trim();
-      return s.length > 0 && s !== '—' && s !== '-';
-    }
-    if (ok(ttpRowCompanyNameVal_(row))) return true;
-    if (ok(millPickField_(row, ['MILL NAME', 'Mill Name']))) return true;
-    if (ok(millPickField_(row, ['FFB SUPPLIER NAME', 'FFB Supplier Name']))) return true;
-    if (ok(pickMillGroupName_(row))) return true;
+    const companyName = ttpRowCompanyNameVal_(row);
+    if (companyName.length > 0 && companyName !== '—' && companyName !== '-') return true;
+    if (String(millPickField_(row, ['FFB SUPPLIER NAME', 'FFB Supplier Name']) || '').trim()) return true;
+    if (String(millPickField_(row, ['MILL NAME', 'Mill Name']) || '').trim()) return true;
     return false;
   }
 
@@ -8908,6 +8917,8 @@ function initDashboardApp() {
       if (y && !seenY[y]) { seenY[y] = true; years.push(y); }
     });
     years.sort(function(a, b) { return parseInt(b, 10) - parseInt(a, 10); });
+    if (!years.length) ttpPeriodYear = '';
+    else if (!ttpPeriodYear || years.indexOf(ttpPeriodYear) === -1) ttpPeriodYear = years[0];
     yearSel.innerHTML = years.length
       ? years.map(function(y) { return '<option value="' + escHtml(y) + '">' + escHtml(y) + '</option>'; }).join('')
       : '<option value="">—</option>';
@@ -9999,15 +10010,37 @@ function initDashboardApp() {
     return '';
   }
 
+  function ttpLooksLikeHeaderEchoRow_(row) {
+    if (!row || typeof row !== 'object') return false;
+    const no = String(row['NO'] || '').trim().toUpperCase();
+    if (no === 'NO' || no === 'NO.') return true;
+    const co = String(row['COMPANY NAME'] || row['Company Name'] || '').trim().toUpperCase();
+    if (co === 'COMPANY NAME' || co === 'COMPANY CODE' || co === 'GROUP NAME') return true;
+    const mill = String(row['MILL NAME'] || '').trim().toUpperCase();
+    if (/^GROUP\s*NAME$/i.test(mill) || mill === 'COMPANY NAME') return true;
+    const cc = String(row['COMPANY CODE'] || '').trim();
+    if (/^quarter$/i.test(cc) || /^year$/i.test(cc)) return true;
+    return false;
+  }
+
+  /** Set Year only when API row is shifted; do not rewrite company/mill (breaks popups & %). */
+  function ttpRepairMisalignedApiRow_(row) {
+    if (!row || typeof row !== 'object') return row;
+    if (String(millPickField_(row, ['Year', 'YEAR']) || '').trim()) return row;
+    const cc = String(row['COMPANY CODE'] || '').trim();
+    if (!/^(19|20)\d{2}$/.test(cc)) return row;
+    const o = Object.assign({}, row);
+    o['Year'] = cc;
+    return o;
+  }
+
   function normalizeTtpApiRow_(row) {
     if (!row || typeof row !== 'object') return row;
-    const o = Object.assign({}, row);
+    const o = ttpRepairMisalignedApiRow_(Object.assign({}, row));
     if (ttpLooksLikeBadGroupName_(o['GROUP NAME'])) delete o['GROUP NAME'];
     let group = pickMillGroupName_(o);
     if (ttpLooksLikeBadGroupName_(group)) group = '';
     if (group) o['GROUP NAME'] = group;
-    const company = pickMillCompanyName_(o);
-    if (company) o['COMPANY NAME'] = company;
     const ffbGroup = pickTtpFfbSupplierGroupName_(o);
     if (ffbGroup) o['FFB SUPPLIER GROUP NAME'] = ffbGroup;
     return o;
@@ -16066,6 +16099,7 @@ function initDashboardApp() {
     eudrUpdateFfbSummary_();
     eudrUpdateStats_();
     scheduleRenderEudrTable_();
+    mrdInvalidateEudrCache_();
     if (eudrEditRow) {
       const badgesEl = document.getElementById('eudrDetailBadges');
       const millRow = eudrModalMillRow || eudrPickBestMillRow_(eudrFindMillRowsForEntity_(eudrEditRow)) || {};
@@ -16478,6 +16512,9 @@ function initDashboardApp() {
       eudrFormulaConfig = cfg;
       eudrFormulaSavedSnapshot_ = eudrFormulaSnapshotKey_(cfg);
       eudrMarkFormulaDirty_();
+      eudrClearStatusCache_();
+      eudrUpdateStats_();
+      mrdInvalidateEudrCache_();
       if (statusEl) statusEl.textContent = 'Saved';
       setTimeout(function() {
         if (statusEl && statusEl.textContent === 'Saved') statusEl.textContent = '';
@@ -17060,8 +17097,7 @@ function initDashboardApp() {
       loading.style.display = 'none';
       table.style.display = 'table';
       scheduleRenderEudrTable_();
-      _mrdEudrCache = null;
-      if (typeof window.__mrdResetEudrFetch_ === 'function') window.__mrdResetEudrFetch_();
+      mrdInvalidateEudrCache_();
       if (typeof window.rebuildMonthlyReportSnapshot_ === 'function') {
         window.rebuildMonthlyReportSnapshot_();
       }
@@ -24352,6 +24388,13 @@ function initDashboardApp() {
   // ─── MONTHLY REPORT (DETAIL) ───────────────────────────────────────────────
   let _mrdInited = false;
   let _mrdEudrCache = null;
+  let _mrdEudrTtpLen = 0;
+
+  function mrdInvalidateEudrCache_() {
+    _mrdEudrCache = null;
+    _mrdEudrTtpLen = 0;
+    if (typeof window.__mrdResetEudrFetch_ === 'function') window.__mrdResetEudrFetch_();
+  }
 
   function mrdMillTtmRowPct_(row, product) {
     if (!millSourceTypeIsForTtm_(row)) return NaN;
@@ -24557,8 +24600,7 @@ function initDashboardApp() {
           return ensureNblListsForCheck_();
         },
         clearEudrCache: function() {
-          _mrdEudrCache = null;
-          if (typeof window.__mrdResetEudrFetch_ === 'function') window.__mrdResetEudrFetch_();
+          mrdInvalidateEudrCache_();
         },
         resolveNblBy: function(row, lists) {
           const matches = millNblSourceMatchesForRow_(row, lists || { registry: [], unilever: [] });
@@ -24599,8 +24641,6 @@ function initDashboardApp() {
           return [];
         },
         fetchEudrPotential: async function() {
-          if (_mrdEudrCache && _mrdEudrCache.length) return _mrdEudrCache;
-
           function mrdEudrPotentialItem_(eudrRow) {
             return {
               row: eudrRow,
@@ -24621,25 +24661,21 @@ function initDashboardApp() {
           }
 
           await ensureMillDataForEudr_();
-          if (!ttpLoaded || !(ttpData && ttpData.length)) {
-            try {
-              await Promise.race([
-                loadTTPData(),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('TTP timeout')); }, 10000); }),
-              ]);
-            } catch (ttpErr) {
-              console.warn('[MRD] TTP unavailable for EUDR (proceeding without):', ttpErr && ttpErr.message);
-            }
-          }
+          await this.ensureCoreData();
           await loadEudrFormulaConfig_();
           eudrClearStatusCache_();
 
+          const ttpLen = (ttpData && ttpData.length) || 0;
+
           if (eudrLoaded && Array.isArray(eudrRows) && eudrRows.length) {
             const fromPanel = mrdFilterPotentialRows_(eudrRows);
-            if (fromPanel.length) {
-              _mrdEudrCache = fromPanel;
-              return fromPanel;
-            }
+            _mrdEudrCache = fromPanel;
+            _mrdEudrTtpLen = ttpLen;
+            return fromPanel;
+          }
+
+          if (_mrdEudrCache && _mrdEudrCache.length && _mrdEudrTtpLen === ttpLen && ttpLen > 0) {
+            return _mrdEudrCache;
           }
 
           const mills = eudrBuildMillRegistry_();
@@ -24651,10 +24687,9 @@ function initDashboardApp() {
           }
           const rows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
           const out = mrdFilterPotentialRows_(rows);
-          if (out.length && (!_mrdEudrCache || out.length >= _mrdEudrCache.length)) {
-            _mrdEudrCache = out;
-          }
-          return out.length ? out : (_mrdEudrCache || []);
+          _mrdEudrCache = out;
+          _mrdEudrTtpLen = ttpLen;
+          return out;
         },
       });
       _mrdInited = true;

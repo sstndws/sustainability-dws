@@ -490,7 +490,7 @@ const CANONICAL_ALIASES = {
 };
 
 const TTP_HEADERS = [
-  'NO', 'COMPANY CODE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
+  'NO', 'Year', 'COMPANY CODE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
   'FFB SUPPLIER GROUP NAME', 'FFB SUPPLIER NAME', 'CATEGORY', 'LAT', 'LONG',
   'VILLAGE ID', 'VILLAGE', 'SUBDISTRICT', 'DISTRICT', 'PROVINCE',
   'CONCESION AREA', 'PLANTED AREA', 'NUMBER OD SMALLHOLDERS', 'TAHUN TANAM',
@@ -616,7 +616,7 @@ function doGet(e) {
     const sheetKey = (e && e.parameter && e.parameter.sheet)   || '';
 
     if (action === 'getAll') {
-      if (sheetKey === 'ttp') ensureTtpHeaders_();
+      // TTP: do not run ensureTtpHeaders_ on read — it can mis-detect header row and shift columns.
       if (sheetKey === 'contactSupplier') ensureContactSupplierHeaders_();
       if (sheetKey === 'nbl') ensureNblHeaders_();
       if (sheetKey === 'unileverNbl') ensureUnileverNblHeaders_();
@@ -641,7 +641,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-ttp-header-row3',
+        version: 'v3-ttp-row3-restore',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
@@ -1286,6 +1286,10 @@ function ttpRowHasContent_(obj) {
   if (String(obj['MILL NAME'] || '').trim()) return true;
   if (String(obj['FFB SUPPLIER NAME'] || '').trim()) return true;
   if (String(obj['GROUP NAME'] || '').trim()) return true;
+  if (String(obj['UML ID'] || '').trim()) return true;
+  var q = String(obj['Quarter'] || obj['QUARTER'] || '').trim();
+  var y = String(obj['Year'] || obj['YEAR'] || '').trim();
+  if (q && y && !/^total traceable/i.test(q)) return true;
   return false;
 }
 
@@ -2619,7 +2623,8 @@ function ensureTtpHeaders_() {
 
   normalizeTtpLegacyHeaders_(sheet);
 
-  const hdrRowInfo = detectTtpHeaderRow_(sheet);
+  const rows = sheet.getDataRange().getValues();
+  const hdrRowInfo = resolveTtpHeaderForGetData_(rows, sheet);
   const headerRow  = hdrRowInfo ? hdrRowInfo.headerRow : 1;
   const existing    = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0]
                            .map(function(h) { return String(h || '').trim(); });
@@ -2657,25 +2662,256 @@ function detectHeaderRowByKeys_(sheet, requiredKeys, scanMaxRows) {
   return null;
 }
 
-function isTtpInvalidHeaderRow_(headers) {
+function isTtpKpiBannerRow_(headers) {
   var list = (headers || []).map(function(h) { return String(h || '').trim(); }).filter(Boolean);
-  if (!list.length) return true;
   for (var i = 0; i < list.length; i++) {
     var h = list[i];
     var hu = h.toUpperCase();
     if (/^TOTAL TRACEABLE/i.test(h)) return true;
     if (/^TOTAL CPO|^TOTAL PK/i.test(hu)) return true;
-    if (/^[\d.,]+$/.test(h)) return true;
   }
   return false;
 }
 
-function ttpHeaderRowLooksCanonical_(rowLower) {
+function isTtpInvalidHeaderRow_(headers) {
+  var list = (headers || []).map(function(h) { return String(h || '').trim(); }).filter(Boolean);
+  if (!list.length) return true;
+  if (isTtpKpiBannerRow_(headers)) return true;
+  var rowLower = list.map(function(h) { return h.toLowerCase(); });
+  if (ttpHeaderRowLooksCanonical_(rowLower)) return false;
+  // Likely a data row mistaken for header (1 | Q4 | 2025 | …).
+  var dataLike = 0;
+  for (var j = 0; j < list.length; j++) {
+    var t = list[j];
+    if (/^Q[1-4]$/i.test(t)) dataLike++;
+    else if (/^(19|20)\d{2}$/.test(t)) dataLike++;
+    else if (/^\d+$/.test(t) && t.length <= 3) dataLike++;
+  }
+  if (dataLike >= 2) return true;
+  for (var k = 0; k < list.length; k++) {
+    if (/^[\d.,]+$/.test(list[k]) && list[k].length > 6) return true;
+  }
+  return false;
+}
+
+function ttpHeaderRowHasNoYearLayout_(headers) {
+  var h = (headers || []).map(function(x) { return String(x || '').replace(/\s+/g, ' ').trim(); });
+  return h.length >= 2
+    && /^no\.?$/i.test(h[0])
+    && /^year$/i.test(h[1]);
+}
+
+function ttpHeaderRowLooksYearOnly_(rowLower) {
+  if (!rowLower || !rowLower.length) return false;
+  if (rowLower.indexOf('quarter') !== -1) return false;
+  if (rowLower.indexOf('year') === -1) return false;
+  if (rowLower.indexOf('no') === -1 && rowLower.indexOf('no.') === -1) return false;
+  return rowLower.indexOf('company code') !== -1
+    || rowLower.indexOf('company name') !== -1
+    || rowLower.indexOf('group name') !== -1
+    || rowLower.indexOf('mill name') !== -1;
+}
+
+function ttpHeaderRowLooksModern_(rowLower) {
   if (!rowLower || !rowLower.length) return false;
   return rowLower.indexOf('quarter') !== -1
     && rowLower.indexOf('year') !== -1
     && rowLower.indexOf('company name') !== -1
     && (rowLower.indexOf('mill name') !== -1 || rowLower.indexOf('uml id') !== -1);
+}
+
+function ttpHeaderRowLooksLegacy_(rowLower) {
+  if (!rowLower || !rowLower.length) return false;
+  if (ttpHeaderRowLooksModern_(rowLower) || ttpHeaderRowLooksYearOnly_(rowLower)) return false;
+  return rowLower.indexOf('company name') !== -1
+    && (rowLower.indexOf('mill name') !== -1 || rowLower.indexOf('uml id') !== -1)
+    && (rowLower.indexOf('no') !== -1 || rowLower.indexOf('no.') !== -1);
+}
+
+function ttpHeaderRowLooksCanonical_(rowLower) {
+  return ttpHeaderRowLooksModern_(rowLower)
+    || ttpHeaderRowLooksYearOnly_(rowLower)
+    || ttpHeaderRowLooksLegacy_(rowLower);
+}
+
+function normalizeTtpHeaderRow_(headers) {
+  var h = (headers || []).map(function(x) { return String(x || '').replace(/\s+/g, ' ').trim(); });
+  if (h.length < 2 || !/^no\.?$/i.test(h[0])) return h;
+  var hasYear = h.some(function(x) { return String(x).toLowerCase() === 'year'; });
+  if (hasYear) return h;
+  var l1 = String(h[1] || '').toLowerCase();
+  var l2 = String(h[2] || '').toLowerCase();
+  // NO | (empty) | COMPANY CODE — merged/blank Year header cell in Sheets.
+  if (!l1 && l2 === 'company code') {
+    h[1] = 'Year';
+    return h;
+  }
+  // NO | COMPANY CODE | … — Year column exists in sheet but missing from header row labels.
+  if (l1 === 'company code') {
+    h.splice(1, 0, 'Year');
+  }
+  return h;
+}
+
+function mirrorTtpYearColumnOnRead_(obj, rowCells) {
+  if (!obj || String(obj['Year'] || '').trim()) return;
+  if (rowCells && rowCells.length > 1) {
+    var y = formatApiCellValue_(rowCells[1]);
+    if (/^(19|20)\d{2}$/.test(String(y).trim())) {
+      obj['Year'] = String(y).trim();
+      return;
+    }
+  }
+  var cc = String(obj['COMPANY CODE'] || '').trim();
+  if (/^(19|20)\d{2}$/.test(cc)) {
+    obj['Year'] = cc;
+  }
+}
+
+function ttpFindHeaderStartCol_(headers) {
+  for (var i = 0; i < (headers || []).length; i++) {
+    var h = String(headers[i] || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (h === 'no' || h === 'no.' || h === 'quarter' || h === 'year' || h === 'company name' || h === 'company code') {
+      return i;
+    }
+  }
+  return 0;
+}
+
+function ttpRowLooksLikeKpiData_(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.keys(obj).some(function(k) {
+    if (k === '_row') return false;
+    return /^total traceable/i.test(String(obj[k] || '').trim());
+  });
+}
+
+function ttpRowLooksLikeHeaderEcho_(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  var no = String(obj['NO'] || '').trim().toUpperCase();
+  if (no === 'NO' || no === 'NO.') return true;
+  var co = String(obj['COMPANY NAME'] || obj['Company Name'] || '').trim().toUpperCase();
+  if (co === 'COMPANY NAME' || co === 'COMPANY CODE' || co === 'GROUP NAME') return true;
+  var mill = String(obj['MILL NAME'] || '').trim().toUpperCase();
+  if (/^GROUP\s*NAME$/i.test(mill)) return true;
+  var cc = String(obj['COMPANY CODE'] || '').trim();
+  if (/^quarter$/i.test(cc) || /^year$/i.test(cc)) return true;
+  return false;
+}
+
+/** Monitoring TTP/TTM: column headers live on sheet row 3 (rows 1–2 = KPI or blank). */
+var TTP_STANDARD_HEADER_ROW = 3;
+
+function ttpRowLooksLikeHeaderLabels_(headers) {
+  var h = (headers || []).map(function(x) { return String(x || '').replace(/\s+/g, ' ').trim(); });
+  if (!h.some(Boolean)) return false;
+  if (isTtpKpiBannerRow_(h)) return false;
+  var rowLower = h.map(function(x) { return String(x).toLowerCase(); });
+  if (ttpHeaderRowHasNoYearLayout_(h)) return true;
+  if (ttpHeaderRowLooksModern_(rowLower)) return true;
+  if (ttpHeaderRowLooksYearOnly_(rowLower)) return true;
+  if (ttpHeaderRowLooksLegacy_(rowLower)) return true;
+  if (!/^no\.?$/i.test(h[0])) return false;
+  return rowLower.indexOf('year') !== -1
+    || rowLower.indexOf('company code') !== -1
+    || rowLower.indexOf('company name') !== -1
+    || rowLower.indexOf('mill name') !== -1
+    || rowLower.indexOf('group name') !== -1;
+}
+
+function ttpPackHeaderRow_(rows, ri) {
+  var cand = rows[ri].map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
+  var startCol = ttpFindHeaderStartCol_(cand);
+  var trimmed = startCol > 0 ? cand.slice(startCol) : cand;
+  return {
+    headerRow: ri + 1,
+    headers: cand,
+    startCol: startCol,
+    trimmed: trimmed,
+    trimmedLower: trimmed.map(function(h) { return h.toLowerCase(); })
+  };
+}
+
+/** Prefer canonical header row; never use KPI banner rows 1–2. */
+function resolveTtpHeaderForGetData_(rows, sheet) {
+  var scan = Math.min((rows || []).length, 25);
+
+  // Sheet standard: all column headers on row 3; data from row 4.
+  if (rows.length >= TTP_STANDARD_HEADER_ROW) {
+    var row3 = ttpPackHeaderRow_(rows, TTP_STANDARD_HEADER_ROW - 1);
+    if (ttpRowLooksLikeHeaderLabels_(row3.trimmed)) {
+      return { headerRow: TTP_STANDARD_HEADER_ROW, headers: row3.headers, startCol: row3.startCol };
+    }
+  }
+
+  var kpiPad = 0;
+  if (rows.length >= 1 && isTtpKpiBannerRow_(rows[0].map(function(h) { return String(h || '').trim(); }))) {
+    kpiPad = 2;
+  }
+
+  function pack_(ri) {
+    return ttpPackHeaderRow_(rows, ri);
+  }
+
+  // Explicit NO | Year anywhere in top rows.
+  for (var ri0 = 0; ri0 < scan; ri0++) {
+    var c0 = pack_(ri0);
+    if (ttpHeaderRowHasNoYearLayout_(c0.trimmed)) {
+      return { headerRow: c0.headerRow, headers: c0.headers, startCol: c0.startCol };
+    }
+  }
+
+  // Modern / year-only layout — skip KPI rows 1–2.
+  for (var ri = kpiPad; ri < scan; ri++) {
+    var c = pack_(ri);
+    if (!c.headers.some(Boolean)) continue;
+    if (isTtpInvalidHeaderRow_(c.trimmed)) continue;
+    if (ttpHeaderRowLooksModern_(c.trimmedLower) || ttpHeaderRowLooksYearOnly_(c.trimmedLower)) {
+      return { headerRow: c.headerRow, headers: c.headers, startCol: c.startCol };
+    }
+  }
+
+  // Legacy layout (no Quarter/Year header cols).
+  for (var ri2 = kpiPad; ri2 < scan; ri2++) {
+    var c2 = pack_(ri2);
+    if (!c2.headers.some(Boolean)) continue;
+    if (isTtpKpiBannerRow_(c2.headers)) continue;
+    if (isTtpInvalidHeaderRow_(c2.trimmed)) continue;
+    if (ttpHeaderRowLooksLegacy_(c2.trimmedLower)) {
+      return { headerRow: c2.headerRow, headers: c2.headers, startCol: c2.startCol };
+    }
+  }
+
+  // KPI row 1 with legacy headers in trailing columns only (very old sheets).
+  if (kpiPad > 0) {
+    for (var ri3 = 0; ri3 < kpiPad; ri3++) {
+      var c3 = pack_(ri3);
+      if (!isTtpKpiBannerRow_(c3.headers)) continue;
+      if (ttpHeaderRowLooksLegacy_(c3.trimmedLower)) {
+        return { headerRow: c3.headerRow, headers: c3.headers, startCol: c3.startCol };
+      }
+    }
+  }
+
+  var detected = detectTtpHeaderRow_(sheet);
+  if (detected && detected.headers && detected.headers.length) {
+    if (kpiPad > 0 && detected.headerRow <= kpiPad) {
+      detected = null;
+    } else {
+      var sc = ttpFindHeaderStartCol_(detected.headers);
+      return { headerRow: detected.headerRow, headers: detected.headers, startCol: sc };
+    }
+  }
+  return null;
+}
+
+/** Fallback when row 3 exists and starts with NO — data always begins row 4. */
+function resolveTtpHeaderFallbackRow3_(rows) {
+  if (!rows || rows.length < TTP_STANDARD_HEADER_ROW) return null;
+  var row3 = ttpPackHeaderRow_(rows, TTP_STANDARD_HEADER_ROW - 1);
+  if (!row3.headers.some(Boolean)) return null;
+  if (!/^no\.?$/i.test(String(row3.trimmed[0] || ''))) return null;
+  return { headerRow: TTP_STANDARD_HEADER_ROW, headers: row3.headers, startCol: row3.startCol };
 }
 
 function detectTtpHeaderRow_(sheet) {
@@ -2721,9 +2957,11 @@ function detectTtpHeaderRow_(sheet) {
     const hasFfb = rowLower.indexOf('ffb supplier name') !== -1;
     const hasGroup = rowLower.indexOf('group name') !== -1;
     const hasQuarterYear = rowLower.indexOf('quarter') !== -1 && rowLower.indexOf('year') !== -1;
+    const hasYearOnly = rowLower.indexOf('year') !== -1 && rowLower.indexOf('quarter') === -1;
 
     var score = hitPrimary;
     if (hasQuarterYear) score += 25;
+    if (hasYearOnly) score += 22;
     if (hasCompany && hasMill) score += 6;
     if (hasFfb) score += 3;
     if (hasGroup) score += 2;
@@ -3688,15 +3926,33 @@ function getData(sheetKey) {
   let headerRowNum = 1;
   let headers = rows[0];
   let dataRows = rows.slice(1);
+  let ttpStartCol = 0;
 
-  // Monitoring TTP/TTM may keep title/meta rows above headers.
+  // Monitoring TTP/TTM: headers on sheet row 3, data from row 4.
   if (sheetKey === 'ttp') {
-    const hdr = detectTtpHeaderRow_(sheet);
-    if (hdr && hdr.headers && hdr.headers.length) {
-      headerRowNum = hdr.headerRow;
-      headers = hdr.headers;
-      dataRows = rows.slice(headerRowNum);
+    var ttpHardRow3 = rows.length >= TTP_STANDARD_HEADER_ROW
+      && /^no\.?$/i.test(String(rows[TTP_STANDARD_HEADER_ROW - 1][0] || '').replace(/\s+/g, ' ').trim());
+    if (ttpHardRow3) {
+      headerRowNum = TTP_STANDARD_HEADER_ROW;
+      ttpStartCol = 0;
+      headers = rows[TTP_STANDARD_HEADER_ROW - 1].map(function(h) {
+        return String(h || '').replace(/\s+/g, ' ').trim();
+      });
+      dataRows = rows.slice(TTP_STANDARD_HEADER_ROW);
+    } else {
+      var hdr = resolveTtpHeaderForGetData_(rows, sheet);
+      if (!hdr || !hdr.headers || !hdr.headers.length) {
+        hdr = resolveTtpHeaderFallbackRow3_(rows);
+      }
+      if (hdr && hdr.headers && hdr.headers.length) {
+        headerRowNum = hdr.headerRow;
+        ttpStartCol = hdr.startCol || 0;
+        headers = ttpStartCol > 0 ? hdr.headers.slice(ttpStartCol) : hdr.headers;
+        dataRows = rows.slice(headerRowNum);
+      }
     }
+    headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
+    headers = normalizeTtpHeaderRow_(headers);
   }
 
   if (sheetKey === 'blMonitoring') {
@@ -3718,14 +3974,17 @@ function getData(sheetKey) {
     headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
   }
 
-  // Preserve display formatting (e.g. volume "66.000") for Mill & BL Monitoring.
-  const dispRows = (sheetKey === 'mill' || sheetKey === 'blMonitoring')
+  // Preserve display formatting (Mill, BL Monitoring, TTP %/volume cells).
+  const dispRows = (sheetKey === 'mill' || sheetKey === 'blMonitoring' || sheetKey === 'ttp')
     ? range.getDisplayValues()
     : null;
   const dispDataRows = dispRows ? dispRows.slice(headerRowNum) : null;
 
   return dataRows.map(function(row, i) {
     const sourceRow = dispDataRows ? dispDataRows[i] : row;
+    const ttpRow = (sheetKey === 'ttp' && ttpStartCol > 0) ? row.slice(ttpStartCol) : row;
+    const ttpSourceRow = (sheetKey === 'ttp' && ttpStartCol > 0 && dispDataRows)
+      ? dispDataRows[i].slice(ttpStartCol) : sourceRow;
     let obj;
     if (sheetKey === 'blMonitoring') {
       obj = blCanonicalizeRow_(headers, sourceRow);
@@ -3733,13 +3992,17 @@ function getData(sheetKey) {
       return obj;
     }
     obj = { _row: headerRowNum + i + 1 };
+    var rowCells = sheetKey === 'ttp' ? ttpRow : row;
+    var srcCells = sheetKey === 'ttp' ? ttpSourceRow : sourceRow;
     headers.forEach(function(h, j) {
-      var rawVal = row[j];
+      var key = String(h || '').replace(/\s+/g, ' ').trim();
+      if (!key) return;
+      var rawVal = rowCells[j];
       if (sheetKey === 'mill' && millSupplyUsesRawNumber_(h)
           && typeof rawVal === 'number' && !isNaN(rawVal)) {
-        obj[h] = rawVal;
+        obj[key] = rawVal;
       } else {
-        obj[h] = formatApiCellValue_(sourceRow[j]);
+        obj[key] = formatApiCellValue_(srcCells[j]);
       }
     });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
@@ -3750,7 +4013,8 @@ function getData(sheetKey) {
       if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];
       mirrorGroupNameOnRead_(obj);
       mirrorMillCompanyNameOnRead_(obj);
-      mirrorTtpFieldsByPosition_(obj, row, headers);
+      mirrorTtpYearColumnOnRead_(obj, rowCells);
+      mirrorTtpFieldsByPosition_(obj, ttpRow, headers);
     }
     if (sheetKey === 'nbl') {
       mirrorNblFieldsOnRead_(obj);
@@ -3763,7 +4027,8 @@ function getData(sheetKey) {
   }).filter(function(obj) {
     if (sheetKey === 'facilityProfile') return facilityProfileRowHasContent_(obj);
     if (sheetKey === 'mill') return millRowHasContent_(obj);
-    if (sheetKey === 'ttp') return ttpRowHasContent_(obj);
+    // TTP: drop KPI/summary rows and header echo; detail filter on dashboard (ttpIsDataRow_).
+    if (sheetKey === 'ttp') return !ttpRowLooksLikeKpiData_(obj) && !ttpRowLooksLikeHeaderEcho_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });

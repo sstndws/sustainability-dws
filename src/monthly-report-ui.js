@@ -51,6 +51,7 @@ let _nblByCache = new Map();
 let _sddCache = [];
 let _facilityBundles = [];
 let _lastTtpCount = 0;
+let _lastEudrTtpCount = -1;
 let _eudrFetchOk = false;
 let _ttpFetchOk = false;
 let _renderRaf = 0;
@@ -1122,7 +1123,9 @@ async function loadEudrInBackground(gen, opts) {
   opts = opts || {};
   if (!_deps.fetchEudrPotential) return;
   if (_eudrPending) return;
-  if (!opts.force && _eudrFetchOk && _snapshot && _snapshot.eudrPotential && _snapshot.eudrPotential.length && !_snapshot.eudrLoading) {
+  const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
+  const ttpStable = ttpLen > 0 && ttpLen === _lastEudrTtpCount;
+  if (!opts.force && ttpStable && _eudrFetchOk && _snapshot && _snapshot.eudrPotential && _snapshot.eudrPotential.length && !_snapshot.eudrLoading) {
     return;
   }
   _eudrPending = true;
@@ -1134,6 +1137,7 @@ async function loadEudrInBackground(gen, opts) {
     const eudr = await _deps.fetchEudrPotential();
     if (gen !== _loadGen || !_snapshot) return;
     _eudrFetchOk = true;
+    _lastEudrTtpCount = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
     _snapshot.eudrPotential = eudr;
     _snapshot.eudrLoading = false;
     _snapshot.stats.eudrPotential = eudr.length;
@@ -1175,7 +1179,11 @@ function rebuildSnapshot_(opts) {
 
 function rebuildMonthlyReportSnapshot_() {
   if (!_deps) return;
-  _ttpFetchOk = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0) > 0;
+  const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
+  _ttpFetchOk = ttpLen > 0;
+  if (_eudrFetchOk && ttpLen > 0 && ttpLen !== _lastEudrTtpCount) {
+    if (_deps.clearEudrCache) _deps.clearEudrCache();
+  }
   _snapshot = rebuildSnapshot_({});
   scheduleRenderAll();
   updateScopeText();
@@ -1289,6 +1297,7 @@ async function loadAndRender(opts) {
   const force = !!opts.force;
   if (force) {
     _eudrFetchOk = false;
+    _lastEudrTtpCount = -1;
     _ttpFetchOk = false;
   }
   const gen = ++_loadGen;
