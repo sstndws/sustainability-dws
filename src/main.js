@@ -3944,8 +3944,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzxvlLyrztPd5EqCRnesji7yQfvfqzriAGAiKazqTgjGFenFUtI_bm_Zx3u1x-xG_PvoA/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzxvlLyrztPd5EqCRnesji7yQfvfqzriAGAiKazqTgjGFenFUtI_bm_Zx3u1x-xG_PvoA';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -23487,7 +23487,7 @@ function initDashboardApp() {
     const wantCo = supplyCompanyKey_(companyName);
     if (!wantCo) return [];
     return batch.rows.filter(function(row) {
-      return !row._submitted && supplyCompanyKey_(row['COMPANY NAME']) === wantCo;
+      return !supplyRowIsSubmitted_(row) && supplyCompanyKey_(row['COMPANY NAME']) === wantCo;
     });
   }
 
@@ -23861,6 +23861,29 @@ function initDashboardApp() {
       || String(row.profile_draft_saved || '').toLowerCase() === 'true'));
   }
 
+  function supplyRowIsSubmitted_(row) {
+    if (!row) return false;
+    if (row._submitted === true) return true;
+    return String(row.status || '').trim().toLowerCase() === 'submitted';
+  }
+
+  function supplyApplyDraftRowStatus_(row) {
+    if (!row) return;
+    if (supplyRowIsSubmitted_(row)) {
+      row._submitted = true;
+      row.status = 'submitted';
+    }
+  }
+
+  function supplyNormalizeBatchSubmittedState_(batch) {
+    if (!batch || !batch.rows) return;
+    batch.rows.forEach(supplyApplyDraftRowStatus_);
+    const total = batch.rows.length;
+    const done = batch.rows.filter(function(r) { return r._submitted; }).length;
+    if (total > 0 && done === total) batch.status = 'submitted';
+    else if (done > 0 && batch.status === 'submitted') batch.status = 'draft';
+  }
+
   function supplyPrepareMillSavePayload_(data, batch) {
     const payload = millStripComputedFromSavePayload_(Object.assign({}, data || {}));
     if (!payload['SOURCE TYPE']) payload['SOURCE TYPE'] = 'MILL';
@@ -23899,7 +23922,7 @@ function initDashboardApp() {
     supplyCopyModalIntoDraftRow_(draftRow, data, batch);
     draftRow._profile_draft_saved = true;
     draftRow.profile_draft_saved = 'true';
-    draftRow.status = 'draft';
+    if (!supplyRowIsSubmitted_(draftRow)) draftRow.status = 'draft';
     await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: [draftRow], meta: {} });
     renderSupplyDraftList_({
       expandBatchIds: [ctx.batchId],
@@ -23931,10 +23954,10 @@ function initDashboardApp() {
 
     const res = await apiPost({ action: 'submitSupplyDraft', batch_id: batch.batch_id, rows: [draftRow] });
     draftRow._submitted = true;
+    draftRow.status = 'submitted';
     draftRow._profile_draft_saved = false;
     draftRow.profile_draft_saved = '';
-    const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
-    if (allDone) batch.status = 'submitted';
+    supplyNormalizeBatchSubmittedState_(batch);
     return res;
   }
 
@@ -23980,7 +24003,9 @@ function initDashboardApp() {
 
   function supplyRenderRowActions_(batch, row, i, isSubmitted, isRowDone, isMatched, isGroupWarn) {
     if (isSubmitted) return '';
-    if (isRowDone) return '<span class="supply-match-pill supply-match-pill--matched">✓ Submitted</span>';
+    if (isRowDone || supplyRowIsSubmitted_(row)) {
+      return '<span class="supply-match-pill supply-match-pill--submitted">✓ Submitted</span>';
+    }
     const draftSaved = supplyDraftSavedFlag_(row);
     if (isMatched || draftSaved) {
       const viewBtn = isMatched
@@ -24648,13 +24673,16 @@ function initDashboardApp() {
       const matched     = b.rows ? b.rows.filter(function(r) { return r.match_status === 'matched'; }).length : 0;
       const warnCount   = b.rows ? b.rows.filter(function(r) { return r.match_status === 'group_mismatch'; }).length : 0;
       const newCount    = b.rows ? b.rows.filter(function(r) { return r.match_status === 'new'; }).length : 0;
-      const doneCount   = b.rows ? b.rows.filter(function(r) { return r._submitted; }).length : 0;
+      const doneCount   = b.rows ? b.rows.filter(function(r) { return supplyRowIsSubmitted_(r); }).length : 0;
       const isSubmitted = b.status === 'submitted';
+      const isPartial   = !isSubmitted && doneCount > 0;
       const supplyKind  = String(b.supply_type || (b.rows && b.rows[0] && b.rows[0].supply_type) || 'CPO').toUpperCase();
       const typeBadge   = supplyTypeBadgeHtml_(supplyKind);
       const statusBadge = isSubmitted
         ? '<span class="supply-badge supply-badge--submitted">Submitted</span>'
-        : '<span class="supply-badge supply-badge--draft">Draft</span>';
+        : (isPartial
+          ? '<span class="supply-badge supply-badge--partial">In progress</span>'
+          : '<span class="supply-badge supply-badge--draft">Draft</span>');
       const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
       const dualCount = b.rows ? b.rows.filter(function(r) { return supplyRowHasCpo_(r) && supplyRowHasPk_(r); }).length : 0;
 
@@ -24670,7 +24698,7 @@ function initDashboardApp() {
         + (warnCount ? '<span class="supply-stat-chip supply-stat-chip--warn">' + warnCount + ' group</span>' : '')
         + (newCount ? '<span class="supply-stat-chip supply-stat-chip--new">' + newCount + ' baru</span>' : '')
         + (dualCount ? '<span class="supply-stat-chip"><span class="supply-pill supply-pill--cpopk">CPO+PK</span> ' + dualCount + '</span>' : '')
-        + (doneCount > 0 ? '<span class="supply-stat-chip">' + doneCount + ' submitted</span>' : '')
+        + (doneCount > 0 ? '<span class="supply-stat-chip supply-stat-chip--ok">' + doneCount + '/' + rowCount + ' submitted</span>' : '')
         + '</div>'
         + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
         + '</div>'
@@ -24751,10 +24779,11 @@ function initDashboardApp() {
     const body = batch.rows.map(function(row, i) {
       const isMatched  = row.match_status === 'matched';
       const isGroupWarn = row.match_status === 'group_mismatch';
-      const isRowDone  = row._submitted === true;
+      const isRowDone  = supplyRowIsSubmitted_(row);
       const isDual     = supplyRowHasCpo_(row) && supplyRowHasPk_(row);
       const matchBadge = supplyMatchBadgeHtml_(row.match_status, row._profile_group_hint)
-        + (supplyDraftSavedFlag_(row) ? '<span class="supply-match-pill supply-match-pill--draft">Draft saved</span>' : '');
+        + (isRowDone ? '<span class="supply-match-pill supply-match-pill--submitted">✓ Submitted</span>' : '')
+        + (!isRowDone && supplyDraftSavedFlag_(row) ? '<span class="supply-match-pill supply-match-pill--draft">Draft saved</span>' : '');
       const typePills  = supplyRowTypePillsHtml_(row);
       const cells = SHOW_COLS.map(function(c) {
         const key = c[0];
@@ -24788,7 +24817,9 @@ function initDashboardApp() {
 
   function supplyBatchFooterHtml_(batchId) {
     const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
-    const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
+    const matched = batch ? (batch.rows || []).filter(function(r) {
+      return r.match_status === 'matched' && !supplyRowIsSubmitted_(r);
+    }).length : 0;
     return '<div class="supply-batch-footer">'
       + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk Mill Onboarding. '
       + '<strong>Submit</strong> (di form atau di baris) baru commit profil + supply data ke sheet.</p>'
@@ -24852,6 +24883,7 @@ function initDashboardApp() {
     if (action === 'save-draft') {
       // Collect inline edits
       collectInlineEdits_(bId);
+      (batch.rows || []).forEach(supplyApplyDraftRowStatus_);
       btn.textContent = 'Saving…'; btn.disabled = true;
       apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: {} })
         .then(function() {
@@ -24868,7 +24900,9 @@ function initDashboardApp() {
     // Submit all matched rows directly (data already complete from prefill)
     if (action === 'submit-matched') {
       collectInlineEdits_(bId);
-      const matchedRows = (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; });
+      const matchedRows = (batch.rows || []).filter(function(r) {
+        return r.match_status === 'matched' && !supplyRowIsSubmitted_(r);
+      });
       if (!matchedRows.length) { alert('No matched rows pending submission.'); return; }
       const kind = String(batch.supply_type || (matchedRows[0] && matchedRows[0].supply_type) || 'CPO').toUpperCase();
       const confirmMsg = 'Update ' + matchedRows.length + ' matched rows di Mill Profile? (Supply/risk dihitung otomatis di sheet)';
@@ -24876,9 +24910,11 @@ function initDashboardApp() {
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
         .then(function(res) {
-          matchedRows.forEach(function(r) { r._submitted = true; });
-          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
-          if (allDone) batch.status = 'submitted';
+          matchedRows.forEach(function(r) {
+            r._submitted = true;
+            r.status = 'submitted';
+          });
+          supplyNormalizeBatchSubmittedState_(batch);
           renderSupplyDraftList_();
           if (typeof loadMillData === 'function') loadMillData({ force: true });
           const errNote = (res.errors && res.errors.length) ? ('\nNote: ' + res.errors.slice(0, 3).join('; ')) : '';
@@ -24905,8 +24941,8 @@ function initDashboardApp() {
         })
         : apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] }).then(function() {
           row._submitted = true;
-          const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
-          if (allDone) batch.status = 'submitted';
+          row.status = 'submitted';
+          supplyNormalizeBatchSubmittedState_(batch);
           if (typeof loadMillData === 'function') return loadMillData({ force: true });
         });
       work
@@ -25024,6 +25060,7 @@ function initDashboardApp() {
             batches[bid].supply_type = row.supply_type || row.SUPPLY_TYPE;
           }
           batches[bid].rows.push(row);
+          supplyApplyDraftRowStatus_(row);
           row._profile_draft_saved = String(row.profile_draft_saved || '').toLowerCase() === 'true';
         });
         window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(Object.values(batches).map(function(b) {
@@ -25032,9 +25069,11 @@ function initDashboardApp() {
           (b.rows || []).forEach(function(row) {
             batchType = supplyCombineSupplyTypes_(batchType, row.supply_type || row.SUPPLY_TYPE || 'CPO');
             supplyNormalizeDraftQtyFields_(row);
+            supplyApplyDraftRowStatus_(row);
             row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
           });
           b.supply_type = batchType;
+          supplyNormalizeBatchSubmittedState_(b);
           return b;
         }));
         if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {

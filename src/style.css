@@ -5578,6 +5578,11 @@ body.supply-import-open {
   background: rgba(33, 150, 243, 0.12);
   color: #1565c0;
 }
+.supply-match-pill--submitted {
+  background: rgba(46, 125, 50, 0.14);
+  color: #1b5e20;
+  border: 1px solid rgba(46, 125, 50, 0.25);
+}
 .supply-stat-chip {
   display: inline-flex;
   align-items: center;
@@ -5747,6 +5752,11 @@ body.supply-import-open {
   color: #2e7d32;
   border: 1px solid rgba(46, 125, 50, 0.25);
 }
+.supply-badge--partial {
+  background: rgba(33, 150, 243, 0.1);
+  color: #1565c0;
+  border: 1px solid rgba(21, 101, 192, 0.2);
+}
 .supply-btn {
   display: inline-flex;
   align-items: center;
@@ -5779,7 +5789,13 @@ body.supply-import-open {
 }
 .supply-btn--danger:hover { background: rgba(192, 57, 43, 0.06); }
 .supply-batch-table tbody tr.supply-batch-row--done {
-  opacity: 0.55;
+  background: rgba(46, 125, 50, 0.035);
+}
+.supply-batch-table tbody tr.supply-batch-row--done td {
+  color: #6a8080;
+}
+.supply-batch-table tbody tr.supply-batch-row--done td.supply-batch-td--company {
+  color: #3d5555;
 }
 .supply-batch-table tbody tr.supply-batch-row--dual td:first-child + td,
 .supply-batch-table tbody td.supply-batch-td--company {

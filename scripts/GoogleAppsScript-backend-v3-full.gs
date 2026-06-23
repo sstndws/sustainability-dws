@@ -5059,12 +5059,21 @@ function saveSupplyDraft_(rows, batchId, meta) {
         break;
       }
     }
+    var statusCol = headers.indexOf('status');
     var rowArr = headers.map(function(h) {
       if (h === 'updated_at') return now;
       if (h === 'batch_id' && !row[h]) return batchId;
       if (h === 'created_at' && existingSheetRow < 0) return now;
       if (h === 'created_by' && existingSheetRow < 0) return user;
-      if (h === 'status' && !row[h]) return 'draft';
+      if (h === 'status') {
+        var incoming = String(row[h] || '').trim().toLowerCase();
+        if (incoming === 'submitted') return 'submitted';
+        if (existingSheetRow > 0 && statusCol >= 0) {
+          var existingSt = String(data[existingSheetRow - 1][statusCol] || '').trim().toLowerCase();
+          if (existingSt === 'submitted') return 'submitted';
+        }
+        if (!row[h]) return 'draft';
+      }
       var v = row[h];
       return (v !== undefined && v !== null) ? v : '';
     });
