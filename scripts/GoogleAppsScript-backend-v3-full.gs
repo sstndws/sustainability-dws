@@ -3503,6 +3503,23 @@ function mirrorMillGroupNameOnRead_(obj) {
   mirrorGroupNameOnRead_(obj);
 }
 
+function mirrorMillCompanyNameOnRead_(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  var val = String(obj['COMPANY NAME'] || obj['Company Name'] || '').trim();
+  if (!val) {
+    Object.keys(obj).forEach(function(k) {
+      if (k === '_row') return;
+      if (/^company\s*name$/i.test(String(k).replace(/\s+/g, ' ').trim())) {
+        var v = String(obj[k] || '').trim();
+        if (v && v !== '—' && v !== '-') val = v;
+      }
+    });
+  }
+  if (!val) return;
+  obj['COMPANY NAME'] = val;
+  obj['Company Name'] = val;
+}
+
 /** Header-aware TTP mirror — never map Year/Quarter into GROUP NAME. */
 function mirrorTtpFieldsByPosition_(obj, row, headers) {
   if (!obj || !row || !row.length || !headers || !headers.length) return;
@@ -3623,6 +3640,7 @@ function getData(sheetKey) {
     });
     if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
     if (sheetKey === 'mill') mirrorMillGroupNameOnRead_(obj);
+    if (sheetKey === 'mill') mirrorMillCompanyNameOnRead_(obj);
     if (sheetKey === 'ttp') {
       mirrorGroupNameOnRead_(obj);
       if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];

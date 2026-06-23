@@ -6201,6 +6201,24 @@ function initDashboardApp() {
     return '';
   }
 
+  function pickMillCompanyName_(row) {
+    const direct = millPickField_(row, [
+      'COMPANY NAME', 'Company Name', 'COMPANY', 'Company',
+    ]);
+    if (direct) return direct;
+    if (!row || typeof row !== 'object') return '';
+    for (let j = 0; j < Object.keys(row).length; j++) {
+      const k = Object.keys(row)[j];
+      if (!k || k === '_row' || k.charAt(0) === '_') continue;
+      const nk = String(k).replace(/\s+/g, ' ').trim();
+      if (!/^company(\s*name)?$/i.test(nk)) continue;
+      if (/group|trader|code|facility|supply|nbl|profile|owner/i.test(nk)) continue;
+      const v = String(row[k] || '').trim();
+      if (v && v !== '—' && v !== '-') return v;
+    }
+    return '';
+  }
+
   function normalizeMillApiRow(row) {
     if (!row || typeof row !== 'object') return row;
     const o = Object.assign({}, row);
@@ -6222,17 +6240,67 @@ function initDashboardApp() {
     const group = pickMillGroupName_(o);
     if (group) o['GROUP NAME'] = group;
 
+    const company = pickMillCompanyName_(o);
+    if (company) o['COMPANY NAME'] = company;
+
+    const millName = millPickField_(o, ['MILL NAME', 'Mill Name']);
+    if (millName) o['MILL NAME'] = millName;
+
+    const province = millPickField_(o, ['PROVINCE', 'Province']);
+    if (province) o['PROVINCE'] = province;
+
     return o;
   }
 
-  /** Mill / TTP UI: baris tanpa COMPANY NAME tidak ditampilkan. */
-  function millRowHasCompanyName_(row) {
+  /** Mill registry: show rows with company, group, or mill name (not company-only). */
+  function millRowHasRegistryIdentity_(row) {
     if (!row) return false;
-    const co = String(
-      row['COMPANY NAME'] != null ? row['COMPANY NAME']
-        : (row['Company Name'] != null ? row['Company Name'] : '')
-    ).trim();
-    return co.length > 0 && co !== '—' && co !== '-';
+    function ok(v) {
+      const s = String(v || '').trim();
+      return s.length > 0 && s !== '—' && s !== '-';
+    }
+    return ok(pickMillCompanyName_(row))
+      || ok(pickMillGroupName_(row))
+      || ok(millPickField_(row, ['MILL NAME', 'Mill Name']));
+  }
+
+  function millRowHasCompanyName_(row) {
+    return millRowHasRegistryIdentity_(row);
+  }
+
+  function millDedupKey_(row) {
+    const uml = millPickField_(row, ['UML ID', 'UML Id', 'UML_ID', 'MILL ID', 'Mill ID']);
+    const y = String(millYearVal(row) || '').trim().toLowerCase();
+    const m = String(millMonthVal(row) || '').trim().toLowerCase();
+    const q = String(millQuarterVal(row) || '').trim().toLowerCase();
+    const period = m || q || '';
+    if (uml) return 'uml:' + uml.toLowerCase() + '|y:' + y + '|p:' + period;
+    return ['noml', pickMillGroupName_(row), pickMillCompanyName_(row),
+      millPickField_(row, ['MILL NAME', 'Mill Name']), y, period].map(function(x) {
+      return String(x || '').trim().toLowerCase();
+    }).join('|');
+  }
+
+  function millRegistryRowScore_(row) {
+    let score = 0;
+    Object.keys(row || {}).forEach(function(k) {
+      if (k === '_row' || k.charAt(0) === '_') return;
+      const v = row[k];
+      if (v != null && String(v).trim() !== '') score += 1;
+    });
+    if (pickMillCompanyName_(row)) score += 15;
+    if (pickMillGroupName_(row)) score += 8;
+    if (millPickField_(row, ['MILL NAME', 'Mill Name'])) score += 5;
+    return score;
+  }
+
+  function millRowMatchesSearchQuery_(blob, q) {
+    if (!q) return true;
+    const hay = String(blob || '');
+    if (hay.includes(q)) return true;
+    const words = q.split(/\s+/).filter(function(w) { return w.length >= 2; });
+    if (!words.length) return true;
+    return words.every(function(w) { return hay.includes(w); });
   }
 
   function bindMillTableDelegationOnce() {
@@ -6249,26 +6317,38 @@ function initDashboardApp() {
     });
   }
 
+  function millBuildSearchBlob_(row) {
+    if (!row || typeof row !== 'object') return '';
+    const parts = new Set();
+    function add(v) {
+      const s = String(v == null ? '' : v).toLowerCase().replace(/\s+/g, ' ').trim();
+      if (s && s !== '—' && s !== '-') parts.add(s);
+    }
+    [
+      row['MONTH'], row['YEAR'], row['QUARTER'], row['Month'], row['Year'],
+      millPickField_(row, ['MILL NAME', 'Mill Name']),
+      millPickField_(row, ['GROUP NAME', 'Group Name', 'COMPANY GROUP NAME', 'Company Group Name']),
+      pickMillCompanyName_(row),
+      millPickField_(row, ['PROVINCE', 'Province']),
+      millPickField_(row, ['TRADER NAME', 'Trader Name']),
+      millPickField_(row, ['UML ID', 'UML Id', 'UML_ID']),
+      millPickField_(row, ['COMPANY CODE', 'Company Code']),
+      row['RISK LEVEL'], row['RESULT RISK LEVEL'],
+      row['CERTIFICATION'], row['PRODUCT SUPPLY'],
+      row['FACILITY NAME CPO'], row['FACILITY NAME PK'],
+    ].forEach(add);
+    Object.keys(row).forEach(function(k) {
+      if (!k || k === '_row' || k.charAt(0) === '_') return;
+      add(row[k]);
+    });
+    return Array.from(parts).join('|');
+  }
+
   function prepareMillRowPerfCache(row) {
     if (!row || typeof row !== 'object') return row;
     const nblLower = String(row['BUYER NO BUY LIST'] || '').toLowerCase();
-    const searchBlob = [
-      row['MONTH'],
-      row['YEAR'],
-      row['Month'],
-      row['Year'],
-      row['MILL NAME'],
-      row['GROUP NAME'],
-      row['COMPANY NAME'],
-      row['PROVINCE'],
-      row['TRADER NAME'],
-      row['RISK LEVEL'],
-      row['RESULT RISK LEVEL'],
-    ].map(function(v) {
-      return String(v || '').toLowerCase();
-    }).join('|');
     row._sddNblLower = nblLower;
-    row._sddSearchBlob = searchBlob;
+    row._sddSearchBlob = millBuildSearchBlob_(row);
     return row;
   }
 
@@ -6362,6 +6442,10 @@ function initDashboardApp() {
   function getMillFilterCellValue(row, colKey) {
     if (colKey === 'MONTH') return String(millMonthVal(row) || '—');
     if (colKey === 'YEAR') return String(millYearVal(row) || '—');
+    if (colKey === 'COMPANY NAME') return pickMillCompanyName_(row) || '—';
+    if (colKey === 'GROUP NAME') return pickMillGroupName_(row) || '—';
+    if (colKey === 'MILL NAME') return millPickField_(row, ['MILL NAME', 'Mill Name']) || '—';
+    if (colKey === 'PROVINCE') return millPickField_(row, ['PROVINCE', 'Province']) || '—';
     return String((row && row[colKey]) || '—').trim() || '—';
   }
 
@@ -6392,14 +6476,14 @@ function initDashboardApp() {
       (chip === 'NBL' && (nbl === 'yes' || nbl.includes('nbl'))) ||
       (chip === 'Non-NBL' && nbl !== 'yes' && !nbl.includes('nbl'));
     const q = currentSearch;
-    const matchSearch = !q || (d._sddSearchBlob || '').includes(q);
+    const matchSearch = !q || millRowMatchesSearchQuery_(d._sddSearchBlob, q);
     return matchFilter && matchSearch;
   }
 
   function millRowMatchesPdfDimFilters(d) {
     ensureMillPdfDimFilters_();
     const yTok = millPdfTokenForCell(millYearVal(d));
-    const gTok = millPdfTokenForCell(d['GROUP NAME']);
+    const gTok = millPdfTokenForCell(pickMillGroupName_(d));
     const pTok = millPdfTokenForCell(d['PROVINCE']);
     if (millPdfDimFilters.month.size) {
       const covered = millMonthsCoveredByRow_(d);
@@ -6610,7 +6694,7 @@ function initDashboardApp() {
 
   function millRowsAfterRegistryDimFilters() {
     return allData.filter(function(d) {
-      return millRowHasCompanyName_(d)
+      return millRowHasRegistryIdentity_(d)
         && millRowMatchesChipAndSearch(d)
         && millRowMatchesPdfDimFilters(d);
     });
@@ -6646,7 +6730,7 @@ function initDashboardApp() {
         sm.add(millPdfTokenForCell(millMonthVal(row)));
       }
       sy.add(millPdfTokenForCell(millYearVal(row)));
-      sg.add(millPdfTokenForCell(row['GROUP NAME']));
+      sg.add(millPdfTokenForCell(pickMillGroupName_(row)));
       sp.add(millPdfTokenForCell(row['PROVINCE']));
     });
     function sortMonthTokens(arr) {
@@ -6990,29 +7074,19 @@ function initDashboardApp() {
       const rawRows = await apiGet('mill');
       const rawData = (Array.isArray(rawRows) ? rawRows : [])
         .map(normalizeMillApiRow)
-        .filter(millRowHasCompanyName_);
+        .filter(millRowHasRegistryIdentity_);
       allDataRaw = rawData.map(prepareMillRowPerfCache);
 
-      // ── DEDUP: per Mill ID / UML ID, keep the row with most non-empty fields ──
+      // Dedup: same UML + period keeps richest row (not one row per UML across all periods).
       const dedupMap = new Map();
-      const rowsWithoutId = [];
-      function countFilled(row) {
-        return Object.values(row).filter(v => v !== undefined && v !== null && String(v).trim() !== '').length;
-      }
       rawData.forEach(function(row) {
-        // Try multiple possible ID key names from the sheet
-        const id = (row['Mill ID'] || row['MILL ID'] || row['UML ID'] || row['UML_ID'] || '').toString().trim();
-        if (!id) {
-          rowsWithoutId.push(row);
-          return;
-        }
-        const existing = dedupMap.get(id);
-        if (!existing || countFilled(row) > countFilled(existing)) {
-          dedupMap.set(id, Object.assign({}, row));
+        const key = millDedupKey_(row);
+        const existing = dedupMap.get(key);
+        if (!existing || millRegistryRowScore_(row) > millRegistryRowScore_(existing)) {
+          dedupMap.set(key, Object.assign({}, row));
         }
       });
-      const deduped = Array.from(dedupMap.values());
-      allData = rowsWithoutId.concat(deduped).map(prepareMillRowPerfCache);
+      allData = Array.from(dedupMap.values()).map(prepareMillRowPerfCache);
       // If no IDs were found (different column name), fall back to raw
       if (allData.length === 0 && rawData.length > 0) allData = allDataRaw.slice();
 
@@ -7223,16 +7297,16 @@ function initDashboardApp() {
     body.innerHTML = sorted.length === 0
       ? `<tr><td colspan="12" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
       : sorted.map((d, i) => {
-        const millKey = [d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME']].map(function(x) {
+        const millKey = [pickMillGroupName_(d), pickMillCompanyName_(d), millPickField_(d, ['MILL NAME', 'Mill Name'])].map(function(x) {
           return String(x || '').trim();
         }).join('|');
-        const millName = String(d['MILL NAME'] || '').trim();
-        const umlId = String(d['UML ID'] || '').trim();
+        const millName = millPickField_(d, ['MILL NAME', 'Mill Name']);
+        const umlId = millPickField_(d, ['UML ID', 'UML Id', 'UML_ID']);
         return `
         <tr class="mill-row-clickable" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="Click to view full details">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
-          <td class="mill-td mill-td--group">${millTableCellText_(d['GROUP NAME'], { wrap: true })}</td>
-          <td class="mill-td mill-td--company">${millTableCellText_(d['COMPANY NAME'], { wrap: true })}</td>
+          <td class="mill-td mill-td--group">${millTableCellText_(pickMillGroupName_(d), { wrap: true })}</td>
+          <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
           <td class="mill-td mill-td--product">${millTableCellText_(d['PRODUCT SUPPLY'], { wrap: true })}</td>
@@ -21975,7 +22049,7 @@ function initDashboardApp() {
       scheduleRenderMillTable();
     }, 120);
     millSearch.addEventListener('input', function() {
-      currentSearch = this.value.toLowerCase().trim();
+      currentSearch = this.value.toLowerCase().trim().replace(/\s+/g, ' ');
       if (this.value) {
         millSearchClear.classList.add('show');
       } else {
