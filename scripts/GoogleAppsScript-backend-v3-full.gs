@@ -159,6 +159,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'month', 'year',
   'created_at', 'updated_at', 'created_by',
   'match_status',                           // 'matched' | 'new' | 'group_mismatch'
+  'profile_draft_saved',                    // 'true' when Lengkapi form saved as draft
   'supply_type',                            // 'CPO' | 'PK'
   'target_mill_row',
   'SUPPLY_QTY',

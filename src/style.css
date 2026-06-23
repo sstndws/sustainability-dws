@@ -1430,6 +1430,13 @@
    }
    .btn-save:hover { background: #a01f1f; }
    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+   .btn-save--draft {
+     background: #fff;
+     color: #8B1A1A;
+     border: 1px solid rgba(139, 26, 26, 0.35);
+   }
+   .btn-save--draft:hover { background: rgba(139, 26, 26, 0.06); }
+   .btn-save--submit { min-width: 7rem; }
    
    .btn-danger {
      display: inline-flex;
@@ -5567,6 +5574,10 @@ body.supply-import-open {
   background: rgba(255, 152, 0, 0.12);
   color: #e65100;
 }
+.supply-match-pill--draft {
+  background: rgba(33, 150, 243, 0.12);
+  color: #1565c0;
+}
 .supply-stat-chip {
   display: inline-flex;
   align-items: center;
@@ -6454,6 +6465,29 @@ body.supply-import-open {
 #pfPkTable .pf-count-pill {
   background: rgba(13,110,70,0.08);
   color: #0D6E46;
+}
+.pf-count-pill--eudr {
+  min-width: 36px;
+  background: rgba(39, 174, 96, 0.12);
+  color: #1e8449;
+}
+.pf-eudr-facility-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e8449;
+}
+.pf-td-company .pf-eudr-flag,
+.pf-td-company .mill-name + .pf-eudr-flag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.pf-nested-row--eudr .pf-td-company .mill-name {
+  font-weight: 700;
 }
 
 /* Metric display */
@@ -9063,6 +9097,17 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   margin-left: auto;
   font-size: 11px;
   color: #8a6e6e;
+}
+#panel-monthly-report-detail .mrd-facility-eudr {
+  color: #1e8449;
+  font-weight: 600;
+}
+#panel-monthly-report-detail .mrd-eudr-flag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 #panel-monthly-report-detail .mrd-facility-kpi-row {
   display: grid;

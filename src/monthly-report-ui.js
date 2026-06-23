@@ -33,6 +33,11 @@ import {
   sddCompanyName,
   sddDateImport,
   sddLastUpdate,
+  mrdBuildEudrPotentialCompanySet_,
+  mrdFacilityEudrPotentialCount_,
+  mrdUniqueFacilityCompanyCount_,
+  mrdCompanyIsEudrPotential_,
+  mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 
 const MRD_ROW_LIMIT = 5000;
@@ -426,20 +431,8 @@ async function exportMonthlyReport_(exportOpts) {
       bestEudr = extraEudr.slice();
     }
     _snapshot = rebuildSnapshot_({ eudrPotential: bestEudr.length ? bestEudr : undefined });
-    const pagePeriod = getReportPeriod_();
-    const periodChanged = String(reportPeriod.year) !== String(pagePeriod.year)
-      || String(reportPeriod.month || '') !== String(pagePeriod.month || '');
-    const exportDataPeriod = mrdDataPeriodFromReport_(reportPeriod.year, reportPeriod.month);
-    const s = periodChanged
-      ? buildSnapshotSync({
-        sddRows: _sddCache,
-        eudrPotential: (_snapshot && _snapshot.eudrPotential) || [],
-        eudrLoading: false,
-        sddLoading: false,
-        reportPeriod: reportPeriod,
-        facilityBundles: _facilityBundles,
-      })
-      : _snapshot;
+    const pageDataPeriod = getDataPeriod_();
+    const s = _snapshot;
 
     const exportSections = mrdPdfSectionsNoDupHighRisk_(sections.slice());
 
@@ -454,7 +447,7 @@ async function exportMonthlyReport_(exportOpts) {
     }));
 
     let facilityBundles = _deps.getFacilityBundles
-      ? _deps.getFacilityBundles(exportDataPeriod.year || reportPeriod.year)
+      ? _deps.getFacilityBundles(pageDataPeriod.year || getReportPeriod_().year)
       : [];
     if (_search) {
       const q = _search;
@@ -475,6 +468,8 @@ async function exportMonthlyReport_(exportOpts) {
       getJsPDF: _deps.getJsPDF,
       year: reportPeriod.year,
       month: reportPeriod.month,
+      dataYear: pageDataPeriod.year,
+      dataMonth: pageDataPeriod.month,
       sections: exportSections,
       data: {
         stats: exportStats,
@@ -1004,8 +999,9 @@ function renderGrvSection(rows) {
   });
 }
 
-function renderFacilitySection(bundles, loading) {
+function renderFacilitySection(bundles, loading, eudrPotential) {
   if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading facility performance…</p>';
+  const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(eudrPotential);
   const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) {
     return (b.companies || []).length > 0 && hasCellValue(b.facility);
   }));
@@ -1024,6 +1020,8 @@ function renderFacilitySection(bundles, loading) {
       ? bundle.ttmCalc.formatted
       : (sum.avgTtm || '0%');
     const companies = mrdSortFacilityCompanies_(bundle.companies || []);
+    const eudrCount = mrdFacilityEudrPotentialCount_(companies, eudrCompanySet);
+    const uniqueCount = mrdUniqueFacilityCompanyCount_(companies);
     const visible = companies.filter(function(c) {
       return matchesSearch([bundle.facility, c.company, c.group, c.certification, c.riskLevel].join(' ').toLowerCase());
     }).slice(0, MRD_ROW_LIMIT);
@@ -1044,7 +1042,11 @@ function renderFacilitySection(bundles, loading) {
 
     const cols = [
       { label: 'Group Name', always: true, raw: function(c) { return c.group || c['GROUP NAME'] || ''; } },
-      { label: 'Company Name', always: true, raw: function(c) { return c.company; } },
+      { label: 'Company Name', always: true, render: function(c) {
+        const name = esc(c.company);
+        if (!mrdCompanyIsEudrPotential_(c, eudrCompanySet)) return name;
+        return name + ' <span class="mrd-eudr-flag eudr-status-val eudr-status-val--potential">EUDR Potential</span>';
+      }},
       { label: 'Certification', raw: function(c) { return c.certification; } },
       { label: 'No Buy List', hasData: function(c) { return isNblYes(c.nbl); }, render: function(c) {
         return isNblYes(c.nbl) ? '<span class="mrd-pill mrd-pill--high">Yes</span>' : esc(c.nbl || '—');
@@ -1060,11 +1062,19 @@ function renderFacilitySection(bundles, loading) {
       tableClass: 'mrd-table--wide',
     });
 
+    const eudrMeta = eudrCount > 0
+      ? ' · <span class="mrd-facility-eudr">' + esc(mrdEudrPotentialLabel_(eudrCount)) + '</span>'
+      : '';
+    const companyMeta = eudrCount > 0
+      ? esc(uniqueCount + '/' + eudrCount + ' companies')
+      : esc(companies.length + ' companies');
+
     return '<div class="mrd-facility-block mrd-facility-block--' + accent + '">'
       + '<div class="mrd-facility-head">'
       + '<span class="mrd-facility-badge">' + esc(isPk ? 'PK' : 'CPO') + '</span>'
       + '<span class="mrd-facility-name">' + esc(bundle.facility) + '</span>'
-      + '<span class="mrd-facility-meta">' + esc(companies.length) + ' companies · '
+      + '<span class="mrd-facility-meta">' + companyMeta
+      + eudrMeta + ' · '
       + esc(facilityTtm) + ' ' + esc(ttmLabel.replace('% ', '')) + ' · '
       + esc(facilityPct) + ' ' + esc(pctLabel.replace('% ', '')) + '</span>'
       + '</div>'
@@ -1115,7 +1125,7 @@ function renderAll() {
   html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
   html += flatSectionHtml('grv', 'Grievance Monitoring · ' + fullYearLabel, stats.grievances + ' grievances in ' + fullYearLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
-  html += sectionHtml('facility', 'Facility Performance', 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading), '06');
+  html += sectionHtml('facility', 'Facility Performance', 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
   html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential mills', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
   sections.innerHTML = html;
 }

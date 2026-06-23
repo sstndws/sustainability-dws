@@ -35,6 +35,10 @@ import {
   mrdReportHeaderMeta_,
   grvGroupName_,
   mrdShowInMillOnboarding_,
+  mrdBuildEudrPotentialCompanySet_,
+  mrdFacilityEudrPotentialCount_,
+  mrdCompanyIsEudrPotential_,
+  mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 
 const BRAND = [139, 26, 26];
@@ -86,8 +90,8 @@ function monthLabel(month) {
   return month ? names[parseInt(month, 10)] || month : 'All months';
 }
 
-function applyReportHeaderMeta_(ctx, year, month) {
-  const meta = mrdReportHeaderMeta_(year, month);
+function applyReportHeaderMeta_(ctx, year, month, dataPeriodOverride) {
+  const meta = mrdReportHeaderMeta_(year, month, undefined, dataPeriodOverride);
   ctx.periodText = meta.periodLine;
   ctx.dataPeriodText = meta.dataPeriodLine;
   ctx.cutoffText = meta.cutoffLine;
@@ -1207,7 +1211,7 @@ function drawFacilityKpiCards_(ctx, sum, facilityPct, pctLabel, facilityTtm, ttm
   ctx.setY(y0 + cardH + 6);
 }
 
-function drawFacilityCompanyTable_(ctx, companies, isPk, accent) {
+function drawFacilityCompanyTable_(ctx, companies, isPk, accent, eudrCompanySet) {
   const doc = ctx.doc;
   if (ctx.pageH - ctx.mFoot - 6 - ctx.getY() < 16) {
     ctx.ensureSpace_(18);
@@ -1229,9 +1233,12 @@ function drawFacilityCompanyTable_(ctx, companies, isPk, accent) {
       'Total Grievance', ttmLabel, ttpLabel,
     ]),
     companies.map(function(c) {
+      const companyLabel = mrdCompanyIsEudrPotential_(c, eudrCompanySet)
+        ? pdfSanitize(c.company) + '\n(EUDR Potential)'
+        : pdfSanitize(c.company);
       return [
         pdfSanitize(c.group || c['GROUP NAME'] || ''),
-        pdfSanitize(c.company),
+        companyLabel,
         pdfSanitize(c.certification),
         pdfSanitize(c.nbl),
         pdfSanitize(c.riskLevel),
@@ -1251,7 +1258,7 @@ function drawFacilityCompanyTable_(ctx, companies, isPk, accent) {
   );
 }
 
-function drawFacilityBlock_(ctx, bundle, full, idx) {
+function drawFacilityBlock_(ctx, bundle, full, idx, eudrCompanySet) {
   const isPk = bundle.type === 'pk';
   const accent = isPk ? PK_GREEN : BRAND;
   const pctLabel = facilityPctColLabel(isPk);
@@ -1302,15 +1309,15 @@ function drawFacilityBlock_(ctx, bundle, full, idx) {
     }
   }
 
-  drawFacilityCompanyTable_(ctx, companies, isPk, accent);
+  drawFacilityCompanyTable_(ctx, companies, isPk, accent, eudrCompanySet);
 }
 
-function drawFacilitySection_(ctx, bundles, full) {
+function drawFacilitySection_(ctx, bundles, full, eudrCompanySet) {
   const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) { return (b.companies || []).length > 0; }));
   if (!active.length) return;
   ctx.beginSection_('06 · Facility Performance', PK_GREEN);
   active.forEach(function(bundle, idx) {
-    drawFacilityBlock_(ctx, bundle, full, idx);
+    drawFacilityBlock_(ctx, bundle, full, idx, eudrCompanySet);
   });
 }
 
@@ -1339,7 +1346,7 @@ function drawEudrSection_(ctx, rows, noHeader) {
   );
 }
 
-function facilityBundleSummaryRow_(bundle) {
+function facilityBundleSummaryRow_(bundle, eudrCompanySet) {
   const sum = bundle.summary || {};
   const isPk = bundle.type === 'pk';
   const pct = (bundle.traceCalc && bundle.traceCalc.formatted)
@@ -1348,8 +1355,13 @@ function facilityBundleSummaryRow_(bundle) {
   const ttm = (bundle.ttmCalc && bundle.ttmCalc.formatted)
     ? bundle.ttmCalc.formatted
     : (sum.avgTtm || '0%');
+  const eudrCount = mrdFacilityEudrPotentialCount_(bundle.companies, eudrCompanySet);
+  let facilityLabel = pdfSanitize(bundle.facility);
+  if (eudrCount > 0) {
+    facilityLabel += '\n(' + mrdEudrPotentialLabel_(eudrCount) + ')';
+  }
   return [
-    pdfSanitize(bundle.facility),
+    facilityLabel,
     pdfSanitize((bundle.companies || []).length),
     pdfSanitize(sum.nblYes != null ? sum.nblYes : 0),
     pdfSanitize(sum.highRisk != null ? sum.highRisk : 0),
@@ -1360,7 +1372,7 @@ function facilityBundleSummaryRow_(bundle) {
   ];
 }
 
-function drawFacilitySummaryFromBundles_(ctx, bundles) {
+function drawFacilitySummaryFromBundles_(ctx, bundles, eudrCompanySet) {
   const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) {
     return (b.companies || []).length > 0 && pdfSanitize(b.facility) !== '—';
   }));
@@ -1381,7 +1393,7 @@ function drawFacilitySummaryFromBundles_(ctx, bundles) {
     ctx.beginSubsection_('CPO Facility Performance', BRAND);
     ctx.drawAutoTable_(
       pdfTableHead(facilitySummaryColLabels(false)),
-      cpo.map(facilityBundleSummaryRow_),
+      cpo.map(function(b) { return facilityBundleSummaryRow_(b, eudrCompanySet); }),
       BRAND,
       colStyles,
       { fontSize: 7, cellPadding: 2, gapAfter: 3, headFontSize: 5.5, headMinHeight: 11 }
@@ -1391,7 +1403,7 @@ function drawFacilitySummaryFromBundles_(ctx, bundles) {
     ctx.beginSubsection_('PK Facility Performance', PK_GREEN);
     ctx.drawAutoTable_(
       pdfTableHead(facilitySummaryColLabels(true)),
-      pk.map(facilityBundleSummaryRow_),
+      pk.map(function(b) { return facilityBundleSummaryRow_(b, eudrCompanySet); }),
       PK_GREEN,
       colStyles,
       { fontSize: 7, cellPadding: 2, gapAfter: 3, headFontSize: 5.5, headMinHeight: 11 }
@@ -1668,7 +1680,7 @@ function drawSectionSummaryBlock_(ctx, sectionId, cfg) {
   });
 }
 
-function drawSummaryReportBody_(ctx, data, sections, stats, year) {
+function drawSummaryReportBody_(ctx, data, sections, stats, year, eudrCompanySet) {
   const bodySections = mrdPdfSectionsNoDupHighRisk_(sections.filter(function(id) { return id !== 'kpi'; }));
   bodySections.forEach(function(id) {
     const cfg = sectionSummaryConfig_(id, stats, data, year);
@@ -1680,12 +1692,12 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year) {
     else if (id === 'trace') { /* totals shown in metric cards above */ }
     else if (id === 'grv') drawGrvSection_(ctx, data.grv || [], false, true);
     else if (id === 'nbl') drawNblSummaryList_(ctx, data.nblAll || []);
-    else if (id === 'facility') drawFacilitySummaryFromBundles_(ctx, data.facilityBundles || []);
+    else if (id === 'facility') drawFacilitySummaryFromBundles_(ctx, data.facilityBundles || [], eudrCompanySet);
     else if (id === 'eudr') drawEudrSection_(ctx, data.eudrPotential || [], true);
   });
 }
 
-function drawDetailReportBody_(ctx, data, sections, year) {
+function drawDetailReportBody_(ctx, data, sections, year, eudrCompanySet) {
   const ordered = mrdPdfSectionsNoDupHighRisk_(['sdd', 'highRisk', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'])
     .filter(function(id) { return sections.indexOf(id) !== -1; });
   ordered.forEach(function(id) {
@@ -1695,7 +1707,7 @@ function drawDetailReportBody_(ctx, data, sections, year) {
     else if (id === 'trace') drawTraceSection_(ctx, data, year, true);
     else if (id === 'grv') drawGrvSection_(ctx, data.grv || [], true);
     else if (id === 'nbl') drawNblSection_(ctx, data.nblAll || []);
-    else if (id === 'facility') drawFacilitySection_(ctx, data.facilityBundles || [], true);
+    else if (id === 'facility') drawFacilitySection_(ctx, data.facilityBundles || [], true, eudrCompanySet);
     else if (id === 'eudr') drawEudrSection_(ctx, data.eudrPotential || []);
   });
 }
@@ -1719,7 +1731,10 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
   const stats = data.stats || {};
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const ctx = createPdfContext_(jsPDFLib, { pdfMode: 'summary' });
-  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month);
+  const dataPeriodOverride = opts.dataYear != null
+    ? { year: opts.dataYear, month: opts.dataMonth }
+    : undefined;
+  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month, dataPeriodOverride);
   ctx.reportTitle = 'Monthly Report — Summary';
   ctx.reportSubtitle = '';
 
@@ -1737,7 +1752,9 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
     ctx.setY(ctx.getY() + PDF_LAYOUT.sectionGap);
   }
 
-  drawSummaryReportBody_(ctx, data, sections, stats, headerMeta.dataYear || opts.year);
+  const bodyYear = opts.dataYear || headerMeta.dataYear || opts.year;
+  const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(data.eudrPotential);
+  drawSummaryReportBody_(ctx, data, sections, stats, bodyYear, eudrCompanySet);
   return finalizePdf_(ctx);
 }
 
@@ -1757,7 +1774,10 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const detailSections = sections.filter(function(id) { return id !== 'kpi'; });
   const ctx = createPdfContext_(jsPDFLib, { orientation: 'landscape', pdfMode: 'detail' });
-  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month);
+  const dataPeriodOverride = opts.dataYear != null
+    ? { year: opts.dataYear, month: opts.dataMonth }
+    : undefined;
+  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month, dataPeriodOverride);
 
   ctx.setY(drawCompactHeaderForExport_(ctx));
   if (!detailSections.length) {
@@ -1769,7 +1789,9 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
     doc.text('No detail sections selected. Include at least one section besides Overview.', ctx.mL, ctx.getY() + 4);
     ctx.markContent_(ctx.getY() + 8);
   } else {
-    drawDetailReportBody_(ctx, data, detailSections, headerMeta.dataYear || opts.year);
+    const bodyYear = opts.dataYear || headerMeta.dataYear || opts.year;
+    const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(data.eudrPotential);
+    drawDetailReportBody_(ctx, data, detailSections, bodyYear, eudrCompanySet);
   }
   return finalizePdf_(ctx);
 }

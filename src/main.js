@@ -7,6 +7,11 @@ import {
   mrdTtpRowsForMill_,
   mrdTtpRowHasSupplier_,
   mrdResolveTtpSupplierCol_,
+  mrdBuildEudrPotentialCompanySet_,
+  mrdFacilityEudrPotentialCount_,
+  mrdUniqueFacilityCompanyCount_,
+  mrdCompanyIsEudrPotential_,
+  mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 import {
@@ -3939,8 +3944,8 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwhCjPjWxI4dHTURpPY1jZOflPJ8JVmyKR6yhLBlTpu8IfbQHBrFmQwdO9zNN3S0bAlew/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwhCjPjWxI4dHTURpPY1jZOflPJ8JVmyKR6yhLBlTpu8IfbQHBrFmQwdO9zNN3S0bAlew';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzxvlLyrztPd5EqCRnesji7yQfvfqzriAGAiKazqTgjGFenFUtI_bm_Zx3u1x-xG_PvoA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzxvlLyrztPd5EqCRnesji7yQfvfqzriAGAiKazqTgjGFenFUtI_bm_Zx3u1x-xG_PvoA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5724,7 +5729,29 @@ function initDashboardApp() {
 
   function closeModal() {
     if (modalSheet === 'ttp') ttpModalAddContext = null;
+    if (window._supplyModalContext) window._supplyModalContext = null;
+    syncSupplyModalChrome_(false);
     document.getElementById('modalOverlay')?.classList.remove('active');
+  }
+
+  function syncSupplyModalChrome_(isSupplyImport) {
+    const saveBtn = document.getElementById('modalSave');
+    const submitBtn = document.getElementById('modalSubmit');
+    if (saveBtn) saveBtn.textContent = isSupplyImport ? 'Simpan draft' : 'Save';
+    if (submitBtn) {
+      submitBtn.hidden = !isSupplyImport;
+      submitBtn.style.display = isSupplyImport ? '' : 'none';
+    }
+  }
+
+  function collectModalFormData_() {
+    const modalGrid = document.getElementById('modalFormGrid');
+    if (modalGrid) dashDateCollectValues(modalGrid);
+    const data = {};
+    document.querySelectorAll('#modalFormGrid [data-field]').forEach(function(el) {
+      data[el.dataset.field] = el.value;
+    });
+    return data;
   }
 
   (function bindCoreModals() {
@@ -5743,32 +5770,71 @@ function initDashboardApp() {
     });
 
     modalSave.addEventListener('click', async function() {
-    const btn = this;
+    await handleModalSaveClick_(false);
+  });
+
+    const modalSubmit = document.getElementById('modalSubmit');
+    if (modalSubmit) {
+      modalSubmit.addEventListener('click', async function() {
+        await handleModalSaveClick_(true);
+      });
+    }
+  })();
+
+  async function handleModalSaveClick_(isSupplySubmit) {
+    const btn = document.getElementById(isSupplySubmit ? 'modalSubmit' : 'modalSave');
+    const saveBtn = document.getElementById('modalSave');
+    const submitBtn = document.getElementById('modalSubmit');
+    if (!btn) return;
     btn.disabled = true;
-    btn.textContent = 'Saving...';
-    let data = {};
-    const modalGrid = document.getElementById('modalFormGrid');
-    if (modalGrid) dashDateCollectValues(modalGrid);
-    document.querySelectorAll('#modalFormGrid [data-field]').forEach(el => {
-      data[el.dataset.field] = el.value;
-    });
+    if (saveBtn) saveBtn.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    const prevTxt = btn.textContent;
+    btn.textContent = isSupplySubmit ? 'Submitting…' : 'Saving...';
+    let data = collectModalFormData_();
     if (modalSheet === 'mill') data = millStripComputedFromSavePayload_(data);
+
+    const supplyCtx = window._supplyModalContext;
+    if (supplyCtx && modalSheet === 'mill' && !modalTaskKey) {
+      try {
+        if (isSupplySubmit) {
+          await supplySubmitDraftFromModal_(supplyCtx, data);
+        } else {
+          await supplySaveDraftFromModal_(supplyCtx, data);
+        }
+        closeModal();
+        if (typeof window.showSddToast === 'function') {
+          window.showSddToast(
+            isSupplySubmit ? 'Mill profile submitted to Mill Onboarding.' : 'Draft saved — you can continue later.',
+            'success'
+          );
+        }
+      } catch (err) {
+        alert('Error: ' + (err && err.message ? err.message : err));
+      } finally {
+        btn.disabled = false;
+        if (saveBtn) saveBtn.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
+        btn.textContent = prevTxt;
+        syncSupplyModalChrome_(!!window._supplyModalContext);
+      }
+      return;
+    }
+
     if (modalSheet === 'mill' && modalTaskKey) {
       const sddMain = window._scrSavedRowsByKey && window._scrSavedRowsByKey[modalTaskKey];
-      const supplierType = sddMain
-        ? String(sddMain['Supplier Type'] || sddMain['supplier_type'] || 'MILL').trim().toUpperCase()
-        : 'MILL';
+      const supplierType = sddMain ? millParentSupplierType_(sddMain) : 'MILL';
       if (sddMain) {
         const period = resolveSddPeriodFromMainRow_(sddMain);
         if (period.month) data['MONTH'] = period.month;
         else if (period.quarter) data['MONTH'] = period.quarter; // backward compat
         if (period.year) data['YEAR'] = period.year;
-        data['SOURCE TYPE'] = supplierType;
-        if (supplierType === 'TRADER') {
-          data['TRADER NAME'] = resolveTraderNameFromMain_(sddMain);
-        } else {
-          data['TRADER NAME'] = 'No Data';
-        }
+        const sourceType = millSourceTypeForOnboarding_(sddMain, {
+          taskLineId: modalTaskLineId,
+          data: data,
+        });
+        data['SOURCE TYPE'] = sourceType;
+        data['TRADER NAME'] = millTraderNameForOnboarding_(sddMain, sourceType);
       }
       const ttpRequired = ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID'];
       const ttpMissing = ttpRequired.filter(function(k) { return !String(data[k] || '').trim(); });
@@ -5779,8 +5845,15 @@ function initDashboardApp() {
         const msg = (modalTaskLineId && supplierType === 'TRADER')
           ? 'Fill Trader Name, Group Name, Company Name, Mill Name, and UML ID before saving from Task List.'
           : 'Fill Group Name, Company Name, Mill Name, and UML ID before saving from Task List.';
-        throw new Error(msg);
+        alert(msg);
+        if (btn) { btn.disabled = false; btn.textContent = prevTxt; }
+        if (saveBtn) saveBtn.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
+        return;
       }
+    } else if (modalSheet === 'mill' && modalMode === 'add' && !data['SOURCE TYPE']) {
+      data['SOURCE TYPE'] = 'MILL';
+      if (!String(data['TRADER NAME'] || '').trim()) data['TRADER NAME'] = 'No Data';
     }
     try {
       const postSaveFocus = capturePostSaveFocus_(modalSheet, data);
@@ -5940,25 +6013,6 @@ function initDashboardApp() {
           }
           if (currentFilter === 'Task List') renderMillTaskList();
         }
-        // Mark supply draft row as submitted if opened from supply import context
-        if (window._supplyModalContext) {
-          const ctx = window._supplyModalContext;
-          window._supplyModalContext = null;
-          try {
-            const ctxBatch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
-            if (ctxBatch && ctxBatch.rows[ctx.rowIdx]) {
-              ctxBatch.rows[ctx.rowIdx]._submitted = true;
-              const allDone = ctxBatch.rows.every(function(r) { return r._submitted; });
-              if (allDone) ctxBatch.status = 'submitted';
-              // Mark on server
-              apiPost({ action: 'submitSupplyDraft', batch_id: ctx.batchId, rows: [ctxBatch.rows[ctx.rowIdx]] })
-                .catch(function(err) { console.warn('[supplyDraft] Mark submitted failed:', err.message); });
-              if (typeof renderSupplyDraftList_ === 'function') renderSupplyDraftList_();
-            }
-          } catch(e) {
-            console.warn('[supplyDraft] Failed to mark row submitted after modal save:', e);
-          }
-        }
         await reloadMillDataSoft_();
       } else if (modalSheet === 'ttp') {
         ttpModalAddContext = null;
@@ -5973,10 +6027,14 @@ function initDashboardApp() {
     } catch(err) {
       alert('Error saving: ' + err.message);
     }
-    btn.disabled = false;
-    btn.textContent = 'Save';
-  });
-  })();
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevTxt || (isSupplySubmit ? 'Submit' : 'Save');
+    }
+    if (saveBtn) saveBtn.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+    syncSupplyModalChrome_(!!window._supplyModalContext);
+  }
 
   // ─── CONFIRM DELETE ─────────────────────────────────────
   let pendingDelete = null;
@@ -6161,6 +6219,85 @@ function initDashboardApp() {
     if (!isNaN(n) && n >= 1 && n <= 12) return n;
     return 0;
   }
+
+  /** Sortable period key: YYYYMM (month 0 allowed when year-only row). */
+  function millRowPeriodSortKey_(r) {
+    const y = parseMillYearSort(millYearVal(r));
+    if (!y) return 0;
+    const m = parseMillMonthSort(millMonthVal(r));
+    return y * 100 + (m || 0);
+  }
+
+  /** Mill registry dedupe — latest snapshot per company name. */
+  function millCompanyRegistryKey_(r) {
+    return String(pickMillCompanyName_(r) || '').trim().toUpperCase();
+  }
+
+  function millSelectedPeriodFilter_() {
+    ensureMillPdfDimFilters_();
+    const years = new Set();
+    millPdfDimFilters.year.forEach(function(tok) {
+      if (tok === '__EMPTY__') return;
+      const y = parseMillYearSort(tok);
+      if (y) years.add(y);
+    });
+    let maxMonth = 0;
+    let hasEmptyMonth = false;
+    millPdfDimFilters.month.forEach(function(tok) {
+      if (tok === '__EMPTY__') { hasEmptyMonth = true; return; }
+      const m = parseMillMonthSort(tok);
+      if (m > maxMonth) maxMonth = m;
+    });
+    return {
+      hasYear: millPdfDimFilters.year.size > 0,
+      hasMonth: millPdfDimFilters.month.size > 0,
+      years: years,
+      maxMonth: maxMonth,
+      hasEmptyMonth: hasEmptyMonth,
+    };
+  }
+
+  /** Row eligible for “as-of” period view (not exact month match). */
+  function millRowWithinPeriodFilter_(r, pf) {
+    if (!pf || (!pf.hasYear && !pf.hasMonth)) return true;
+    const sk = millRowPeriodSortKey_(r);
+    if (!sk) return pf.hasEmptyMonth || false;
+    const y = Math.floor(sk / 100);
+    const m = sk % 100;
+    if (pf.hasYear && pf.years.size && !pf.years.has(y)) return false;
+    if (pf.hasMonth && pf.maxMonth > 0 && m > pf.maxMonth) return false;
+    return true;
+  }
+
+  /**
+   * One row per company — keep highest Year/Month within the active period filter.
+   * e.g. filter Mar 2025 → Jan row still shown if no Mar update; Mar replaces Jan when present.
+   */
+  function millPickLatestPerCompany_(rows, pf) {
+    pf = pf || millSelectedPeriodFilter_();
+    const byCo = new Map();
+    (rows || []).forEach(function(r) {
+      const ck = millCompanyRegistryKey_(r);
+      if (!ck) return;
+      if (!millRowWithinPeriodFilter_(r, pf)) return;
+      const sk = millRowPeriodSortKey_(r);
+      const existing = byCo.get(ck);
+      if (!existing) {
+        byCo.set(ck, r);
+        return;
+      }
+      const skOld = millRowPeriodSortKey_(existing);
+      if (sk > skOld || (sk === skOld && (r._row || 0) > (existing._row || 0))) {
+        byCo.set(ck, r);
+      }
+    });
+    return Array.from(byCo.values());
+  }
+
+  function millApplyRegistryPeriodView_(rows) {
+    return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
+  }
+
   function parseMillQuarterSort(v) {
     const s = String(v || '').trim().toUpperCase().replace(/\s+/g, '');
     let m = s.match(/^Q([1-4])$/);
@@ -6474,17 +6611,8 @@ function initDashboardApp() {
 
   function millRowMatchesPdfDimFilters(d) {
     ensureMillPdfDimFilters_();
-    const yTok = millPdfTokenForCell(millYearVal(d));
     const gTok = millPdfTokenForCell(pickMillGroupName_(d));
     const pTok = millPdfTokenForCell(d['PROVINCE']);
-    if (millPdfDimFilters.month.size) {
-      const covered = millMonthsCoveredByRow_(d);
-      const monthMatch = covered.some(function(m) {
-        return millPdfDimFilters.month.has(millPdfTokenForCell(String(m)));
-      });
-      if (!monthMatch && !(covered.length === 0 && millPdfDimFilters.month.has('__EMPTY__'))) return false;
-    }
-    if (millPdfDimFilters.year.size && !millPdfDimFilters.year.has(yTok)) return false;
     if (millPdfDimFilters.group.size && !millPdfDimFilters.group.has(gTok)) return false;
     if (millPdfDimFilters.province.size && !millPdfDimFilters.province.has(pTok)) return false;
     return true;
@@ -6685,11 +6813,12 @@ function initDashboardApp() {
   }
 
   function millRowsAfterRegistryDimFilters() {
-    return allData.filter(function(d) {
+    let rows = allData.filter(function(d) {
       return millRowHasCompanyName_(d)
         && millRowMatchesChipAndSearch(d)
         && millRowMatchesPdfDimFilters(d);
     });
+    return millApplyRegistryPeriodView_(rows);
   }
 
   function getMillRowsForPdfExport() {
@@ -19999,16 +20128,21 @@ function initDashboardApp() {
       }).join('') + '</div>';
     }
 
-    function pfCompanyCellHtml_(c) {
+    function pfCompanyCellHtml_(c, isEudr) {
+      const eudrBadge = isEudr
+        ? '<span class="pf-eudr-flag eudr-status-val eudr-status-val--potential">EUDR Potential</span>'
+        : '';
       const rowNum = pfResolveCompanyMillRow_(c);
       if (!rowNum) {
-        return '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span></td>';
+        return '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span>' + eudrBadge + '</td>';
       }
       return ''
         + '<td class="pf-td-company">'
         + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="View mill profile">'
         + '<span class="mill-name">' + escHtml(c.company) + '</span>'
-        + '</button></td>';
+        + '</button>'
+        + eudrBadge
+        + '</td>';
     }
 
     async function pfOpenMillProfileByRowNum_(rowNum) {
@@ -20054,13 +20188,15 @@ function initDashboardApp() {
     }
 
     /** Nested detail table for PK facilities. */
-    function pfPkNestedTableHtml_(companies) {
+    function pfPkNestedTableHtml_(companies, eudrSet) {
+      eudrSet = eudrSet || _pfEudrCompanySet || new Set();
       const rows = companies.map(function(c) {
         const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
         const ttmPctStr = !isNaN(c.ttmPctNum) ? ttpFormatCellPct_(c.ttmPctNum) : '0%';
-        return '<tr class="pf-nested-row">'
+        const isEudr = mrdCompanyIsEudrPotential_(c, eudrSet);
+        return '<tr class="pf-nested-row' + (isEudr ? ' pf-nested-row--eudr' : '') + '">'
           + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
-          + pfCompanyCellHtml_(c)
+          + pfCompanyCellHtml_(c, isEudr)
           + '<td class="pf-td-cert">' + pfCertPillsHtml_(c.certification) + '</td>'
           + '<td class="pf-td-plain">'   + escHtml(c.nbl)     + '</td>'
           + '<td class="pf-td-plain">'   + escHtml(c.riskLevel) + '</td>'
@@ -20120,7 +20256,8 @@ function initDashboardApp() {
       filtered.forEach(function(g) {
         const sum     = pfPkGroupSummary_(g);
         const groupId = 'pfpkg-' + gIdx;
-        const count   = g.companies.length;
+        const uniqueCount = mrdUniqueFacilityCompanyCount_(g.companies);
+        const eudrCount = mrdFacilityEudrPotentialCount_(g.companies, _pfEudrCompanySet);
         const nblLabel  = sum.nblYes > 0
           ? '<span class="pf-plain-num">'      + escHtml(String(sum.nblYes) + ' Yes') + '</span>'
           : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
@@ -20134,8 +20271,10 @@ function initDashboardApp() {
         html += '<tr class="pf-group-row pf-pk-group-row" data-group="' + groupId + '" data-expanded="0">'
           + '<td class="pf-td-facility"><div class="pf-facility-cell">'
           + '<span class="pf-group-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>'
-          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong></div></td>'
-          + '<td class="pf-td-center">' + pfCountPillHtml_(count)   + '</td>'
+          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong>'
+          + pfEudrFacilityNoteHtml_(eudrCount)
+          + '</div></td>'
+          + '<td class="pf-td-center">' + pfCountPillHtml_(uniqueCount, eudrCount) + '</td>'
           + '<td class="pf-td-plain">'  + nblLabel                  + '</td>'
           + '<td class="pf-td-plain">'  + highLabel                 + '</td>'
           + '<td class="pf-td-num">'    + grvLabel                  + '</td>'
@@ -20246,8 +20385,14 @@ function initDashboardApp() {
       return '<span class="pf-metric-zero">' + escHtml(String(n)) + '</span>';
     }
 
-    function pfCountPillHtml_(n) {
-      return '<span class="pf-count-pill">' + escHtml(String(n)) + '</span>';
+    function pfCountPillHtml_(total, eudrCount) {
+      const t = parseInt(total, 10) || 0;
+      const e = parseInt(eudrCount, 10) || 0;
+      if (e > 0) {
+        return '<span class="pf-count-pill pf-count-pill--eudr" title="' + escAttr_(mrdEudrPotentialLabel_(e)) + '">'
+          + escHtml(String(t) + '/' + String(e)) + '</span>';
+      }
+      return '<span class="pf-count-pill">' + escHtml(String(t)) + '</span>';
     }
 
     function pfExportRowBtnHtml_(type, facilityKey) {
@@ -20275,13 +20420,15 @@ function initDashboardApp() {
         + escHtml(s) + hint + '</span>';
     }
 
-    function pfNestedTableHtml_(companies) {
+    function pfNestedTableHtml_(companies, eudrSet) {
+      eudrSet = eudrSet || _pfEudrCompanySet || new Set();
       const rows = companies.map(function(c) {
         const ttpPctStr = !isNaN(c.ttpPctNum) ? ttpFormatCellPct_(c.ttpPctNum) : '—';
         const ttmPctStr = !isNaN(c.ttmPctNum) ? ttpFormatCellPct_(c.ttmPctNum) : '0%';
-        return '<tr class="pf-nested-row">'
+        const isEudr = mrdCompanyIsEudrPotential_(c, eudrSet);
+        return '<tr class="pf-nested-row' + (isEudr ? ' pf-nested-row--eudr' : '') + '">'
           + '<td class="pf-td-group">' + escHtml(c.group) + '</td>'
-          + pfCompanyCellHtml_(c)
+          + pfCompanyCellHtml_(c, isEudr)
           + '<td class="pf-td-cert">' + pfCertPillsHtml_(c.certification) + '</td>'
           + '<td class="pf-td-plain">' + escHtml(c.nbl) + '</td>'
           + '<td class="pf-td-plain">' + escHtml(c.riskLevel) + '</td>'
@@ -20401,7 +20548,8 @@ function initDashboardApp() {
       filtered.forEach(function(g) {
         const sum = pfGroupSummary_(g);
         const groupId = 'pfg-' + gIdx;
-        const count = g.companies.length;
+        const uniqueCount = mrdUniqueFacilityCompanyCount_(g.companies);
+        const eudrCount = mrdFacilityEudrPotentialCount_(g.companies, _pfEudrCompanySet);
         const nblLabel = sum.nblYes > 0
           ? '<span class="pf-plain-num">' + escHtml(String(sum.nblYes) + ' Yes') + '</span>'
           : '<span class="pf-plain-num pf-plain-num--zero">0</span>';
@@ -20417,8 +20565,10 @@ function initDashboardApp() {
         html += '<tr class="pf-group-row" data-group="' + groupId + '" data-expanded="0">'
           + '<td class="pf-td-facility"><div class="pf-facility-cell">'
           + '<span class="pf-group-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>'
-          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong></div></td>'
-          + '<td class="pf-td-center">' + pfCountPillHtml_(count) + '</td>'
+          + '<strong class="pf-facility-name">' + escHtml(g.facility) + '</strong>'
+          + pfEudrFacilityNoteHtml_(eudrCount)
+          + '</div></td>'
+          + '<td class="pf-td-center">' + pfCountPillHtml_(uniqueCount, eudrCount) + '</td>'
           + '<td class="pf-td-plain">' + nblLabel + '</td>'
           + '<td class="pf-td-plain">' + highLabel + '</td>'
           + '<td class="pf-td-num">' + grvLabel + '</td>'
@@ -20438,6 +20588,29 @@ function initDashboardApp() {
     }
 
     let _pfAllGroups = [];
+    let _pfEudrCompanySet = new Set();
+
+    async function pfRefreshEudrCompanySet_() {
+      try {
+        await ensureMillDataForEudr_();
+        if (!ttpLoaded) await loadTTPData().catch(function() {});
+        if (!eudrLoaded) await loadEudrData().catch(function() {});
+        await loadEudrFormulaConfig_();
+        eudrClearStatusCache_();
+        const potential = (eudrRows || []).filter(function(row) {
+          return eudrGetDisplayStatus_(row) === 'Potential';
+        });
+        _pfEudrCompanySet = mrdBuildEudrPotentialCompanySet_(potential);
+      } catch (_) {
+        if (!_pfEudrCompanySet || !_pfEudrCompanySet.size) _pfEudrCompanySet = new Set();
+      }
+      return _pfEudrCompanySet;
+    }
+
+    function pfEudrFacilityNoteHtml_(count) {
+      if (!count) return '';
+      return '<span class="pf-eudr-facility-note">(' + escHtml(mrdEudrPotentialLabel_(count)) + ')</span>';
+    }
 
     async function pfLoadAndRender_() {
       const loading = document.getElementById('pf-loading');
@@ -20454,11 +20627,13 @@ function initDashboardApp() {
         ]);
         pfPopulateYears_();
         pfApplyDefaultPeriodIfNeeded_();
+        await pfRefreshEudrCompanySet_();
         _pfAllGroups   = pfBuildRows_();
         _pfAllPkGroups = pfBuildPkGroups_();
         pfRenderTable_(_pfAllGroups);
         pfRenderPkTable_(_pfAllPkGroups);
         await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
+        await pfRefreshEudrCompanySet_();
         _pfAllGroups   = pfBuildRows_();
         _pfAllPkGroups = pfBuildPkGroups_();
         pfRenderTable_(_pfAllGroups);
@@ -22031,6 +22206,36 @@ function initDashboardApp() {
     ).trim();
   }
 
+  /**
+   * Mill Onboarding SOURCE TYPE — physical mills from Task List are always MILL.
+   * Parent TRADER/KCP context goes to TRADER NAME or stays KCP when applicable.
+   */
+  function millParentSupplierType_(mainRow) {
+    return String(mainRow && (mainRow['Supplier Type'] || mainRow['supplier_type']) || 'MILL').trim().toUpperCase();
+  }
+
+  function millSourceTypeForOnboarding_(mainRow, opts) {
+    opts = opts || {};
+    const parentType = millParentSupplierType_(mainRow);
+    const millName = String(opts.millName || opts.data && opts.data['MILL NAME'] || '').trim();
+    if (opts.taskLineId) {
+      if (parentType === 'KCP') return 'KCP';
+      return 'MILL';
+    }
+    if (parentType === 'TRADER' && millName) return 'MILL';
+    return parentType || 'MILL';
+  }
+
+  function millTraderNameForOnboarding_(mainRow, sourceType) {
+    const parentType = millParentSupplierType_(mainRow);
+    const st = String(sourceType || '').trim().toUpperCase();
+    if (st === 'MILL' && parentType === 'TRADER') {
+      return resolveTraderNameFromMain_(mainRow) || 'No Data';
+    }
+    if (st === 'TRADER') return resolveTraderNameFromMain_(mainRow) || 'No Data';
+    return 'No Data';
+  }
+
   function isApprovedSubmittedSddRow_(r) {
     const status = String(r['SCR - Screening Status'] || '').toLowerCase();
     const decision = String(
@@ -22054,15 +22259,14 @@ function initDashboardApp() {
     const toDot = function(v) { return String(v || '').split(',').join('.'); };
     const lat = toDot(tmlRow['TML - Latitude']);
     const lng = toDot(tmlRow['TML - Longitude']);
-    const supplierType = String(
-      mainRow['Supplier Type'] || mainRow['supplier_type'] || 'MILL'
-    ).trim().toUpperCase();
+    const millName = String(tmlRow['TML - Mill Name'] || '').trim();
+    const sourceType = millSourceTypeForOnboarding_(mainRow, { taskLineId: 'tml', millName: millName });
     return applySddPeriodToMillPayload_({
-      'SOURCE TYPE': supplierType,
-      'TRADER NAME': supplierType === 'TRADER' ? resolveTraderNameFromMain_(mainRow) : 'No Data',
+      'SOURCE TYPE': sourceType,
+      'TRADER NAME': millTraderNameForOnboarding_(mainRow, sourceType),
       'GROUP NAME': String(tmlRow['TML - Company Group Name'] || '').trim(),
       'COMPANY NAME': String(tmlRow['TML - Company Name'] || '').trim(),
-      'MILL NAME': String(tmlRow['TML - Mill Name'] || '').trim(),
+      'MILL NAME': millName,
       'UML ID': String(tmlRow['TML - UML ID'] || '').trim(),
       'COORDINATES': [lat, lng].filter(Boolean).join(', '),
       'MILL CAPACITY (TON/HOUR)': String(tmlRow['TML - Capacity (Ton/Hour)'] || '').trim(),
@@ -22293,10 +22497,11 @@ function initDashboardApp() {
     // ── Mill Category: Mill first, KCP fallback ───────────────────────────────
     const millCat = String(r['Mill Category'] || r['KCP Category'] || '').trim();
     const supplierType = String(r['Supplier Type'] || r['supplier_type'] || 'MILL').trim().toUpperCase();
+    const sourceType = millSourceTypeForOnboarding_(r, { millName: millName });
 
     return applySddPeriodToMillPayload_({
-      'SOURCE TYPE':              supplierType,
-      'TRADER NAME':              supplierType === 'TRADER' ? resolveTraderNameFromMain_(r) : 'No Data',
+      'SOURCE TYPE':              sourceType,
+      'TRADER NAME':              millTraderNameForOnboarding_(r, sourceType),
       'GROUP NAME':               String(r['Group Name'] || r['Grup Name'] || '').trim(),
       'COMPANY NAME':             String(r['Company Name'] || '').trim(),
       'MILL NAME':                millName,
@@ -23632,18 +23837,108 @@ function initDashboardApp() {
 
   /** Prefill add-mill form from matched profile (all editable fields); month/year from import batch. */
   function supplyBuildMillPrefillFromDraft_(draftRow, batch) {
-    const profile = supplyGetDraftProfileRow_(draftRow, batch);
-    const prefill = supplyProfilePrefillFromRow_(profile);
+    const prefill = supplyProfilePrefillFromRow_(supplyGetDraftProfileRow_(draftRow, batch));
     if (batch) {
       if (batch.month) prefill['MONTH'] = String(batch.month);
       else if (batch.quarter) prefill['MONTH'] = String(batch.quarter);
       if (batch.year) prefill['YEAR'] = String(batch.year);
     }
+    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      if (millIsSheetComputedField_(f)) return;
+      const v = draftRow[f];
+      if (v !== undefined && v !== null && String(v).trim() !== '') prefill[f] = v;
+    });
     ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'TRADER NAME', 'PROVINCE'].forEach(function(k) {
       const v = draftRow[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') prefill[k] = v;
     });
     return prefill;
+  }
+
+  function supplyDraftSavedFlag_(row) {
+    return !!(row && (row._profile_draft_saved
+      || String(row.profile_draft_saved || '').toLowerCase() === 'true'));
+  }
+
+  function supplyPrepareMillSavePayload_(data, batch) {
+    const payload = millStripComputedFromSavePayload_(Object.assign({}, data || {}));
+    if (!payload['SOURCE TYPE']) payload['SOURCE TYPE'] = 'MILL';
+    const trader = String(payload['TRADER NAME'] || '').trim();
+    if (!trader || /^mill$/i.test(trader)) payload['TRADER NAME'] = 'No Data';
+    if (batch) {
+      if (batch.month && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.month);
+      else if (batch.quarter && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.quarter);
+      if (batch.year && !String(payload['YEAR'] || '').trim()) payload['YEAR'] = String(batch.year);
+    }
+    return payload;
+  }
+
+  function supplyCopyModalIntoDraftRow_(draftRow, data, batch) {
+    if (!draftRow || !data) return;
+    const payload = supplyPrepareMillSavePayload_(data, batch);
+    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      if (payload[f] !== undefined) draftRow[f] = payload[f];
+    });
+    if (payload['SOURCE TYPE']) draftRow['SOURCE TYPE'] = payload['SOURCE TYPE'];
+  }
+
+  function supplyValidateMillPayloadForSubmit_(data) {
+    const missing = ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID'].filter(function(k) {
+      return !String(data[k] || '').trim();
+    });
+    if (missing.length) {
+      throw new Error('Lengkapi ' + missing.join(', ') + ' sebelum Submit.');
+    }
+  }
+
+  async function supplySaveDraftFromModal_(ctx, data) {
+    const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
+    if (!batch || !batch.rows[ctx.rowIdx]) throw new Error('Supply draft row not found.');
+    const draftRow = batch.rows[ctx.rowIdx];
+    supplyCopyModalIntoDraftRow_(draftRow, data, batch);
+    draftRow._profile_draft_saved = true;
+    draftRow.profile_draft_saved = 'true';
+    draftRow.status = 'draft';
+    await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: [draftRow], meta: {} });
+    renderSupplyDraftList_();
+  }
+
+  async function supplyCommitDraftRowToMill_(batch, draftRow, data) {
+    const payload = supplyPrepareMillSavePayload_(data, batch);
+    supplyValidateMillPayloadForSubmit_(payload);
+    supplyCopyModalIntoDraftRow_(draftRow, payload, batch);
+
+    let millRow = draftRow.target_mill_row || draftRow._mill_row;
+    if (millRow) {
+      await apiPost({ action: 'update', sheet: 'mill', row: millRow, data: payload });
+    } else {
+      await apiPost({ action: 'add', sheet: 'mill', data: payload });
+      if (typeof loadMillData === 'function') await loadMillData({ force: true });
+      supplyRematchDraftRow_(draftRow, batch);
+      millRow = draftRow.target_mill_row || draftRow._mill_row;
+    }
+    if (!millRow) {
+      throw new Error('Profil mill tidak ditemukan setelah submit. Coba Re-match batch.');
+    }
+    draftRow.match_status = 'matched';
+    draftRow.target_mill_row = millRow;
+    draftRow._mill_row = millRow;
+
+    const res = await apiPost({ action: 'submitSupplyDraft', batch_id: batch.batch_id, rows: [draftRow] });
+    draftRow._submitted = true;
+    draftRow._profile_draft_saved = false;
+    draftRow.profile_draft_saved = '';
+    const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
+    if (allDone) batch.status = 'submitted';
+    return res;
+  }
+
+  async function supplySubmitDraftFromModal_(ctx, data) {
+    const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
+    if (!batch || !batch.rows[ctx.rowIdx]) throw new Error('Supply draft row not found.');
+    await supplyCommitDraftRowToMill_(batch, batch.rows[ctx.rowIdx], data);
+    await reloadMillDataSoft_();
+    renderSupplyDraftList_();
   }
 
   async function supplyOpenProfileFromDraft_(draftRow, batch) {
@@ -23681,12 +23976,16 @@ function initDashboardApp() {
   function supplyRenderRowActions_(batch, row, i, isSubmitted, isRowDone, isMatched, isGroupWarn) {
     if (isSubmitted) return '';
     if (isRowDone) return '<span class="supply-match-pill supply-match-pill--matched">✓ Submitted</span>';
-    if (isMatched) {
+    const draftSaved = supplyDraftSavedFlag_(row);
+    if (isMatched || draftSaved) {
+      const viewBtn = isMatched
+        ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="view-profile-row" data-batch="'
+          + escHtml(batch.batch_id) + '" data-row="' + i + '">Lihat</button>'
+        : '';
       return '<div class="supply-row-actions">'
-        + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="view-profile-row" data-batch="'
-        + escHtml(batch.batch_id) + '" data-row="' + i + '">Lihat</button>'
+        + viewBtn
         + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="open-modal-row" data-batch="'
-        + escHtml(batch.batch_id) + '" data-row="' + i + '">Edit</button>'
+        + escHtml(batch.batch_id) + '" data-row="' + i + '">' + (draftSaved && !isMatched ? 'Lanjutkan' : 'Edit') + '</button>'
         + '<button type="button" class="supply-btn supply-btn--primary supply-btn--row" data-action="submit-row" data-batch="'
         + escHtml(batch.batch_id) + '" data-row="' + i + '">Submit</button>'
         + '</div>';
@@ -24405,7 +24704,8 @@ function initDashboardApp() {
       const isGroupWarn = row.match_status === 'group_mismatch';
       const isRowDone  = row._submitted === true;
       const isDual     = supplyRowHasCpo_(row) && supplyRowHasPk_(row);
-      const matchBadge = supplyMatchBadgeHtml_(row.match_status, row._profile_group_hint);
+      const matchBadge = supplyMatchBadgeHtml_(row.match_status, row._profile_group_hint)
+        + (supplyDraftSavedFlag_(row) ? '<span class="supply-match-pill supply-match-pill--draft">Draft saved</span>' : '');
       const typePills  = supplyRowTypePillsHtml_(row);
       const cells = SHOW_COLS.map(function(c) {
         const key = c[0];
@@ -24440,10 +24740,9 @@ function initDashboardApp() {
   function supplyBatchFooterHtml_(batchId) {
     const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
     const matched = batch ? (batch.rows || []).filter(function(r) { return r.match_status === 'matched' && !r._submitted; }).length : 0;
-    const pctLabel = 'supply data (sheet formulas)';
     return '<div class="supply-batch-footer">'
-      + '<p class="supply-batch-footer__hint">Submit <strong>Matched</strong> mengupdate mill profile; '
-      + '<strong>' + pctLabel + '</strong> dihitung otomatis di Google Sheet.</p>'
+      + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk Mill Onboarding. '
+      + '<strong>Submit</strong> (di form atau di baris) baru commit profil + supply data ke sheet.</p>'
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
       + (matched > 0 ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-matched" data-batch="' + escHtml(batchId) + '">Submit Matched (' + matched + ')</button>' : '')
@@ -24460,6 +24759,7 @@ function initDashboardApp() {
     const prefill = supplyBuildMillPrefillFromDraft_(draftRow, batch);
     window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
     openModal('mill', MILL_FIELDS, 'add', prefill);
+    syncSupplyModalChrome_(true);
     supplyApplyPrefillToMillModal_(prefill);
   }
 
@@ -24540,24 +24840,31 @@ function initDashboardApp() {
       return;
     }
 
-    // Submit a single matched row directly
+    // Submit a single row — full mill profile when draft saved / baru; supply % only when already matched
     if (action === 'submit-row') {
       collectInlineEdits_(bId);
       const rowIdx = parseInt(btn.dataset.row, 10);
       const row    = batch.rows && batch.rows[rowIdx];
       if (!row) return;
       btn.textContent = '…'; btn.disabled = true;
-      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] })
-        .then(function() {
+      const needsFullCommit = supplyDraftSavedFlag_(row) || row.match_status !== 'matched';
+      const work = needsFullCommit
+        ? supplyCommitDraftRowToMill_(batch, row, row).then(function() {
+          return reloadMillDataSoft_();
+        })
+        : apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] }).then(function() {
           row._submitted = true;
           const allDone = (batch.rows || []).every(function(r) { return r._submitted; });
           if (allDone) batch.status = 'submitted';
-          if (typeof loadMillData === 'function') loadMillData({ force: true });
+          if (typeof loadMillData === 'function') return loadMillData({ force: true });
+        });
+      work
+        .then(function() {
           renderSupplyDraftList_();
         })
         .catch(function(err) {
           btn.textContent = 'Submit'; btn.disabled = false;
-          alert('Submit failed: ' + err.message);
+          alert('Submit failed: ' + (err && err.message ? err.message : err));
         });
       return;
     }
@@ -24666,6 +24973,7 @@ function initDashboardApp() {
             batches[bid].supply_type = row.supply_type || row.SUPPLY_TYPE;
           }
           batches[bid].rows.push(row);
+          row._profile_draft_saved = String(row.profile_draft_saved || '').toLowerCase() === 'true';
         });
         window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(Object.values(batches).map(function(b) {
           supplyNormalizeBatchPeriod_(b);

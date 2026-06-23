@@ -155,6 +155,57 @@ export function facilitySummaryColLabels(isPk) {
   return ['Facility', 'Companies', 'No Buy List', 'High Risk', 'Total Grievance', 'Estimated ISPO Supply %', ttm, pct];
 }
 
+/** Normalize company name for cross-menu matching (Facility ↔ EUDR Potential). */
+export function mrdNormalizeCompanyKey_(name) {
+  return String(name || '').trim().toUpperCase();
+}
+
+/** Unique company names from EUDR Potential rows (items may be `{ row }` wrappers or raw rows). */
+export function mrdBuildEudrPotentialCompanySet_(eudrItems) {
+  const set = new Set();
+  (eudrItems || []).forEach(function(item) {
+    const row = item && item.row ? item.row : item;
+    const key = mrdNormalizeCompanyKey_(row && row['COMPANY NAME']);
+    if (key && key !== '—') set.add(key);
+  });
+  return set;
+}
+
+export function mrdUniqueFacilityCompanyCount_(companies) {
+  const seen = new Set();
+  (companies || []).forEach(function(c) {
+    const key = mrdNormalizeCompanyKey_(c.companyKey || c.company);
+    if (key && key !== '—') seen.add(key);
+  });
+  return seen.size;
+}
+
+/** Count unique companies in a facility that appear in the EUDR Potential set. */
+export function mrdFacilityEudrPotentialCount_(companies, eudrCompanySet) {
+  if (!eudrCompanySet || !eudrCompanySet.size) return 0;
+  const seen = new Set();
+  let count = 0;
+  (companies || []).forEach(function(c) {
+    const key = mrdNormalizeCompanyKey_(c.companyKey || c.company);
+    if (!key || key === '—' || seen.has(key)) return;
+    seen.add(key);
+    if (eudrCompanySet.has(key)) count++;
+  });
+  return count;
+}
+
+export function mrdCompanyIsEudrPotential_(company, eudrCompanySet) {
+  if (!eudrCompanySet || !eudrCompanySet.size) return false;
+  const key = mrdNormalizeCompanyKey_(company && (company.companyKey || company.company));
+  return !!(key && key !== '—' && eudrCompanySet.has(key));
+}
+
+export function mrdEudrPotentialLabel_(count) {
+  const n = parseInt(count, 10) || 0;
+  if (n <= 0) return '';
+  return n + ' EUDR Potential' + (n === 1 ? '' : 's');
+}
+
 /** Short / wrapped PDF header labels so columns do not overlap on A4. */
 const PDF_HEAD_SHORT = {
   'Result Risk Level': 'Risk\nLevel',
@@ -299,14 +350,16 @@ export function mrdFormatReportDate_(date) {
  * Monthly Report header copy — period, 15th cutoff, week-of-month (boss feedback).
  * @returns {{ period, periodLine, cutoffLine, cutoffCompact, weekOfMonth, cutoffFormatted, exportedAt }}
  */
-export function mrdReportHeaderMeta_(year, month, exportDate) {
+export function mrdReportHeaderMeta_(year, month, exportDate, dataPeriodOverride) {
   const exportDt = exportDate instanceof Date ? exportDate : new Date(exportDate || Date.now());
   const cutoff = mrdReportCutoffDate_(year, month, exportDt);
   const week = mrdWeekOfMonth_(cutoff);
   const cutoffMonthFull = mrdMonthFullName_(cutoff.getMonth() + 1);
   const cutoffMonthShort = MRD_MONTH_SHORT_[cutoff.getMonth() + 1] || '';
   const period = mrdPeriodDisplayLabel_(year, month);
-  const dataPeriod = mrdDataPeriodFromReport_(year, month);
+  const dataPeriod = dataPeriodOverride && (dataPeriodOverride.year != null || dataPeriodOverride.month != null)
+    ? { year: String(dataPeriodOverride.year || ''), month: String(dataPeriodOverride.month || '') }
+    : mrdDataPeriodFromReport_(year, month);
   const dataLabel = mrdPeriodDisplayLabel_(dataPeriod.year, dataPeriod.month);
   const cutoffFormatted = mrdFormatReportDate_(cutoff);
   const cutoffCompact = '15 ' + cutoffMonthShort + ' ' + cutoff.getFullYear();
