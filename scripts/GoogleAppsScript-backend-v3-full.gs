@@ -641,7 +641,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-ttp-header-detect-fix',
+        version: 'v3-ttp-header-row3',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
@@ -1292,16 +1292,23 @@ function ttpRowHasContent_(obj) {
 function millRowHasContent_(obj) {
   if (!obj) return false;
   var co = String(obj['COMPANY NAME'] || obj['Company Name'] || '').trim();
+  if (!co) {
+    Object.keys(obj).forEach(function(k) {
+      if (k === '_row' || co) return;
+      var nk = String(k).replace(/\s+/g, ' ').trim();
+      if (!/^company(\s*name)?$/i.test(nk)) return;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb/i.test(nk)) return;
+      var v = String(obj[k] || '').trim();
+      if (v && v !== '—' && v !== '-') co = v;
+    });
+  }
   if (co && co !== '—' && co !== '-') return true;
-  Object.keys(obj).forEach(function(k) {
-    if (k === '_row' || co) return;
-    var nk = String(k).replace(/\s+/g, ' ').trim();
-    if (!/^company(\s*name)?$/i.test(nk)) return;
-    if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb/i.test(nk)) return;
-    var v = String(obj[k] || '').trim();
-    if (v && v !== '—' && v !== '-') co = v;
-  });
-  return !!co;
+  return !!(
+    String(obj['MILL NAME'] || '').trim() ||
+    String(obj['GROUP NAME'] || '').trim() ||
+    String(obj['UML ID'] || '').trim() ||
+    String(obj['COMPANY CODE'] || '').trim()
+  );
 }
 
 function ensureQuestionnaireMonitoringHeaders_() {
@@ -2663,6 +2670,14 @@ function isTtpInvalidHeaderRow_(headers) {
   return false;
 }
 
+function ttpHeaderRowLooksCanonical_(rowLower) {
+  if (!rowLower || !rowLower.length) return false;
+  return rowLower.indexOf('quarter') !== -1
+    && rowLower.indexOf('year') !== -1
+    && rowLower.indexOf('company name') !== -1
+    && (rowLower.indexOf('mill name') !== -1 || rowLower.indexOf('uml id') !== -1);
+}
+
 function detectTtpHeaderRow_(sheet) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
@@ -2674,8 +2689,19 @@ function detectTtpHeaderRow_(sheet) {
   var best = null;
   var bestScore = 0;
 
+  // Standard layout: KPI rows 1–2, header row 3 (NO | Quarter | Year | … | COMPANY NAME | MILL NAME).
   for (var r = 0; r < data.length; r++) {
     const headers = data[r].map(function(h) { return String(h || '').trim(); });
+    if (!headers.some(Boolean)) continue;
+    if (isTtpInvalidHeaderRow_(headers)) continue;
+    const rowLower = headers.map(function(h) { return h.toLowerCase(); });
+    if (ttpHeaderRowLooksCanonical_(rowLower)) {
+      return { headerRow: r + 1, headers: headers };
+    }
+  }
+
+  for (var r2 = 0; r2 < data.length; r2++) {
+    const headers = data[r2].map(function(h) { return String(h || '').trim(); });
     if (!headers.some(Boolean)) continue;
     if (isTtpInvalidHeaderRow_(headers)) continue;
 
@@ -2694,8 +2720,10 @@ function detectTtpHeaderRow_(sheet) {
     const hasMill = rowLower.indexOf('mill name') !== -1;
     const hasFfb = rowLower.indexOf('ffb supplier name') !== -1;
     const hasGroup = rowLower.indexOf('group name') !== -1;
+    const hasQuarterYear = rowLower.indexOf('quarter') !== -1 && rowLower.indexOf('year') !== -1;
 
     var score = hitPrimary;
+    if (hasQuarterYear) score += 25;
     if (hasCompany && hasMill) score += 6;
     if (hasFfb) score += 3;
     if (hasGroup) score += 2;
@@ -2704,7 +2732,7 @@ function detectTtpHeaderRow_(sheet) {
 
     if (score > bestScore) {
       bestScore = score;
-      best = { headerRow: r + 1, headers: headers };
+      best = { headerRow: r2 + 1, headers: headers };
     }
   }
 
