@@ -82,9 +82,14 @@ export function mrdIsTraderSourceType_(rowOrItem) {
   return st === 'TRADER' || st === 'TRD';
 }
 
-/** Mill Onboarding sections exclude TRADER even when high risk. */
+export function mrdIsRefinerySourceType_(rowOrItem) {
+  const st = mrdSourceTypeVal_(rowOrItem).replace(/\s+/g, '');
+  return st === 'REFINERY' || st === 'REF';
+}
+
+/** PDF Mill Onboarding export: MILL only — exclude TRADER and REFINERY. */
 export function mrdShowInMillOnboarding_(rowOrItem) {
-  return !mrdIsTraderSourceType_(rowOrItem);
+  return !mrdIsTraderSourceType_(rowOrItem) && !mrdIsRefinerySourceType_(rowOrItem);
 }
 
 export const MRD_GRV_SUMMARY_COLS = [
