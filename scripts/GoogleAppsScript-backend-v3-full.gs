@@ -5347,7 +5347,22 @@ function buildSupplyPatchFromDraftGs_(row) {
   if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '' && (submitKind === 'PK' || submitKind === 'BOTH')) {
     patch['SUPPLY PK'] = qtyPk;
   }
+  var monthTok = String(row['MONTH'] || row['Month'] || row.month || row.quarter || row.QUARTER || '').trim();
+  var yearTok = String(row['YEAR'] || row['Year'] || row.year || '').trim();
+  if (monthTok) patch['MONTH'] = monthTok;
+  if (yearTok) patch['YEAR'] = yearTok;
   return patch;
+}
+
+function millObjectToRowArrGs_(obj, headers) {
+  return headers.map(function(h) {
+    return obj[h] !== undefined && obj[h] !== null ? obj[h] : '';
+  });
+}
+
+function millSpliceInsertedRowGs_(millData, insertAfter, rowArr) {
+  if (insertAfter > 0) millData.splice(insertAfter, 0, rowArr);
+  else millData.push(rowArr);
 }
 
 /**
@@ -5407,11 +5422,11 @@ function submitSupplyDraft_(batchId, rows) {
         var baseObj = millRowToObjectGs_(millData[plan.insertAfter - 1], millHeaders);
         var newData = mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind === 'BOTH' ? 'BOTH' : submitKind);
         addRow('mill', newData, plan.insertAfter);
-        millData = millSheet.getDataRange().getValues();
+        millSpliceInsertedRowGs_(millData, plan.insertAfter, millObjectToRowArrGs_(newData, millHeaders));
       } else {
         var newRowData = buildMillRowFromSupplyDraftGs_(row, patch, submitKind, millHeaders);
-        addRow('mill', newRowData);
-        millData = millSheet.getDataRange().getValues();
+        var addResNew = addRow('mill', newRowData);
+        millSpliceInsertedRowGs_(millData, 0, millObjectToRowArrGs_(newRowData, millHeaders));
       }
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);

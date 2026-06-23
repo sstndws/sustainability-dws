@@ -3944,7 +3944,7 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzqcKkQl3er105n5LfN1YttxqV5K6t6FsmwmmSbLVzkuOssZ3sKpJ2yjtQXae8kxfkbdw/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxl2s4MWrTOnIZ0Y-fKNZNd7RlRjbjmqI1t1kS3kFY5BtN8wvUq1xkjCaY7yq6WZBJH_Q/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx9K1McLrYR3DuNejG-JTC_cCGNmfjkmZQHL3Q2HBuSVDxkcZIjGlIhVGkzJIp7D2DYLA';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -23939,15 +23939,38 @@ function initDashboardApp() {
     else if (done > 0 && batch.status === 'submitted') batch.status = 'draft';
   }
 
+  function supplyApplyBatchPeriodToPayload_(payload, batch, draftRow) {
+    const out = payload || {};
+    let month = '';
+    let year = '';
+    if (batch) {
+      month = String(batch.month || batch.quarter || '').trim();
+      year = String(batch.year || '').trim();
+    }
+    if (!month && draftRow) {
+      month = String(draftRow.MONTH || draftRow.month || draftRow.quarter || draftRow.QUARTER || '').trim();
+    }
+    if (!year && draftRow) year = String(draftRow.YEAR || draftRow.year || '').trim();
+    if (month) out['MONTH'] = month;
+    if (year) out['YEAR'] = year;
+    return out;
+  }
+
+  function supplyEnsureDraftPeriodOnRows_(rows, batch) {
+    if (!rows || !batch) return;
+    const month = String(batch.month || batch.quarter || '').trim();
+    const year = String(batch.year || '').trim();
+    rows.forEach(function(r) {
+      if (month) r.MONTH = r['MONTH'] = month;
+      if (year) r.YEAR = r['YEAR'] = year;
+    });
+  }
+
   function supplyPrepareMillSavePayload_(data, batch, draftRow) {
     const payload = millStripComputedFromSavePayload_(Object.assign({}, data || {}));
     const sourceType = millSourceTypeValFromRow_(payload) || 'MILL';
     payload['SOURCE TYPE'] = sourceType;
-    if (batch) {
-      if (batch.month && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.month);
-      else if (batch.quarter && !String(payload['MONTH'] || '').trim()) payload['MONTH'] = String(batch.quarter);
-      if (batch.year && !String(payload['YEAR'] || '').trim()) payload['YEAR'] = String(batch.year);
-    }
+    supplyApplyBatchPeriodToPayload_(payload, batch, draftRow);
     const kind = supplyResolveKindFromDraft_(draftRow || payload, batch);
     const plant = supplyNormalizePlantValue_(payload.PLANT || (draftRow && draftRow.PLANT) || '');
     if (plant) {
@@ -24046,6 +24069,7 @@ function initDashboardApp() {
       out['FACILITY NAME PK'] = '';
       out['PRODUCT SUPPLY'] = 'CPO';
     }
+    supplyApplyBatchPeriodToPayload_(out, batch, draftRow);
     return out;
   }
 
@@ -24064,11 +24088,9 @@ function initDashboardApp() {
         : payload;
       const addRes = await apiPost({ action: 'add', sheet: 'mill', data: appendPayload, insertAfter: insertAfter });
       millRow = addRes && addRes.row ? addRes.row : null;
-      if (typeof loadMillData === 'function') await loadMillData({ force: true });
     } else {
       const addRes = await apiPost({ action: 'add', sheet: 'mill', data: payload });
       millRow = addRes && addRes.row ? addRes.row : null;
-      if (typeof loadMillData === 'function') await loadMillData({ force: true });
       if (!millRow) {
         supplyRematchDraftRow_(draftRow, batch);
         millRow = draftRow.target_mill_row || draftRow._mill_row;
@@ -25096,6 +25118,7 @@ function initDashboardApp() {
       const kind = String(batch.supply_type || (matchedRows[0] && matchedRows[0].supply_type) || 'CPO').toUpperCase();
       const confirmMsg = 'Tambah ' + matchedRows.length + ' baris baru di Mill Profile? (Data lama tidak diubah; supply/risk dihitung otomatis di sheet)';
       if (!confirm(confirmMsg)) return;
+      supplyEnsureDraftPeriodOnRows_(matchedRows, batch);
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
         .then(function(res) {
@@ -25105,9 +25128,17 @@ function initDashboardApp() {
           });
           supplyNormalizeBatchSubmittedState_(batch);
           renderSupplyDraftList_();
-          if (typeof loadMillData === 'function') loadMillData({ force: true });
-          const errNote = (res.errors && res.errors.length) ? ('\nNote: ' + res.errors.slice(0, 3).join('; ')) : '';
-          alert('✓ ' + (res.submitted || matchedRows.length) + ' baris baru ditambahkan di Mill Profile.' + errNote);
+          const errNote = (res && res.errors && res.errors.length)
+            ? ('\nNote: ' + res.errors.slice(0, 3).join('; '))
+            : '';
+          const submittedN = (res && res.submitted) || matchedRows.length;
+          return (typeof reloadMillDataSoft_ === 'function'
+            ? reloadMillDataSoft_()
+            : (typeof loadMillData === 'function' ? loadMillData({ force: true }) : Promise.resolve())
+          ).then(function() {
+            btn.textContent = '✓ Submit Matched'; btn.disabled = false;
+            alert('✓ ' + submittedN + ' baris baru ditambahkan di Mill Profile.' + errNote);
+          });
         })
         .catch(function(err) {
           btn.textContent = '✓ Submit Matched'; btn.disabled = false;
@@ -25123,18 +25154,21 @@ function initDashboardApp() {
       const row    = batch.rows && batch.rows[rowIdx];
       if (!row) return;
       btn.textContent = '…'; btn.disabled = true;
+      supplyEnsureDraftPeriodOnRows_([row], batch);
       const needsFullCommit = supplyDraftSavedFlag_(row) || row.match_status !== 'matched';
       const work = needsFullCommit
-        ? supplyCommitDraftRowToMill_(batch, row, row).then(function() {
-          return reloadMillDataSoft_();
-        })
+        ? supplyCommitDraftRowToMill_(batch, row, row)
         : apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] }).then(function() {
           row._submitted = true;
           row.status = 'submitted';
           supplyNormalizeBatchSubmittedState_(batch);
-          if (typeof loadMillData === 'function') return loadMillData({ force: true });
         });
       work
+        .then(function() {
+          return (typeof reloadMillDataSoft_ === 'function')
+            ? reloadMillDataSoft_()
+            : (typeof loadMillData === 'function' ? loadMillData({ force: true }) : Promise.resolve());
+        })
         .then(function() {
           renderSupplyDraftList_();
         })
