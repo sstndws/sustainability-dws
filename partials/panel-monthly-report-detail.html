@@ -70,11 +70,7 @@
                 <div class="mrd-export-period-fields">
                   <div class="pf-period-group">
                     <label class="pf-period-label" for="mrdExportYearSel">Year</label>
-                    <select id="mrdExportYearSel" class="pf-period-select">
-                      <option value="2026">2026</option>
-                      <option value="2025">2025</option>
-                      <option value="2024">2024</option>
-                    </select>
+                    <input type="number" id="mrdExportYearSel" class="pf-period-select pf-period-input" min="1900" max="2100" step="1" inputmode="numeric" title="Any year for the PDF header label" />
                   </div>
                   <div class="pf-period-group">
                     <label class="pf-period-label" for="mrdExportMonthSel">Month</label>

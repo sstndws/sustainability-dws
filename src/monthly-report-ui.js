@@ -90,6 +90,44 @@ function parseYear(v) {
   return isNaN(n) ? '' : String(n);
 }
 
+/** Years for MRD filters — wide default range plus any year found in loaded data. */
+function mrdCollectAvailableYears_(extraYears) {
+  const years = new Set();
+  const now = new Date().getFullYear();
+  for (let y = now + 5; y >= 2000; y--) {
+    years.add(String(y));
+  }
+  (_deps.getMillData() || []).forEach(function(r) {
+    const y = parseYear(_deps.millYearVal(r));
+    if (y) years.add(y);
+  });
+  (extraYears || []).forEach(function(y) {
+    const py = parseYear(y);
+    if (py) years.add(py);
+  });
+  return years;
+}
+
+function mrdRenderYearSelectOptions_(selectEl, selectedYear) {
+  if (!selectEl) return;
+  const sel = parseYear(selectedYear) || String(new Date().getFullYear());
+  const years = mrdCollectAvailableYears_([sel]);
+  years.add(sel);
+  selectEl.innerHTML = Array.from(years).sort(function(a, b) {
+    return Number(b) - Number(a);
+  }).map(function(y) {
+    return '<option value="' + y + '"' + (y === sel ? ' selected' : '') + '>' + y + '</option>';
+  }).join('');
+}
+
+function mrdReadExportYear_() {
+  const yearEl = document.getElementById('mrdExportYearSel');
+  const raw = yearEl ? yearEl.value : _year;
+  const y = parseYear(raw);
+  if (y) return y;
+  return String(new Date().getFullYear());
+}
+
 /** Sync year/month from toolbar before export, header, or reload. */
 function syncPeriodFromUi_() {
   const yearSel = document.getElementById('mrdYearSel');
@@ -331,9 +369,9 @@ function mrdRefreshExportSectionList_() {
 
 function mrdSyncExportPeriodFromPage_() {
   const report = getReportPeriod_();
-  const yearSel = document.getElementById('mrdExportYearSel');
+  const yearEl = document.getElementById('mrdExportYearSel');
   const monthSel = document.getElementById('mrdExportMonthSel');
-  if (yearSel) yearSel.value = report.year || String(new Date().getFullYear());
+  if (yearEl) yearEl.value = report.year || String(new Date().getFullYear());
   if (monthSel) {
     const m = report.month || String(new Date().getMonth() + 1);
     monthSel.value = m;
@@ -341,10 +379,9 @@ function mrdSyncExportPeriodFromPage_() {
 }
 
 function mrdExportReportPeriod_() {
-  const yearSel = document.getElementById('mrdExportYearSel');
   const monthSel = document.getElementById('mrdExportMonthSel');
   return {
-    year: yearSel ? yearSel.value : _year,
+    year: mrdReadExportYear_(),
     month: monthSel ? monthSel.value : _month,
   };
 }
@@ -1405,16 +1442,9 @@ async function resolveMillNblOnExpand(cacheKey, row) {
 
 function populateYearSelect() {
   const yearSel = document.getElementById('mrdYearSel');
-  if (!yearSel || yearSel._mrdYearsPopulated) return;
+  if (!yearSel) return;
+  mrdRenderYearSelectOptions_(yearSel, _year);
   yearSel._mrdYearsPopulated = true;
-  const years = new Set(['2026', '2025', '2024']);
-  (_deps.getMillData() || []).forEach(function(r) {
-    const y = parseYear(_deps.millYearVal(r));
-    if (y) years.add(y);
-  });
-  yearSel.innerHTML = Array.from(years).sort().reverse().map(function(y) {
-    return '<option value="' + y + '"' + (y === _year ? ' selected' : '') + '>' + y + '</option>';
-  }).join('');
 }
 
 function bindOnce() {

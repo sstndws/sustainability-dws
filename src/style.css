@@ -5913,6 +5913,9 @@ body.supply-import-open {
   appearance: auto;
 }
 .pf-period-select:focus { outline: none; border-color: #8B1A1A; }
+.pf-period-input { cursor: text; appearance: auto; }
+.pf-period-input::-webkit-outer-spin-button,
+.pf-period-input::-webkit-inner-spin-button { opacity: 1; }
 .pf-reset-btn {
   display: inline-flex;
   align-items: center;
