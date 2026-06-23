@@ -774,9 +774,7 @@ function renderHighRiskSection(rows) {
 }
 
 function renderMillSection(rows) {
-  const filtered = rows.filter(function(item) {
-    return mrdShowInMillOnboarding_(item) && matchesSearch(item.search);
-  });
+  const filtered = rows.filter(function(item) { return matchesSearch(item.search); });
   // Sort: HIGH risk first so they're always visible even when list is capped.
   filtered.sort(function(a, b) {
     const aH = isHighRisk(a.risk) ? 0 : 1;
