@@ -6212,7 +6212,17 @@ function initDashboardApp() {
       if (!k || k === '_row' || k.charAt(0) === '_') continue;
       const nk = String(k).replace(/\s+/g, ' ').trim();
       if (!/^company(\s*name)?$/i.test(nk)) continue;
-      if (/group|trader|code|facility|supply|nbl|profile|owner/i.test(nk)) continue;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb/i.test(nk)) continue;
+      const v = String(row[k] || '').trim();
+      if (v && v !== '—' && v !== '-') return v;
+    }
+    // Fallback: kolom header typo / terpotong (mis. "COMPANY NAM", "Company")
+    for (let j = 0; j < Object.keys(row).length; j++) {
+      const k = Object.keys(row)[j];
+      if (!k || k === '_row' || k.charAt(0) === '_') continue;
+      const nk = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (nk.indexOf('company') === -1 || nk.indexOf('name') === -1) continue;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb|mill/i.test(nk)) continue;
       const v = String(row[k] || '').trim();
       if (v && v !== '—' && v !== '-') return v;
     }
@@ -6252,20 +6262,15 @@ function initDashboardApp() {
     return o;
   }
 
-  /** Mill registry: show rows with company, group, or mill name (not company-only). */
-  function millRowHasRegistryIdentity_(row) {
+  /** Mill registry: tampilkan semua baris yang punya Company Name (UML ID tidak wajib). */
+  function millRowHasCompanyName_(row) {
     if (!row) return false;
-    function ok(v) {
-      const s = String(v || '').trim();
-      return s.length > 0 && s !== '—' && s !== '-';
-    }
-    return ok(pickMillCompanyName_(row))
-      || ok(pickMillGroupName_(row))
-      || ok(millPickField_(row, ['MILL NAME', 'Mill Name']));
+    const co = pickMillCompanyName_(row);
+    return co.length > 0 && co !== '—' && co !== '-';
   }
 
-  function millRowHasCompanyName_(row) {
-    return millRowHasRegistryIdentity_(row);
+  function millRowHasRegistryIdentity_(row) {
+    return millRowHasCompanyName_(row);
   }
 
   function millDedupKey_(row) {
@@ -6275,10 +6280,12 @@ function initDashboardApp() {
     const q = String(millQuarterVal(row) || '').trim().toLowerCase();
     const period = m || q || '';
     if (uml) return 'uml:' + uml.toLowerCase() + '|y:' + y + '|p:' + period;
-    return ['noml', pickMillGroupName_(row), pickMillCompanyName_(row),
-      millPickField_(row, ['MILL NAME', 'Mill Name']), y, period].map(function(x) {
-      return String(x || '').trim().toLowerCase();
-    }).join('|');
+    // Tanpa UML ID: jangan merge — tiap baris sheet tetap tampil
+    if (row._row != null) return 'row:' + row._row;
+    return 'noml:' + [
+      pickMillGroupName_(row), pickMillCompanyName_(row),
+      millPickField_(row, ['MILL NAME', 'Mill Name']), y, period,
+    ].map(function(x) { return String(x || '').trim().toLowerCase(); }).join('|');
   }
 
   function millRegistryRowScore_(row) {
@@ -7077,16 +7084,23 @@ function initDashboardApp() {
         .filter(millRowHasRegistryIdentity_);
       allDataRaw = rawData.map(prepareMillRowPerfCache);
 
-      // Dedup: same UML + period keeps richest row (not one row per UML across all periods).
+      // Dedup hanya untuk baris dengan UML ID + periode sama (ambil yang paling lengkap).
+      // Baris tanpa UML ID tidak di-merge — semua company name tetap tampil.
       const dedupMap = new Map();
+      const noUmlRows = [];
       rawData.forEach(function(row) {
+        const uml = millPickField_(row, ['UML ID', 'UML Id', 'UML_ID', 'MILL ID', 'Mill ID']);
+        if (!uml) {
+          noUmlRows.push(Object.assign({}, row));
+          return;
+        }
         const key = millDedupKey_(row);
         const existing = dedupMap.get(key);
         if (!existing || millRegistryRowScore_(row) > millRegistryRowScore_(existing)) {
           dedupMap.set(key, Object.assign({}, row));
         }
       });
-      allData = Array.from(dedupMap.values()).map(prepareMillRowPerfCache);
+      allData = Array.from(dedupMap.values()).concat(noUmlRows).map(prepareMillRowPerfCache);
       // If no IDs were found (different column name), fall back to raw
       if (allData.length === 0 && rawData.length > 0) allData = allDataRaw.slice();
 
@@ -14511,16 +14525,19 @@ function initDashboardApp() {
     const seen = new Map();
     (allData || []).forEach(function(r) {
       const group = String(r['GROUP NAME'] || r['Group Name'] || r['Grup Name'] || '').trim();
-      const company = String(r['COMPANY NAME'] || r['Company Name'] || '').trim();
+      const company = pickMillCompanyName_(r) || String(r['COMPANY NAME'] || r['Company Name'] || '').trim();
       const mill = String(r['MILL NAME'] || r['Mill Name'] || '').trim();
-      if (!mill && !company) return;
-      const key = qmEntityKey_(group, company, mill);
+      if (!company) return;
+      const uml = String(r['UML ID'] || '').trim();
+      const key = uml
+        ? ('uml:' + uml.toLowerCase())
+        : qmEntityKey_(group, company, mill) + '|row:' + (r._row != null ? r._row : seen.size);
       if (seen.has(key)) return;
       seen.set(key, {
         'GROUP NAME': group,
         'COMPANY NAME': company,
         'MILL NAME': mill,
-        'UML ID': String(r['UML ID'] || '').trim(),
+        'UML ID': uml,
         _millRow: r._row,
       });
     });
@@ -22887,7 +22904,20 @@ function initDashboardApp() {
 
   function supplyPeriodKey_(month, year) {
     const m = String(month || '').trim();
-    return m + '|' + String(year || '').trim();
+    const y = String(year || '').trim();
+    return m + '|' + y;
+  }
+
+  function supplyNormalizeBatchPeriod_(batch) {
+    if (!batch || typeof batch !== 'object') return batch;
+    const month = String(
+      batch.month || batch.MONTH
+        || batch.quarter || batch.QUARTER || ''
+    ).trim();
+    if (month) batch.month = month;
+    batch.year = String(batch.year || batch.YEAR || '').trim();
+    if (batch.quarter == null && batch.QUARTER) batch.quarter = batch.QUARTER;
+    return batch;
   }
 
   function supplyCompanyKey_(company) {
@@ -23020,6 +23050,7 @@ function initDashboardApp() {
     const openByPeriod = {};
     const result = [];
     (batchList || []).forEach(function(b) {
+      supplyNormalizeBatchPeriod_(b);
       if (b.status === 'submitted') {
         result.push(b);
         return;
@@ -23031,11 +23062,13 @@ function initDashboardApp() {
         return;
       }
       const target = openByPeriod[pk];
+      if (!target.batch_id && b.batch_id) target.batch_id = b.batch_id;
       (b.rows || []).forEach(function(srcRow) {
         const matches = supplyFindDraftRowsForMergeByCompany_(target, srcRow['COMPANY NAME']);
         if (matches.length) {
           supplyMergeDraftRows_(matches[0], srcRow);
         } else {
+          if (!target.rows) target.rows = [];
           target.rows.push(srcRow);
         }
       });
@@ -23481,10 +23514,11 @@ function initDashboardApp() {
   }
 
   function supplyFindOpenPeriodBatch_(month, year) {
+    const want = supplyPeriodKey_(month, year);
     return (window._supplyDraftBatches || []).find(function(b) {
-      const bPeriod = b.month || b.quarter || '';
-      return b.status !== 'submitted'
-        && supplyPeriodKey_(bPeriod, b.year) === supplyPeriodKey_(month, year);
+      if (b.status === 'submitted') return false;
+      supplyNormalizeBatchPeriod_(b);
+      return supplyPeriodKey_(b.month || b.quarter, b.year) === want;
     }) || null;
   }
 
@@ -23659,6 +23693,7 @@ function initDashboardApp() {
     // ── Proceed → build task list ─────────────────────────────────────────────
     const proceedBtn = document.getElementById('btn-supply-import-proceed');
     if (proceedBtn) proceedBtn.addEventListener('click', function() {
+      if (proceedBtn.disabled || _supplyBuildTaskInFlight) return;
       const m = monthSel ? monthSel.value : '';
       const y = yearSel ? yearSel.value : '';
       const supplyType = supplyImportType_();
@@ -23816,8 +23851,16 @@ function initDashboardApp() {
   // ── Build task list in panel ──────────────────────────────────────────────
   // State: current open/editing draft batches
   window._supplyDraftBatches = window._supplyDraftBatches || [];
+  let _supplyBuildTaskInFlight = null;
 
   async function buildSupplyTaskList_(parsedRows, month, year, supplyType) {
+    if (_supplyBuildTaskInFlight) return _supplyBuildTaskInFlight;
+    _supplyBuildTaskInFlight = buildSupplyTaskListImpl_(parsedRows, month, year, supplyType)
+      .finally(function() { _supplyBuildTaskInFlight = null; });
+    return _supplyBuildTaskInFlight;
+  }
+
+  async function buildSupplyTaskListImpl_(parsedRows, month, year, supplyType) {
     if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
       await loadMillData();
     }
@@ -23827,10 +23870,7 @@ function initDashboardApp() {
     const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
     const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
 
-    let batch = (window._supplyDraftBatches || []).find(function(b) {
-      return b.status !== 'submitted'
-        && supplyPeriodKey_(b.month || b.quarter, b.year) === supplyPeriodKey_(month, year);
-    });
+    let batch = supplyFindOpenPeriodBatch_(month, year);
     const batchId = batch ? batch.batch_id : ('batch-' + Date.now());
     let mergedCount = 0;
 
@@ -23936,9 +23976,12 @@ function initDashboardApp() {
 
     batch.supply_type = supplyCombineSupplyTypes_(batch.supply_type, kind);
     (batch.rows || []).forEach(supplyNormalizeDraftQtyFields_);
+    window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
+    batch = supplyFindOpenPeriodBatch_(month, year);
+    if (!batch) throw new Error('Gagal menyimpan draft supply untuk periode ini.');
     renderSupplyDraftList_();
 
-    apiPost({ action: 'saveSupplyDraft', batch_id: batchId, rows: batch.rows, meta: { month, year, supply_type: batch.supply_type } })
+    apiPost({ action: 'saveSupplyDraft', batch_id: batch.batch_id, rows: batch.rows, meta: { month, year, supply_type: batch.supply_type } })
       .catch(function(err) { console.warn('[supplyDraft] Auto-save failed:', err.message); });
 
     if (mergedCount > 0 && typeof window.showSddToast === 'function') {
@@ -24273,9 +24316,15 @@ function initDashboardApp() {
   }
 
   function loadSupplyDraftsFromServer_() {
-    apiGet('supplyDraft')
+    if (_supplyBuildTaskInFlight) {
+      return _supplyBuildTaskInFlight.finally(function() {
+        return loadSupplyDraftsFromServer_();
+      });
+    }
+    return apiGet('supplyDraft')
       .then(function(data) {
         if (!Array.isArray(data) || !data.length) {
+          window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches || []);
           renderSupplyDraftList_();
           return;
         }
@@ -24283,16 +24332,21 @@ function initDashboardApp() {
         const batches = {};
         data.forEach(function(row) {
           const bid = row.batch_id || row.draft_id || 'unknown';
+          const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
+          const rowYear = String(row.year || row.YEAR || '').trim();
           if (!batches[bid]) {
             batches[bid] = {
               batch_id:   bid,
+              month:      rowMonth,
               quarter:    row.quarter || row.QUARTER || '',
-              year:       row.year || row.YEAR || '',
+              year:       rowYear,
               supply_type: row.supply_type || row.SUPPLY_TYPE || 'CPO',
               status:     row.status  || 'draft',
               created_at: row.created_at || '',
               rows:       [],
             };
+          } else if (!batches[bid].month && rowMonth) {
+            batches[bid].month = rowMonth;
           }
           if (row.supply_type || row.SUPPLY_TYPE) {
             batches[bid].supply_type = row.supply_type || row.SUPPLY_TYPE;
@@ -24300,6 +24354,7 @@ function initDashboardApp() {
           batches[bid].rows.push(row);
         });
         window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(Object.values(batches).map(function(b) {
+          supplyNormalizeBatchPeriod_(b);
           let batchType = 'CPO';
           (b.rows || []).forEach(function(row) {
             batchType = supplyCombineSupplyTypes_(batchType, row.supply_type || row.SUPPLY_TYPE || 'CPO');

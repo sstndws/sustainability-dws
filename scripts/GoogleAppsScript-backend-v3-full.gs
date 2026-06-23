@@ -3509,10 +3509,21 @@ function mirrorMillCompanyNameOnRead_(obj) {
   if (!val) {
     Object.keys(obj).forEach(function(k) {
       if (k === '_row') return;
-      if (/^company\s*name$/i.test(String(k).replace(/\s+/g, ' ').trim())) {
-        var v = String(obj[k] || '').trim();
-        if (v && v !== '—' && v !== '-') val = v;
-      }
+      var nk = String(k).replace(/\s+/g, ' ').trim();
+      if (!/^company(\s*name)?$/i.test(nk)) return;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb/i.test(nk)) return;
+      var v = String(obj[k] || '').trim();
+      if (v && v !== '—' && v !== '-') val = v;
+    });
+  }
+  if (!val) {
+    Object.keys(obj).forEach(function(k) {
+      if (k === '_row') return;
+      var nk = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (nk.indexOf('company') === -1 || nk.indexOf('name') === -1) return;
+      if (/group|trader|code|facility|supply|nbl|profile|owner|tml|ffb|mill/i.test(nk)) return;
+      var v = String(obj[k] || '').trim();
+      if (v && v !== '—' && v !== '-') val = v;
     });
   }
   if (!val) return;
