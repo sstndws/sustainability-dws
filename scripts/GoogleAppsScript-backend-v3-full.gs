@@ -5138,6 +5138,7 @@ function saveSupplyDraft_(rows, batchId, meta) {
   var data    = sheet.getDataRange().getValues();
   var headers = data[0].map(function(h) { return String(h || '').trim(); });
   var draftIdCol = headers.indexOf('draft_id');
+  var statusCol = headers.indexOf('status');
   var now  = nowIso_();
   var user = callerEmail_();
   var saved = 0;
@@ -5145,6 +5146,12 @@ function saveSupplyDraft_(rows, batchId, meta) {
   var metaMonth = String(meta.month || meta.quarter || '').trim();
   var metaYear = String(meta.year || '').trim();
   var metaType = String(meta.supply_type || '').trim();
+
+  var draftIndex = {};
+  for (var ri = 1; ri < data.length; ri++) {
+    var existingId = String(data[ri][draftIdCol] || '').trim();
+    if (existingId) draftIndex[existingId] = ri;
+  }
 
   rows.forEach(function(row) {
     if (metaMonth) {
@@ -5161,24 +5168,17 @@ function saveSupplyDraft_(rows, batchId, meta) {
     }
     var draftId = String(row.draft_id || '').trim();
     if (!draftId) return;
-    var existingSheetRow = -1;
-    for (var r = 1; r < data.length; r++) {
-      if (String(data[r][draftIdCol] || '').trim() === draftId) {
-        existingSheetRow = r + 1;
-        break;
-      }
-    }
-    var statusCol = headers.indexOf('status');
+    var existingIdx = draftIndex[draftId];
     var rowArr = headers.map(function(h) {
       if (h === 'updated_at') return now;
       if (h === 'batch_id' && !row[h]) return batchId;
-      if (h === 'created_at' && existingSheetRow < 0) return now;
-      if (h === 'created_by' && existingSheetRow < 0) return user;
+      if (h === 'created_at' && existingIdx == null) return now;
+      if (h === 'created_by' && existingIdx == null) return user;
       if (h === 'status') {
         var incoming = String(row[h] || '').trim().toLowerCase();
         if (incoming === 'submitted') return 'submitted';
-        if (existingSheetRow > 0 && statusCol >= 0) {
-          var existingSt = String(data[existingSheetRow - 1][statusCol] || '').trim().toLowerCase();
+        if (existingIdx != null && statusCol >= 0) {
+          var existingSt = String(data[existingIdx][statusCol] || '').trim().toLowerCase();
           if (existingSt === 'submitted') return 'submitted';
         }
         if (!row[h]) return 'draft';
@@ -5186,13 +5186,18 @@ function saveSupplyDraft_(rows, batchId, meta) {
       var v = row[h];
       return (v !== undefined && v !== null) ? v : '';
     });
-    if (existingSheetRow > 0) {
-      sheet.getRange(existingSheetRow, 1, 1, rowArr.length).setValues([rowArr]);
+    if (existingIdx != null) {
+      data[existingIdx] = rowArr;
     } else {
-      sheet.appendRow(rowArr);
+      data.push(rowArr);
+      draftIndex[draftId] = data.length - 1;
     }
     saved++;
   });
+
+  if (saved > 0) {
+    sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+  }
   return { success: true, saved: saved, batch_id: batchId };
 }
 
@@ -5321,10 +5326,29 @@ function findMillReferenceProfileGs_(millData, millHeaders, row) {
   return findMillReferenceForSupplyGs_(millData, millHeaders, row);
 }
 
+function buildMillCompanyIndexGs_(millData, millHeaders) {
+  var coCol = millHeaders.indexOf('COMPANY NAME');
+  var index = {};
+  if (coCol < 0) return index;
+  for (var r = 1; r < millData.length; r++) {
+    var sheetCo = String(millData[r][coCol] || '').trim();
+    if (!sheetCo) continue;
+    var key = supplyNormKey_(sheetCo);
+    if (!index[key]) index[key] = [];
+    index[key].push({
+      sheetRow: r + 1,
+      obj: millRowToObjectGs_(millData[r], millHeaders),
+    });
+  }
+  return index;
+}
+
 /** Profil referensi (baris pertama) — untuk salin identitas, bukan baris yang di-update. */
-function findMillReferenceForSupplyGs_(millData, millHeaders, row) {
+function findMillReferenceForSupplyGs_(millData, millHeaders, row, companyIndex) {
   var company = String(row['COMPANY NAME'] || '').trim();
-  var matches = findMillRowsByCompanyGs_(millData, millHeaders, company);
+  var key = supplyNormKey_(company);
+  var matches = (companyIndex && companyIndex[key]) ? companyIndex[key] : [];
+  if (!matches.length) matches = findMillRowsByCompanyGs_(millData, millHeaders, company);
   if (matches.length) return matches[0].obj;
   var targetRef = Number(row.target_mill_row || row._mill_row || 0);
   if (targetRef >= 2 && targetRef <= millData.length) {
@@ -5422,8 +5446,9 @@ function mergeReferenceIdentityIntoPatchGs_(patch, refObj) {
  * Jika baris di bawah company terakhir masih slot kosong (hanya rumus), isi baris itu.
  * Jika sudah terisi, insert baris baru (rumus menyalin dari baris di atasnya).
  */
-function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData) {
-  var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row);
+function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
+  state = state || {};
+  var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row, state.companyIndex);
   if (!ref && !String(row['COMPANY NAME'] || '').trim()) {
     throw new Error('profil mill tidak ditemukan');
   }
@@ -5434,9 +5459,11 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData) {
   patch = millStripFormulaFromPatchGs_(patch);
   if (!Object.keys(patch).length) return 0;
 
-  var activeLast = millFindActiveZoneLastRow_(millSheet, millHeaders);
+  var activeLast = (state.activeLast != null && state.activeLast >= 1)
+    ? state.activeLast
+    : millFindActiveZoneLastRow_(millSheet, millHeaders);
   var targetRow = activeLast + 1;
-  var lastRow = millSheet.getLastRow();
+  var lastRow = state.lastRow != null ? state.lastRow : millSheet.getLastRow();
   var needInsert = true;
 
   if (targetRow <= lastRow && millData[targetRow - 1]) {
@@ -5444,12 +5471,13 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData) {
     if (millRowIsEmptySlotGs_(belowObj)) needInsert = false;
   }
 
-  var templateRow = activeLast;
   if (needInsert) {
     var insertAfter = Math.min(Math.max(activeLast, 1), Math.max(lastRow, 1));
     millSheet.insertRowAfter(insertAfter);
     targetRow = insertAfter + 1;
-    templateRow = insertAfter;
+    lastRow = insertAfter + 1;
+    var emptyRow = millHeaders.map(function() { return ''; });
+    millData.splice(targetRow - 1, 0, emptyRow);
   }
 
   millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetRow, patch);
@@ -5457,6 +5485,11 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData) {
   if (submitKind === 'CPO') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'CPO');
   else if (submitKind === 'PK') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'PK');
   millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
+
+  var rowArr = millSheet.getRange(targetRow, 1, 1, millHeaders.length).getValues()[0];
+  millData[targetRow - 1] = rowArr;
+  state.activeLast = targetRow;
+  state.lastRow = Math.max(lastRow, targetRow);
   return targetRow;
 }
 
@@ -5638,12 +5671,14 @@ function submitSupplyDraft_(batchId, rows) {
     millSheet.getRange(1, pctColCpo + 1).setValue('PERCENTAGE SUPPLY CPO');
     millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
     pctColCpo = millHeaders.indexOf('PERCENTAGE SUPPLY CPO');
+    millData = millSheet.getDataRange().getValues();
   }
   if (pctColPk < 0) {
     millSheet.insertColumnAfter(millSheet.getLastColumn());
     millSheet.getRange(1, millSheet.getLastColumn()).setValue('PERCENTAGE SUPPLY PK');
     millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
     pctColPk = millHeaders.indexOf('PERCENTAGE SUPPLY PK');
+    millData = millSheet.getDataRange().getValues();
   }
 
   var draftSheet   = getSheet('supplyDraft');
@@ -5651,9 +5686,23 @@ function submitSupplyDraft_(batchId, rows) {
   var draftHeaders = draftData[0].map(function(h) { return String(h || '').trim(); });
   var draftIdColD  = draftHeaders.indexOf('draft_id');
   var statusColD   = draftHeaders.indexOf('status');
+  var updColD      = draftHeaders.indexOf('updated_at');
   var now          = nowIso_();
   var submitted    = 0;
   var errors       = [];
+  var draftDirty   = false;
+
+  var draftIdIndex = {};
+  for (var di = 1; di < draftData.length; di++) {
+    var did = String(draftData[di][draftIdColD] || '').trim();
+    if (did) draftIdIndex[did] = di;
+  }
+
+  var millState = {
+    companyIndex: buildMillCompanyIndexGs_(millData, millHeaders),
+    activeLast: millFindActiveZoneLastRow_(millSheet, millHeaders),
+    lastRow: millSheet.getLastRow(),
+  };
 
   rows.forEach(function(row) {
     var matchStatus = String(row.match_status || '').trim().toLowerCase();
@@ -5662,35 +5711,33 @@ function submitSupplyDraft_(batchId, rows) {
       return;
     }
 
-    var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row);
-
     try {
-      if (!ref && !String(row['COMPANY NAME'] || '').trim()) {
+      if (!findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex)
+          && !String(row['COMPANY NAME'] || '').trim()) {
         throw new Error('profil mill tidak ditemukan — match dulu');
       }
-      var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData);
+      var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
       if (!newSheetRow) {
         throw new Error('tidak ada data untuk ditulis');
       }
-      millData = millSheet.getDataRange().getValues();
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
       return;
     }
 
     var draftId = String(row.draft_id || '').trim();
-    if (draftId) {
-      for (var r = 1; r < draftData.length; r++) {
-        if (String(draftData[r][draftIdColD] || '').trim() === draftId) {
-          draftSheet.getRange(r + 1, statusColD + 1).setValue('submitted');
-          var updIdx = draftHeaders.indexOf('updated_at');
-          if (updIdx >= 0) draftSheet.getRange(r + 1, updIdx + 1).setValue(now);
-          break;
-        }
-      }
+    if (draftId && draftIdIndex[draftId] != null) {
+      var dri = draftIdIndex[draftId];
+      if (statusColD >= 0) draftData[dri][statusColD] = 'submitted';
+      if (updColD >= 0) draftData[dri][updColD] = now;
+      draftDirty = true;
     }
     submitted++;
   });
+
+  if (draftDirty) {
+    draftSheet.getRange(1, 1, draftData.length, draftHeaders.length).setValues(draftData);
+  }
 
   if (errors.length && !submitted) {
     throw new Error(errors.slice(0, 5).join('; '));

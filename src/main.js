@@ -3944,7 +3944,7 @@ import {
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxqtFvix2e9GZdRntl6VGsfOGIPwJmo4xeh8t1kXKfaQzsUDJmAnfM0eOOhpXB3hbCQEA/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwtli0HVUVMJ71FGpN1fWL4YhYJASs6dtwNRoY-o1F1elRlUjTFge1yCCwH7-XkUqjc0w/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwIYBvBvS6prk2HsHYWnzIAYnywGkeavCPEnZ9VHdWaLoCpbZSehHJs3cAvhEbhU2UDsQ';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -24218,7 +24218,6 @@ function initDashboardApp() {
     draftRow._profile_draft_saved = false;
     draftRow.profile_draft_saved = '';
     supplyNormalizeBatchSubmittedState_(batch);
-    await apiPost({ action: 'saveSupplyDraft', batch_id: batch.batch_id, rows: [draftRow], meta: {} });
     return res;
   }
 
@@ -24226,8 +24225,12 @@ function initDashboardApp() {
     const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === ctx.batchId; });
     if (!batch || !batch.rows[ctx.rowIdx]) throw new Error('Supply draft row not found.');
     await supplyCommitDraftRowToMill_(batch, batch.rows[ctx.rowIdx], data);
-    await reloadMillDataSoft_();
     renderSupplyDraftList_();
+    if (typeof reloadMillDataSoft_ === 'function') {
+      reloadMillDataSoft_().catch(function(err) {
+        console.warn('[supplyDraft] Mill reload after modal submit:', err.message);
+      });
+    }
   }
 
   async function supplyOpenProfileFromDraft_(draftRow, batch) {
@@ -25283,13 +25286,13 @@ function initDashboardApp() {
             ? ('\nNote: ' + res.errors.slice(0, 3).join('; '))
             : '';
           const submittedN = (res && res.submitted) || matchedRows.length;
-          return (typeof reloadMillDataSoft_ === 'function'
-            ? reloadMillDataSoft_()
-            : (typeof loadMillData === 'function' ? loadMillData({ force: true }) : Promise.resolve())
-          ).then(function() {
-            btn.textContent = '✓ Submit Matched'; btn.disabled = false;
-            alert('✓ ' + submittedN + ' baris baru ditambahkan di paling bawah Mill Onboarding.' + errNote);
-          });
+          btn.textContent = '✓ Submit Matched'; btn.disabled = false;
+          alert('✓ ' + submittedN + ' baris baru ditambahkan di paling bawah Mill Onboarding.' + errNote);
+          if (typeof reloadMillDataSoft_ === 'function') {
+            reloadMillDataSoft_().catch(function(err) {
+              console.warn('[supplyDraft] Mill reload after submit:', err.message);
+            });
+          }
         })
         .catch(function(err) {
           btn.textContent = '✓ Submit Matched'; btn.disabled = false;
@@ -25316,12 +25319,13 @@ function initDashboardApp() {
         });
       work
         .then(function() {
-          return (typeof reloadMillDataSoft_ === 'function')
-            ? reloadMillDataSoft_()
-            : (typeof loadMillData === 'function' ? loadMillData({ force: true }) : Promise.resolve());
-        })
-        .then(function() {
           renderSupplyDraftList_();
+          btn.textContent = 'Submit'; btn.disabled = false;
+          if (typeof reloadMillDataSoft_ === 'function') {
+            reloadMillDataSoft_().catch(function(err) {
+              console.warn('[supplyDraft] Mill reload after submit:', err.message);
+            });
+          }
         })
         .catch(function(err) {
           btn.textContent = 'Submit'; btn.disabled = false;
