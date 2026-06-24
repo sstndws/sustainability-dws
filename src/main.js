@@ -5506,6 +5506,7 @@ function initDashboardApp() {
     'VOLUME SUPPLY STATUS': ['Active','Inactive'],
     'COMPLIMENT/NOT COMPLIMENT': ['Compliment','Not Compliment'],
     'MILL LOC': ['APL','Non APL'],
+    'MILL CATEGORY': ['COMMERCIAL', 'INTEGRATED'],
     'BUYER NO BUY LIST': ['Yes','No'],
   };
 
@@ -5564,6 +5565,17 @@ function initDashboardApp() {
     const legacy = String(row['TRADER NAME'] || row['Trader Name'] || '').trim();
     if (/^(MILL|TRADER|REFINERY|KCP)$/i.test(legacy)) return legacy.toUpperCase();
     if (legacy && !/^no\s*data$/i.test(legacy) && legacy.length <= 24) return legacy.toUpperCase();
+    return '';
+  }
+
+  /** Normalisasi nilai lama draft/profil → opsi dropdown COMMERCIAL | INTEGRATED. */
+  function millNormalizeCategoryVal_(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const u = s.toUpperCase().replace(/\s+/g, ' ');
+    if (u.indexOf('INTEGR') >= 0) return 'INTEGRATED';
+    if (u.indexOf('COMMER') >= 0) return 'COMMERCIAL';
+    if (u === 'INTEGRATED' || u === 'COMMERCIAL') return u;
     return '';
   }
 
