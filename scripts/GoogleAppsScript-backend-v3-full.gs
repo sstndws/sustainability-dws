@@ -5556,12 +5556,10 @@ function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
     out['SUPPLY PK'] = '';
     out['PERCENTAGE SUPPLY PK'] = '';
     out['FACILITY NAME PK'] = '';
-    out['PRODUCT SUPPLY'] = 'CPO';
   } else if (submitKind === 'PK') {
     out['SUPPLY CPO'] = '';
     out['PERCENTAGE SUPPLY CPO'] = '';
     out['FACILITY NAME CPO'] = '';
-    out['PRODUCT SUPPLY'] = 'PK';
   }
   return out;
 }

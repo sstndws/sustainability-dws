@@ -2681,6 +2681,23 @@
      line-height: 1.35;
      word-break: break-word;
    }
+   #panel-mill-onboarding #millTable .mill-merge-badge {
+     display: inline-block;
+     margin-top: 5px;
+     padding: 2px 8px;
+     font-size: 10px;
+     font-weight: 700;
+     line-height: 1.35;
+     border-radius: 999px;
+     background: #ede9fe;
+     color: #5b21b6;
+     letter-spacing: 0.02em;
+     white-space: nowrap;
+   }
+   #panel-mill-onboarding #millTable tr.mill-row--merged .mill-td--fac-cpo,
+   #panel-mill-onboarding #millTable tr.mill-row--merged .mill-td--fac-pk {
+     background: #faf8ff;
+   }
    #panel-mill-onboarding #millTable .mill-id {
      margin-top: 3px;
      font-size: 10.5px;

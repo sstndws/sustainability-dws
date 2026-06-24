@@ -7384,6 +7384,63 @@ function initDashboardApp() {
     return '<span class="mill-cell-wrap"' + title + '>' + esc + '</span>';
   }
 
+  /** Kunci gabungan tampilan tabel: company + mill + bulan + tahun sama → satu baris. */
+  function millTablePeriodEntityKey_(row) {
+    return [
+      String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
+      String(millPickField_(row, ['MILL NAME', 'Mill Name']) || '').trim().toLowerCase(),
+      String(millMonthVal(row) || '').trim().toLowerCase(),
+      String(millYearVal(row) || '').trim().toLowerCase(),
+    ].join('\u0001');
+  }
+
+  /** Gabung nilai facility/product unik dari beberapa baris sheet (mis. EUP; EOP). */
+  function millJoinUniqueSplitValues_(rows, field) {
+    const seen = new Set();
+    const out = [];
+    (rows || []).forEach(function(r) {
+      const raw = String((r && r[field]) || '').trim();
+      if (!raw) return;
+      raw.split(/[,;/]+/).forEach(function(part) {
+        const p = part.trim();
+        if (!p) return;
+        const k = p.toLowerCase();
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push(p);
+      });
+    });
+    return out.join('; ');
+  }
+
+  /** View-only: collapse duplikat periode di tabel Mill Onboarding. */
+  function millCollapseRowsForTableDisplay_(rows) {
+    if (!rows || !rows.length) return [];
+    const groups = new Map();
+    const order = [];
+    rows.forEach(function(r) {
+      const key = millTablePeriodEntityKey_(r);
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.push(key);
+      }
+      groups.get(key).push(r);
+    });
+    return order.map(function(key) {
+      const members = groups.get(key);
+      if (members.length < 2) return members[0];
+      const primary = members[0];
+      const merged = Object.assign({}, primary);
+      merged['FACILITY NAME CPO'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME CPO');
+      merged['FACILITY NAME PK'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME PK');
+      merged['PRODUCT SUPPLY'] = millJoinUniqueSplitValues_(members, 'PRODUCT SUPPLY');
+      merged._millTableMerged = true;
+      merged._millTableMergeCount = members.length;
+      merged._millTableMergeSources = members.slice();
+      return merged;
+    });
+  }
+
   function renderMillTable() {
     const body = document.getElementById('millTableBody');
     if (!body) return;
@@ -7394,7 +7451,8 @@ function initDashboardApp() {
     millRefreshFilterOptions(baseFiltered);
     const filtered = baseFiltered.filter(millRowMatchesColumnFilters);
     const sorted = sortMillRowsForDisplay(filtered);
-    millFilteredRows = sorted;
+    const displayRows = millCollapseRowsForTableDisplay_(sorted);
+    millFilteredRows = displayRows;
     updateMillPdfExportScope();
 
     const theadRow = document.querySelector('#millTable thead tr');
@@ -7415,20 +7473,26 @@ function initDashboardApp() {
       });
     }
 
-    body.innerHTML = sorted.length === 0
+    body.innerHTML = displayRows.length === 0
       ? `<tr><td colspan="12" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
-      : sorted.map((d, i) => {
+      : displayRows.map((d, i) => {
         const millKey = [pickMillGroupName_(d), pickMillCompanyName_(d), millPickField_(d, ['MILL NAME', 'Mill Name'])].map(function(x) {
           return String(x || '').trim();
         }).join('|');
         const millName = millPickField_(d, ['MILL NAME', 'Mill Name']);
         const umlId = millPickField_(d, ['UML ID', 'UML Id', 'UML_ID']);
+        const mergeBadge = d._millTableMerged
+          ? '<span class="mill-merge-badge" title="Gabungan ' + d._millTableMergeCount + ' baris di sheet (company, mill, bulan, tahun sama)">Gabungan ×' + d._millTableMergeCount + '</span>'
+          : '';
+        const rowTitle = d._millTableMerged
+          ? 'Gabungan ' + d._millTableMergeCount + ' baris sheet — klik untuk detail'
+          : 'Click to view full details';
         return `
-        <tr class="mill-row-clickable" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="Click to view full details">
+        <tr class="mill-row-clickable${d._millTableMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
           <td class="mill-td mill-td--group">${millTableCellText_(pickMillGroupName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
-          <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
+          <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
           <td class="mill-td mill-td--product">${millTableCellText_(d['PRODUCT SUPPLY'], { wrap: true })}</td>
           <td class="mill-td mill-td--priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
