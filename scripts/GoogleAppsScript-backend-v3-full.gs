@@ -713,7 +713,7 @@ function doPost(e) {
     if (action === 'setSubmissionStatus') return respond(setSubmissionStatus(body.payload || {}));
     if (action === 'deleteSubmission')    return respond(deleteSubmission(body.payload    || {}));
     if (action === 'saveSupplyDraft')   return respond(saveSupplyDraft_(body.rows || [], body.batch_id || '', body.meta || {}));
-    if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || []));
+    if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || [], body.meta || {}));
     if (action === 'deleteSupplyDraft') return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || ''));
 
     return respond({ success: false, error: 'Unknown action: ' + action });
@@ -5456,6 +5456,7 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
     Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
     ref
   );
+  resolveMillQuarterYearKeys_(patch, millHeaders);
   patch = millStripFormulaFromPatchGs_(patch);
   if (!Object.keys(patch).length) return 0;
 
@@ -5600,6 +5601,42 @@ function buildSupplyIdentityPatchFromDraftGs_(row) {
   return patch;
 }
 
+function supplyReadPeriodFromRowGs_(row) {
+  return {
+    month: String(row.month || row['MONTH'] || row['Month'] || row.quarter || row['QUARTER'] || '').trim(),
+    year: String(row.year || row['YEAR'] || row['Year'] || '').trim(),
+  };
+}
+
+function supplyStampPeriodOnRowGs_(row, month, year) {
+  if (!row) return;
+  if (month) {
+    row.month = month;
+    row.MONTH = month;
+    row['MONTH'] = month;
+    row['Month'] = month;
+  }
+  if (year) {
+    row.year = year;
+    row.YEAR = year;
+    row['YEAR'] = year;
+    row['Year'] = year;
+  }
+}
+
+function supplyBatchPeriodFromDraftDataGs_(draftData, draftHeaders, batchId) {
+  var batchCol = draftHeaders.indexOf('batch_id');
+  if (batchCol < 0 || !batchId) return null;
+  var want = String(batchId).trim();
+  for (var i = 1; i < draftData.length; i++) {
+    if (String(draftData[i][batchCol] || '').trim() !== want) continue;
+    var obj = millRowToObjectGs_(draftData[i], draftHeaders);
+    var p = supplyReadPeriodFromRowGs_(obj);
+    if (p.month && p.year) return p;
+  }
+  return null;
+}
+
 function buildSupplyPatchFromDraftGs_(row) {
   var submitKind = supplySubmitKindFromDraftGs_(row);
   var patch = {};
@@ -5653,9 +5690,10 @@ function findMillRowForSupplySubmit_(millData, millHeaders, row) {
   return plan.insertAfter || 0;
 }
 
-function submitSupplyDraft_(batchId, rows) {
+function submitSupplyDraft_(batchId, rows, meta) {
   if (!batchId) throw new Error('batch_id required');
   ensureSupplyDraftHeaders_();
+  meta = meta || {};
 
   var millSheet   = getSheet('mill');
   var millData    = millSheet.getDataRange().getValues();
@@ -5690,6 +5728,12 @@ function submitSupplyDraft_(batchId, rows) {
   var errors       = [];
   var draftDirty   = false;
 
+  var metaMonth = String(meta.month || meta.quarter || '').trim();
+  var metaYear = String(meta.year || '').trim();
+  var batchPeriod = (metaMonth && metaYear)
+    ? { month: metaMonth, year: metaYear }
+    : supplyBatchPeriodFromDraftDataGs_(draftData, draftHeaders, batchId);
+
   var draftIdIndex = {};
   for (var di = 1; di < draftData.length; di++) {
     var did = String(draftData[di][draftIdColD] || '').trim();
@@ -5703,6 +5747,15 @@ function submitSupplyDraft_(batchId, rows) {
   };
 
   rows.forEach(function(row) {
+    var rp = supplyReadPeriodFromRowGs_(row);
+    if ((!rp.month || !rp.year) && batchPeriod) {
+      supplyStampPeriodOnRowGs_(row, batchPeriod.month, batchPeriod.year);
+    } else if (metaMonth && !rp.month) {
+      supplyStampPeriodOnRowGs_(row, metaMonth, rp.year || metaYear);
+    } else if (metaYear && !rp.year) {
+      supplyStampPeriodOnRowGs_(row, rp.month || metaMonth, metaYear);
+    }
+
     var matchStatus = String(row.match_status || '').trim().toLowerCase();
     if (matchStatus !== 'matched') {
       errors.push((row['COMPANY NAME'] || 'row') + ': bukan status Matched');

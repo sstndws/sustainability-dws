@@ -23511,7 +23511,33 @@ function initDashboardApp() {
     if (month) batch.month = month;
     batch.year = String(batch.year || '').trim();
     if (batch.quarter == null && batch.QUARTER) batch.quarter = batch.QUARTER;
+    if ((!batch.month || !batch.year) && batch.rows && batch.rows.length) {
+      const first = batch.rows.find(function(r) {
+        return String(r.month || r.MONTH || r.quarter || r.QUARTER || '').trim()
+          && String(r.year || r.YEAR || '').trim();
+      }) || batch.rows[0];
+      if (first) {
+        if (!batch.month) {
+          batch.month = String(first.month || first.MONTH || first.quarter || first.QUARTER || '').trim();
+        }
+        if (!batch.year) {
+          batch.year = String(first.year || first.YEAR || '').trim();
+        }
+      }
+    }
     return batch;
+  }
+
+  function supplyBatchMetaForApi_(batch) {
+    if (!batch) return {};
+    supplyNormalizeBatchPeriod_(batch);
+    const meta = {};
+    const month = String(batch.month || batch.quarter || '').trim();
+    const year = String(batch.year || '').trim();
+    if (month) meta.month = month;
+    if (year) meta.year = year;
+    if (batch.supply_type) meta.supply_type = batch.supply_type;
+    return meta;
   }
 
   function supplyCompanyKey_(company) {
@@ -24163,16 +24189,17 @@ function initDashboardApp() {
 
   function supplyEnsureDraftPeriodOnRows_(rows, batch) {
     if (!rows || !batch) return;
+    supplyNormalizeBatchPeriod_(batch);
     const month = String(batch.month || batch.quarter || '').trim();
     const year = String(batch.year || '').trim();
     rows.forEach(function(r) {
       if (month) {
         r.month = month;
-        r.MONTH = r['MONTH'] = month;
+        r.MONTH = r['MONTH'] = r['Month'] = month;
       }
       if (year) {
         r.year = year;
-        r.YEAR = r['YEAR'] = year;
+        r.YEAR = r['YEAR'] = r['Year'] = year;
       }
     });
   }
@@ -24212,7 +24239,7 @@ function initDashboardApp() {
     draftRow._profile_draft_saved = true;
     draftRow.profile_draft_saved = 'true';
     if (!supplyRowIsSubmitted_(draftRow)) draftRow.status = 'draft';
-    await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: [draftRow], meta: {} });
+    await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: [draftRow], meta: supplyBatchMetaForApi_(batch) });
     renderSupplyDraftList_({
       expandBatchIds: [ctx.batchId],
       scrollToBatchId: ctx.batchId,
@@ -24272,7 +24299,12 @@ function initDashboardApp() {
       throw new Error('Profil mill tidak ditemukan. Re-match batch dulu.');
     }
 
-    const res = await apiPost({ action: 'submitSupplyDraft', batch_id: batch.batch_id, rows: [draftRow] });
+    const res = await apiPost({
+      action: 'submitSupplyDraft',
+      batch_id: batch.batch_id,
+      rows: [draftRow],
+      meta: supplyBatchMetaForApi_(batch),
+    });
     if (res && res.errors && res.errors.length && !res.submitted) {
       throw new Error(res.errors.slice(0, 3).join('; '));
     }
@@ -25286,7 +25318,7 @@ function initDashboardApp() {
       btn.textContent = '…'; btn.disabled = true;
       const merged = supplyMergeCpoPkPairsInBatch_(batch);
       renderSupplyDraftList_({ expandBatchIds: [bId] });
-      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: { month: batch.month, year: batch.year } })
+      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: supplyBatchMetaForApi_(batch) })
         .then(function() {
           btn.disabled = false;
           alert('✓ ' + merged + ' pasangan digabung. Submit baris gabungan akan isi SUPPLY CPO dan SUPPLY PK sekaligus.');
@@ -25313,7 +25345,7 @@ function initDashboardApp() {
       collectInlineEdits_(bId);
       (batch.rows || []).forEach(supplyApplyDraftRowStatus_);
       btn.textContent = 'Saving…'; btn.disabled = true;
-      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: {} })
+      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: supplyBatchMetaForApi_(batch) })
         .then(function() {
           btn.textContent = '✓ Saved';
           setTimeout(function() { btn.textContent = 'Simpan Draft'; btn.disabled = false; }, 2000);
@@ -25338,7 +25370,12 @@ function initDashboardApp() {
       supplyEnsureDraftPeriodOnRows_(batch.rows || [], batch);
       supplyEnsureDraftPeriodOnRows_(matchedRows, batch);
       btn.textContent = 'Submitting…'; btn.disabled = true;
-      apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: matchedRows })
+      apiPost({
+        action: 'submitSupplyDraft',
+        batch_id: bId,
+        rows: matchedRows,
+        meta: supplyBatchMetaForApi_(batch),
+      })
         .then(function(res) {
           matchedRows.forEach(function(r) {
             r._submitted = true;
@@ -25376,7 +25413,12 @@ function initDashboardApp() {
       const needsFullCommit = supplyDraftSavedFlag_(row) || row.match_status !== 'matched';
       const work = needsFullCommit
         ? supplyCommitDraftRowToMill_(batch, row, row)
-        : apiPost({ action: 'submitSupplyDraft', batch_id: bId, rows: [row] }).then(function() {
+        : apiPost({
+          action: 'submitSupplyDraft',
+          batch_id: bId,
+          rows: [row],
+          meta: supplyBatchMetaForApi_(batch),
+        }).then(function() {
           row._submitted = true;
           row.status = 'submitted';
           supplyNormalizeBatchSubmittedState_(batch);
@@ -25482,8 +25524,8 @@ function initDashboardApp() {
         const batches = {};
         data.forEach(function(row) {
           const bid = row.batch_id || row.draft_id || 'unknown';
-          const rowMonth = String(row.month || row.quarter || row.QUARTER || '').trim();
-          const rowYear = String(row.year || '').trim();
+          const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
+          const rowYear = String(row.year || row.YEAR || '').trim();
           if (!batches[bid]) {
             batches[bid] = {
               batch_id:   bid,
