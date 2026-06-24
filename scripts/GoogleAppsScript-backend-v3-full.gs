@@ -5514,9 +5514,10 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
     Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
     ref
   );
-  supplyMapLegacyGrievanceIntoPatchGs_(patch, row, ref);
+  supplyFillAllGrievanceFromRefsGs_(patch, row, ref);
   resolveMillQuarterYearKeys_(patch, millHeaders);
   resolveMillCapacityKeyOnPatch_(patch, millHeaders);
+  resolveGrievanceKeysOnPatchGs_(patch, millHeaders);
   patch = millStripFormulaFromPatchGs_(patch);
   if (!Object.keys(patch).length) return 0;
 
@@ -5635,6 +5636,55 @@ function supplyFacilityFromDraftGs_(row, field, submitKind) {
   return '';
 }
 
+function supplyFillAllGrievanceFromRefsGs_(patch, row, refObj) {
+  var objs = [row, refObj];
+  [
+    ['DEFORESTATION GRIEVANCES', []],
+    ['BURN AREA GRIEVANCES', []],
+    ['LEGALITY GRIEVANCE', ['LEGALITY']],
+    ['HUMAN RIGHTS GRIEVANCE', ['HUMAN RIGHT', 'HUMAN RIGHTS']],
+    ['SAFETY GRIEVANCE', ['SAFETY']],
+    ['SOCIAL GRIEVANCE', ['SOCIAL']],
+    ['ENVIRONMENT GRIEVANCE', ['ENVIRONMENT']],
+  ].forEach(function(spec) {
+    var canon = spec[0];
+    var legacy = spec[1];
+    if (patch[canon] !== undefined && patch[canon] !== null && String(patch[canon]).trim() !== '') return;
+    var v = supplyGrievanceValFromObjsGs_(objs, canon, legacy);
+    if (v !== '') patch[canon] = v;
+  });
+}
+
+function millFindHeaderByNormGs_(headers, normTest) {
+  var list = (headers || []).map(function(x) { return String(x || '').trim(); });
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i].toLowerCase().replace(/\s+/g, ' ');
+    if (normTest(n, list[i])) return list[i];
+  }
+  return null;
+}
+
+/** Map canonical grievance patch keys to exact sheet header names (handles truncation/spacing). */
+function resolveGrievanceKeysOnPatchGs_(patch, headers) {
+  if (!patch || !headers) return;
+  var specs = [
+    ['DEFORESTATION GRIEVANCES', function(n) { return n.indexOf('deforestation') >= 0 && n.indexOf('griev') >= 0; }],
+    ['BURN AREA GRIEVANCES', function(n) { return n.indexOf('burn') >= 0 && n.indexOf('griev') >= 0; }],
+    ['LEGALITY GRIEVANCE', function(n) { return n.indexOf('legality') >= 0 && n.indexOf('griev') >= 0; }],
+    ['HUMAN RIGHTS GRIEVANCE', function(n) { return n.indexOf('human') >= 0 && n.indexOf('griev') >= 0; }],
+    ['SAFETY GRIEVANCE', function(n) { return n.indexOf('safety') >= 0 && n.indexOf('griev') >= 0; }],
+    ['SOCIAL GRIEVANCE', function(n) { return n.indexOf('social') >= 0 && n.indexOf('griev') >= 0; }],
+    ['ENVIRONMENT GRIEVANCE', function(n) { return n.indexOf('griev') >= 0 && (n.indexOf('environment') >= 0 || n.indexOf('environ') >= 0); }],
+  ];
+  specs.forEach(function(spec) {
+    var canon = spec[0];
+    var v = patch[canon];
+    if (v === undefined || v === null || String(v).trim() === '') return;
+    var col = millFindHeaderByNormGs_(headers, spec[1]);
+    if (col) patch[col] = v;
+  });
+}
+
 function supplyGrievanceValFromObjsGs_(objs, canonical, legacyKeys) {
   var keys = [canonical].concat(legacyKeys || []);
   for (var oi = 0; oi < objs.length; oi++) {
@@ -5649,19 +5699,7 @@ function supplyGrievanceValFromObjsGs_(objs, canonical, legacyKeys) {
 }
 
 function supplyMapLegacyGrievanceIntoPatchGs_(patch, row, refObj) {
-  var objs = [row, refObj];
-  [
-    ['LEGALITY GRIEVANCE', ['LEGALITY']],
-    ['HUMAN RIGHTS GRIEVANCE', ['HUMAN RIGHT', 'HUMAN RIGHTS']],
-    ['SAFETY GRIEVANCE', ['SAFETY']],
-    ['SOCIAL GRIEVANCE', ['SOCIAL']],
-    ['ENVIRONMENT GRIEVANCE', ['ENVIRONMENT']],
-  ].forEach(function(pair) {
-    var canon = pair[0];
-    if (patch[canon] !== undefined && patch[canon] !== null && String(patch[canon]).trim() !== '') return;
-    var v = supplyGrievanceValFromObjsGs_(objs, canon, pair[1]);
-    if (v !== '') patch[canon] = v;
-  });
+  supplyFillAllGrievanceFromRefsGs_(patch, row, refObj);
 }
 
 function buildSupplyIdentityPatchFromDraftGs_(row) {

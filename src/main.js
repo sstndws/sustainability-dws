@@ -24190,6 +24190,29 @@ function initDashboardApp() {
   }
 
   /** Prefill add-mill form from matched profile (all editable fields); month/year from import batch. */
+  function supplyIsYesNoMillField_(field) {
+    return YESNO_FIELDS.indexOf(field) >= 0 || MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(field) >= 0;
+  }
+
+  /** Merge profil mill ke draft row sebelum submit — modal prefill ≠ data di draft row. */
+  function supplyMergeProfilePrefillIntoDraftRow_(draftRow, batch) {
+    if (!draftRow || draftRow.match_status !== 'matched') return;
+    const merged = supplyBuildMillPrefillFromDraft_(draftRow, batch);
+    const skip = supplyDraftProfileSkipFields_(draftRow, batch);
+    Object.keys(merged).forEach(function(k) {
+      if (!k || millIsSheetComputedField_(k)) return;
+      if (skip.has(k)) return;
+      const mv = merged[k];
+      if (mv === undefined || mv === null) return;
+      if (supplyIsYesNoMillField_(k)) {
+        draftRow[k] = mv;
+        return;
+      }
+      if (String(mv).trim() !== '') draftRow[k] = mv;
+    });
+    millNormalizeGrievanceFlagsOnRow_(draftRow);
+  }
+
   function supplyBuildMillPrefillFromDraft_(draftRow, batch) {
     const prefill = supplyProfilePrefillFromRow_(supplyGetDraftProfileRow_(draftRow, batch));
     if (batch) {
@@ -25446,6 +25469,7 @@ function initDashboardApp() {
       if (!confirm(confirmMsg)) return;
       supplyEnsureDraftPeriodOnRows_(batch.rows || [], batch);
       supplyEnsureDraftPeriodOnRows_(matchedRows, batch);
+      matchedRows.forEach(function(r) { supplyMergeProfilePrefillIntoDraftRow_(r, batch); });
       btn.textContent = 'Submitting…'; btn.disabled = true;
       apiPost({
         action: 'submitSupplyDraft',
@@ -25487,6 +25511,7 @@ function initDashboardApp() {
       if (!row) return;
       btn.textContent = '…'; btn.disabled = true;
       supplyEnsureDraftPeriodOnRows_([row], batch);
+      supplyMergeProfilePrefillIntoDraftRow_(row, batch);
       const needsFullCommit = supplyDraftSavedFlag_(row) || row.match_status !== 'matched';
       const work = needsFullCommit
         ? supplyCommitDraftRowToMill_(batch, row, row)
