@@ -25167,6 +25167,24 @@ function initDashboardApp() {
 
     // ── Load existing drafts on panel open ────────────────────────────────────
     loadSupplyDraftsFromServer_();
+
+    let _supplyDraftPollId = null;
+    function supplyDraftPanelVisible_() {
+      const panel = document.getElementById('mill-task-list-panel');
+      return !!(panel && panel.style.display !== 'none');
+    }
+    function startSupplyDraftAutoSync_() {
+      if (_supplyDraftPollId) return;
+      _supplyDraftPollId = setInterval(function() {
+        if (supplyDraftPanelVisible_()) loadSupplyDraftsFromServer_();
+      }, 45000);
+    }
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && supplyDraftPanelVisible_()) {
+        loadSupplyDraftsFromServer_();
+      }
+    });
+    startSupplyDraftAutoSync_();
   })();
 
   function resetImportModal_(keepType) {
@@ -25450,7 +25468,12 @@ function initDashboardApp() {
     }
     if (empty) empty.style.display = 'none';
 
-    container.innerHTML = batches.map(function(b) {
+    const syncBar = '<div class="supply-draft-sync-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#f8f4f2;border:1px solid #e8ddd8;border-radius:10px;font-size:12px;color:#6a4a4a;">'
+      + '<span>Draft disimpan ke sheet bersama — laptop/user lain perlu sinkron dari server.</span>'
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="sync-drafts">↻ Refresh draft</button>'
+      + '</div>';
+
+    container.innerHTML = syncBar + batches.map(function(b) {
       const rowCount    = b.rows ? b.rows.length : 0;
       const matched     = b.rows ? b.rows.filter(function(r) { return r.match_status === 'matched'; }).length : 0;
       const warnCount   = b.rows ? b.rows.filter(function(r) { return r.match_status === 'group_mismatch'; }).length : 0;
@@ -25635,6 +25658,27 @@ function initDashboardApp() {
   function handleSupplyBatchAction_(e) {
     const btn    = e.currentTarget;
     const action = btn.dataset.action;
+
+    if (action === 'sync-drafts') {
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '…';
+      loadSupplyDraftsFromServer_()
+        .then(function() {
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast('Draft diperbarui dari sheet.', 'info');
+          }
+        })
+        .catch(function(err) {
+          alert('Gagal refresh draft: ' + (err && err.message ? err.message : err));
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.textContent = prev;
+        });
+      return;
+    }
+
     const bId    = btn.dataset.batch;
     const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === bId; });
     if (!batch) return;
