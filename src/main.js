@@ -5819,6 +5819,9 @@ function initDashboardApp() {
         + (data._supplyImportPeriod
           ? '<div style="margin-top:6px;font-size:12px;color:#3d6a8a;"><strong>Periode import Task List (disubmit):</strong> ' + escHtml(data._supplyImportPeriod) + '</div>'
           : '')
+        + (data._supplyCompanyDraftShared
+          ? '<div style="margin-top:6px;font-size:12px;color:#1565c0;"><strong>Data perusahaan</strong> diisi dari baris lain dengan COMPANY NAME sama — hanya supply/facility per baris yang berbeda.</div>'
+          : '')
         + '</div>';
     }
     FIELD_SECTIONS.forEach(sec => {
@@ -24499,6 +24502,110 @@ function initDashboardApp() {
     ]);
   }
 
+  /** Kolom yang tetap per-baris saat copy draft antar COMPANY NAME sama. */
+  function supplyCompanyDraftSharedSkipFields_() {
+    return new Set([
+      'draft_id', 'batch_id', 'status', 'match_status', 'target_mill_row',
+      'supply_type', 'SUPPLY_TYPE', 'PLANT', 'PRODUCT SUPPLY',
+      'SUPPLY CPO', 'SUPPLY PK', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
+      SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
+      'FACILITY NAME CPO', 'FACILITY NAME PK',
+      'created_at', 'updated_at', 'created_by', 'profile_draft_saved',
+    ]);
+  }
+
+  function supplyFindBestCompanyDraftSource_(batch, draftRow) {
+    if (!batch || !draftRow) return null;
+    const wantCo = supplyCompanyKey_(draftRow['COMPANY NAME']);
+    if (!wantCo) return null;
+    let best = null;
+    let bestTs = 0;
+    (batch.rows || []).forEach(function(row) {
+      if (supplyRowIsSubmitted_(row)) return;
+      if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
+      if (!supplyDraftSavedFlag_(row)) return;
+      const ts = supplyDraftRowUpdatedTs_(row);
+      if (!best || ts >= bestTs) {
+        best = row;
+        bestTs = ts;
+      }
+    });
+    return best;
+  }
+
+  function supplyCopySharedCompanyDraftFields_(targetRow, sourceRow) {
+    if (!targetRow || !sourceRow || targetRow === sourceRow) return;
+    const skip = supplyCompanyDraftSharedSkipFields_();
+    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      if (skip.has(f) || millIsSheetComputedField_(f)) return;
+      if (MILL_HA_WIDTH_FIELDS.has(f)) return;
+      if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) return;
+      if (sourceRow[f] === undefined || sourceRow[f] === null) return;
+      targetRow[f] = sourceRow[f];
+    });
+    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+      if (skip.has(f)) return;
+      if (supplyIsValidHaWidthDraftVal_(sourceRow[f])) {
+        targetRow[f] = supplyNormalizeHaWidthField_(sourceRow[f]);
+      }
+    });
+    MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
+      if (skip.has(f)) return;
+      const gv = millGrievanceFlagVal_(sourceRow, f);
+      if (gv !== '') targetRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
+    });
+    millNormalizeGrievanceFlagsOnRow_(targetRow);
+    targetRow._profile_draft_saved = true;
+    targetRow.profile_draft_saved = 'true';
+    targetRow._local_saved_at = sourceRow._local_saved_at || Date.now();
+    if (!supplyRowIsSubmitted_(targetRow)) targetRow.status = 'draft';
+  }
+
+  function supplyPropagateCompanyDraftToSiblings_(sourceRow, batch, sourceIdx) {
+    const wantCo = supplyCompanyKey_(sourceRow && sourceRow['COMPANY NAME']);
+    if (!wantCo || !batch || !batch.rows) return [];
+    const updated = [];
+    batch.rows.forEach(function(row, idx) {
+      if (idx === sourceIdx) return;
+      if (supplyRowIsSubmitted_(row)) return;
+      if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
+      supplyCopySharedCompanyDraftFields_(row, sourceRow);
+      updated.push(row);
+    });
+    return updated;
+  }
+
+  function supplySyncCompanyDraftAcrossBatch_(batch) {
+    if (!batch || !batch.rows) return;
+    const byCo = {};
+    batch.rows.forEach(function(row) {
+      if (supplyRowIsSubmitted_(row)) return;
+      const co = supplyCompanyKey_(row['COMPANY NAME']);
+      if (!co) return;
+      if (!byCo[co]) byCo[co] = [];
+      byCo[co].push(row);
+    });
+    Object.keys(byCo).forEach(function(co) {
+      const list = byCo[co];
+      if (list.length < 2) return;
+      let source = null;
+      let bestTs = 0;
+      list.forEach(function(row) {
+        if (!supplyDraftSavedFlag_(row)) return;
+        const ts = supplyDraftRowUpdatedTs_(row);
+        if (!source || ts >= bestTs) {
+          source = row;
+          bestTs = ts;
+        }
+      });
+      if (!source) return;
+      list.forEach(function(row) {
+        if (row === source) return;
+        supplyCopySharedCompanyDraftFields_(row, source);
+      });
+    });
+  }
+
   /** Copy full Mill Onboarding profile into a supply draft row (import / re-match). */
   function supplyCopyProfileIntoDraft_(draftRow, profile, batch, opts) {
     if (!draftRow || !profile) return;
@@ -24658,25 +24765,37 @@ function initDashboardApp() {
       const profilePeriod = supplyMillProfilePeriodFromRow_(profileRow);
       if (profilePeriod) prefill._supplyProfilePeriod = profilePeriod;
     }
-    const draftSaved = supplyDraftSavedFlag_(draftRow);
+    const companyDraftSource = batch ? supplyFindBestCompanyDraftSource_(batch, draftRow) : null;
+    const profileDataRow = supplyDraftSavedFlag_(draftRow)
+      ? draftRow
+      : (companyDraftSource || draftRow);
+    const draftSaved = supplyDraftSavedFlag_(draftRow) || !!companyDraftSource;
+    if (companyDraftSource && !supplyDraftSavedFlag_(draftRow)) {
+      prefill._supplyCompanyDraftShared = true;
+    }
     (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
       if (millIsSheetComputedField_(f)) return;
       if (MILL_HA_WIDTH_FIELDS.has(f)) return;
       if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) return;
-      const v = draftRow[f];
+      if (supplyCompanyDraftSharedSkipFields_().has(f)) {
+        const sv = draftRow[f];
+        if (sv !== undefined && sv !== null && String(sv).trim() !== '') prefill[f] = sv;
+        return;
+      }
+      const v = profileDataRow[f];
       if (draftSaved || (v !== undefined && v !== null && String(v).trim() !== '')) {
         if (v !== undefined && v !== null) prefill[f] = v;
       }
     });
     MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-      const dv = draftRow[f];
+      const dv = profileDataRow[f];
       if (supplyIsValidHaWidthDraftVal_(dv)) {
         prefill[f] = supplyNormalizeHaWidthField_(dv);
       }
     });
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
       if (draftSaved) {
-        const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
+        const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(profileDataRow, f));
         if (dnorm === 'Yes' || dnorm === 'No') {
           prefill[f] = dnorm;
           return;
@@ -24840,14 +24959,22 @@ function initDashboardApp() {
     draftRow.profile_draft_saved = 'true';
     draftRow._local_saved_at = Date.now();
     if (!supplyRowIsSubmitted_(draftRow)) draftRow.status = 'draft';
-    supplyEnsureDraftIdsOnRows_([draftRow], ctx.batchId);
+    const siblingRows = supplyPropagateCompanyDraftToSiblings_(draftRow, batch, ctx.rowIdx);
+    const rowsToSave = [draftRow].concat(siblingRows);
+    supplyEnsureDraftIdsOnRows_(rowsToSave, ctx.batchId);
     supplyPauseDraftAutoSync_(90000);
-    await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: [draftRow], meta: supplyBatchMetaForApi_(batch) });
+    await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: rowsToSave, meta: supplyBatchMetaForApi_(batch) });
     const wrap = document.getElementById('supply-batch-table-' + ctx.batchId);
     if (wrap && !wrap.hidden) {
-      supplyPatchDraftRowChrome_(ctx.batchId, ctx.rowIdx);
+      supplyRerenderBatchTable_(ctx.batchId);
     } else {
       renderSupplyDraftList_({ expandBatchIds: [ctx.batchId] });
+    }
+    if (siblingRows.length && typeof window.showSddToast === 'function') {
+      window.showSddToast(
+        'Draft disimpan — ' + siblingRows.length + ' baris lain (COMPANY NAME sama) ikut terisi.',
+        'success'
+      );
     }
   }
 
@@ -26330,6 +26457,7 @@ function initDashboardApp() {
           });
           b.supply_type = batchType;
           supplyNormalizeBatchSubmittedState_(b);
+          supplySyncCompanyDraftAcrossBatch_(b);
           return b;
         }));
         if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
