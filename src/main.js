@@ -24274,7 +24274,7 @@ function initDashboardApp() {
     return { status: 'new', row: null };
   }
 
-  function supplyRematchDraftRow_(draftRow, batch) {
+  function supplyRematchDraftRow_(draftRow, batch, opts) {
     if (!draftRow) return;
     const kind = supplyResolveKindFromDraft_(draftRow, batch);
     const matchKind = kind === 'CPO+PK' ? 'CPO+PK' : kind;
@@ -24292,7 +24292,7 @@ function initDashboardApp() {
       draftRow.target_mill_row = found.row._row;
       draftRow._mill_row = found.row._row;
       draftRow._profile_group_hint = '';
-      supplyCopyProfileIntoDraft_(draftRow, found.row, batch || { supply_type: kind });
+      supplyCopyProfileIntoDraft_(draftRow, found.row, batch || { supply_type: kind }, opts);
       supplyApplyBatchPeriodToPayload_(draftRow, batch, draftRow);
       supplyApplyPlantToDraftFacility_(draftRow, draftRow.PLANT, draftRow.supply_type || kind);
       supplyNormalizeDraftQtyFields_(draftRow);
@@ -24322,30 +24322,46 @@ function initDashboardApp() {
   }
 
   /** Copy full Mill Onboarding profile into a supply draft row (import / re-match). */
-  function supplyCopyProfileIntoDraft_(draftRow, profile, batch) {
+  function supplyCopyProfileIntoDraft_(draftRow, profile, batch, opts) {
     if (!draftRow || !profile) return;
+    opts = opts || {};
+    const force = !!opts.forceProfileCopy;
+    const draftSaved = supplyDraftSavedFlag_(draftRow);
+    const preserveDraft = draftSaved && !force;
     const profileCopy = Object.assign({}, profile);
     millNormalizeGrievanceFlagsOnRow_(profileCopy);
     const skip = supplyDraftProfileSkipFields_(draftRow, batch);
     if (!String(draftRow['SOURCE TYPE'] || '').trim()) skip.delete('SOURCE TYPE');
+    function draftHasVal_(f) {
+      const v = draftRow[f];
+      return v !== undefined && v !== null && String(v).trim() !== '';
+    }
     (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
       if (skip.has(f)) return;
       if (millIsSheetComputedField_(f)) return;
       if (MILL_HA_WIDTH_FIELDS.has(f)) return;
+      if (preserveDraft && draftHasVal_(f)) return;
       if (profileCopy[f] !== undefined && profileCopy[f] !== null && String(profileCopy[f]).trim() !== '') {
         draftRow[f] = profileCopy[f];
       }
     });
     MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+      if (preserveDraft && supplyIsValidHaWidthDraftVal_(draftRow[f])) return;
       const w = supplyHaWidthFromProfile_(profileCopy, f);
       if (w !== '') draftRow[f] = w;
     });
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
+      if (preserveDraft) {
+        const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
+        if (dnorm === 'Yes' || dnorm === 'No') return;
+      }
       const gv = millGrievanceFlagVal_(profileCopy, f);
       if (gv !== '') draftRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
     });
-    const cap = millCapacityFromRow_(profileCopy);
-    if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
+    if (!preserveDraft || !draftHasVal_('MILL CAPACITY (TON/HOUR)')) {
+      const cap = millCapacityFromRow_(profileCopy);
+      if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
+    }
   }
 
   /** Build modal prefill object from a matched Mill Onboarding profile row. */
@@ -24485,7 +24501,9 @@ function initDashboardApp() {
       if (MILL_HA_WIDTH_FIELDS.has(f)) return;
       if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) return;
       const v = draftRow[f];
-      if (v !== undefined && v !== null && String(v).trim() !== '') prefill[f] = v;
+      if (draftSaved || (v !== undefined && v !== null && String(v).trim() !== '')) {
+        if (v !== undefined && v !== null) prefill[f] = v;
+      }
     });
     MILL_HA_WIDTH_FIELDS.forEach(function(f) {
       const dv = draftRow[f];
@@ -24494,12 +24512,15 @@ function initDashboardApp() {
       }
     });
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
-      const pnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(profileRow, f));
-      if (pnorm === 'Yes' || pnorm === 'No') prefill[f] = pnorm;
       if (draftSaved) {
         const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
-        if (dnorm === 'Yes' || dnorm === 'No') prefill[f] = dnorm;
+        if (dnorm === 'Yes' || dnorm === 'No') {
+          prefill[f] = dnorm;
+          return;
+        }
       }
+      const pnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(profileRow, f));
+      if (pnorm === 'Yes' || pnorm === 'No') prefill[f] = pnorm;
     });
     ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'SOURCE TYPE', 'PROVINCE'].forEach(function(k) {
       const v = draftRow[k];
@@ -25730,7 +25751,7 @@ function initDashboardApp() {
       btn.textContent = '…';
       btn.disabled = true;
       const rematchWork = function() {
-        (batch.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, batch); });
+        (batch.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, batch, { forceProfileCopy: true }); });
         renderSupplyDraftList_({ expandBatchIds: [bId] });
         return supplyPersistDraftBatch_(batch);
       };
