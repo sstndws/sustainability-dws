@@ -19334,8 +19334,33 @@ function initDashboardApp() {
 
     function pfApplyTtmPctToCompanies_(companies, suppliedLookup, facilityKey) {
       (companies || []).forEach(function(c) {
-        c.ttmPctNum = pfCalcTtmPctNum_(c, suppliedLookup, facilityKey);
+        const sellerKey = String(c.companyKey || c.company || '').trim().toUpperCase();
+        const resolved = sellerKey ? pfResolveCompanyForTtm_(sellerKey, [c]) : c;
+        c.ttmPctNum = pfCalcTtmPctNum_(resolved || c, suppliedLookup, facilityKey);
       });
+    }
+
+    /** Resolve company row for TTM — enrich coords from mill registry when period row is incomplete. */
+    function pfResolveCompanyForTtm_(sellerKey, companies) {
+      let company = (companies || []).find(function(c) {
+        return pfSellerMatchesCompany_(sellerKey, c.companyKey) || pfSellerMatchesCompany_(sellerKey, c.company);
+      }) || null;
+      const millHit = pfFindMillRowForSeller_(sellerKey, pfMillRowsForBuild_());
+      if (!millHit) return company;
+      if (!company) {
+        return {
+          company: String(millHit['COMPANY NAME'] || '').trim() || sellerKey,
+          companyKey: sellerKey,
+          coordinate: pfCompanyCoordValue_(millHit) || '—',
+        };
+      }
+      if (!pfIsValidCoord_(company.coordinate)) {
+        const coord = pfCompanyCoordValue_(millHit);
+        if (pfIsValidCoord_(coord)) {
+          company = Object.assign({}, company, { coordinate: coord, millRowNum: company.millRowNum || millHit._row });
+        }
+      }
+      return company;
     }
 
     /** Weighted facility TTM % from supplied volume (0/100 per seller). */
@@ -19364,9 +19389,7 @@ function initDashboardApp() {
         const qty = supEntry.sellers[sellerKey];
         if (!qty) return;
         sellerCount++;
-        const company = (companies || []).find(function(c) {
-          return pfSellerMatchesCompany_(sellerKey, c.companyKey) || pfSellerMatchesCompany_(sellerKey, c.company);
-        });
+        const company = pfResolveCompanyForTtm_(sellerKey, companies);
         const ttmPct = company ? pfCalcTtmPctNum_(company, suppliedLookup, facilityKey) : 0;
         if (ttmPct > 0) sellersWithTtm++;
         traceableQty += qty * (ttmPct / 100);
@@ -19507,6 +19530,101 @@ function initDashboardApp() {
         coordinate: pfCompanyCoordValue_(r) || '—',
         province: String(r['PROVINCE'] || '').trim(),
       };
+    }
+
+    function pfBuildCpoCompanyFromMillRow_(r, ttpLookup, ttpCertLookup) {
+      const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+      const ttpEntry = ttpLookup[coUpper];
+      const ttpPctNum = ttpEntry ? (ttpEntry.sum / ttpEntry.count) : NaN;
+      return {
+        month:      pfFormatMonth_(millMonthVal(r)),
+        year:       String(millYearVal(r) || '').trim() || '—',
+        monthRaw:   millMonthVal(r),
+        yearRaw:    millYearVal(r),
+        millRowNum: r._row,
+        company:    String(r['COMPANY NAME'] || '').trim() || '—',
+        companyKey: coUpper,
+        group:      pfCompanyGroupValue_(r),
+        nbl:        String(r['BUYER NO BUY LIST'] || '').trim() || '—',
+        riskLevel:  String(r['RESULT RISK LEVEL'] || '').trim() || '—',
+        grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
+        ttpPctNum:  ttpPctNum,
+        certification: pfMillCertificationValue_(r, ttpCertLookup),
+        coordinate: pfCompanyCoordValue_(r) || '—',
+        province: String(r['PROVINCE'] || '').trim(),
+      };
+    }
+
+    /**
+     * Add Supplied CPO sellers to facility company list (same as PK merge).
+     * TTM traceable needs seller ↔ mill profile with coordinates + supplied qty.
+     */
+    function pfMergeSuppliedCpoSellers_(byFacility, suppliedLookup, millRows, ttpLookup, ttpCertLookup, suppliedRows) {
+      const period = pfGetPeriodFilters_();
+      const mRaw = period.m || '';
+      const yRaw = period.y || '';
+      const plantLabels = {};
+      (suppliedRows || []).forEach(function(r) {
+        const plantRaw = String(r['PLANT'] || '').trim();
+        if (!pfIsValidFacilityName_(plantRaw)) return;
+        const norm = pfNormalizeFacilityKey_(plantRaw);
+        if (!plantLabels[norm]) plantLabels[norm] = plantRaw;
+      });
+
+      Object.keys(suppliedLookup).forEach(function(plantKey) {
+        const norm = pfNormalizeFacilityKey_(plantKey);
+        const display = plantLabels[norm] || plantKey;
+        let group = null;
+        byFacility.forEach(function(g, key) {
+          if (pfNormalizeFacilityKey_(key) === norm) group = g;
+        });
+        if (!group) {
+          const facKey = display.trim().toUpperCase();
+          group = { facility: display, facilityKey: facKey, companies: [] };
+          byFacility.set(facKey, group);
+        }
+        const supEntry = suppliedLookup[plantKey];
+        if (!supEntry || !supEntry.sellers) return;
+        Object.keys(supEntry.sellers).forEach(function(sellerKey) {
+          if (!sellerKey) return;
+          const millHit = pfFindMillRowForSeller_(sellerKey, millRows);
+          if (pfCompanyListHasSeller_(group.companies, sellerKey)) {
+            if (millHit) {
+              group.companies = group.companies.map(function(c) {
+                if (!pfSellerMatchesCompany_(sellerKey, c.companyKey) && !pfSellerMatchesCompany_(sellerKey, c.company)) {
+                  return c;
+                }
+                return pfBuildCpoCompanyFromMillRow_(millHit, ttpLookup, ttpCertLookup);
+              });
+            }
+            return;
+          }
+          if (millHit) {
+            group.companies.push(pfBuildCpoCompanyFromMillRow_(millHit, ttpLookup, ttpCertLookup));
+            return;
+          }
+          const pct = pfTtpPctForSeller_(ttpLookup, sellerKey);
+          const certs = pfTtpCertsForCompany_(ttpCertLookup, sellerKey);
+          group.companies.push({
+            month: mRaw ? pfFormatMonth_(mRaw) : '—',
+            year: yRaw || '—',
+            monthRaw: mRaw,
+            yearRaw: yRaw,
+            millRowNum: null,
+            company: pfSellerDisplayName_(sellerKey, suppliedRows),
+            companyKey: sellerKey,
+            group: '—',
+            nbl: '—',
+            riskLevel: '—',
+            grievance: '—',
+            ttpPctNum: !isNaN(pct) ? pct : NaN,
+            certification: certs.length ? certs.join(', ') : '',
+            coordinate: '—',
+            province: '',
+            fromSuppliedOnly: true,
+          });
+        });
+      });
     }
 
     /**
@@ -20196,30 +20314,7 @@ function initDashboardApp() {
       const byFacility = new Map();
       millRows.forEach(function(r) {
         const facilities = pfSplitFacility_(r['FACILITY NAME CPO']);
-        const coUpper = String(r['COMPANY NAME'] || '').trim().toUpperCase();
-        const coLower = coUpper.toLowerCase();
-
-        // Per-company % CPO traceable from TTP
-        const ttpEntry = ttpLookup[coUpper] || ttpLookup[coLower];
-        const ttpPctNum = ttpEntry ? (ttpEntry.sum / ttpEntry.count) : NaN;
-
-        const company = {
-          month:      pfFormatMonth_(millMonthVal(r)),
-          year:       String(millYearVal(r) || '').trim() || '—',
-          monthRaw:   millMonthVal(r),
-          yearRaw:    millYearVal(r),
-          millRowNum: r._row,
-          company:    String(r['COMPANY NAME']        || '').trim() || '—',
-          companyKey: coUpper,
-          group:      pfCompanyGroupValue_(r),
-          nbl:        String(r['BUYER NO BUY LIST']   || '').trim() || '—',
-          riskLevel:  String(r['RESULT RISK LEVEL']   || '').trim() || '—',
-          grievance:  r['TOTAL GRIEVANCES'] != null ? r['TOTAL GRIEVANCES'] : '—',
-          ttpPctNum:  ttpPctNum,
-          certification: pfMillCertificationValue_(r, ttpCertLookup),
-          coordinate: pfCompanyCoordValue_(r) || '—',
-          province: String(r['PROVINCE'] || '').trim(),
-        };
+        const company = pfBuildCpoCompanyFromMillRow_(r, ttpLookup, ttpCertLookup);
 
         facilities.forEach(function(fac) {
           const key = fac.trim().toUpperCase();
@@ -20229,6 +20324,8 @@ function initDashboardApp() {
           byFacility.get(key).companies.push(company);
         });
       });
+
+      pfMergeSuppliedCpoSellers_(byFacility, suppliedLookup, millRows, ttpLookup, ttpCertLookup, _pfSuppliedCpoData);
 
       // For each facility, calculate % traceable from Supplied CPO
       byFacility.forEach(function(g) {
