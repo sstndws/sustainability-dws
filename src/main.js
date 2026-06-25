@@ -23982,10 +23982,65 @@ function initDashboardApp() {
         supplyMergeLocalDraftFieldsIntoRow_(row, local);
       }
     });
+    supplyApplyDraftCacheOnLoad_(serverRows);
+    const byBatchCo = {};
+    (serverRows || []).forEach(function(row) {
+      const bid = String(row.batch_id || '').trim();
+      const co = supplyCompanyKey_(row['COMPANY NAME']);
+      if (!bid || !co) return;
+      const key = bid + '\0' + co;
+      if (!byBatchCo[key]) byBatchCo[key] = [];
+      byBatchCo[key].push(row);
+    });
+    Object.keys(byBatchCo).forEach(function(key) {
+      const list = byBatchCo[key];
+      let source = null;
+      let bestTs = 0;
+      list.forEach(function(row) {
+        if (!supplyDraftSavedFlag_(row)) return;
+        const ts = supplyDraftRowUpdatedTs_(row);
+        if (!source || ts >= bestTs) {
+          source = row;
+          bestTs = ts;
+        }
+      });
+      if (!source) return;
+      list.forEach(function(row) {
+        if (row === source) return;
+        supplyCopySharedCompanyDraftFields_(row, source);
+      });
+    });
+  }
+
+  function supplyCacheSavedDraftRows_(rows) {
+    if (!window._supplyDraftSaveCache) window._supplyDraftSaveCache = {};
+    (rows || []).forEach(function(row) {
+      const id = String(row.draft_id || '').trim();
+      if (!id || !supplyDraftSavedFlag_(row)) return;
+      try {
+        window._supplyDraftSaveCache[id] = JSON.parse(JSON.stringify(row));
+      } catch (_) {
+        window._supplyDraftSaveCache[id] = row;
+      }
+    });
+  }
+
+  function supplyApplyDraftCacheOnLoad_(serverRows) {
+    const cache = window._supplyDraftSaveCache || {};
+    (serverRows || []).forEach(function(row) {
+      const id = String(row.draft_id || '').trim();
+      const cached = id && cache[id];
+      if (!cached || !supplyDraftSavedFlag_(cached)) return;
+      const cacheTs = supplyDraftRowUpdatedTs_(cached);
+      const serverTs = supplyDraftRowUpdatedTs_(row);
+      if (cacheTs >= serverTs || !supplyDraftSavedFlag_(row)) {
+        supplyMergeLocalDraftFieldsIntoRow_(row, cached);
+      }
+    });
   }
 
   function supplyPauseDraftAutoSync_(ms) {
-    window._supplyDraftSyncPausedUntil = Date.now() + (ms || 90000);
+    window._supplyDraftSyncPausedUntil = Date.now() + (ms || 180000);
   }
 
   /** Read Mill Onboarding profile for a draft row without mutating the draft. */
@@ -24457,6 +24512,11 @@ function initDashboardApp() {
 
   function supplyRematchDraftRow_(draftRow, batch, opts) {
     if (!draftRow) return;
+    opts = opts || {};
+    if (supplyDraftSavedFlag_(draftRow) && !opts.forceProfileCopy) {
+      draftRow['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(draftRow);
+      return;
+    }
     const kind = supplyResolveKindFromDraft_(draftRow, batch);
     const matchKind = kind === 'CPO+PK' ? 'CPO+PK' : kind;
     const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
@@ -24962,19 +25022,27 @@ function initDashboardApp() {
     const siblingRows = supplyPropagateCompanyDraftToSiblings_(draftRow, batch, ctx.rowIdx);
     const rowsToSave = [draftRow].concat(siblingRows);
     supplyEnsureDraftIdsOnRows_(rowsToSave, ctx.batchId);
-    supplyPauseDraftAutoSync_(90000);
+    supplyPauseDraftAutoSync_(180000);
     await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: rowsToSave, meta: supplyBatchMetaForApi_(batch) });
+    supplyCacheSavedDraftRows_(rowsToSave);
+    const activeFilter = supplyGetBatchRowFilter_(ctx.batchId);
     const wrap = document.getElementById('supply-batch-table-' + ctx.batchId);
     if (wrap && !wrap.hidden) {
       supplyRerenderBatchTable_(ctx.batchId);
     } else {
       renderSupplyDraftList_({ expandBatchIds: [ctx.batchId] });
     }
-    if (siblingRows.length && typeof window.showSddToast === 'function') {
-      window.showSddToast(
-        'Draft disimpan — ' + siblingRows.length + ' baris lain (COMPANY NAME sama) ikut terisi.',
-        'success'
-      );
+    if (typeof window.showSddToast === 'function') {
+      if (activeFilter === 'matched' || activeFilter === 'new') {
+        window.showSddToast('Draft tersimpan — lihat di filter «Draft saved».', 'success');
+      } else if (siblingRows.length) {
+        window.showSddToast(
+          'Draft disimpan — ' + siblingRows.length + ' baris lain (COMPANY NAME sama) ikut terisi.',
+          'success'
+        );
+      } else {
+        window.showSddToast('Draft tersimpan ke sheet.', 'success');
+      }
     }
   }
 
@@ -25851,18 +25919,27 @@ function initDashboardApp() {
     const rows = batch && batch.rows ? batch.rows : [];
     return {
       all: rows.length,
-      matched: rows.filter(function(r) { return r.match_status === 'matched' && !supplyRowIsSubmitted_(r); }).length,
+      matched: rows.filter(function(r) {
+        return r.match_status === 'matched' && !supplyRowIsSubmitted_(r) && !supplyDraftSavedFlag_(r);
+      }).length,
       draft: rows.filter(function(r) { return supplyDraftSavedFlag_(r) && !supplyRowIsSubmitted_(r); }).length,
-      new: rows.filter(function(r) { return r.match_status === 'new' && !supplyRowIsSubmitted_(r); }).length,
+      new: rows.filter(function(r) {
+        return r.match_status === 'new' && !supplyRowIsSubmitted_(r) && !supplyDraftSavedFlag_(r);
+      }).length,
     };
   }
 
   function supplyRowMatchesBatchFilter_(row, filter) {
     const f = filter || 'all';
     if (f === 'all') return true;
-    if (f === 'matched') return row.match_status === 'matched' && !supplyRowIsSubmitted_(row);
-    if (f === 'draft') return supplyDraftSavedFlag_(row) && !supplyRowIsSubmitted_(row);
-    if (f === 'new') return row.match_status === 'new' && !supplyRowIsSubmitted_(row);
+    if (supplyRowIsSubmitted_(row)) return f === 'all';
+    if (f === 'matched') {
+      return row.match_status === 'matched' && !supplyDraftSavedFlag_(row);
+    }
+    if (f === 'draft') return supplyDraftSavedFlag_(row);
+    if (f === 'new') {
+      return row.match_status === 'new' && !supplyDraftSavedFlag_(row);
+    }
     return true;
   }
 
@@ -26463,12 +26540,14 @@ function initDashboardApp() {
         if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
           return loadMillData().then(function() {
             window._supplyDraftBatches.forEach(function(b) {
+              supplySyncCompanyDraftAcrossBatch_(b);
               (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
             });
             renderSupplyDraftList_();
           });
         }
         window._supplyDraftBatches.forEach(function(b) {
+          supplySyncCompanyDraftAcrossBatch_(b);
           (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
         });
         renderSupplyDraftList_();
