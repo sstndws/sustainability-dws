@@ -24096,10 +24096,6 @@ function initDashboardApp() {
     });
   }
 
-  function supplyPauseDraftAutoSync_(ms) {
-    window._supplyDraftSyncPausedUntil = Date.now() + (ms || 180000);
-  }
-
   /** Read Mill Onboarding profile for a draft row without mutating the draft. */
   function supplyLookupMillProfileForDraft_(draftRow, batch) {
     if (!draftRow) return null;
@@ -25079,7 +25075,6 @@ function initDashboardApp() {
     const siblingRows = supplyPropagateCompanyDraftToSiblings_(draftRow, batch, ctx.rowIdx);
     const rowsToSave = [draftRow].concat(siblingRows);
     supplyEnsureDraftIdsOnRows_(rowsToSave, ctx.batchId);
-    supplyPauseDraftAutoSync_(180000);
     await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: rowsToSave, meta: supplyBatchMetaForApi_(batch) });
     supplyCacheSavedDraftRows_(rowsToSave);
     const activeFilter = supplyGetBatchRowFilter_(ctx.batchId);
@@ -25684,26 +25679,6 @@ function initDashboardApp() {
 
     // ── Load existing drafts on panel open ────────────────────────────────────
     loadSupplyDraftsFromServer_();
-
-    let _supplyDraftPollId = null;
-    function supplyDraftPanelVisible_() {
-      const panel = document.getElementById('mill-task-list-panel');
-      return !!(panel && panel.style.display !== 'none');
-    }
-    function startSupplyDraftAutoSync_() {
-      if (_supplyDraftPollId) return;
-      _supplyDraftPollId = setInterval(function() {
-        if (supplyDraftPanelVisible_()) loadSupplyDraftsFromServer_();
-      }, 45000);
-    }
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'visible' && supplyDraftPanelVisible_()) {
-        if (!window._supplyDraftSyncPausedUntil || Date.now() >= window._supplyDraftSyncPausedUntil) {
-          loadSupplyDraftsFromServer_();
-        }
-      }
-    });
-    startSupplyDraftAutoSync_();
   })();
 
   function resetImportModal_(keepType) {
@@ -26043,6 +26018,16 @@ function initDashboardApp() {
     const empty     = document.getElementById('supply-draft-empty');
     if (!container) return;
 
+    const preserveScroll = !!opts.preserveScroll;
+    const savedListScrollTop = preserveScroll ? container.scrollTop : 0;
+    const savedBatchScrollTops = {};
+    if (preserveScroll) {
+      container.querySelectorAll('.supply-batch-table-wrap').forEach(function(wrap) {
+        const batchId = String(wrap.id || '').replace(/^supply-batch-table-/, '');
+        if (batchId) savedBatchScrollTops[batchId] = wrap.scrollTop;
+      });
+    }
+
     const expandedBatchIds = new Set(Array.isArray(opts.expandBatchIds) ? opts.expandBatchIds : []);
     container.querySelectorAll('.supply-batch-table-wrap:not([hidden])').forEach(function(wrap) {
       const batchId = String(wrap.id || '').replace(/^supply-batch-table-/, '');
@@ -26063,8 +26048,8 @@ function initDashboardApp() {
     if (empty) empty.style.display = 'none';
 
     const syncBar = '<div class="supply-draft-sync-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#f8f4f2;border:1px solid #e8ddd8;border-radius:10px;font-size:12px;color:#6a4a4a;">'
-      + '<span>Draft disimpan ke sheet bersama — laptop/user lain perlu sinkron dari server.</span>'
-      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="sync-drafts">↻ Refresh draft</button>'
+      + '<span>Tidak auto-refresh saat mengisi. Klik Refresh untuk ambil perubahan dari server atau user lain.</span>'
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="sync-drafts">↻ Refresh</button>'
       + '</div>';
 
     container.innerHTML = syncBar + batches.map(function(b) {
@@ -26151,6 +26136,14 @@ function initDashboardApp() {
         const rowEl = wrap.querySelector('tbody tr[data-row-idx="' + opts.highlightRow.rowIdx + '"]');
         if (rowEl) dashFlashRow_(rowEl);
       }
+    }
+
+    if (preserveScroll) {
+      container.scrollTop = savedListScrollTop;
+      Object.keys(savedBatchScrollTops).forEach(function(batchId) {
+        const wrap = document.getElementById('supply-batch-table-' + batchId);
+        if (wrap) wrap.scrollTop = savedBatchScrollTops[batchId];
+      });
     }
   }
 
@@ -26269,10 +26262,10 @@ function initDashboardApp() {
       const prev = btn.textContent;
       btn.disabled = true;
       btn.textContent = '…';
-      loadSupplyDraftsFromServer_()
+      loadSupplyDraftsFromServer_({ preserveUi: true })
         .then(function() {
           if (typeof window.showSddToast === 'function') {
-            window.showSddToast('Draft diperbarui dari sheet.', 'info');
+            window.showSddToast('Task List diperbarui dari server.', 'info');
           }
         })
         .catch(function(err) {
@@ -26530,14 +26523,13 @@ function initDashboardApp() {
     return selected.length ? selected : allRows;
   }
 
-  function loadSupplyDraftsFromServer_() {
+  function loadSupplyDraftsFromServer_(opts) {
+    opts = opts || {};
+    const renderOpts = opts.preserveUi ? { preserveScroll: true } : {};
     if (_supplyBuildTaskInFlight) {
       return _supplyBuildTaskInFlight.finally(function() {
-        return loadSupplyDraftsFromServer_();
+        return loadSupplyDraftsFromServer_(opts);
       });
-    }
-    if (window._supplyDraftSyncPausedUntil && Date.now() < window._supplyDraftSyncPausedUntil) {
-      return Promise.resolve();
     }
     return apiGet('supplyDraft')
       .then(function(data) {
@@ -26545,7 +26537,7 @@ function initDashboardApp() {
         supplyApplyLocalDraftMergeOnLoad_(data);
         if (!Array.isArray(data) || !data.length) {
           window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches || []);
-          renderSupplyDraftList_();
+          renderSupplyDraftList_(renderOpts);
           return;
         }
         // Group by batch_id
@@ -26600,19 +26592,19 @@ function initDashboardApp() {
               supplySyncCompanyDraftAcrossBatch_(b);
               (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
             });
-            renderSupplyDraftList_();
+            renderSupplyDraftList_(renderOpts);
           });
         }
         window._supplyDraftBatches.forEach(function(b) {
           supplySyncCompanyDraftAcrossBatch_(b);
           (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
         });
-        renderSupplyDraftList_();
+        renderSupplyDraftList_(renderOpts);
       })
       .catch(function(err) {
         window._supplyDraftLoadError = err && err.message ? err.message : String(err);
         console.warn('[supplyDraft] Load drafts failed:', window._supplyDraftLoadError);
-        renderSupplyDraftList_();
+        renderSupplyDraftList_(renderOpts);
       });
   }
   window.loadSupplyDraftsFromServer_ = loadSupplyDraftsFromServer_;
