@@ -1,6 +1,8 @@
 import './login-shell.css';
 import { BRAND_TAGLINE } from './brand.js';
 
+const HUB_PORTAL_URL = 'https://sustainability-hub-portal.vercel.app/';
+
 function el(tag, className, props = {}) {
   const n = document.createElement(tag);
   if (className) n.className = className;
@@ -19,6 +21,12 @@ function el(tag, className, props = {}) {
 export function mountLoginPage(loginRoot) {
   if (!loginRoot) return;
   loginRoot.textContent = '';
+
+  const backLink = el('a', 'login-shell__back', {
+    href: HUB_PORTAL_URL,
+    'aria-label': 'Back to Sustainability Hub Portal',
+  });
+  backLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg><span>Back to Hub</span>';
 
   const glow = el('div', 'login-shell__glow');
   const shell = el('div', 'login-shell');
@@ -76,6 +84,7 @@ export function mountLoginPage(loginRoot) {
   card.appendChild(err);
 
   shell.appendChild(card);
+  loginRoot.appendChild(backLink);
   loginRoot.appendChild(glow);
   loginRoot.appendChild(shell);
 }

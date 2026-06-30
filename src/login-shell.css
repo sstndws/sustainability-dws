@@ -21,6 +21,51 @@
   overflow: hidden;
 }
 
+/* ── Back to central hub portal ── */
+.login-shell__back {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 26, 26, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(74, 28, 28, 0.08);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5C3030;
+  text-decoration: none;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+.login-shell__back svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.login-shell__back:hover {
+  color: #8B1A1A;
+  border-color: rgba(139, 26, 26, 0.28);
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(139, 26, 26, 0.12);
+  transform: translateY(-1px);
+}
+.login-shell__back:focus-visible {
+  outline: 2px solid #8B1A1A;
+  outline-offset: 2px;
+}
+
 /* ── Soft ambient orbs (no new brand direction — echoes dark-red header palette) ── */
 .login-shell__bg {
   position: fixed;
@@ -292,6 +337,12 @@
 
 /* ── Responsive ── */
 @media (max-width: 480px) {
+  .login-shell__back {
+    top: 14px;
+    left: 14px;
+    padding: 9px 12px;
+    font-size: 12px;
+  }
   .login-shell__card {
     padding: 28px 24px 26px;
     border-radius: 14px;
