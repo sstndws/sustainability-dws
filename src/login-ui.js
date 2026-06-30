@@ -24,9 +24,8 @@ export function mountLoginPage(loginRoot) {
 
   const backLink = el('a', 'login-shell__back', {
     href: HUB_PORTAL_URL,
-    'aria-label': 'Back to Sustainability Hub Portal',
+    textContent: '← Back to Sustainability Hub Portal',
   });
-  backLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg><span>Back to Hub</span>';
 
   const glow = el('div', 'login-shell__glow');
   const shell = el('div', 'login-shell');
