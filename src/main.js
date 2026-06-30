@@ -12571,6 +12571,32 @@ function initDashboardApp() {
     return warnings;
   }
 
+  function blMonitoringPickHasNblWarning_(pick) {
+    if (!pick) return false;
+    let srcRow = null;
+    if (pick._row) {
+      srcRow = (ttpData || []).find(function(r) { return r._row === pick._row; });
+    }
+    const warnings = blAssessMonitoringRowWarningsSync_(srcRow || pick);
+    return warnings.indexOf('No Buy List') !== -1;
+  }
+
+  function blGetSelectedMonitoringNblViolations_() {
+    const labels = [];
+    const seen = Object.create(null);
+    (blSelectedTtm || []).forEach(function(ttm) {
+      if (!blMonitoringPickHasNblWarning_(ttm)) return;
+      const company = blField_(ttm, ['COMPANY NAME']);
+      const uml = blField_(ttm, ['UML ID']);
+      const label = company + (uml !== '—' ? ' · UML ' + uml : '');
+      const key = label.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      labels.push(label);
+    });
+    return labels;
+  }
+
   function blFormatMonitoringWarningsHtml_(warnings) {
     if (!warnings || !warnings.length) return '';
     return '<div class="bl-picker-warn">' + warnings.map(function(w) {
@@ -12588,8 +12614,8 @@ function initDashboardApp() {
     const hasNbl = warnings.indexOf('No Buy List') !== -1;
     if (hasNbl && typeof window.showSddNotification === 'function') {
       window.showSddNotification(
-        'No Buy List warning',
-        msg + '\n\nYou can still link this row and save the record.',
+        'No Buy List — cannot save',
+        msg + '\n\nThis supplier is suspended on the No Buy List. Remove the link before saving the BL record.',
         'warning'
       );
     } else if (typeof window.showSddToast === 'function') {
@@ -12742,6 +12768,14 @@ function initDashboardApp() {
     if (blPeriodQuarter) quarterSel.value = blPeriodQuarterToken_(blPeriodQuarter);
   }
 
+  function blMonitoringYearHasQuarterData_(year) {
+    const wantY = String(parseMillYearSort(year));
+    if (!wantY) return false;
+    return (ttpData || []).some(function(r) {
+      return ttpYearToken_(r) === wantY && !!ttpQuarterToken_(r);
+    });
+  }
+
   function blUpdatePeriodSummary_() {
     const el = document.getElementById('blPickerPeriodSummary');
     if (!el) return;
@@ -12752,12 +12786,17 @@ function initDashboardApp() {
     const rows = blFilterMonitoringByPeriod_(ttpData || []);
     const millN = blUniqueMillCount_(rows.map(function(r) { return buildBlTtmCandidate_(r); }));
     const ttpN = rows.length;
+    const periodLabel = blPeriodQuarter + ' ' + blPeriodYear;
     if (!ttpN) {
-      el.textContent = 'No TTM/TTP data for ' + blPeriodQuarter + ' ' + blPeriodYear + '.';
+      el.textContent = 'No TTM/TTP data for ' + periodLabel + '.';
       return;
     }
-    el.textContent = millN + ' mill' + (millN === 1 ? '' : 's') + ' · ' + ttpN + ' TTP row'
-      + (ttpN === 1 ? '' : 's') + ' available for ' + blPeriodQuarter + ' ' + blPeriodYear + '. Pick rows below.';
+    let line = millN + ' mill' + (millN === 1 ? '' : 's') + ' · ' + ttpN + ' TTP row'
+      + (ttpN === 1 ? '' : 's') + ' available for ' + periodLabel + '. Pick rows below.';
+    if (blPeriodFilterFallback_) {
+      line += ' (Monitoring sheet has no quarter tags — showing all rows for ' + blPeriodYear + '.)';
+    }
+    el.textContent = line;
   }
 
   function blSyncDeclarationPeriodField_() {
@@ -12809,19 +12848,26 @@ function initDashboardApp() {
 
   function blFilterMonitoringByPeriod_(rows) {
     const list = rows || [];
-    if (!blPeriodYear || !blPeriodQuarter) {
+    if (!blPeriodYear) {
       blPeriodFilterFallback_ = false;
       return [];
     }
     const wantY = String(parseMillYearSort(blPeriodYear));
-    const wantQ = blPeriodQuarterToken_(blPeriodQuarter);
-    if (!wantY || !wantQ) {
+    if (!wantY) {
       blPeriodFilterFallback_ = false;
       return [];
     }
+    const wantQ = blPeriodQuarterToken_(blPeriodQuarter);
+    const yearRows = list.filter(function(r) {
+      return ttpYearToken_(r) === wantY;
+    });
+    if (!wantQ || !blMonitoringYearHasQuarterData_(blPeriodYear)) {
+      blPeriodFilterFallback_ = !!wantQ && yearRows.length > 0 && !blMonitoringYearHasQuarterData_(blPeriodYear);
+      return yearRows;
+    }
     blPeriodFilterFallback_ = false;
-    return list.filter(function(r) {
-      return ttpYearToken_(r) === wantY && ttpQuarterToken_(r) === wantQ;
+    return yearRows.filter(function(r) {
+      return ttpQuarterToken_(r) === wantQ;
     });
   }
 
@@ -13921,8 +13967,8 @@ function initDashboardApp() {
     }
     if (subEl) {
       subEl.textContent = isDecl
-        ? 'Enter declaration details, pick year/quarter, then link TTM/TTP rows manually. No Buy List matches are shown as warnings only.'
-        : 'Enter shipping details, pick year/quarter, then link TTM/TTP rows manually. No Buy List matches are shown as warnings only.';
+        ? 'Enter declaration details, pick year/quarter, then link TTM/TTP rows manually. Linked suppliers on the No Buy List cannot be saved.'
+        : 'Enter shipping details, pick year/quarter, then link TTM/TTP rows manually. Linked suppliers on the No Buy List cannot be saved.';
     }
     if (sectionEl) sectionEl.textContent = isDecl ? 'Declaration details' : 'Shipping details';
     if (saveBtn) saveBtn.textContent = isDecl ? 'Save Declaration' : 'Save Shipping';
@@ -13980,6 +14026,17 @@ function initDashboardApp() {
       return;
     }
     await blValidateBuyerField_();
+    await ensureNblListsForCheck_();
+    const nblViolations = blGetSelectedMonitoringNblViolations_();
+    if (nblViolations.length) {
+      alert(
+        'Cannot save this record.\n\n'
+        + 'The following linked TTM/TTP is on the No Buy List (NBL / suspended):\n\n'
+        + nblViolations.map(function(l) { return '• ' + l; }).join('\n')
+        + '\n\nRemove the suspended supplier before saving.'
+      );
+      return;
+    }
     const payload = Object.assign({}, fields);
     payload[BL_RECORD_TYPE_FIELD] = isDecl ? BL_TYPE_DECLARATION : BL_TYPE_SHIPPING;
     if (!isDecl) {
