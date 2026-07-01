@@ -25041,7 +25041,7 @@ function initDashboardApp() {
     const wrap = document.getElementById('supply-batch-table-' + batchId);
     if (!wrap) return [];
     const indexes = [];
-    wrap.querySelectorAll('.supply-row-check[data-batch="' + batchId + '"]:checked:not(:disabled)').forEach(function(cb) {
+    wrap.querySelectorAll('.supply-row-check:checked:not(:disabled)').forEach(function(cb) {
       const idx = parseInt(cb.dataset.row, 10);
       if (!isNaN(idx)) indexes.push(idx);
     });
@@ -25051,7 +25051,7 @@ function initDashboardApp() {
   function supplyCountCheckedRows_(batchId) {
     const wrap = document.getElementById('supply-batch-table-' + batchId);
     if (!wrap) return 0;
-    return wrap.querySelectorAll('.supply-row-check[data-batch="' + batchId + '"]:checked:not(:disabled)').length;
+    return wrap.querySelectorAll('.supply-row-check:checked:not(:disabled)').length;
   }
 
   function supplyRowsFromIndexes_(batch, indexes) {
@@ -25095,6 +25095,23 @@ function initDashboardApp() {
       }
     }
     supplyPatchBatchFooterSubmitCount_(batchId);
+  }
+
+  function ensureSupplyTaskListActionDelegation_() {
+    if (window._supplyTaskListActionBound) return;
+    window._supplyTaskListActionBound = true;
+    document.addEventListener('click', function(e) {
+      const btn = e.target && e.target.closest
+        ? e.target.closest('#supply-draft-list [data-action]')
+        : null;
+      if (!btn) return;
+      if (btn.classList.contains('is-busy')) return;
+      handleSupplyBatchAction_({
+        currentTarget: btn,
+        preventDefault: function() { e.preventDefault(); },
+        stopPropagation: function() { e.stopPropagation(); },
+      });
+    }, true);
   }
 
   function ensureSupplyDraftCheckboxDelegation_() {
@@ -25312,14 +25329,29 @@ function initDashboardApp() {
     const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
     const checkedN = supplyCountCheckedRows_(batchId);
     const readyN = batch ? supplyCountCheckedPendingSubmit_(batchId, batch) : 0;
+    const busy = window._supplyBulkSubmitInFlight === batchId;
     btn.dataset.action = 'submit-selected';
-    btn.textContent = 'Submit Terpilih (' + checkedN + ')';
-    btn.disabled = checkedN === 0;
+    btn.textContent = busy ? btn.textContent : ('Submit Terpilih (' + checkedN + ')');
+    btn.removeAttribute('disabled');
+    btn.classList.toggle('is-busy', busy);
+    btn.setAttribute('aria-disabled', checkedN === 0 ? 'true' : 'false');
     btn.title = checkedN === 0
       ? 'Centang baris yang akan di-submit'
       : (readyN + ' siap submit dari ' + checkedN + ' tercentang'
         + (readyN < checkedN ? ' — baris «Baru» perlu Lengkapi + Simpan draft dulu' : '')
         + (readyN === 0 ? ' — klik untuk lihat detail' : ''));
+  }
+
+  function supplySetSubmitBtnBusy_(batchId, busy, label) {
+    if (busy) window._supplyBulkSubmitInFlight = batchId;
+    else if (window._supplyBulkSubmitInFlight === batchId) window._supplyBulkSubmitInFlight = null;
+    const wrap = document.getElementById('supply-batch-table-' + batchId);
+    const btn = wrap && wrap.querySelector('[data-action="submit-selected"]');
+    if (!btn) return;
+    btn.removeAttribute('disabled');
+    btn.classList.toggle('is-busy', !!busy);
+    if (label) btn.textContent = label;
+    else supplyPatchBatchFooterSubmitCount_(batchId);
   }
 
   function supplyPatchBatchFooter_(batchId) {
@@ -25973,19 +26005,7 @@ function initDashboardApp() {
       return;
     });
 
-    const supplyDraftListEl = document.getElementById('supply-draft-list');
-    if (supplyDraftListEl && !supplyDraftListEl.dataset.supplyActionDelegated) {
-      supplyDraftListEl.dataset.supplyActionDelegated = '1';
-      supplyDraftListEl.addEventListener('click', function(e) {
-        const btn = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
-        if (!btn || !supplyDraftListEl.contains(btn)) return;
-        handleSupplyBatchAction_({
-          currentTarget: btn,
-          preventDefault: function() {},
-          stopPropagation: function() {},
-        });
-      });
-    }
+    ensureSupplyTaskListActionDelegation_();
     ensureSupplyDraftCheckboxDelegation_();
 
     // ── Load existing drafts on panel open ────────────────────────────────────
@@ -26363,6 +26383,7 @@ function initDashboardApp() {
     if (!batch || !wrap) return;
     wrap.innerHTML = renderSupplyBatchTable_(batch);
     supplyBindBatchTableActions_(wrap);
+    ensureSupplyTaskListActionDelegation_();
     ensureSupplyDraftCheckboxDelegation_();
     supplyPatchBatchFooterSubmitCount_(batchId);
     if (snap) supplyRestoreTaskListScroll_(snap);
@@ -26533,6 +26554,7 @@ function initDashboardApp() {
       });
     }
 
+    ensureSupplyTaskListActionDelegation_();
     ensureSupplyDraftCheckboxDelegation_();
     (window._supplyDraftBatches || []).forEach(function(b) {
       supplyPatchBatchFooterSubmitCount_(b.batch_id);
@@ -26619,7 +26641,6 @@ function initDashboardApp() {
     const readyN = batch ? supplyCountCheckedPendingSubmit_(batchId, batch) : 0;
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
-    const btnDisabled = checkedN === 0;
     const btnTitle = checkedN === 0
       ? 'Centang baris yang akan di-submit'
       : (readyN + ' siap submit dari ' + checkedN + ' tercentang'
@@ -26632,7 +26653,7 @@ function initDashboardApp() {
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
-      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '"' + (btnDisabled ? ' disabled' : '') + '>Submit Terpilih (' + checkedN + ')</button>' : '')
+      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Terpilih (' + checkedN + ')</button>' : '')
       + '</div>'
       + '</div>';
   }
@@ -26776,6 +26797,7 @@ function initDashboardApp() {
     }
 
     if (action === 'submit-selected' || action === 'submit-all-pending' || action === 'submit-matched') {
+      if (window._supplyBulkSubmitInFlight === bId) return;
       collectInlineEdits_(bId);
       const checkedIndexes = supplyGetCheckedRowIndexes_(bId);
       if (!checkedIndexes.length) {
@@ -26799,11 +26821,9 @@ function initDashboardApp() {
         confirmMsg += '\n\n' + notReady.length + ' baris tercentang belum siap dan akan dilewati.';
       }
       if (!confirm(confirmMsg)) return;
-      const prevLabel = btn.textContent;
-      btn.textContent = 'Submitting…';
-      btn.disabled = true;
+      supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       supplySubmitAllPendingRows_(batch, bId, pending, function(done, total) {
-        btn.textContent = 'Submitting ' + done + '/' + total + '…';
+        supplySetSubmitBtnBusy_(bId, true, 'Submitting ' + done + '/' + total + '…');
       })
         .then(function(result) {
           const snap = supplyCaptureTaskListScroll_();
@@ -26850,10 +26870,10 @@ function initDashboardApp() {
           }
         })
         .catch(function(err) {
-          btn.textContent = prevLabel;
-          btn.disabled = false;
-          supplyPatchBatchFooterSubmitCount_(bId);
           alert('Submit gagal: ' + (err && err.message ? err.message : err));
+        })
+        .finally(function() {
+          supplySetSubmitBtnBusy_(bId, false);
         });
       return;
     }

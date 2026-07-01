@@ -5804,6 +5804,14 @@ body.supply-import-open {
   cursor: pointer;
   accent-color: #8B1A1A;
 }
+.supply-btn--primary[aria-disabled="true"]:not(.is-busy) {
+  opacity: 0.55;
+}
+.supply-btn--primary.is-busy {
+  opacity: 0.65;
+  pointer-events: none;
+  cursor: wait;
+}
 .supply-btn--primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -5927,6 +5935,8 @@ body.supply-import-open {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 4;
 }
 .supply-inline-input {
   width: 100%;
