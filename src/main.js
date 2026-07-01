@@ -25007,17 +25007,50 @@ function initDashboardApp() {
     return false;
   }
 
+  function supplyRowCheckedForSubmit_(row) {
+    return !!(row && !supplyRowIsSubmitted_(row));
+  }
+
+  function supplyHydrateRowForSubmit_(row, batch) {
+    if (!row || supplyRowIsSubmitted_(row)) return;
+    supplyEnsureDraftPeriodOnRows_([row], batch);
+    const profile = supplyLookupMillProfileForDraft_(row, batch);
+
+    if (!supplyDraftSavedFlag_(row) && supplyNormMatchStatus_(row) === 'matched') {
+      supplyMergeProfilePrefillIntoDraftRow_(row, batch);
+    } else if (profile) {
+      supplyCopyProfileIntoDraft_(row, profile, batch, { forceProfileCopy: false });
+    }
+
+    const prefill = supplyBuildMillPrefillFromDraft_(row, batch, { rematch: false });
+    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      if (millIsSheetComputedField_(f)) return;
+      const cur = row[f];
+      const pv = prefill[f];
+      if ((cur === undefined || cur === null || String(cur).trim() === '')
+        && pv !== undefined && pv !== null && String(pv).trim() !== '') {
+        row[f] = pv;
+      }
+    });
+    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+      if (!supplyIsValidHaWidthDraftVal_(row[f]) && prefill[f] != null && supplyIsValidHaWidthDraftVal_(prefill[f])) {
+        row[f] = supplyNormalizeHaWidthField_(prefill[f]);
+      }
+    });
+
+    if (!String(row['SOURCE TYPE'] || '').trim()) {
+      row['SOURCE TYPE'] = millSourceTypeValFromRow_(row) || 'MILL';
+    }
+    if (String(row['COMPANY NAME'] || '').trim()) {
+      row.match_status = 'matched';
+    }
+    supplyApplyTypedQtyAndFacility_(row, row, batch);
+  }
+
   const SUPPLY_SUBMIT_CHUNK_SIZE_ = 40;
 
   function supplyPrepareRowForBulkSubmit_(row, batch) {
-    if (!row || supplyRowIsSubmitted_(row)) return;
-    supplyEnsureDraftPeriodOnRows_([row], batch);
-    if (!supplyDraftSavedFlag_(row) && supplyNormMatchStatus_(row) === 'matched') {
-      supplyMergeProfilePrefillIntoDraftRow_(row, batch);
-    }
-    if (supplyDraftSavedFlag_(row) && String(row.match_status || '').toLowerCase() !== 'matched') {
-      row.match_status = 'matched';
-    }
+    supplyHydrateRowForSubmit_(row, batch);
   }
 
   function supplyMarkRowsSubmitted_(rows) {
@@ -25145,23 +25178,22 @@ function initDashboardApp() {
   async function supplySubmitAllPendingRows_(batch, bId, rowsOptional, progressCb) {
     collectInlineEdits_(bId);
     const pending = (rowsOptional && rowsOptional.length)
-      ? rowsOptional.filter(supplyRowReadyForSubmit_)
-      : supplyRowsPendingSubmit_(batch);
-    if (!pending.length) throw new Error('Tidak ada baris yang siap di-submit.');
+      ? rowsOptional.filter(supplyRowCheckedForSubmit_)
+      : (batch.rows || []).filter(supplyRowCheckedForSubmit_);
+    if (!pending.length) throw new Error('Tidak ada baris tercentang untuk di-submit.');
 
-    pending.forEach(function(r) { supplyPrepareRowForBulkSubmit_(r, batch); });
+    pending.forEach(function(r) { supplyHydrateRowForSubmit_(r, batch); });
 
     const valid = [];
     const errors = [];
     pending.forEach(function(r) {
-      try {
-        supplyValidateMillPayloadForSubmit_(r);
-        valid.push(r);
-      } catch (err) {
-        errors.push((r['COMPANY NAME'] || 'baris') + ': ' + (err && err.message ? err.message : err));
+      if (!String(r['COMPANY NAME'] || '').trim()) {
+        errors.push((r['MILL NAME'] || 'baris') + ': COMPANY NAME kosong');
+        return;
       }
+      valid.push(r);
     });
-    if (!valid.length) throw new Error(errors.slice(0, 5).join('; '));
+    if (!valid.length) throw new Error(errors.slice(0, 5).join('; ') || 'Tidak ada baris valid untuk di-submit.');
 
     let submittedN = 0;
     const total = valid.length;
@@ -25328,7 +25360,6 @@ function initDashboardApp() {
     if (!btn) return;
     const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
     const checkedN = supplyCountCheckedRows_(batchId);
-    const readyN = batch ? supplyCountCheckedPendingSubmit_(batchId, batch) : 0;
     const busy = window._supplyBulkSubmitInFlight === batchId;
     btn.dataset.action = 'submit-selected';
     btn.textContent = busy ? btn.textContent : ('Submit Terpilih (' + checkedN + ')');
@@ -25337,9 +25368,7 @@ function initDashboardApp() {
     btn.setAttribute('aria-disabled', checkedN === 0 ? 'true' : 'false');
     btn.title = checkedN === 0
       ? 'Centang baris yang akan di-submit'
-      : (readyN + ' siap submit dari ' + checkedN + ' tercentang'
-        + (readyN < checkedN ? ' — baris «Baru» perlu Lengkapi + Simpan draft dulu' : '')
-        + (readyN === 0 ? ' — klik untuk lihat detail' : ''));
+      : ('Submit ' + checkedN + ' baris tercentang ke Mill Onboarding');
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
@@ -26638,18 +26667,14 @@ function initDashboardApp() {
   function supplyBatchFooterHtml_(batchId) {
     const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
     const checkedN = supplyCountFooterSubmit_(batchId);
-    const readyN = batch ? supplyCountCheckedPendingSubmit_(batchId, batch) : 0;
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
     const btnTitle = checkedN === 0
       ? 'Centang baris yang akan di-submit'
-      : (readyN + ' siap submit dari ' + checkedN + ' tercentang'
-        + (readyN < checkedN ? ' — baris «Baru» perlu Lengkapi + Simpan draft' : '')
-        + (readyN === 0 ? ' — klik untuk lihat detail' : ''));
+      : ('Submit ' + checkedN + ' baris tercentang ke Mill Onboarding');
     return '<div class="supply-batch-footer">'
       + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk Mill Onboarding. '
-      + '<strong>Submit Terpilih</strong> (centang baris di kiri) commit profil + supply data ke Mill Onboarding. '
-      + 'Angka di tombol = jumlah baris tercentang. Import CPO lalu PK (month, year, company sama) otomatis <strong>digabung</strong> di Task List.</p>'
+      + '<strong>Submit Terpilih</strong> mengirim semua baris tercentang ke Mill Onboarding (profil diisi otomatis dari data import / Mill Onboarding jika ada).</p>'
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
@@ -26805,21 +26830,12 @@ function initDashboardApp() {
         return;
       }
       const checkedRows = supplyRowsFromIndexes_(batch, checkedIndexes);
-      const pending = checkedRows.filter(supplyRowReadyForSubmit_);
-      const notReady = checkedRows.filter(function(r) { return !supplyRowReadyForSubmit_(r); });
+      const pending = checkedRows.filter(supplyRowCheckedForSubmit_);
       if (!pending.length) {
-        alert(
-          'Dari ' + checkedRows.length + ' baris tercentang, belum ada yang siap di-submit.\n\n'
-          + '• Baris Match profil: centang lalu submit langsung\n'
-          + '• Baris Baru: buka Lengkapi → isi Group, Company, Mill, UML ID → Simpan draft dulu'
-          + (notReady.length ? '\n\n(' + notReady.length + ' baris tercentang belum memenuhi syarat.)' : '')
-        );
+        alert('Baris tercentang sudah di-submit semua, atau tidak ada baris valid.');
         return;
       }
-      let confirmMsg = 'Tambah ' + pending.length + ' baris terpilih ke paling bawah Mill Onboarding? (Data lama tidak diubah; kolom rumus otomatis dari sheet)';
-      if (notReady.length) {
-        confirmMsg += '\n\n' + notReady.length + ' baris tercentang belum siap dan akan dilewati.';
-      }
+      const confirmMsg = 'Tambah ' + pending.length + ' baris tercentang ke paling bawah Mill Onboarding?\n(Data lama tidak diubah; kolom rumus otomatis dari sheet)';
       if (!confirm(confirmMsg)) return;
       supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       supplySubmitAllPendingRows_(batch, bId, pending, function(done, total) {
@@ -26833,16 +26849,13 @@ function initDashboardApp() {
           const errNote = result.errors.length
             ? (' Beberapa gagal: ' + result.errors.slice(0, 5).join('; '))
             : '';
-          const skipNote = notReady.length
-            ? (' ' + notReady.length + ' baris tercentang dilewati (belum lengkap).')
-            : '';
           if (typeof window.showSddToast === 'function') {
             window.showSddToast(
-              '✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + skipNote + errNote,
+              '✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote,
               result.errors.length ? 'warning' : 'success'
             );
           } else {
-            alert('✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + skipNote + errNote);
+            alert('✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote);
           }
           if (typeof reloadMillDataSoft_ === 'function') {
             return reloadMillDataSoft_().then(function() {
