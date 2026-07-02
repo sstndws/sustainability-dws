@@ -22495,7 +22495,6 @@ function initDashboardApp() {
 
   const btnLoginSubmit = document.getElementById('btn-login-submit');
   const loginPassEl = document.getElementById('loginPass');
-  const btnLogout = document.getElementById('btn-logout');
   if (btnLoginSubmit && loginPassEl) {
     btnLoginSubmit.addEventListener('click', async () => {
       try {
@@ -22516,18 +22515,6 @@ function initDashboardApp() {
   } else {
     console.warn('[dashboard] Login form nodes missing (#btn-login-submit / #loginPass). Check entry mounts before main.js.');
   }
-  if (btnLogout) btnLogout.addEventListener('click', async function() {
-    if (!AUTH_GATE_ENABLED) return;
-    var sbOut = getSupabase();
-    if (sbOut) {
-      try {
-        await sbOut.auth.signOut();
-      } catch (e) {
-        console.warn('[dashboard] Supabase signOut:', e);
-      }
-    }
-    clearClientSessionForLogout_();
-  });
 
   function clearClientSessionForLogout_() {
     if (!AUTH_GATE_ENABLED) {

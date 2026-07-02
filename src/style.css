@@ -428,27 +428,7 @@
      border-radius: 12px;
    }
    #mainSidebar.sidebar:not(.expanded) .sidebar-signout-btn .nav-label { display: none; }
-   
-   #mainSidebar.sidebar:not(.expanded) #btn-logout::after {
-     content: "Sign Out";
-     position: fixed;
-     left: 68px;
-     margin-top: -10px;
-     background: #2a0e0e;
-     color: #f5eeee;
-     font-size: 11.5px;
-     font-weight: 500;
-     white-space: nowrap;
-     padding: 5px 10px;
-     border-radius: 6px;
-     box-shadow: 0 4px 14px rgba(0,0,0,0.22);
-     pointer-events: none;
-     opacity: 0;
-     transition: opacity 120ms ease 60ms;
-     z-index: 9999;
-   }
-   #mainSidebar.sidebar:not(.expanded) #btn-logout:hover::after { opacity: 1; }
-   
+
    /* â”€â”€ Sidebar item animation (expanded) â”€â”€ */
    #mainSidebar.sidebar.expanded .nav-item,
    #mainSidebar.sidebar.expanded .nav-group-header {
