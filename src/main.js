@@ -25410,6 +25410,11 @@ function initDashboardApp() {
   }
 
   async function supplySubmitAllPendingRows_(batch, bId, rowsOptional, progressCb) {
+    if (batch && batch._submitInFlight) {
+      throw new Error('Submit sedang berjalan — tunggu sebentar.');
+    }
+    if (batch) batch._submitInFlight = true;
+    try {
     collectInlineEdits_(bId);
     const pending = (rowsOptional && rowsOptional.length)
       ? rowsOptional.filter(supplyRowCheckedForSubmit_)
@@ -25451,10 +25456,15 @@ function initDashboardApp() {
           errors.push.apply(errors, res.errors);
         }
         if (okN > 0) {
+          const submittedIds = new Set(chunk.map(function(p) {
+            return String(p.draft_id || '').trim();
+          }).filter(Boolean));
           const submittedCos = new Set(chunk.map(function(p) {
             return supplyCompanyKey_(p['COMPANY NAME']);
           }));
           supplyMarkRowsSubmitted_(valid.filter(function(r) {
+            const id = String(r.draft_id || '').trim();
+            if (id && submittedIds.has(id)) return true;
             return submittedCos.has(supplyCompanyKey_(r['COMPANY NAME']));
           }));
           submittedN += okN;
@@ -25465,7 +25475,19 @@ function initDashboardApp() {
     }
 
     supplyNormalizeBatchSubmittedState_(batch);
+
+    if (submittedN > 0) {
+      try {
+        await supplyPersistDraftBatch_(batch);
+      } catch (persistErr) {
+        errors.push('Status draft tidak tersimpan ke server: ' + (persistErr && persistErr.message ? persistErr.message : persistErr));
+      }
+    }
+
     return { submittedN: submittedN, errors: errors, allDone: batch.status === 'submitted', skipped: pending.length - valid.length };
+    } finally {
+      if (batch) batch._submitInFlight = false;
+    }
   }
 
   function supplyApplyBatchPeriodToPayload_(payload, batch, draftRow) {
@@ -27232,6 +27254,14 @@ function initDashboardApp() {
   function loadSupplyDraftsFromServer_(opts) {
     opts = opts || {};
     const renderOpts = opts.preserveUi ? { preserveScroll: true } : {};
+    const prevSubmittedIds = {};
+    (window._supplyDraftBatches || []).forEach(function(b) {
+      (b.rows || []).forEach(function(r) {
+        if (!supplyRowIsSubmitted_(r)) return;
+        const id = String(r.draft_id || '').trim();
+        if (id) prevSubmittedIds[id] = true;
+      });
+    });
     if (_supplyBuildTaskInFlight) {
       return _supplyBuildTaskInFlight.finally(function() {
         return loadSupplyDraftsFromServer_(opts);
@@ -27250,6 +27280,11 @@ function initDashboardApp() {
         const batches = {};
         data.forEach(function(row) {
           const bid = row.batch_id || row.draft_id || 'unknown';
+          const rowId = String(row.draft_id || '').trim();
+          if (rowId && prevSubmittedIds[rowId] && String(row.status || '').toLowerCase() !== 'submitted') {
+            row.status = 'submitted';
+            row._submitted = true;
+          }
           const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
           const rowYear = String(row.year || row.YEAR || '').trim();
           if (!batches[bid]) {

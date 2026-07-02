@@ -5917,6 +5917,68 @@ function findMillRowForSupplySubmit_(millData, millHeaders, row) {
   return plan.insertAfter || 0;
 }
 
+function millSupplyRowFingerprintGs_(obj) {
+  if (!obj) return '';
+  var per = supplyReadPeriodFromRowGs_(obj);
+  return [
+    supplyNormKey_(obj['COMPANY NAME']),
+    supplyNormKey_(obj['MILL NAME']),
+    String(per.month || '').trim(),
+    String(per.year || '').trim(),
+    supplyNormKey_(String(obj['SUPPLY CPO'] == null ? '' : obj['SUPPLY CPO'])),
+    supplyNormKey_(String(obj['SUPPLY PK'] == null ? '' : obj['SUPPLY PK'])),
+    supplyNormKey_(obj['FACILITY NAME CPO']),
+    supplyNormKey_(obj['FACILITY NAME PK']),
+  ].join('\u0001');
+}
+
+/** Cegah baris supply identik (company + mill + period + qty + facility) masuk dua kali. */
+function millFindDuplicateSupplyRowGs_(millData, millHeaders, row) {
+  var want = millSupplyRowFingerprintGs_(row);
+  if (!want || !supplyNormKey_(row['COMPANY NAME'])) return 0;
+  for (var r = 1; r < millData.length; r++) {
+    var obj = millRowToObjectGs_(millData[r], millHeaders);
+    if (millSupplyRowFingerprintGs_(obj) === want) return r + 1;
+  }
+  return 0;
+}
+
+/** Tandai draft submitted — by draft_id + semua baris company & periode sama di batch. */
+function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now) {
+  var statusCol = draftHeaders.indexOf('status');
+  var updCol = draftHeaders.indexOf('updated_at');
+  var batchCol = draftHeaders.indexOf('batch_id');
+  if (statusCol < 0) return false;
+  var per = supplyReadPeriodFromRowGs_(row);
+  var coKey = supplyNormKey_(row['COMPANY NAME']);
+  var bid = String(batchId || row.batch_id || '').trim();
+  var dirty = false;
+
+  function markIdx(dri) {
+    if (dri == null || dri < 1) return;
+    draftData[dri][statusCol] = 'submitted';
+    if (updCol >= 0) draftData[dri][updCol] = now;
+    dirty = true;
+  }
+
+  var draftId = String(row.draft_id || '').trim();
+  if (draftId && draftIdIndex[draftId] != null) markIdx(draftIdIndex[draftId]);
+
+  for (var di = 1; di < draftData.length; di++) {
+    if (draftId && draftIdIndex[draftId] === di) continue;
+    var obj = millRowToObjectGs_(draftData[di], draftHeaders);
+    if (bid && batchCol >= 0 && String(draftData[di][batchCol] || '').trim() !== bid) continue;
+    if (coKey && supplyNormKey_(obj['COMPANY NAME']) !== coKey) continue;
+    var rp = supplyReadPeriodFromRowGs_(obj);
+    if (per.month && rp.month && String(rp.month) !== String(per.month)) continue;
+    if (per.year && rp.year && String(rp.year) !== String(per.year)) continue;
+    var st = String(draftData[di][statusCol] || '').trim().toLowerCase();
+    if (st === 'submitted') continue;
+    markIdx(di);
+  }
+  return dirty;
+}
+
 function submitSupplyDraft_(batchId, rows, meta) {
   if (!batchId) throw new Error('batch_id required');
   ensureSupplyDraftHeaders_();
@@ -5994,20 +6056,19 @@ function submitSupplyDraft_(batchId, rows, meta) {
           && !String(row['COMPANY NAME'] || '').trim()) {
         throw new Error('profil mill tidak ditemukan — match dulu');
       }
-      var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
-      if (!newSheetRow) {
-        throw new Error('tidak ada data untuk ditulis');
+      var dupSheetRow = millFindDuplicateSupplyRowGs_(millData, millHeaders, row);
+      if (!dupSheetRow) {
+        var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
+        if (!newSheetRow) {
+          throw new Error('tidak ada data untuk ditulis');
+        }
       }
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
       return;
     }
 
-    var draftId = String(row.draft_id || '').trim();
-    if (draftId && draftIdIndex[draftId] != null) {
-      var dri = draftIdIndex[draftId];
-      if (statusColD >= 0) draftData[dri][statusColD] = 'submitted';
-      if (updColD >= 0) draftData[dri][updColD] = now;
+    if (markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now)) {
       draftDirty = true;
     }
     submitted++;
