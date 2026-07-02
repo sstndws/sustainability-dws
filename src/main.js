@@ -32,6 +32,9 @@ import {
   grvRiskTableCellHtml_,
 } from './grievance-risk.js';
 
+/** Set VITE_AUTH_ENABLED=true di Vercel/.env untuk mengaktifkan login lagi. */
+const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
+
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
   window._sddUserRole = window._sddUserRole || 'STAFF';
@@ -22395,8 +22398,9 @@ function initDashboardApp() {
   // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 
   // ─── LOGIN (simple page, no modal needed) ─────────────────────────────────────────
-  // focus email on load
-  setTimeout(() => { const e = document.getElementById('loginEmail'); if (e) e.focus(); }, 100);
+  if (AUTH_GATE_ENABLED) {
+    setTimeout(() => { const e = document.getElementById('loginEmail'); if (e) e.focus(); }, 100);
+  }
 
   // ─── LOGIN / LOGOUT ─────────────────────────────────────
   function resolveSddRoleFromSupabaseUser_(user) {
@@ -22513,6 +22517,7 @@ function initDashboardApp() {
     console.warn('[dashboard] Login form nodes missing (#btn-login-submit / #loginPass). Check entry mounts before main.js.');
   }
   if (btnLogout) btnLogout.addEventListener('click', async function() {
+    if (!AUTH_GATE_ENABLED) return;
     var sbOut = getSupabase();
     if (sbOut) {
       try {
@@ -22525,6 +22530,10 @@ function initDashboardApp() {
   });
 
   function clearClientSessionForLogout_() {
+    if (!AUTH_GATE_ENABLED) {
+      finalizeSuccessfulLogin_('Dashboard User', 'STAFF');
+      return;
+    }
     var le = document.getElementById('loginEmail');
     var lp = document.getElementById('loginPass');
     if (le) le.value = '';
@@ -22567,7 +22576,11 @@ function initDashboardApp() {
     showPage('login');
   }
 
-  (async function restoreSupabaseSession_() {
+  (async function bootstrapAuth_() {
+    if (!AUTH_GATE_ENABLED) {
+      await finalizeSuccessfulLogin_('Dashboard User', 'STAFF');
+      return;
+    }
     var sb = getSupabase();
     if (!sb) return;
     var res = await sb.auth.getSession();
