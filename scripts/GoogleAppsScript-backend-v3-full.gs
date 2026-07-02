@@ -176,6 +176,8 @@ const SUPPLY_DRAFT_HEADERS = [
   'DEFORESTATION WIDTH', 'BURN AREA WIDTH', 'PEAT WIDTH',
   'LEGALITY GRIEVANCE', 'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
   'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
+  'DEFORESTATION GRIEVANCES NOTE', 'BURN AREA GRIEVANCES NOTE', 'LEGALITY GRIEVANCE NOTE',
+  'HUMAN RIGHTS GRIEVANCE NOTE', 'SAFETY GRIEVANCE NOTE', 'SOCIAL GRIEVANCE NOTE', 'ENVIRONMENT GRIEVANCE NOTE',
   'NDPE', 'HRDD', 'TOTAL POLICY',
   'CERTIFICATION', 'TOTAL CERTIFICATION', 'TOTAL SCORE',
   'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
@@ -5733,6 +5735,47 @@ function resolveGrievanceKeysOnPatchGs_(patch, headers) {
   });
 }
 
+function supplyGrievanceNoteKeyGs_(canonical) {
+  var c = String(canonical || '').trim();
+  return c ? (c + ' NOTE') : '';
+}
+
+function millResolveGrievanceHeaderColsGs_(headers) {
+  var specs = [
+    ['DEFORESTATION GRIEVANCES', function(n) { return n.indexOf('deforest') >= 0 && n.indexOf('griev') >= 0; }],
+    ['BURN AREA GRIEVANCES', function(n) { return n.indexOf('burn') >= 0 && n.indexOf('griev') >= 0; }],
+    ['LEGALITY GRIEVANCE', function(n) { return n.indexOf('legality') >= 0 && n.indexOf('griev') >= 0; }],
+    ['HUMAN RIGHTS GRIEVANCE', function(n) { return n.indexOf('human') >= 0 && n.indexOf('griev') >= 0; }],
+    ['SAFETY GRIEVANCE', function(n) { return n.indexOf('safety') >= 0 && n.indexOf('griev') >= 0; }],
+    ['SOCIAL GRIEVANCE', function(n) { return n.indexOf('social') >= 0 && n.indexOf('griev') >= 0; }],
+    ['ENVIRONMENT GRIEVANCE', function(n) { return n.indexOf('griev') >= 0 && (n.indexOf('environment') >= 0 || n.indexOf('environ') >= 0); }],
+  ];
+  var out = {};
+  specs.forEach(function(spec) {
+    var colName = millFindHeaderByNormGs_(headers, spec[1]);
+    if (!colName) return;
+    var idx = headers.indexOf(colName);
+    if (idx >= 0) out[spec[0]] = idx + 1;
+  });
+  return out;
+}
+
+function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
+  if (!sheet || !headers || !targetRow || !row) return;
+  var colMap = millResolveGrievanceHeaderColsGs_(headers);
+  Object.keys(colMap).forEach(function(canonical) {
+    var col = colMap[canonical];
+    if (!col) return;
+    var yn = supplyNormalizeGrievanceYesNoGs_(row[canonical]);
+    var note = String(row[supplyGrievanceNoteKeyGs_(canonical)] || '').trim();
+    if (yn === 'Yes' && note) {
+      sheet.getRange(targetRow, col).setNote(note);
+    } else {
+      sheet.getRange(targetRow, col).setNote('');
+    }
+  });
+}
+
 function supplyGrievanceNamedKeysGs_(canonical) {
   if (canonical === 'DEFORESTATION GRIEVANCES') return ['DEFORESTATION GRIEVANCES'];
   if (canonical === 'BURN AREA GRIEVANCES') return ['BURN AREA GRIEVANCES'];
@@ -6057,11 +6100,16 @@ function submitSupplyDraft_(batchId, rows, meta) {
         throw new Error('profil mill tidak ditemukan — match dulu');
       }
       var dupSheetRow = millFindDuplicateSupplyRowGs_(millData, millHeaders, row);
+      var targetSheetRow = dupSheetRow;
       if (!dupSheetRow) {
         var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
         if (!newSheetRow) {
           throw new Error('tidak ada data untuk ditulis');
         }
+        targetSheetRow = newSheetRow;
+      }
+      if (targetSheetRow) {
+        millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetSheetRow, row);
       }
     } catch (err) {
       errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);

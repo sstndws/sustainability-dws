@@ -3947,7 +3947,7 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbycKuv6UPJuiTxHm-skBjxWSAzzj4wC60e3wLoQ_T_UlQZrcNN-Ygvf_tKN_OuPb4nE0w/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxUdawWq-MCd4PaaWxCVSDNcszE_lxwDT5zEOhVNNN-50KXyUul0a-EkjcnWud6iyNNzw/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzz81q205hEquF3gqm4KfDQC1BuBzI6X09ELSpg6rafr7QAbDGVWSfPUE9yZwKul4vqOA';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -5328,6 +5328,10 @@ function initDashboardApp() {
     MILL_LEGALITY_GRIEVANCE, MILL_HUMAN_RIGHTS_GRIEVANCE, MILL_SAFETY_GRIEVANCE,
     MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
   ];
+  function millGrievanceNoteKey_(field) {
+    return String(field || '').trim() ? (String(field).trim() + ' NOTE') : '';
+  }
+  const MILL_GRIEVANCE_NOTE_FIELDS_ = MILL_GRIEVANCE_FLAG_FIELDS_.map(millGrievanceNoteKey_);
 
   const MILL_GRIEVANCE_FLAG_ALIASES_ = {
     [MILL_LEGALITY_GRIEVANCE]: ['LEGALITY GRIEVANCE', 'LEGALITY GRIEVANCES', 'LEGALITY', 'Legality'],
@@ -5726,6 +5730,20 @@ function initDashboardApp() {
     </div>`;
   }
 
+  function buildMillGrievanceSelectWithNote_(field, currentVal, noteVal, isFull, displayLabel) {
+    const yn = millNormalizeYesNoSelectVal_(currentVal) || '';
+    const note = String(noteVal == null ? '' : noteVal);
+    const noteField = millGrievanceNoteKey_(field);
+    const noteHidden = yn === 'Yes' ? '' : ' supply-grv-note--hidden';
+    return '<div class="supply-grv-wrap">'
+      + buildCustomSelect(field, ['Yes', 'No'], yn, true, isFull, displayLabel)
+      + '<div class="form-field full supply-grv-note' + noteHidden + '" data-note-for="' + escHtml(field) + '">'
+      + '<label>Note (' + escHtml(displayLabel || field) + ')</label>'
+      + '<textarea data-field="' + escHtml(noteField) + '" rows="2" placeholder="Catatan untuk jawaban Yes (opsional)">' + escHtml(note) + '</textarea>'
+      + '</div>'
+      + '</div>';
+  }
+
   function buildYnSelect(field, currentVal, isFull) {
     const arrowSvg = '<svg class="cs-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>';
     const checkSvg = '<svg class="cs-opt-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -5792,6 +5810,17 @@ function initDashboardApp() {
             wrap.classList.remove('val-yes','val-no');
             if (val === 'Yes') wrap.classList.add('val-yes');
             else if (val === 'No') wrap.classList.add('val-no');
+            if (hidden && hidden.dataset && hidden.dataset.field) {
+              const noteWrap = container.querySelector('.supply-grv-note[data-note-for="' + hidden.dataset.field + '"]');
+              if (noteWrap) {
+                const isYes = val === 'Yes';
+                noteWrap.classList.toggle('supply-grv-note--hidden', !isYes);
+                if (!isYes) {
+                  const noteInput = noteWrap.querySelector('textarea[data-field]');
+                  if (noteInput) noteInput.value = '';
+                }
+              }
+            }
           }
 
           wrap.classList.remove('open');
@@ -5857,7 +5886,13 @@ function initDashboardApp() {
         const fieldLabel = millGrievanceFieldLabel_(f);
         if (YESNO_FIELDS.includes(f)) {
           val = millNormalizeYesNoSelectVal_(val) || val;
-          html += buildCustomSelect(f, ['Yes','No'], val, true, isFull, fieldLabel);
+          if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) {
+            const noteKey = millGrievanceNoteKey_(f);
+            const noteVal = data && data[noteKey] != null ? data[noteKey] : '';
+            html += buildMillGrievanceSelectWithNote_(f, val, noteVal, isFull, fieldLabel);
+          } else {
+            html += buildCustomSelect(f, ['Yes','No'], val, true, isFull, fieldLabel);
+          }
         } else if (MILL_HA_WIDTH_FIELDS.has(f)) {
           html += buildMillHaWidthField_(f, val);
         } else if (DROPDOWN_FIELDS[f]) {
@@ -25008,6 +25043,7 @@ function initDashboardApp() {
     const s = new Set(supplyProfileIdentityFields_());
     ['MONTH', 'YEAR', 'QUARTER', 'SUPPLY CPO', 'SUPPLY PK', 'FACILITY NAME CPO', 'FACILITY NAME PK',
       'PRODUCT SUPPLY', 'PLANT', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME'].forEach(function(k) { s.add(k); });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) { s.add(k); });
     return s;
   }
 
@@ -25203,6 +25239,10 @@ function initDashboardApp() {
         const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
         if (dnorm === 'Yes' || dnorm === 'No') prefill[f] = dnorm;
       });
+      MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+        const nv = draftRow[k];
+        if (nv !== undefined && nv !== null && String(nv).trim() !== '') prefill[k] = nv;
+      });
       const cap = millCapacityFromRow_(draftRow);
       if (cap) prefill['MILL CAPACITY (TON/HOUR)'] = cap;
     }
@@ -25255,6 +25295,10 @@ function initDashboardApp() {
         }
         const pnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(profileRow, f));
         if (pnorm === 'Yes' || pnorm === 'No') prefill[f] = pnorm;
+      });
+      MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+        const nv = profileDataRow[k];
+        if (nv !== undefined && nv !== null && String(nv).trim() !== '') prefill[k] = nv;
       });
     }
     ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'SOURCE TYPE', 'PROVINCE'].forEach(function(k) {
@@ -25631,6 +25675,11 @@ function initDashboardApp() {
       if (Object.prototype.hasOwnProperty.call(data, f)) {
         const gv = millNormalizeYesNoSelectVal_(data[f]);
         if (gv === 'Yes' || gv === 'No') draftRow[f] = gv;
+      }
+    });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      if (Object.prototype.hasOwnProperty.call(data, k)) {
+        draftRow[k] = String(data[k] == null ? '' : data[k]).trim();
       }
     });
     if (payload['SOURCE TYPE']) draftRow['SOURCE TYPE'] = payload['SOURCE TYPE'];

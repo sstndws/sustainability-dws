@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   }
 
   const gasUrl = env_('GAS_WEBAPP_URL')
-    || 'https://script.google.com/macros/s/AKfycbycKuv6UPJuiTxHm-skBjxWSAzzj4wC60e3wLoQ_T_UlQZrcNN-Ygvf_tKN_OuPb4nE0w/exec';
+    || 'https://script.google.com/macros/s/AKfycbxUdawWq-MCd4PaaWxCVSDNcszE_lxwDT5zEOhVNNN-50KXyUul0a-EkjcnWud6iyNNzw/exec';
   const gasSecret = env_('GAS_API_SECRET');
 
   const payload = parseBody_(req);

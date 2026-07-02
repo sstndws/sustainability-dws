@@ -4533,6 +4533,16 @@
    .yesno-wrap .custom-select-trigger { font-weight: 600; }
    .yesno-wrap.val-yes .custom-select-trigger { border-color: #16713e; color: #16713e; background: rgba(22,113,62,0.05); }
    .yesno-wrap.val-no  .custom-select-trigger { border-color: #C0301E; color: #C0301E; background: rgba(192,48,30,0.05); }
+  .supply-grv-note {
+    margin-top: 6px;
+  }
+  .supply-grv-note--hidden {
+    display: none;
+  }
+  .supply-grv-note textarea {
+    min-height: 56px;
+    resize: vertical;
+  }
    
    .cs-yn-dot {
      width: 8px;
