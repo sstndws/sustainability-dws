@@ -6946,6 +6946,10 @@ function initDashboardApp() {
       if (m._millScrollEl && m._millOnReposition) {
         m._millScrollEl.removeEventListener('scroll', m._millOnReposition);
       }
+      if (m._millOnDocClose) {
+        document.removeEventListener('mousedown', m._millOnDocClose, true);
+        m._millOnDocClose = null;
+      }
       m.remove();
     });
     if (window._millColFilterReposition_) {
@@ -7092,12 +7096,12 @@ function initDashboardApp() {
         });
       });
       setTimeout(function() {
-        function closeOut(ev) {
+        const closeOut = function(ev) {
           if (!menu.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)) {
             closeMenu();
-            document.removeEventListener('mousedown', closeOut, true);
           }
-        }
+        };
+        menu._millOnDocClose = closeOut;
         document.addEventListener('mousedown', closeOut, true);
       }, 0);
     }
