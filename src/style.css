@@ -2508,6 +2508,29 @@
      background: rgba(139, 26, 26, 0.06);
      color: #6a3030;
    }
+  .cert-pill-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cert-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6a3030;
+    border: 1px solid rgba(139, 26, 26, 0.2);
+    background: rgba(139, 26, 26, 0.06);
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+  .cert-pill-empty { color: #9c8a8a; }
+  .cert-pill-list--profile .cert-pill {
+    font-size: 12px;
+    padding: 5px 11px;
+  }
    .ttp-detail-foot {
      display: flex;
      flex-wrap: wrap;

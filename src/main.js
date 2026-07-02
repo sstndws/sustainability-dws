@@ -6433,6 +6433,34 @@ function initDashboardApp() {
     return 0;
   }
 
+  function parseCertificationParts_(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s || s === '—' || s === '-') return [];
+    const parts = s.split(/[,;|\n\r]+/).map(function(part) {
+      return String(part || '').trim();
+    }).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    parts.forEach(function(part) {
+      const key = part.toUpperCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(part);
+    });
+    return out;
+  }
+
+  function certPillsHtml_(raw, opts) {
+    opts = opts || {};
+    const parts = parseCertificationParts_(raw);
+    if (!parts.length) return '<span class="cert-pill-empty">—</span>';
+    const cls = opts.className || 'cert-pill-list';
+    const itemCls = opts.itemClassName || 'cert-pill';
+    return '<div class="' + escHtml(cls) + '">' + parts.map(function(part) {
+      return '<span class="' + escHtml(itemCls) + '">' + escHtml(part) + '</span>';
+    }).join('') + '</div>';
+  }
+
   /** Sortable period key: YYYYMM (month 0 allowed when year-only row). */
   function millRowPeriodSortKey_(r) {
     const y = parseMillYearSort(millYearVal(r));
@@ -6441,9 +6469,17 @@ function initDashboardApp() {
     return y * 100 + (m || 0);
   }
 
-  /** Mill registry dedupe — latest snapshot per company name. */
+  /** Mill registry entity key — company + mill (satu snapshot per entitas). */
+  function millRegistryEntityKey_(r) {
+    return [
+      String(pickMillCompanyName_(r) || '').trim().toUpperCase(),
+      String(millPickField_(r, ['MILL NAME', 'Mill Name']) || '').trim().toUpperCase(),
+    ].join('\u0001');
+  }
+
+  /** @deprecated use millRegistryEntityKey_ */
   function millCompanyRegistryKey_(r) {
-    return String(pickMillCompanyName_(r) || '').trim().toUpperCase();
+    return millRegistryEntityKey_(r);
   }
 
   function millSelectedPeriodFilter_() {
@@ -6501,39 +6537,52 @@ function initDashboardApp() {
     return merged;
   }
 
+  function millPickRegistryRowWinner_(existing, incoming) {
+    const sk = millRowPeriodSortKey_(incoming);
+    const skOld = millRowPeriodSortKey_(existing);
+    if (sk > skOld) return incoming;
+    if (sk < skOld) return existing;
+    if (sk > 0) return millMergeRegistrySupplyRows_(existing, incoming);
+    return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
+  }
+
   /**
-   * One row per company — keep highest Year/Month within the active period filter.
+   * Newest mode — semua company+mill, masing-masing versi period tertinggi di data.
+   * Tidak membatasi ke bulan/tahun global terbaru.
+   */
+  function millPickNewestPerEntity_(rows) {
+    const byEntity = new Map();
+    (rows || []).forEach(function(r) {
+      const ek = millRegistryEntityKey_(r);
+      if (!ek || ek === '\u0001') return;
+      const existing = byEntity.get(ek);
+      byEntity.set(ek, existing ? millPickRegistryRowWinner_(existing, r) : r);
+    });
+    return Array.from(byEntity.values());
+  }
+
+  /**
+   * Period mode — satu baris per company+mill, period tertinggi dalam batas filter as-of.
    * e.g. filter Mar 2025 → Jan row still shown if no Mar update; Mar replaces Jan when present.
-   * Baris period sama (mis. CPO + PK terpisah) digabung facility/product-nya.
    */
   function millPickLatestPerCompany_(rows, pf) {
     pf = pf || millSelectedPeriodFilter_();
-    const byCo = new Map();
+    const byEntity = new Map();
     (rows || []).forEach(function(r) {
-      const ck = millCompanyRegistryKey_(r);
-      if (!ck) return;
+      const ek = millRegistryEntityKey_(r);
+      if (!ek || ek === '\u0001') return;
       if (!millRowWithinPeriodFilter_(r, pf)) return;
-      const sk = millRowPeriodSortKey_(r);
-      const existing = byCo.get(ck);
-      if (!existing) {
-        byCo.set(ck, r);
-        return;
-      }
-      const skOld = millRowPeriodSortKey_(existing);
-      if (sk > skOld) {
-        byCo.set(ck, r);
-      } else if (sk === skOld) {
-        byCo.set(ck, millMergeRegistrySupplyRows_(existing, r));
-      }
+      const existing = byEntity.get(ek);
+      byEntity.set(ek, existing ? millPickRegistryRowWinner_(existing, r) : r);
     });
-    return Array.from(byCo.values());
+    return Array.from(byEntity.values());
   }
 
   function millApplyRegistryPeriodView_(rows) {
-    const pf = millPeriodMode === 'period'
-      ? millSelectedPeriodFilter_()
-      : { hasYear: false, hasMonth: false, years: new Set(), maxMonth: 0, hasEmptyMonth: false };
-    return millPickLatestPerCompany_(rows, pf);
+    if (millPeriodMode === 'newest') {
+      return millPickNewestPerEntity_(rows);
+    }
+    return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
 
   function millPeriodFilterHintText_() {
@@ -6563,13 +6612,24 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Snapshot terbaru per company (period paling baru di data)'
+        ? 'Semua company — versi terbaru masing-masing (period bisa berbeda antar company)'
         : millPeriodFilterHintText_();
     }
   }
 
+  function millClearPeriodDimFilters_() {
+    ensureMillPdfDimFilters_();
+    millPdfDimFilters.month.clear();
+    millPdfDimFilters.year.clear();
+    document.querySelectorAll(
+      '.mill-dim-filter-surface input[data-mill-pdf-dim="month"][data-mill-pdf-val],'
+      + '.mill-dim-filter-surface input[data-mill-pdf-dim="year"][data-mill-pdf-val]'
+    ).forEach(function(cb) { cb.checked = false; });
+  }
+
   function setMillPeriodMode_(mode) {
     millPeriodMode = mode === 'period' ? 'period' : 'newest';
+    if (millPeriodMode === 'newest') millClearPeriodDimFilters_();
     millSyncPeriodModeUi_();
     scheduleRenderMillTable();
   }
@@ -7411,6 +7471,11 @@ function initDashboardApp() {
         if (!millPdfDimFilters[dim]) return;
         if (t.checked) millPdfDimFilters[dim].add(tok);
         else millPdfDimFilters[dim].delete(tok);
+        if (dim === 'month' || dim === 'year') {
+          if (millPdfDimFilters.month.size || millPdfDimFilters.year.size) {
+            millPeriodMode = 'period';
+          }
+        }
         updateMillPdfExportScope();
         millSyncPeriodModeUi_();
         scheduleRenderMillTable();
@@ -7684,6 +7749,9 @@ function initDashboardApp() {
 
   function millTableCellText_(val, opts) {
     const raw = String(val != null && val !== '' ? val : '').trim();
+    if (opts && opts.certPills) {
+      return certPillsHtml_(raw);
+    }
     const display = raw || '—';
     const esc = escHtml(display);
     if (!opts || !opts.wrap) return esc;
@@ -7805,7 +7873,7 @@ function initDashboardApp() {
           <td class="mill-td mill-td--product">${millTableCellText_(d['PRODUCT SUPPLY'], { wrap: true })}</td>
           <td class="mill-td mill-td--priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
           <td class="mill-td mill-td--nbl">${nblBadge(d['BUYER NO BUY LIST'])}</td>
-          <td class="mill-td mill-td--cert">${millTableCellText_(d['CERTIFICATION'], { wrap: true })}</td>
+          <td class="mill-td mill-td--cert">${millTableCellText_(d['CERTIFICATION'], { wrap: true, certPills: true })}</td>
           <td class="mill-td mill-td--fac-cpo">${millTableCellText_(d['FACILITY NAME CPO'], { wrap: true })}</td>
           <td class="mill-td mill-td--fac-pk">${millTableCellText_(d['FACILITY NAME PK'], { wrap: true })}</td>
           <td class="mill-td mill-td--supplier">${supplierBadge(d['SUPPLIER STATUS'])}</td>
@@ -8314,6 +8382,9 @@ function initDashboardApp() {
               val = millProfileResolveField_(d, key, {
                 yesNo: MILL_PROFILE_YESNO_KEYS_.has(key),
               });
+            }
+            if (key === 'CERTIFICATION') {
+              val = certPillsHtml_(val, { className: 'cert-pill-list cert-pill-list--profile' });
             }
             const isWide = key === 'ADDRESS';
             const isLong = key === 'COORDINATES' || (sec.title === 'Certification' && key === 'CERTIFICATION');
