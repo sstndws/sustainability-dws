@@ -382,7 +382,18 @@
      padding: 6px 0 10px;
      align-self: stretch;
      display: flex;
+     flex-direction: column;
+     gap: 2px;
      justify-content: center;
+   }
+   #mainSidebar a.sidebar-signout-btn {
+     text-decoration: none;
+   }
+   #mainSidebar .sidebar-portal-link {
+     color: #7a5c5c;
+   }
+   #mainSidebar .sidebar-portal-link:hover {
+     color: #4a1c1c;
    }
    #mainSidebar .sidebar-signout-btn {
      position: relative;
