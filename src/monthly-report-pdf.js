@@ -1084,7 +1084,7 @@ function drawNblSection_(ctx, rows) {
   if (!rows.length) return;
   ctx.beginSection_('05 · Active NBL Mills', NBL_RED);
   const w = colWidths_([14, 18, 18, 10, 10, 8, 14], ctx.cW);
-  ctx.drawAutoTable_(
+  ctx.drawTableComplete_(
     pdfTableHead(['Group Name', 'Company Name', 'Mill Name', 'Province', 'Result Risk Level', 'No Buy List', 'NBL Riser']),
     rows.map(function(item) {
       const r = item.row || item;
@@ -1103,7 +1103,7 @@ function drawNblSection_(ctx, rows) {
       0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2] }, 3: { cellWidth: w[3] },
       4: { cellWidth: w[4] }, 5: { cellWidth: w[5], halign: 'center' }, 6: { cellWidth: w[6], fontSize: 6.5 },
     },
-    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 11 }
+    { fontSize: 6.5, cellPadding: 2, headFontSize: 5.4, headMinHeight: 11, rowPageBreak: 'auto' }
   );
 }
 
@@ -1111,8 +1111,9 @@ function drawNblSection_(ctx, rows) {
 function drawNblSummaryList_(ctx, rows) {
   rows = mrdSortMillItems_(rows);
   if (!rows.length) return;
+  ctx.ensureSpace_(16);
   const w = colWidths_([28, 36, 36], ctx.cW);
-  ctx.drawAutoTable_(
+  ctx.drawTableComplete_(
     pdfTableHead(['Company Group Name', 'Company Name', 'NBL Riser']),
     rows.map(function(item) {
       const r = item.row || item;
@@ -1124,7 +1125,7 @@ function drawNblSummaryList_(ctx, rows) {
     }),
     NBL_RED,
     { 0: { cellWidth: w[0] }, 1: { cellWidth: w[1] }, 2: { cellWidth: w[2], fontSize: 6.5 } },
-    { fontSize: 7.5, cellPadding: 2.5, gapAfter: 3, headFontSize: 5.4, headMinHeight: 11 }
+    { fontSize: 7.5, cellPadding: 2.5, gapAfter: 3, headFontSize: 5.4, headMinHeight: 11, rowPageBreak: 'auto' }
   );
 }
 

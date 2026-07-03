@@ -554,7 +554,7 @@ async function exportMonthlyReport_(exportOpts) {
       return mrdIsHighRiskItem_(item) && mrdShowInMillOnboarding_(item);
     }));
     const millsForPdf = highRiskMills;
-    const nblMills = mrdSortMillItems_(highRiskMills.filter(function(item) {
+    const nblMills = mrdSortMillItems_(allMillsResolved.filter(function(item) {
       return isNblYes(item.nbl) && matchesSearch(item.search);
     }));
 
@@ -585,6 +585,7 @@ async function exportMonthlyReport_(exportOpts) {
     const eudrList = s.eudrPotential || [];
     const exportStats = Object.assign({}, s.stats, {
       highRisk: highRiskMills.length,
+      nblMills: nblMills.length,
       eudrPotential: eudrList.length,
     });
 
