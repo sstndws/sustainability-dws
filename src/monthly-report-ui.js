@@ -26,6 +26,7 @@ import {
   mrdTtpRowsForMill_,
   mrdFormatNblRisers_,
   mrdReportHeaderMeta_,
+  mrdTraceYearFromReport_,
   grvGroupName_,
   mrdShowInMillOnboarding_,
   normalizeSddCategory,
@@ -732,9 +733,11 @@ function buildSnapshotSync(opts) {
   const supplierCol = mrdResolveTtpSupplierCol_(ttpFields);
   const yearCol = ttpFields.find(function(h) { return String(h).toUpperCase() === 'YEAR'; }) || 'YEAR';
 
+  // Traceability sheet: year only — always report year − 1 (e.g. Jan 2026 report → 2025 TTP).
+  const traceYear = mrdTraceYearFromReport_(periodYear);
   const ttpFiltered = ttpData.filter(function(r) {
     const y = parseYear(r[yearCol] || millYear(r));
-    return !periodYear || !y || y === periodYear;
+    return !traceYear || !y || y === traceYear;
   });
 
   const millKeys = new Map();
@@ -745,7 +748,7 @@ function buildSnapshotSync(opts) {
     if (!millKeys.has(key)) millKeys.set(key, r);
   });
 
-  const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpData, millCol, groupCol, companyCol);
+  const ttpMillMaps = mrdBuildTtpByMillMaps_(ttpFiltered, millCol, groupCol, companyCol);
 
   const ttpByMill = ttpMillMaps.byMillName;
 
@@ -810,7 +813,9 @@ function buildSnapshotSync(opts) {
   });
 
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
-  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(periodYear, periodMonth) : {};
+  const traceTotals = _deps.buildTraceTotals
+    ? _deps.buildTraceTotals(traceYear, periodYear, periodMonth)
+    : {};
 
   const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
 
@@ -824,6 +829,7 @@ function buildSnapshotSync(opts) {
     emptyMills: emptyMillsSorted,
     traceRows: mrdSortMillItems_(_deps.buildTraceRows ? _deps.buildTraceRows(mills, ttpFiltered, ttpByMill, supplierCol) : []),
     traceTotals: traceTotals,
+    traceYear: traceYear,
     ttpByMill: ttpByMill,
     grv: grvRows,
     nblAll: nblAll,
@@ -1230,8 +1236,8 @@ function renderAll() {
   let html = '';
   const reportPeriod = getReportPeriod_();
   const reportLabel = mrdDataPeriodShortLabel_(reportPeriod);
-  const fullYearLabel = reportPeriod.year ? ('Full year ' + reportPeriod.year) : 'all periods';
-  const tracePeriodLabel = reportPeriod.month ? reportLabel : fullYearLabel;
+  const traceYear = mrdTraceYearFromReport_(reportPeriod.year);
+  const tracePeriodLabel = traceYear ? ('Year ' + traceYear) : (reportPeriod.year ? ('Full year ' + reportPeriod.year) : 'all periods');
   html += flatSectionHtml('sdd', 'Supplier Due Diligence · ' + reportLabel, stats.sddRequested + ' requested · ' + stats.sddDone + ' done', renderSddSection(s.sdd, s.sddLoading), '01');
   html += sectionHtml('highRisk', 'High Risk Suppliers · ' + reportLabel, stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
   html += sectionHtml('mill', 'Mill Onboarding · ' + reportLabel, stats.totalMills + ' mills', renderMillSection(s.mills), '02');

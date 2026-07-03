@@ -321,6 +321,16 @@ export function mrdPeriodDisplayLabel_(year, month) {
 }
 
 /**
+ * Traceability sheet rows are keyed by calendar year only (no month).
+ * Report year 2026 → traceability data year 2025.
+ */
+export function mrdTraceYearFromReport_(reportYear) {
+  const ry = parseInt(String(reportYear || '').trim(), 10);
+  if (!ry) return '';
+  return String(ry - 1);
+}
+
+/**
  * Data lags one month behind the reporting period.
  * e.g. January 2026 report → December 2025 data; February 2026 → January 2026.
  */

@@ -27699,11 +27699,14 @@ function initDashboardApp() {
     return mrdTtpRowsForReportPeriod_(yearFilter, '');
   }
 
-  function mrdBuildTraceTotalsForReport_(yearFilter, monthFilter) {
-    const rows = mrdMillRowsForReportPeriod_(yearFilter, monthFilter);
+  function mrdBuildTraceTotalsForReport_(ttpYearFilter, millYearFilter, millMonthFilter) {
+    const ttpYear = String(ttpYearFilter || '').trim();
+    const millY = String(millYearFilter != null && millYearFilter !== '' ? millYearFilter : ttpYearFilter || '').trim();
+    const millM = millMonthFilter ? String(millMonthFilter).trim() : '';
+    const rows = mrdMillRowsForReportPeriod_(millY, millM);
     const ttmCpo = ttpCalcTtmCoordinatePct_(rows, 'cpo');
     const ttmPk = ttpCalcTtmCoordinatePct_(rows, 'pk');
-    const ttpRows = mrdTtpRowsForReportPeriod_(yearFilter, monthFilter);
+    const ttpRows = mrdTtpRowsForReportPeriod_(ttpYear, '');
     const ttpCpoAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'cpo');
     const ttpPkAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'pk');
     return {
