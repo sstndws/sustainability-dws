@@ -171,9 +171,18 @@ function getReportPeriod_() {
   return { year: _year, month: _month };
 }
 
-/** Filter/export period — same as reporting selection (no lag). */
+/** Filter/export period — sheet rows use data month (−1 vs reporting month). */
 function getDataPeriod_() {
-  return getReportPeriod_();
+  const report = getReportPeriod_();
+  return mrdDataPeriodFromReport_(report.year, report.month);
+}
+
+function mrdMonthMatchesFilter_(rowMonth, targetMonth) {
+  if (!targetMonth) return true;
+  const rm = parseInt(String(rowMonth || '').trim(), 10);
+  const tm = parseInt(String(targetMonth || '').trim(), 10);
+  if (rm >= 1 && rm <= 12 && tm >= 1 && tm <= 12) return rm === tm;
+  return String(rowMonth || '').trim() === String(targetMonth || '').trim();
 }
 
 function mrdDataPeriodFromReport_(year, month) {
@@ -486,7 +495,7 @@ async function exportMonthlyReport_(exportOpts) {
 
   try {
     syncPeriodFromUi_();
-    const pageDataPeriod = getReportPeriod_();
+    const pageDataPeriod = getDataPeriod_();
 
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
       try {
@@ -562,8 +571,8 @@ async function exportMonthlyReport_(exportOpts) {
       getJsPDF: _deps.getJsPDF,
       year: reportPeriod.year,
       month: reportPeriod.month,
-      dataYear: reportPeriod.year,
-      dataMonth: reportPeriod.month,
+      dataYear: pageDataPeriod.year,
+      dataMonth: pageDataPeriod.month,
       sections: exportSections,
       data: {
         stats: exportStats,
@@ -650,8 +659,9 @@ function mrdBindExportModalOnce_() {
 function buildSnapshotSync(opts) {
   opts = opts || {};
   const reportPeriod = mrdResolveReportPeriod_(opts.reportPeriod);
-  const dataYear = reportPeriod.year;
-  const dataMonth = reportPeriod.month;
+  const dataPeriod = mrdDataPeriodFromReport_(reportPeriod.year, reportPeriod.month);
+  const dataYear = dataPeriod.year;
+  const dataMonth = dataPeriod.month;
   const millData = (_deps.getMillData() || []);
   const ttpData = (_deps.getTtpData() || []);
   const ttpFields = _deps.getTtpFields() || [];
@@ -667,19 +677,27 @@ function buildSnapshotSync(opts) {
   function filterMillsByPeriod_(targetYear, targetMonth) {
     return millData.filter(function(r) {
       const y = parseYear(millYear(r));
-      if (targetYear && y && y !== targetYear) return false;
+      if (targetYear && y && y !== String(targetYear)) return false;
       if (targetMonth && millMonth) {
-        const m = String(millMonth(r) || '').trim();
-        if (m && m !== targetMonth) return false;
+        const m = millMonth(r);
+        if (m && !mrdMonthMatchesFilter_(m, targetMonth)) return false;
       }
       return true;
     });
   }
 
-  // Mill Onboarding: filter by selected reporting period
-  const mills = filterMillsByPeriod_(dataYear, dataMonth);
-  const millEffectiveYear = dataYear;
-  const millEffectiveMonth = dataMonth;
+  // Mill sheet rows are keyed by data month (report month − 1). Fall back to report month if empty.
+  let mills = filterMillsByPeriod_(dataYear, dataMonth);
+  let millEffectiveYear = dataYear;
+  let millEffectiveMonth = dataMonth;
+  if (!mills.length && (reportPeriod.year || reportPeriod.month)) {
+    const fallback = filterMillsByPeriod_(reportPeriod.year, reportPeriod.month);
+    if (fallback.length) {
+      mills = fallback;
+      millEffectiveYear = reportPeriod.year;
+      millEffectiveMonth = reportPeriod.month;
+    }
+  }
 
   const sddFiltered = sddInput.filter(function(r) {
     const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
@@ -1487,10 +1505,13 @@ function startBackgroundLoads_(gen, force) {
     loadSddInBackground(gen, opts),
     loadNblRisersInBackground(gen),
   ]).then(function() {
+    updateScopeText();
     // Use _loadGen (not gen) so facility always loads for the current active generation
     loadEudrInBackground(_loadGen, opts);
     loadFacilityInBackground(_loadGen, opts);
-  }).catch(function() {});
+  }).catch(function() {
+    updateScopeText();
+  });
 }
 
 async function loadAndRender(opts) {

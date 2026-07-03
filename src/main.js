@@ -7595,10 +7595,24 @@ function initDashboardApp() {
     const loading = document.getElementById('mill-loading');
     const errorEl = document.getElementById('mill-error');
     const table = document.getElementById('millTable');
-    if (!loading || !errorEl || !table) {
-      console.warn('[dashboard] Mill panel DOM missing; skip loadMillData.');
+    const hasMillUi = !!(loading && errorEl && table);
+    if (!hasMillUi && !soft) {
+      // Monthly Report / other panels still need mill rows even when Mill UI is absent.
+      try {
+        const rawRows = await apiGet('mill');
+        const rawData = (Array.isArray(rawRows) ? rawRows : [])
+          .map(normalizeMillApiRow)
+          .filter(millRowHasCompanyName_);
+        allDataRaw = rawData.map(prepareMillRowPerfCache);
+        allData = allDataRaw.slice();
+        millDataLoaded = true;
+      } catch (err) {
+        console.warn('[dashboard] Mill data load (headless):', err && err.message ? err.message : err);
+        throw err;
+      }
       return;
     }
+    if (!hasMillUi) return;
     try {
       if (!soft) {
         loading.style.display = 'block';
