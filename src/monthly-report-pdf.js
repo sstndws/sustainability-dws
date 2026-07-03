@@ -1731,10 +1731,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
   const stats = data.stats || {};
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const ctx = createPdfContext_(jsPDFLib, { pdfMode: 'summary' });
-  const dataPeriodOverride = opts.dataYear != null
-    ? { year: opts.dataYear, month: opts.dataMonth }
-    : undefined;
-  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month, dataPeriodOverride);
+  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month);
   ctx.reportTitle = 'Monthly Report — Summary';
   ctx.reportSubtitle = '';
 
@@ -1752,7 +1749,7 @@ function buildSummaryPdfDoc_(jsPDFLib, opts) {
     ctx.setY(ctx.getY() + PDF_LAYOUT.sectionGap);
   }
 
-  const bodyYear = opts.dataYear || headerMeta.dataYear || opts.year;
+  const bodyYear = opts.dataYear != null ? opts.dataYear : opts.year;
   const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(data.eudrPotential);
   drawSummaryReportBody_(ctx, data, sections, stats, bodyYear, eudrCompanySet);
   return finalizePdf_(ctx);
@@ -1774,10 +1771,7 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
   const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
   const detailSections = sections.filter(function(id) { return id !== 'kpi'; });
   const ctx = createPdfContext_(jsPDFLib, { orientation: 'landscape', pdfMode: 'detail' });
-  const dataPeriodOverride = opts.dataYear != null
-    ? { year: opts.dataYear, month: opts.dataMonth }
-    : undefined;
-  const headerMeta = applyReportHeaderMeta_(ctx, opts.year, opts.month, dataPeriodOverride);
+  applyReportHeaderMeta_(ctx, opts.year, opts.month);
 
   ctx.setY(drawCompactHeaderForExport_(ctx));
   if (!detailSections.length) {
@@ -1789,7 +1783,7 @@ function buildDetailPdfDoc_(jsPDFLib, opts) {
     doc.text('No detail sections selected. Include at least one section besides Overview.', ctx.mL, ctx.getY() + 4);
     ctx.markContent_(ctx.getY() + 8);
   } else {
-    const bodyYear = opts.dataYear || headerMeta.dataYear || opts.year;
+    const bodyYear = opts.dataYear != null ? opts.dataYear : opts.year;
     const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(data.eudrPotential);
     drawDetailReportBody_(ctx, data, detailSections, bodyYear, eudrCompanySet);
   }

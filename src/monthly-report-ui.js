@@ -163,15 +163,15 @@ function applyDefaultMonthSelection_() {
   }
 }
 
-/** Reporting period (UI) vs data period (lag 1 month). */
+/** Reporting period from toolbar (year + month user selected). */
 function getReportPeriod_() {
   syncPeriodFromUi_();
   return { year: _year, month: _month };
 }
 
+/** Filter/export period — same as reporting selection (no lag). */
 function getDataPeriod_() {
-  const report = getReportPeriod_();
-  return mrdDataPeriodFromReport_(report.year, report.month);
+  return getReportPeriod_();
 }
 
 function mrdDataPeriodFromReport_(year, month) {
@@ -484,7 +484,7 @@ async function exportMonthlyReport_(exportOpts) {
       bestEudr = extraEudr.slice();
     }
     _snapshot = rebuildSnapshot_({ eudrPotential: bestEudr.length ? bestEudr : undefined });
-    const pageDataPeriod = getDataPeriod_();
+    const pageDataPeriod = getReportPeriod_();
     const s = _snapshot;
 
     const exportSections = mrdPdfSectionsNoDupHighRisk_(sections.slice());
@@ -525,8 +525,8 @@ async function exportMonthlyReport_(exportOpts) {
       getJsPDF: _deps.getJsPDF,
       year: reportPeriod.year,
       month: reportPeriod.month,
-      dataYear: pageDataPeriod.year,
-      dataMonth: pageDataPeriod.month,
+      dataYear: reportPeriod.year,
+      dataMonth: reportPeriod.month,
       sections: exportSections,
       data: {
         stats: exportStats,
@@ -614,9 +614,8 @@ function mrdBindExportModalOnce_() {
 function buildSnapshotSync(opts) {
   opts = opts || {};
   const reportPeriod = mrdResolveReportPeriod_(opts.reportPeriod);
-  const dataPeriod = mrdDataPeriodFromReport_(reportPeriod.year, reportPeriod.month);
-  const dataYear = dataPeriod.year;
-  const dataMonth = dataPeriod.month;
+  const dataYear = reportPeriod.year;
+  const dataMonth = reportPeriod.month;
   const millData = (_deps.getMillData() || []);
   const ttpData = (_deps.getTtpData() || []);
   const ttpFields = _deps.getTtpFields() || [];
@@ -641,18 +640,10 @@ function buildSnapshotSync(opts) {
     });
   }
 
-  // Mill Onboarding: 1-month lag. If that yields 0 results, fall back to report month.
-  let mills = filterMillsByPeriod_(dataYear, dataMonth);
-  let millEffectiveYear = dataYear;
-  let millEffectiveMonth = dataMonth;
-  if (!mills.length && (reportPeriod.year || reportPeriod.month)) {
-    const fallback = filterMillsByPeriod_(reportPeriod.year, reportPeriod.month);
-    if (fallback.length) {
-      mills = fallback;
-      millEffectiveYear = reportPeriod.year;
-      millEffectiveMonth = reportPeriod.month;
-    }
-  }
+  // Mill Onboarding: filter by selected reporting period
+  const mills = filterMillsByPeriod_(dataYear, dataMonth);
+  const millEffectiveYear = dataYear;
+  const millEffectiveMonth = dataMonth;
 
   const sddFiltered = sddInput.filter(function(r) {
     const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
@@ -719,7 +710,7 @@ function buildSnapshotSync(opts) {
     };
   });
 
-  // Grievance: same data period as other sections (report month − 1)
+  // Grievance: same period as reporting selection
   const grvRows = mrdSortGrvItemsByDateDesc_(grvData.filter(function(r) {
     const dateRaw = r['Date Received'] || r['DATE RECEIVED'] || r['Date received'] || '';
     if (dataYear) {
@@ -1174,24 +1165,17 @@ function renderAll() {
   const s = _snapshot;
   const stats = s.stats || {};
   let html = '';
-  const dataPeriod = getDataPeriod_();
-  // Mill period may differ from data period when fallback to report month was used
-  const millMonthForLabel = s.millEffectiveMonth || dataPeriod.month;
-  const millYearForLabel = s.millEffectiveYear || dataPeriod.year;
-  const dataMonthLabel = millMonthForLabel ? (MRD_MONTH_SHORT_[parseInt(millMonthForLabel, 10)] || millMonthForLabel) : '';
-  const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
-  const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
-  const dataPeriodLabel = mrdDataPeriodShortLabel_(dataPeriod);
-  const grvMonthLabel = dataPeriod.month ? (MRD_MONTH_SHORT_[parseInt(dataPeriod.month, 10)] || dataPeriod.month) : '';
-  const grvPeriodLabel = (grvMonthLabel && dataPeriod.year) ? (grvMonthLabel + ' ' + dataPeriod.year) : fullYearLabel;
-  const tracePeriodLabel = dataPeriod.month ? dataPeriodLabel : fullYearLabel;
-  html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
-  html += sectionHtml('highRisk', 'High Risk Suppliers', stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
-  html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
+  const reportPeriod = getReportPeriod_();
+  const reportLabel = mrdDataPeriodShortLabel_(reportPeriod);
+  const fullYearLabel = reportPeriod.year ? ('Full year ' + reportPeriod.year) : 'all periods';
+  const tracePeriodLabel = reportPeriod.month ? reportLabel : fullYearLabel;
+  html += flatSectionHtml('sdd', 'Supplier Due Diligence · ' + reportLabel, stats.sddRequested + ' requested · ' + stats.sddDone + ' done', renderSddSection(s.sdd, s.sddLoading), '01');
+  html += sectionHtml('highRisk', 'High Risk Suppliers · ' + reportLabel, stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
+  html += sectionHtml('mill', 'Mill Onboarding · ' + reportLabel, stats.totalMills + ' mills', renderMillSection(s.mills), '02');
   html += sectionHtml('trace', 'Traceability Data · ' + tracePeriodLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
-  html += flatSectionHtml('grv', 'Grievance Monitoring · ' + grvPeriodLabel, stats.grievances + ' grievances in ' + grvPeriodLabel, renderGrvSection(s.grv), '04');
-  html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
-  html += sectionHtml('facility', 'Facility Performance · ' + dataPeriodLabel, 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
+  html += flatSectionHtml('grv', 'Grievance Monitoring · ' + reportLabel, stats.grievances + ' grievances', renderGrvSection(s.grv), '04');
+  html += sectionHtml('nbl', 'Active NBL Mills · ' + reportLabel, stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
+  html += sectionHtml('facility', 'Facility Performance · ' + reportLabel, 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
   html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential mills', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
   sections.innerHTML = html;
 }
