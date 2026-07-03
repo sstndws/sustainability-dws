@@ -708,16 +708,19 @@ function buildSnapshotSync(opts) {
     }
   }
 
+  const periodYear = millEffectiveYear;
+  const periodMonth = millEffectiveMonth;
+
   const sddFiltered = sddInput.filter(function(r) {
     const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
     if (st !== 'draft' && st !== 'submitted') return false;
-    if (dataYear) {
+    if (periodYear) {
       const upd = String(r.updated_at || r['SCR - Last Updated'] || '').slice(0, 4);
-      if (upd && upd !== dataYear) return false;
+      if (upd && upd !== periodYear) return false;
     }
-    if (dataMonth) {
+    if (periodMonth) {
       const m = parseMonthFromDate(r.updated_at || r['SCR - Last Updated']);
-      if (m && m !== dataMonth) return false;
+      if (m && m !== periodMonth) return false;
     }
     return true;
   });
@@ -730,7 +733,7 @@ function buildSnapshotSync(opts) {
 
   const ttpFiltered = ttpData.filter(function(r) {
     const y = parseYear(r[yearCol] || millYear(r));
-    return !dataYear || !y || y === dataYear;
+    return !periodYear || !y || y === periodYear;
   });
 
   const millKeys = new Map();
@@ -773,16 +776,16 @@ function buildSnapshotSync(opts) {
     };
   });
 
-  // Grievance: same period as reporting selection
+  // Grievance: align with effective mill period
   const grvRows = mrdSortGrvItemsByDateDesc_(grvData.filter(function(r) {
     const dateRaw = r['Date Received'] || r['DATE RECEIVED'] || r['Date received'] || '';
-    if (dataYear) {
+    if (periodYear) {
       const dr = String(dateRaw).slice(0, 4);
-      if (dr && dr !== dataYear) return false;
+      if (dr && dr !== periodYear) return false;
     }
-    if (dataMonth) {
+    if (periodMonth) {
       const m = parseMonthFromDate(dateRaw);
-      if (m && m !== dataMonth) return false;
+      if (m && m !== periodMonth) return false;
     }
     return true;
   }).map(function(r) {
@@ -810,7 +813,7 @@ function buildSnapshotSync(opts) {
   });
 
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
-  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear, dataMonth) : {};
+  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(periodYear, periodMonth) : {};
 
   const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
 
@@ -1308,6 +1311,7 @@ async function loadFacilityInBackground(gen, opts) {
     }
   } finally {
     _facilityPending = false;
+    if (gen === _loadGen) mrdRebuildIfMillsLoaded_();
     // Guard: always clear loading flag so it can't get permanently stuck
     if (_snapshot && _snapshot.facilityLoading) {
       _snapshot.facilityLoading = false;
@@ -1372,6 +1376,24 @@ function syncNblCacheToSnapshot_(snapshot) {
   });
 }
 
+function mrdRebuildIfMillsLoaded_() {
+  if (!_deps || !_snapshot) return false;
+  const millData = _deps.getMillData() || [];
+  if (!millData.length) return false;
+  const prevTotal = (_snapshot.stats && _snapshot.stats.totalMills) || 0;
+  if (prevTotal > 0) return false;
+  _snapshot = rebuildSnapshot_({
+    facilityBundles: _facilityBundles,
+    facilityLoading: false,
+    sddRows: _sddCache,
+    sddLoading: false,
+  });
+  scheduleRenderAll();
+  updateScopeText();
+  scheduleNblRiserResolve_();
+  return true;
+}
+
 function scheduleNblRiserResolve_() {
   const gen = _loadGen;
   resolveNblMillsForSnapshot_().catch(function() {});
@@ -1412,7 +1434,7 @@ async function loadMillInBackground(gen) {
   const loadMill = _deps.ensureMillData || _deps.ensureCoreData;
   if (!loadMill) return;
   try {
-    await withTimeout(loadMill(), 30000, 'Mill data');
+    await withTimeout(loadMill(), 90000, 'Mill data');
     if (gen !== _loadGen) return;
     _snapshot = rebuildSnapshot_({});
     scheduleRenderAll();
@@ -1532,6 +1554,7 @@ function startBackgroundLoads_(gen, force) {
     loadNblRisersInBackground(gen),
   ]).then(function() {
     updateScopeText();
+    mrdRebuildIfMillsLoaded_();
     scheduleNblRiserResolve_();
     // Use _loadGen (not gen) so facility always loads for the current active generation
     loadEudrInBackground(_loadGen, opts);

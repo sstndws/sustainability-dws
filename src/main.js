@@ -27828,7 +27828,12 @@ function initDashboardApp() {
         getNblRegistry: function() { return nblRegistryData; },
         getNblUnilever: function() { return nblUnileverData; },
         ensureMillData: async function() {
-          if (!allData.length) await loadMillData();
+          if (!allData.length) {
+            await loadMillData();
+          }
+          if (!allData.length) {
+            await loadMillData({ force: true });
+          }
         },
         ensureSupplementalData: async function() {
           const tasks = [];
