@@ -175,10 +175,21 @@ function getReportPeriod_() {
   return { year: _year, month: _month };
 }
 
-/** Filter/export period — sheet rows use data month (−1 vs reporting month). */
+/** @deprecated Header lag only — tables filter by {@link getReportPeriod_}. */
 function getDataPeriod_() {
   const report = getReportPeriod_();
   return mrdDataPeriodFromReport_(report.year, report.month);
+}
+
+function parseYearFromDate_(raw) {
+  if (!raw) return '';
+  if (raw instanceof Date && !isNaN(raw.getTime())) return String(raw.getFullYear());
+  const s = String(raw).trim();
+  const iso = s.match(/^(\d{4})/);
+  if (iso) return iso[1];
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return String(d.getFullYear());
+  return '';
 }
 
 function mrdMonthMatchesFilter_(rowMonth, targetMonth) {
@@ -499,7 +510,7 @@ async function exportMonthlyReport_(exportOpts) {
 
   try {
     syncPeriodFromUi_();
-    const pageDataPeriod = getDataPeriod_();
+    const pageDataPeriod = getReportPeriod_();
     const facilityPeriod = getFacilityPeriod_();
 
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
@@ -668,9 +679,8 @@ function mrdBindExportModalOnce_() {
 function buildSnapshotSync(opts) {
   opts = opts || {};
   const reportPeriod = mrdResolveReportPeriod_(opts.reportPeriod);
-  const dataPeriod = mrdDataPeriodFromReport_(reportPeriod.year, reportPeriod.month);
-  const dataYear = dataPeriod.year;
-  const dataMonth = dataPeriod.month;
+  const periodYear = reportPeriod.year;
+  const periodMonth = reportPeriod.month;
   const millData = (_deps.getMillData() || []);
   const ttpData = (_deps.getTtpData() || []);
   const ttpFields = _deps.getTtpFields() || [];
@@ -695,21 +705,12 @@ function buildSnapshotSync(opts) {
     });
   }
 
-  // Mill sheet rows are keyed by data month (report month − 1). Fall back to report month if empty.
-  let mills = filterMillsByPeriod_(dataYear, dataMonth);
-  let millEffectiveYear = dataYear;
-  let millEffectiveMonth = dataMonth;
-  if (!mills.length && (reportPeriod.year || reportPeriod.month)) {
-    const fallback = filterMillsByPeriod_(reportPeriod.year, reportPeriod.month);
-    if (fallback.length) {
-      mills = fallback;
-      millEffectiveYear = reportPeriod.year;
-      millEffectiveMonth = reportPeriod.month;
-    }
-  }
-
-  const periodYear = millEffectiveYear;
-  const periodMonth = millEffectiveMonth;
+  // Mill Onboarding: same as-of snapshot + dedupe as Mill Registry (reporting period).
+  const mills = (_deps.getMillsForReportPeriod && periodYear)
+    ? _deps.getMillsForReportPeriod(periodYear, periodMonth)
+    : filterMillsByPeriod_(periodYear, periodMonth);
+  const millEffectiveYear = periodYear;
+  const millEffectiveMonth = periodMonth;
 
   const sddFiltered = sddInput.filter(function(r) {
     const st = String(r['SCR - Screening Status'] || '').trim().toLowerCase();
@@ -776,16 +777,12 @@ function buildSnapshotSync(opts) {
     };
   });
 
-  // Grievance: align with effective mill period
+  // Grievance: Date Received year = reporting year (not lagged data period).
   const grvRows = mrdSortGrvItemsByDateDesc_(grvData.filter(function(r) {
     const dateRaw = r['Date Received'] || r['DATE RECEIVED'] || r['Date received'] || '';
     if (periodYear) {
-      const dr = String(dateRaw).slice(0, 4);
-      if (dr && dr !== periodYear) return false;
-    }
-    if (periodMonth) {
-      const m = parseMonthFromDate(dateRaw);
-      if (m && m !== periodMonth) return false;
+      const yr = parseYearFromDate_(dateRaw);
+      if (!yr || yr !== String(periodYear)) return false;
     }
     return true;
   }).map(function(r) {

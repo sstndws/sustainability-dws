@@ -6620,6 +6620,22 @@ function initDashboardApp() {
     return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
 
+  /** Monthly Report — same as-of snapshot + dedupe as Mill Registry period mode. */
+  function millRowsForReportPeriod_(year, month) {
+    const y = parseInt(String(year || ''), 10);
+    const m = parseInt(String(month || ''), 10);
+    const pf = {
+      hasYear: !!y,
+      hasMonth: m >= 1 && m <= 12,
+      years: y ? new Set([y]) : new Set(),
+      maxMonth: m >= 1 && m <= 12 ? m : 0,
+      hasEmptyMonth: false,
+    };
+    const rows = (allData || []).filter(millRowHasCompanyName_);
+    if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerEntity_(rows);
+    return millPickLatestPerCompany_(rows, pf);
+  }
+
   function millPeriodFilterHintText_() {
     const pf = millSelectedPeriodFilter_();
     if (!pf.hasYear && !pf.hasMonth) {
@@ -27822,6 +27838,9 @@ function initDashboardApp() {
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
         getMillData: function() { return allData; },
+        getMillsForReportPeriod: function(year, month) {
+          return millRowsForReportPeriod_(year, month);
+        },
         getTtpData: function() { return ttpData; },
         getTtpFields: function() { return ttpFields; },
         getGrvData: function() { return grvData; },
