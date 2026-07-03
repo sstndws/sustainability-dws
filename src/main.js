@@ -22597,27 +22597,74 @@ function initDashboardApp() {
       }).filter(function(g) { return g.companies && g.companies.length > 0; });
     }
 
-    window.mrdPreparePfDataForReport_ = async function() {
-      await Promise.all([
-        (!allData || !allData.length) && typeof loadMillData === 'function' ? loadMillData() : Promise.resolve(),
-        !ttpLoaded && typeof loadTTPData === 'function' ? loadTTPData().catch(function() {}) : Promise.resolve(),
-        !cplLoaded ? loadCompanyProfileListData() : Promise.resolve(),
-        pfLoadSuppliedCpo_(),
-        pfLoadSuppliedPk_(),
-      ]);
-    };
+    function pfNormalizeMrdPeriodFilter_(arg) {
+      if (arg && typeof arg === 'object' && (arg.year != null || arg.month != null)) {
+        return {
+          year: arg.year != null ? String(arg.year) : '',
+          month: arg.month != null ? String(arg.month) : '',
+        };
+      }
+      const y = arg != null && arg !== '' ? String(arg) : '';
+      return { year: y, month: '' };
+    }
 
-    window.mrdGetFacilityBundlesForReport_ = function(yearFilter) {
+    function pfWithReportPeriodOverride_(period, fn) {
       const ySel = document.getElementById('pfYearSel');
       const mSel = document.getElementById('pfMonthSel');
-      const prevY = ySel ? ySel.value : '';
-      const prevM = mSel ? mSel.value : '';
-      if (ySel && yearFilter) ySel.value = yearFilter;
-      if (mSel) mSel.value = '';
-      const cpoGroups = pfFilterGroupsByYear_(pfBuildRows_(), yearFilter);
-      const pkGroups = pfFilterGroupsByYear_(pfBuildPkGroups_(), yearFilter);
-      if (ySel) ySel.value = prevY;
-      if (mSel) mSel.value = prevM;
+      const saved = {
+        y: ySel ? ySel.value : '',
+        m: mSel ? mSel.value : '',
+        cpoKey: _pfSuppliedCpoPeriodKey,
+        pkKey: _pfSuppliedPkPeriodKey,
+        cpoData: _pfSuppliedCpoData,
+        pkData: _pfSuppliedPkData,
+      };
+      try {
+        if (ySel) ySel.value = period.year || '';
+        if (mSel) mSel.value = period.month || '';
+        _pfSuppliedCpoPeriodKey = '';
+        _pfSuppliedPkPeriodKey = '';
+        return fn();
+      } finally {
+        if (ySel) ySel.value = saved.y;
+        if (mSel) mSel.value = saved.m;
+        _pfSuppliedCpoPeriodKey = saved.cpoKey;
+        _pfSuppliedPkPeriodKey = saved.pkKey;
+        _pfSuppliedCpoData = saved.cpoData;
+        _pfSuppliedPkData = saved.pkData;
+      }
+    }
+
+    async function pfWithReportPeriodOverrideAsync_(period, fn) {
+      const ySel = document.getElementById('pfYearSel');
+      const mSel = document.getElementById('pfMonthSel');
+      const saved = {
+        y: ySel ? ySel.value : '',
+        m: mSel ? mSel.value : '',
+        cpoKey: _pfSuppliedCpoPeriodKey,
+        pkKey: _pfSuppliedPkPeriodKey,
+        cpoData: _pfSuppliedCpoData,
+        pkData: _pfSuppliedPkData,
+      };
+      try {
+        if (ySel) ySel.value = period.year || '';
+        if (mSel) mSel.value = period.month || '';
+        _pfSuppliedCpoPeriodKey = '';
+        _pfSuppliedPkPeriodKey = '';
+        return await fn();
+      } finally {
+        if (ySel) ySel.value = saved.y;
+        if (mSel) mSel.value = saved.m;
+        _pfSuppliedCpoPeriodKey = saved.cpoKey;
+        _pfSuppliedPkPeriodKey = saved.pkKey;
+        _pfSuppliedCpoData = saved.cpoData;
+        _pfSuppliedPkData = saved.pkData;
+      }
+    }
+
+    function pfBuildFacilityBundles_() {
+      const cpoGroups = pfBuildRows_();
+      const pkGroups = pfBuildPkGroups_();
       const bundles = [];
       cpoGroups.forEach(function(g) {
         bundles.push({
@@ -22650,6 +22697,40 @@ function initDashboardApp() {
         });
       });
       return bundles;
+    }
+
+    window.mrdLoadFacilityBundlesForReport_ = async function(periodFilter) {
+      const period = pfNormalizeMrdPeriodFilter_(periodFilter);
+      return pfWithReportPeriodOverrideAsync_(period, async function() {
+        await Promise.all([
+          (!allData || !allData.length) && typeof loadMillData === 'function' ? loadMillData() : Promise.resolve(),
+          !ttpLoaded && typeof loadTTPData === 'function' ? loadTTPData().catch(function() {}) : Promise.resolve(),
+          !cplLoaded ? loadCompanyProfileListData() : Promise.resolve(),
+          pfLoadSuppliedCpo_(),
+          pfLoadSuppliedPk_(),
+        ]);
+        return pfBuildFacilityBundles_();
+      });
+    };
+
+    window.mrdPreparePfDataForReport_ = async function(periodFilter) {
+      const period = pfNormalizeMrdPeriodFilter_(periodFilter);
+      return pfWithReportPeriodOverrideAsync_(period, async function() {
+        await Promise.all([
+          (!allData || !allData.length) && typeof loadMillData === 'function' ? loadMillData() : Promise.resolve(),
+          !ttpLoaded && typeof loadTTPData === 'function' ? loadTTPData().catch(function() {}) : Promise.resolve(),
+          !cplLoaded ? loadCompanyProfileListData() : Promise.resolve(),
+          pfLoadSuppliedCpo_(),
+          pfLoadSuppliedPk_(),
+        ]);
+      });
+    };
+
+    window.mrdGetFacilityBundlesForReport_ = function(periodFilter) {
+      const period = pfNormalizeMrdPeriodFilter_(periodFilter);
+      return pfWithReportPeriodOverride_(period, function() {
+        return pfBuildFacilityBundles_();
+      });
     };
 
   })();
@@ -27547,31 +27628,52 @@ function initDashboardApp() {
     return millHasValidCoordinate_(row) ? 100 : 0;
   }
 
-  /** Same mill pool as Traceability Data panel (allDataRaw, exact year, all quarters). */
-  function mrdMillRowsForReportYear_(yearFilter) {
+  /** Mill pool for Monthly Report traceability — year required; month optional (data period). */
+  function mrdMillRowsForReportPeriod_(yearFilter, monthFilter) {
     const wantY = String(yearFilter || '');
+    const wantM = monthFilter ? String(monthFilter).trim() : '';
     const src = (allDataRaw && allDataRaw.length) ? allDataRaw : allData;
     if (!wantY || !src || !src.length) return [];
     return src.filter(function(row) {
       const yTok = String(parseMillYearSort(millYearVal(row)) || millYearVal(row) || '').trim();
-      return yTok === wantY;
+      if (yTok !== wantY) return false;
+      if (wantM) {
+        const mTok = String(millMonthVal(row) || '').trim();
+        if (mTok && mTok !== wantM) return false;
+      }
+      return true;
     });
   }
 
-  function mrdTtpRowsForReportYear_(yearFilter) {
+  /** @deprecated use mrdMillRowsForReportPeriod_ */
+  function mrdMillRowsForReportYear_(yearFilter) {
+    return mrdMillRowsForReportPeriod_(yearFilter, '');
+  }
+
+  function mrdTtpRowsForReportPeriod_(yearFilter, monthFilter) {
     const wantY = String(yearFilter || '').trim();
+    const wantM = monthFilter ? String(monthFilter).trim() : '';
     if (!wantY || !ttpData || !ttpData.length) return [];
     return ttpData.filter(function(r) {
       const y = ttpYearToken_(r);
+      if (y && y !== wantY) return false;
+      if (wantM && millMonthVal) {
+        const m = String(millMonthVal(r) || '').trim();
+        if (m && m !== wantM) return false;
+      }
       return !y || y === wantY;
     });
   }
 
-  function mrdBuildTraceTotalsForReport_(yearFilter) {
-    const rows = mrdMillRowsForReportYear_(yearFilter);
+  function mrdTtpRowsForReportYear_(yearFilter) {
+    return mrdTtpRowsForReportPeriod_(yearFilter, '');
+  }
+
+  function mrdBuildTraceTotalsForReport_(yearFilter, monthFilter) {
+    const rows = mrdMillRowsForReportPeriod_(yearFilter, monthFilter);
     const ttmCpo = ttpCalcTtmCoordinatePct_(rows, 'cpo');
     const ttmPk = ttpCalcTtmCoordinatePct_(rows, 'pk');
-    const ttpRows = mrdTtpRowsForReportYear_(yearFilter);
+    const ttpRows = mrdTtpRowsForReportPeriod_(yearFilter, monthFilter);
     const ttpCpoAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'cpo');
     const ttpPkAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'pk');
     return {
@@ -27761,7 +27863,7 @@ function initDashboardApp() {
           const needEudr = allSections || sections.indexOf('eudr') !== -1;
           await this.ensureCoreData();
           if (needFacility && typeof window.mrdPreparePfDataForReport_ === 'function') {
-            await window.mrdPreparePfDataForReport_();
+            await window.mrdPreparePfDataForReport_(exportOpts.dataPeriod || null);
           }
           let eudr = _mrdEudrCache;
           if (needEudr) {
@@ -27769,14 +27871,23 @@ function initDashboardApp() {
           }
           return { eudr: needEudr ? (eudr || []) : [] };
         },
-        preparePfDataForReport: async function() {
+        preparePfDataForReport: async function(period) {
+          if (typeof window.mrdLoadFacilityBundlesForReport_ === 'function') {
+            return window.mrdLoadFacilityBundlesForReport_(period);
+          }
           if (typeof window.mrdPreparePfDataForReport_ === 'function') {
-            await window.mrdPreparePfDataForReport_();
+            await window.mrdPreparePfDataForReport_(period);
           }
         },
-        getFacilityBundles: function(year) {
+        loadFacilityBundlesForReport: async function(period) {
+          if (typeof window.mrdLoadFacilityBundlesForReport_ === 'function') {
+            return window.mrdLoadFacilityBundlesForReport_(period);
+          }
+          return [];
+        },
+        getFacilityBundles: function(period) {
           if (typeof window.mrdGetFacilityBundlesForReport_ === 'function') {
-            return window.mrdGetFacilityBundlesForReport_(year);
+            return window.mrdGetFacilityBundlesForReport_(period);
           }
           return [];
         },

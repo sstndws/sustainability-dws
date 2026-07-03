@@ -56,11 +56,27 @@ let _facilityPending = false;
 let _nblByCache = new Map();
 let _sddCache = [];
 let _facilityBundles = [];
+let _facilityBundlesPeriodKey = '';
 let _lastTtpCount = 0;
 let _lastEudrTtpCount = -1;
 let _eudrFetchOk = false;
 let _ttpFetchOk = false;
 let _renderRaf = 0;
+
+function mrdDataPeriodShortLabel_(dataPeriod) {
+  const y = String((dataPeriod && dataPeriod.year) || '').trim();
+  const m = dataPeriod && dataPeriod.month ? parseInt(dataPeriod.month, 10) : 0;
+  if (y && m >= 1 && m <= 12) {
+    return (MRD_MONTH_SHORT_[m] || String(m)) + ' ' + y;
+  }
+  if (y) return 'Full year ' + y;
+  return 'all periods';
+}
+
+function mrdFacilityPeriodKey_(dataPeriod) {
+  const dp = dataPeriod || getDataPeriod_();
+  return String(dp.year || '') + '|' + String(dp.month || '');
+}
 
 function scheduleRenderAll() {
   if (_renderRaf) cancelAnimationFrame(_renderRaf);
@@ -483,9 +499,13 @@ async function exportMonthlyReport_(exportOpts) {
       return isNblYes(item.nbl) && matchesSearch(item.search);
     }));
 
-    let facilityBundles = _deps.getFacilityBundles
-      ? _deps.getFacilityBundles(pageDataPeriod.year || getReportPeriod_().year)
-      : [];
+    let facilityBundles = [];
+    if (_deps.loadFacilityBundlesForReport) {
+      facilityBundles = await _deps.loadFacilityBundlesForReport(pageDataPeriod);
+    } else if (_deps.getFacilityBundles) {
+      if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport(pageDataPeriod);
+      facilityBundles = _deps.getFacilityBundles(pageDataPeriod) || [];
+    }
     if (_search) {
       const q = _search;
       facilityBundles = facilityBundles.filter(function(b) {
@@ -736,7 +756,7 @@ function buildSnapshotSync(opts) {
   });
 
   const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
-  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear) : {};
+  const traceTotals = _deps.buildTraceTotals ? _deps.buildTraceTotals(dataYear, dataMonth) : {};
 
   const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
 
@@ -1161,15 +1181,17 @@ function renderAll() {
   const dataMonthLabel = millMonthForLabel ? (MRD_MONTH_SHORT_[parseInt(millMonthForLabel, 10)] || millMonthForLabel) : '';
   const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
   const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
+  const dataPeriodLabel = mrdDataPeriodShortLabel_(dataPeriod);
   const grvMonthLabel = dataPeriod.month ? (MRD_MONTH_SHORT_[parseInt(dataPeriod.month, 10)] || dataPeriod.month) : '';
   const grvPeriodLabel = (grvMonthLabel && dataPeriod.year) ? (grvMonthLabel + ' ' + dataPeriod.year) : fullYearLabel;
+  const tracePeriodLabel = dataPeriod.month ? dataPeriodLabel : fullYearLabel;
   html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
   html += sectionHtml('highRisk', 'High Risk Suppliers', stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
   html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
-  html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
+  html += sectionHtml('trace', 'Traceability Data · ' + tracePeriodLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
   html += flatSectionHtml('grv', 'Grievance Monitoring · ' + grvPeriodLabel, stats.grievances + ' grievances in ' + grvPeriodLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
-  html += sectionHtml('facility', 'Facility Performance', 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
+  html += sectionHtml('facility', 'Facility Performance · ' + dataPeriodLabel, 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
   html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential mills', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
   sections.innerHTML = html;
 }
@@ -1196,8 +1218,10 @@ function setUiLoading(show) {
 
 async function loadFacilityInBackground(gen, opts) {
   opts = opts || {};
-  if (_facilityPending || !_deps.getFacilityBundles) return;
-  if (!opts.force && _facilityBundles.length) {
+  const dataPeriod = getDataPeriod_();
+  const periodKey = mrdFacilityPeriodKey_(dataPeriod);
+  if (_facilityPending || (!_deps.loadFacilityBundlesForReport && !_deps.getFacilityBundles)) return;
+  if (!opts.force && _facilityBundles.length && _facilityBundlesPeriodKey === periodKey) {
     if (_snapshot) {
       _snapshot.facilityBundles = _facilityBundles;
       _snapshot.facilityLoading = false;
@@ -1211,9 +1235,15 @@ async function loadFacilityInBackground(gen, opts) {
     scheduleRenderAll();
   }
   try {
-    if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport();
+    if (_deps.loadFacilityBundlesForReport) {
+      _facilityBundles = mrdSortFacilityBundles_(await _deps.loadFacilityBundlesForReport(dataPeriod) || []);
+    } else {
+      if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport(dataPeriod);
+      if (gen !== _loadGen) return;
+      _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(dataPeriod) || []);
+    }
+    _facilityBundlesPeriodKey = periodKey;
     if (gen !== _loadGen) return;
-    _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(getDataPeriod_().year) || []);
     if (_snapshot) {
       _snapshot.facilityBundles = _facilityBundles;
       _snapshot.facilityLoading = false;
@@ -1222,7 +1252,11 @@ async function loadFacilityInBackground(gen, opts) {
   } catch (_) {
     if (_snapshot) {
       _snapshot.facilityLoading = false;
-      if (gen === _loadGen) _snapshot.facilityBundles = [];
+      if (gen === _loadGen) {
+        _snapshot.facilityBundles = [];
+        _facilityBundles = [];
+        _facilityBundlesPeriodKey = '';
+      }
       scheduleRenderAll();
     }
   } finally {
@@ -1473,6 +1507,7 @@ function bindOnce() {
       _year = yearSel.value || String(new Date().getFullYear());
       _nblByCache.clear();
       _facilityBundles = [];
+      _facilityBundlesPeriodKey = '';
       loadAndRender();
     });
   }
@@ -1481,6 +1516,8 @@ function bindOnce() {
     monthSel._mrdBound = true;
     monthSel.addEventListener('change', function() {
       _month = monthSel.value || '';
+      _facilityBundles = [];
+      _facilityBundlesPeriodKey = '';
       loadAndRender();
     });
   }
@@ -1500,6 +1537,7 @@ function bindOnce() {
   document.getElementById('mrdBtnRefresh')?.addEventListener('click', function() {
     _nblByCache.clear();
     _facilityBundles = [];
+    _facilityBundlesPeriodKey = '';
     if (_deps.clearEudrCache) _deps.clearEudrCache();
     loadAndRender({ force: true });
   });
