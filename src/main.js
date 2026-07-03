@@ -8245,11 +8245,32 @@ function initDashboardApp() {
     return millProfileTitleCaseWords_(g) + ' — ' + millProfileTitleCaseWords_(p);
   }
 
+  function millProfileProductSupplyHeaderHtml_(row) {
+    const raw = millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']);
+    const trimmed = String(raw || '').trim();
+    if (!trimmed || /^no\s*data$/i.test(trimmed)) {
+      return '<span class="mp-head-product-supply mp-head-product-supply--empty">' + (trimmed ? escHtml(trimmed) : '—') + '</span>';
+    }
+    const tokens = millProductSupplyTokens_(row);
+    if (!tokens.length) {
+      return '<span class="mp-head-product-supply">' + escHtml(trimmed) + '</span>';
+    }
+    const parts = [];
+    tokens.forEach(function(tok) {
+      const u = tok.toUpperCase();
+      if (u === 'CPO') parts.push('<span class="supply-pill supply-pill--cpo">CPO</span>');
+      else if (u === 'PK') parts.push('<span class="supply-pill supply-pill--pk">PK</span>');
+      else parts.push('<span class="supply-pill supply-pill--neutral">' + escHtml(tok) + '</span>');
+    });
+    return '<span class="mp-head-product-supply supply-row-pills">' + parts.join('') + '</span>';
+  }
+
   function millProfileUpdateHeaderFromRow_(row) {
     if (!row || typeof row !== 'object') return;
     const nameEl = document.getElementById('mp-mill-name');
     const locEl = document.getElementById('mp-mill-loc');
     const supEl = document.getElementById('mp-mill-supplier');
+    const productSupplyEl = document.getElementById('mp-mill-product-supply');
     const nblEl = document.getElementById('mp-mill-nbl');
     const nblSourceEl = document.getElementById('mp-mill-nbl-source');
     const rrEl = document.getElementById('mp-mill-result-risk');
@@ -8265,6 +8286,7 @@ function initDashboardApp() {
       : millProfileFormatHeaderLoc_(row);
     const sup = String(row['SUPPLIER STATUS'] != null ? row['SUPPLIER STATUS'] : '').trim();
     supEl.textContent = sup ? millProfileTitleCaseWords_(sup) : '—';
+    if (productSupplyEl) productSupplyEl.innerHTML = millProfileProductSupplyHeaderHtml_(row);
     nblEl.innerHTML = nblBadge(row['BUYER NO BUY LIST']);
     if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
@@ -20280,6 +20302,30 @@ function initDashboardApp() {
     }
 
     /**
+     * Fetch one or many Supplied CPO/PK sheets. Multiple sheets → single GAS call (sheet=*).
+     */
+    async function pfFetchSuppliedSheetRows_(getAction, sheetNames, totalSheetCount) {
+      const names = sheetNames || [];
+      if (!names.length) return [];
+      const timeoutMs = names.length > 1 ? 90000 : 45000;
+      if (names.length === 1) {
+        const one = await pfWithTimeout_(apiGetAction_(getAction, { sheet: names[0] }), timeoutMs, getAction);
+        return Array.isArray(one) ? one : [];
+      }
+      const total = totalSheetCount || names.length;
+      const filterSubset = names.length < total;
+      const allowed = filterSubset
+        ? new Set(names.map(function(n) { return n.trim().toUpperCase(); }))
+        : null;
+      const all = await pfWithTimeout_(apiGetAction_(getAction, { sheet: '*' }), timeoutMs, getAction);
+      const rows = Array.isArray(all) ? all : [];
+      if (!allowed) return rows;
+      return rows.filter(function(r) {
+        return allowed.has(String(r._sheet || '').trim().toUpperCase());
+      });
+    }
+
+    /**
      * Fetch Supplied CPO data for the currently selected period.
      * Caches: re-fetches only when sheet selection changes.
      */
@@ -20306,12 +20352,9 @@ function initDashboardApp() {
       }
 
       try {
-        const results = await pfWithTimeout_(Promise.all(sheetNames.map(function(sn) {
-          return apiGetAction_('getSuppliedCpo', { sheet: sn });
-        })), 45000, 'Supplied CPO data');
-        _pfSuppliedCpoData = [].concat.apply([], results.map(function(r) {
-          return Array.isArray(r) ? r : [];
-        }));
+        _pfSuppliedCpoData = await pfFetchSuppliedSheetRows_(
+          'getSuppliedCpo', sheetNames, _pfSuppliedCpoSheets.length
+        );
         _pfSuppliedCpoPeriodKey = periodKey;
       } catch (e) {
         console.warn('[Performa Facility] getSuppliedCpo failed:', e);
@@ -20427,12 +20470,9 @@ function initDashboardApp() {
         return;
       }
       try {
-        const results = await pfWithTimeout_(Promise.all(sheetNames.map(function(sn) {
-          return apiGetAction_('getSuppliedPk', { sheet: sn });
-        })), 45000, 'Supplied PK data');
-        _pfSuppliedPkData = [].concat.apply([], results.map(function(r) {
-          return Array.isArray(r) ? r : [];
-        }));
+        _pfSuppliedPkData = await pfFetchSuppliedSheetRows_(
+          'getSuppliedPk', sheetNames, _pfSuppliedPkSheets.length
+        );
         _pfSuppliedPkPeriodKey = periodKey;
       } catch (e) {
         console.warn('[Performa Facility] getSuppliedPk failed:', e);
@@ -21284,10 +21324,14 @@ function initDashboardApp() {
 
     async function pfLoadAndRender_() {
       const loading = document.getElementById('pf-loading');
+      const pkLoading = document.getElementById('pf-pk-loading');
       const tbl     = document.getElementById('pfTable');
+      const pkTbl   = document.getElementById('pfPkTable');
       const errEl   = document.getElementById('pf-error');
       if (loading) { loading.style.display = 'block'; loading.textContent = 'Loading data…'; }
+      if (pkLoading) { pkLoading.style.display = 'block'; pkLoading.textContent = 'Loading PK data…'; }
       if (tbl) tbl.style.display = 'none';
+      if (pkTbl) pkTbl.style.display = 'none';
       if (errEl) errEl.style.display = 'none';
 
       try {
@@ -21297,19 +21341,26 @@ function initDashboardApp() {
         ]);
         pfPopulateYears_();
         pfApplyDefaultPeriodIfNeeded_();
-        await pfRefreshEudrCompanySet_();
+
+        // Fast first paint — mill/TTP rows without waiting for EUDR or Supplied sheets
         _pfAllGroups   = pfBuildRows_();
         _pfAllPkGroups = pfBuildPkGroups_();
         pfRenderTable_(_pfAllGroups);
         pfRenderPkTable_(_pfAllPkGroups);
-        await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
-        await pfRefreshEudrCompanySet_();
+
+        // Enrich with EUDR notes + Supplied CPO/PK (single batch API call per product type)
+        await Promise.all([
+          pfRefreshEudrCompanySet_(),
+          pfLoadSuppliedCpo_(),
+          pfLoadSuppliedPk_(),
+        ]);
         _pfAllGroups   = pfBuildRows_();
         _pfAllPkGroups = pfBuildPkGroups_();
         pfRenderTable_(_pfAllGroups);
         pfRenderPkTable_(_pfAllPkGroups);
       } catch (err) {
         if (loading) loading.style.display = 'none';
+        if (pkLoading) pkLoading.style.display = 'none';
         if (errEl) {
           errEl.style.display = 'block';
           errEl.textContent = 'Failed to load data: ' + (err && err.message ? err.message : err);
@@ -21333,8 +21384,6 @@ function initDashboardApp() {
 
       // Month/Year change: reload supplied CPO + PK data for the new period, then rebuild
       async function onPeriodChange_() {
-        _pfSuppliedCpoLoaded = false;
-        _pfSuppliedPkLoaded  = false;
         _pfSuppliedCpoPeriodKey = '';
         _pfSuppliedPkPeriodKey = '';
         await pfLoadAndRender_();
@@ -21359,8 +21408,6 @@ function initDashboardApp() {
           if (ySel) ySel.value = latest.year || '';
           const searchEl2 = document.getElementById('pfSearch');
           if (searchEl2) searchEl2.value = '';
-          _pfSuppliedCpoLoaded = false;
-          _pfSuppliedPkLoaded  = false;
           _pfSuppliedCpoPeriodKey = '';
           _pfSuppliedPkPeriodKey = '';
           await pfLoadAndRender_();

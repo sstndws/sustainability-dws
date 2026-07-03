@@ -4629,9 +4629,11 @@
    }
    .mill-profile-head-right {
      display: flex;
-     flex-direction: column;
-     align-items: flex-end;
-     gap: 16px;
+     flex-direction: row;
+     flex-wrap: wrap;
+     align-items: flex-start;
+     justify-content: flex-end;
+     gap: 16px 22px;
      text-align: right;
      flex: 0 0 auto;
      margin-left: auto;
@@ -4677,6 +4679,27 @@
      padding: 6px 14px;
      min-height: 26px;
      font-size: 10.5px;
+   }
+   .mp-head-product-supply {
+     display: inline-flex;
+     flex-wrap: wrap;
+     gap: 5px;
+     justify-content: flex-end;
+     font-size: 13px;
+     font-weight: 600;
+     color: #2a1818;
+   }
+   .mp-head-product-supply--empty {
+     color: #9C8080;
+     font-weight: 500;
+   }
+   #millProfileOverlay .mp-head-product-supply .supply-pill {
+     font-size: 11px;
+     padding: 3px 9px;
+   }
+   .supply-pill--neutral {
+     background: rgba(42, 24, 24, 0.08);
+     color: #4a3535;
    }
    .mill-profile-head-left h2 {
      font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
@@ -5083,6 +5106,7 @@
        width: 100%;
        margin-left: 0;
        padding-top: 0;
+       flex-direction: column;
      }
      .mp-head-val {
        justify-content: flex-start;
@@ -5094,6 +5118,9 @@
       margin-left: 0;
     }
      #millProfileOverlay .mill-profile-head-right .mill-rrl {
+       justify-content: flex-start;
+     }
+     #millProfileOverlay .mp-head-product-supply {
        justify-content: flex-start;
      }
      .mill-profile-body { padding: 16px 18px 20px; }

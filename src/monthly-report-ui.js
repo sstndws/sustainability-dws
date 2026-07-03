@@ -699,11 +699,16 @@ function buildSnapshotSync(opts) {
     };
   });
 
-  // Grievance: full data year (no month filter — shows entire year's grievances)
+  // Grievance: same data period as other sections (report month − 1)
   const grvRows = mrdSortGrvItemsByDateDesc_(grvData.filter(function(r) {
+    const dateRaw = r['Date Received'] || r['DATE RECEIVED'] || r['Date received'] || '';
     if (dataYear) {
-      const dr = String(r['Date Received'] || '').slice(0, 4);
+      const dr = String(dateRaw).slice(0, 4);
       if (dr && dr !== dataYear) return false;
+    }
+    if (dataMonth) {
+      const m = parseMonthFromDate(dateRaw);
+      if (m && m !== dataMonth) return false;
     }
     return true;
   }).map(function(r) {
@@ -1156,11 +1161,13 @@ function renderAll() {
   const dataMonthLabel = millMonthForLabel ? (MRD_MONTH_SHORT_[parseInt(millMonthForLabel, 10)] || millMonthForLabel) : '';
   const millPeriodLabel = (dataMonthLabel && millYearForLabel) ? (dataMonthLabel + ' ' + millYearForLabel) : (millYearForLabel || 'all periods');
   const fullYearLabel = dataPeriod.year ? ('Full year ' + dataPeriod.year) : 'all periods';
+  const grvMonthLabel = dataPeriod.month ? (MRD_MONTH_SHORT_[parseInt(dataPeriod.month, 10)] || dataPeriod.month) : '';
+  const grvPeriodLabel = (grvMonthLabel && dataPeriod.year) ? (grvMonthLabel + ' ' + dataPeriod.year) : fullYearLabel;
   html += flatSectionHtml('sdd', 'Supplier Due Diligence', stats.sddRequested + ' requested · ' + stats.sddDone + ' done · ' + millPeriodLabel, renderSddSection(s.sdd, s.sddLoading), '01');
   html += sectionHtml('highRisk', 'High Risk Suppliers', stats.highRisk + ' mills · Result Risk Level = HIGH', renderHighRiskSection(s.mills), '02A');
   html += sectionHtml('mill', 'Mill Onboarding', stats.totalMills + ' mills · ' + millPeriodLabel, renderMillSection(s.mills), '02');
   html += sectionHtml('trace', 'Traceability Data · ' + fullYearLabel, 'TTM CPO ' + (stats.ttmCpoPct || '—') + ' · TTM PK ' + (stats.ttmPkPct || '—') + ' · TTP CPO ' + (stats.ttpCpoPct || '—') + ' · TTP PK ' + (stats.ttpPkPct || '—'), renderTraceSection(s.traceTotals, stats), '03');
-  html += flatSectionHtml('grv', 'Grievance Monitoring · ' + fullYearLabel, stats.grievances + ' grievances in ' + fullYearLabel, renderGrvSection(s.grv), '04');
+  html += flatSectionHtml('grv', 'Grievance Monitoring · ' + grvPeriodLabel, stats.grievances + ' grievances in ' + grvPeriodLabel, renderGrvSection(s.grv), '04');
   html += sectionHtml('nbl', 'Active NBL Mills', stats.nblMills + ' mills on No Buy List', renderNblSection(s.mills), '05');
   html += sectionHtml('facility', 'Facility Performance', 'CPO & PK · traceability & ISPO', renderFacilitySection(s.facilityBundles, s.facilityLoading, s.eudrPotential), '06');
   html += sectionHtml('eudr', 'EUDR Potential', stats.eudrPotential + ' potential mills', renderEudrSection(s.eudrPotential, s.eudrLoading), '07');
