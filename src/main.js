@@ -27850,6 +27850,9 @@ function initDashboardApp() {
           return (res && Array.isArray(res.data)) ? res.data : [];
         },
         ensureNblLists: async function() {
+          if (typeof loadNoBuyListData === 'function') {
+            await loadNoBuyListData();
+          }
           return ensureNblListsForCheck_();
         },
         clearEudrCache: function() {

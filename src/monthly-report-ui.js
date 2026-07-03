@@ -54,7 +54,6 @@ let _loadGen = 0;
 let _eudrPending = false;
 let _facilityPending = false;
 let _nblByCache = new Map();
-let _nblResolveInFlight = null;
 let _mrdExportInFlight = false;
 let _sddCache = [];
 let _facilityBundles = [];
@@ -1361,6 +1360,24 @@ async function loadEudrInBackground(gen, opts) {
   }
 }
 
+function syncNblCacheToSnapshot_(snapshot) {
+  const snap = snapshot || _snapshot;
+  if (!snap || !snap.mills) return;
+  snap.mills.forEach(function(item) {
+    if (!item || !item.cacheKey) return;
+    const cached = _nblByCache.get(item.cacheKey);
+    if (!cached) return;
+    item.nblBy = cached.label || '';
+    item.nblMatches = cached.matches || [];
+  });
+}
+
+function scheduleNblRiserResolve_() {
+  const gen = _loadGen;
+  resolveNblMillsForSnapshot_().catch(function() {});
+  return gen;
+}
+
 function rebuildSnapshot_(opts) {
   const prev = _snapshot || {};
   const snap = buildSnapshotSync({
@@ -1371,6 +1388,7 @@ function rebuildSnapshot_(opts) {
     facilityBundles: opts.facilityBundles != null ? opts.facilityBundles : (prev.facilityBundles || _facilityBundles),
     facilityLoading: opts.facilityLoading != null ? opts.facilityLoading : !!prev.facilityLoading,
   });
+  syncNblCacheToSnapshot_(snap);
   _lastTtpCount = (_deps && _deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
   return snap;
 }
@@ -1423,26 +1441,24 @@ function millNeedsNblRiserResolve_(item) {
 
 async function resolveNblMillsForSnapshot_(preloadedLists) {
   if (!_snapshot || !_deps.ensureNblLists || !_deps.resolveNblBy) return;
-  if (_nblResolveInFlight) return _nblResolveInFlight;
-
-  _nblResolveInFlight = (async function() {
+  const loadGen = _loadGen;
+  try {
+    const lists = preloadedLists || await _deps.ensureNblLists();
+    if (loadGen !== _loadGen || !_snapshot) return;
     const pending = (_snapshot.mills || []).filter(millNeedsNblRiserResolve_);
-    if (!pending.length) return;
-    try {
-      const lists = preloadedLists || await _deps.ensureNblLists();
-      pending.forEach(function(item) {
-        const info = _deps.resolveNblBy(item.row, lists);
-        item.nblBy = info.label || '';
-        item.nblMatches = info.matches || [];
-        if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
-      });
-      scheduleRenderAll();
-    } catch (_) { /* NBL riser lookup is optional for display */ }
-  })().finally(function() {
-    _nblResolveInFlight = null;
-  });
-
-  return _nblResolveInFlight;
+    if (!pending.length) {
+      syncNblCacheToSnapshot_();
+      return;
+    }
+    pending.forEach(function(item) {
+      const info = _deps.resolveNblBy(item.row, lists);
+      if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
+    });
+    syncNblCacheToSnapshot_();
+    scheduleRenderAll();
+  } catch (err) {
+    console.warn('[MRD] NBL riser resolve:', err && err.message ? err.message : err);
+  }
 }
 
 async function loadNblRisersInBackground(gen) {
@@ -1516,6 +1532,7 @@ function startBackgroundLoads_(gen, force) {
     loadNblRisersInBackground(gen),
   ]).then(function() {
     updateScopeText();
+    scheduleNblRiserResolve_();
     // Use _loadGen (not gen) so facility always loads for the current active generation
     loadEudrInBackground(_loadGen, opts);
     loadFacilityInBackground(_loadGen, opts);
@@ -1543,6 +1560,7 @@ async function loadAndRender(opts) {
     _snapshot = rebuildSnapshot_({ eudrLoading: false, facilityLoading: false });
     renderAll();
     updateScopeText('loading data…');
+    scheduleNblRiserResolve_();
   } catch (err) {
     if (errEl) {
       errEl.hidden = false;
