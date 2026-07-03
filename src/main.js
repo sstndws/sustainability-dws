@@ -22677,8 +22677,8 @@ function initDashboardApp() {
     }
 
     function pfBuildFacilityBundles_() {
-      const cpoGroups = pfBuildRows_();
-      const pkGroups = pfBuildPkGroups_();
+      const cpoGroups = pfApplyFilters_(pfBuildRows_());
+      const pkGroups = pfApplyFilters_(pfBuildPkGroups_());
       const bundles = [];
       cpoGroups.forEach(function(g) {
         bundles.push({
