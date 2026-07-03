@@ -54,6 +54,8 @@ let _loadGen = 0;
 let _eudrPending = false;
 let _facilityPending = false;
 let _nblByCache = new Map();
+let _nblResolveInFlight = null;
+let _mrdExportInFlight = false;
 let _sddCache = [];
 let _facilityBundles = [];
 let _facilityBundlesPeriodKey = '';
@@ -344,7 +346,7 @@ async function resolveAllNblForExport_(mills) {
   for (let i = 0; i < mills.length; i++) {
     const item = mills[i];
     const copy = Object.assign({}, item, { row: item.row });
-    if (isNblYes(copy.nbl) && !copy.nblBy) {
+    if (millNeedsNblRiserResolve_(copy)) {
       const info = _deps.resolveNblBy(copy.row, lists);
       copy.nblBy = info.label || '';
       copy.nblMatches = info.matches || [];
@@ -403,6 +405,12 @@ function mrdExportReportPeriod_() {
 }
 
 function mrdOpenExportModal_() {
+  if (_mrdExportInFlight) {
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('PDF export in progress — please wait.', 'info');
+    }
+    return;
+  }
   if (!_snapshot) {
     alert('Data not loaded yet — wait a moment and try again.');
     return;
@@ -434,8 +442,21 @@ function mrdExportSelectedSections_() {
   return order.filter(function(id) { return sections.indexOf(id) !== -1; });
 }
 
+function mrdSetExportButtonsBusy_(busy, activeBtn, prevTxt) {
+  const ids = ['mrdExportConfirm', 'mrdBtnExport'];
+  ids.forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !!busy;
+  });
+  if (activeBtn && !busy) {
+    activeBtn.textContent = prevTxt || (activeBtn.id === 'mrdExportConfirm' ? 'Generate 2 PDFs' : 'Export PDF');
+  }
+}
+
 async function exportMonthlyReport_(exportOpts) {
   exportOpts = exportOpts || {};
+  if (_mrdExportInFlight) return;
   if (!_snapshot) {
     alert('Data not loaded yet — wait a moment and try again.');
     return;
@@ -451,42 +472,50 @@ async function exportMonthlyReport_(exportOpts) {
     return;
   }
 
+  const reportPeriod = exportOpts.reportPeriod || getReportPeriod_();
+  if (!reportPeriod.month) {
+    alert('Select a reporting month for the PDF header.');
+    return;
+  }
+
   const btn = document.getElementById('mrdExportConfirm') || document.getElementById('mrdBtnExport');
   const prevTxt = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  _mrdExportInFlight = true;
+  mrdSetExportButtonsBusy_(true, btn, prevTxt);
+  if (btn) btn.textContent = 'Preparing…';
 
   try {
-    const reportPeriod = exportOpts.reportPeriod || getReportPeriod_();
-    if (!reportPeriod.month) {
-      alert('Select a reporting month for the PDF header.');
-      return;
-    }
     syncPeriodFromUi_();
+    const pageDataPeriod = getReportPeriod_();
+
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
       try {
         const rows = await withTimeout(_deps.fetchSddList(), 25000, 'SDD');
         _sddCache = Array.isArray(rows) ? rows : [];
-        _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
       } catch (_) { /* continue without SDD */ }
     }
 
-    if (btn) btn.textContent = 'Building PDF…';
-    const extra = await _deps.preparePdfExport({ sections: sections });
+    if (btn) btn.textContent = 'Loading data…';
+    const extra = await _deps.preparePdfExport({ sections: sections, dataPeriod: pageDataPeriod });
+
+    _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
+    await resolveNblMillsForSnapshot_();
+
     const prevEudr = (_snapshot && _snapshot.eudrPotential) || [];
     const extraEudr = (extra && extra.eudr) || [];
     let bestEudr = prevEudr.length >= extraEudr.length ? prevEudr.slice() : extraEudr.slice();
     if (sections.includes('eudr') && _deps.fetchEudrPotential) {
       try {
-        const fetched = await _deps.fetchEudrPotential();
+        const fetched = await withTimeout(_deps.fetchEudrPotential(), 120000, 'EUDR');
         if (Array.isArray(fetched) && fetched.length) bestEudr = fetched;
       } catch (_) { /* keep bestEudr */ }
     } else if (extraEudr.length > bestEudr.length) {
       bestEudr = extraEudr.slice();
     }
     _snapshot = rebuildSnapshot_({ eudrPotential: bestEudr.length ? bestEudr : undefined });
-    const pageDataPeriod = getReportPeriod_();
     const s = _snapshot;
 
+    if (btn) btn.textContent = 'Building PDF…';
     const exportSections = mrdPdfSectionsNoDupHighRisk_(sections.slice());
 
     // Mill Onboarding PDF export: HIGH RISK mills only (same Result Risk Level as website).
@@ -500,11 +529,19 @@ async function exportMonthlyReport_(exportOpts) {
     }));
 
     let facilityBundles = [];
-    if (_deps.loadFacilityBundlesForReport) {
-      facilityBundles = await _deps.loadFacilityBundlesForReport(pageDataPeriod);
-    } else if (_deps.getFacilityBundles) {
-      if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport(pageDataPeriod);
-      facilityBundles = _deps.getFacilityBundles(pageDataPeriod) || [];
+    if (sections.includes('facility')) {
+      if (_deps.loadFacilityBundlesForReport) {
+        facilityBundles = await withTimeout(
+          _deps.loadFacilityBundlesForReport(pageDataPeriod),
+          120000,
+          'Facility performance'
+        );
+      } else if (_deps.getFacilityBundles) {
+        if (_deps.preparePfDataForReport) {
+          await withTimeout(_deps.preparePfDataForReport(pageDataPeriod), 120000, 'Facility performance');
+        }
+        facilityBundles = _deps.getFacilityBundles(pageDataPeriod) || [];
+      }
     }
     if (_search) {
       const q = _search;
@@ -556,10 +593,8 @@ async function exportMonthlyReport_(exportOpts) {
     console.error('[MRD PDF]', err);
     alert('PDF export failed: ' + (err && err.message ? err.message : String(err)));
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = prevTxt || (btn.id === 'mrdExportConfirm' ? 'Generate 2 PDFs' : 'Export PDF');
-    }
+    _mrdExportInFlight = false;
+    mrdSetExportButtonsBusy_(false, btn, prevTxt);
   }
 }
 
@@ -595,6 +630,7 @@ function mrdBindExportModalOnce_() {
   if (confirm && !confirm._mrdExportBound) {
     confirm._mrdExportBound = true;
     confirm.addEventListener('click', async function() {
+      if (_mrdExportInFlight) return;
       const sections = mrdExportSelectedSections_();
       if (!sections) {
         alert('Select at least one section to export.');
@@ -1336,28 +1372,58 @@ async function loadMillInBackground(gen) {
     scheduleRenderAll();
     updateScopeText();
     populateYearSelect();
+    await resolveNblMillsForSnapshot_();
   } catch (err) {
     if (gen !== _loadGen) return;
     updateScopeText('mill: ' + (err && err.message ? err.message : String(err)));
   }
 }
 
-async function resolveNblMillsForSnapshot_() {
+function millNeedsNblRiserResolve_(item) {
+  if (!item || !isNblYes(item.nbl)) return false;
+  const matches = item.nblMatches || [];
+  if (matches.length && matches.some(function(m) { return String(m && m.riser || '').trim(); })) {
+    return false;
+  }
+  const by = String(item.nblBy || '').trim();
+  if (by && !/source unresolved/i.test(by)) {
+    const stripped = by.replace(/^NBL by\s+/i, '').trim();
+    if (stripped) return false;
+  }
+  return true;
+}
+
+async function resolveNblMillsForSnapshot_(preloadedLists) {
   if (!_snapshot || !_deps.ensureNblLists || !_deps.resolveNblBy) return;
-  const pending = (_snapshot.mills || []).filter(function(item) {
-    return isNblYes(item.nbl) && !item.nblBy;
+  if (_nblResolveInFlight) return _nblResolveInFlight;
+
+  _nblResolveInFlight = (async function() {
+    const pending = (_snapshot.mills || []).filter(millNeedsNblRiserResolve_);
+    if (!pending.length) return;
+    try {
+      const lists = preloadedLists || await _deps.ensureNblLists();
+      pending.forEach(function(item) {
+        const info = _deps.resolveNblBy(item.row, lists);
+        item.nblBy = info.label || '';
+        item.nblMatches = info.matches || [];
+        if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
+      });
+      scheduleRenderAll();
+    } catch (_) { /* NBL riser lookup is optional for display */ }
+  })().finally(function() {
+    _nblResolveInFlight = null;
   });
-  if (!pending.length) return;
+
+  return _nblResolveInFlight;
+}
+
+async function loadNblRisersInBackground(gen) {
+  if (!_deps || !_deps.ensureNblLists) return;
   try {
     const lists = await _deps.ensureNblLists();
-    pending.forEach(function(item) {
-      const info = _deps.resolveNblBy(item.row, lists);
-      item.nblBy = info.label || '';
-      item.nblMatches = info.matches || [];
-      if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
-    });
-    scheduleRenderAll();
-  } catch (_) { /* NBL riser lookup is optional for display */ }
+    if (gen !== _loadGen) return;
+    await resolveNblMillsForSnapshot_(lists);
+  } catch (_) { /* optional */ }
 }
 
 async function loadSupplementalInBackground(gen) {
@@ -1419,6 +1485,7 @@ function startBackgroundLoads_(gen, force) {
     loadMillInBackground(gen),
     loadSupplementalInBackground(gen),
     loadSddInBackground(gen, opts),
+    loadNblRisersInBackground(gen),
   ]).then(function() {
     // Use _loadGen (not gen) so facility always loads for the current active generation
     loadEudrInBackground(_loadGen, opts);
@@ -1550,7 +1617,7 @@ function bindOnce() {
       renderAll();
       if (opening && millKey && _snapshot) {
         const item = _snapshot.mills.find(function(m) { return m.cacheKey === millKey; });
-        if (item && isNblYes(item.nbl) && !item.nblBy) {
+        if (item && millNeedsNblRiserResolve_(item)) {
           resolveMillNblOnExpand(millKey, item.row).then(function(info) {
             item.nblBy = info.label || '';
             item.nblMatches = info.matches || [];

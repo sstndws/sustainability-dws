@@ -27836,9 +27836,6 @@ function initDashboardApp() {
           return (res && Array.isArray(res.data)) ? res.data : [];
         },
         ensureNblLists: async function() {
-          if (nblRegistryData.length || nblUnileverData.length) {
-            return { registry: nblRegistryData, unilever: nblUnileverData };
-          }
           return ensureNblListsForCheck_();
         },
         clearEudrCache: function() {
