@@ -27874,7 +27874,7 @@ function initDashboardApp() {
           const needEudr = allSections || sections.indexOf('eudr') !== -1;
           await this.ensureCoreData();
           if (needFacility && typeof window.mrdPreparePfDataForReport_ === 'function') {
-            await window.mrdPreparePfDataForReport_(exportOpts.dataPeriod || null);
+            await window.mrdPreparePfDataForReport_(exportOpts.facilityPeriod || exportOpts.dataPeriod || null);
           }
           let eudr = _mrdEudrCache;
           if (needEudr) {

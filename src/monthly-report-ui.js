@@ -75,8 +75,13 @@ function mrdDataPeriodShortLabel_(dataPeriod) {
   return 'all periods';
 }
 
-function mrdFacilityPeriodKey_(dataPeriod) {
-  const dp = dataPeriod || getDataPeriod_();
+/** Facility Performance matches PF panel filters (reporting month, no −1 lag). */
+function getFacilityPeriod_() {
+  return getReportPeriod_();
+}
+
+function mrdFacilityPeriodKey_(facilityPeriod) {
+  const dp = facilityPeriod || getFacilityPeriod_();
   return String(dp.year || '') + '|' + String(dp.month || '');
 }
 
@@ -496,6 +501,7 @@ async function exportMonthlyReport_(exportOpts) {
   try {
     syncPeriodFromUi_();
     const pageDataPeriod = getDataPeriod_();
+    const facilityPeriod = getFacilityPeriod_();
 
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
       try {
@@ -505,7 +511,11 @@ async function exportMonthlyReport_(exportOpts) {
     }
 
     if (btn) btn.textContent = 'Loading data…';
-    const extra = await _deps.preparePdfExport({ sections: sections, dataPeriod: pageDataPeriod });
+    const extra = await _deps.preparePdfExport({
+      sections: sections,
+      dataPeriod: pageDataPeriod,
+      facilityPeriod: facilityPeriod,
+    });
 
     _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
     await resolveNblMillsForSnapshot_();
@@ -541,15 +551,15 @@ async function exportMonthlyReport_(exportOpts) {
     if (sections.includes('facility')) {
       if (_deps.loadFacilityBundlesForReport) {
         facilityBundles = await withTimeout(
-          _deps.loadFacilityBundlesForReport(pageDataPeriod),
+          _deps.loadFacilityBundlesForReport(facilityPeriod),
           120000,
           'Facility performance'
         );
       } else if (_deps.getFacilityBundles) {
         if (_deps.preparePfDataForReport) {
-          await withTimeout(_deps.preparePfDataForReport(pageDataPeriod), 120000, 'Facility performance');
+          await withTimeout(_deps.preparePfDataForReport(facilityPeriod), 120000, 'Facility performance');
         }
-        facilityBundles = _deps.getFacilityBundles(pageDataPeriod) || [];
+        facilityBundles = _deps.getFacilityBundles(facilityPeriod) || [];
       }
     }
     if (_search) {
@@ -1256,8 +1266,8 @@ function setUiLoading(show) {
 
 async function loadFacilityInBackground(gen, opts) {
   opts = opts || {};
-  const dataPeriod = getDataPeriod_();
-  const periodKey = mrdFacilityPeriodKey_(dataPeriod);
+  const facilityPeriod = getFacilityPeriod_();
+  const periodKey = mrdFacilityPeriodKey_(facilityPeriod);
   if (_facilityPending || (!_deps.loadFacilityBundlesForReport && !_deps.getFacilityBundles)) return;
   if (!opts.force && _facilityBundles.length && _facilityBundlesPeriodKey === periodKey) {
     if (_snapshot) {
@@ -1274,11 +1284,11 @@ async function loadFacilityInBackground(gen, opts) {
   }
   try {
     if (_deps.loadFacilityBundlesForReport) {
-      _facilityBundles = mrdSortFacilityBundles_(await _deps.loadFacilityBundlesForReport(dataPeriod) || []);
+      _facilityBundles = mrdSortFacilityBundles_(await _deps.loadFacilityBundlesForReport(facilityPeriod) || []);
     } else {
-      if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport(dataPeriod);
+      if (_deps.preparePfDataForReport) await _deps.preparePfDataForReport(facilityPeriod);
       if (gen !== _loadGen) return;
-      _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(dataPeriod) || []);
+      _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(facilityPeriod) || []);
     }
     _facilityBundlesPeriodKey = periodKey;
     if (gen !== _loadGen) return;
