@@ -26056,7 +26056,7 @@ function initDashboardApp() {
     const res = await apiPost({
       action: 'submitSupplyDraft',
       batch_id: batch.batch_id,
-      rows: [draftRow],
+      rows: [supplyRowPayloadForSubmit_(draftRow, batch)],
       meta: supplyBatchMetaForApi_(batch),
     });
     if (res && res.errors && res.errors.length && !res.submitted) {

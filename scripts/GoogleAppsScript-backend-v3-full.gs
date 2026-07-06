@@ -5597,6 +5597,7 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   if (submitKind === 'CPO') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'CPO');
   else if (submitKind === 'PK') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'PK');
   millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
+  millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetRow, row);
 
   var rowArr = millSheet.getRange(targetRow, 1, 1, millHeaders.length).getValues()[0];
   millData[targetRow - 1] = rowArr;
@@ -5760,20 +5761,46 @@ function millResolveGrievanceHeaderColsGs_(headers) {
   return out;
 }
 
+function supplyGrievanceNoteFromRowGs_(row, canonical) {
+  if (!row) return '';
+  var direct = String(row[supplyGrievanceNoteKeyGs_(canonical)] || '').trim();
+  if (direct) return direct;
+  var keys = supplyGrievanceNamedKeysGs_(canonical);
+  var i, gk, noteKey, v;
+  for (i = 0; i < keys.length; i++) {
+    gk = keys[i];
+    noteKey = supplyGrievanceNoteKeyGs_(gk);
+    v = String(row[noteKey] || '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
 function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
   if (!sheet || !headers || !targetRow || !row) return;
   var colMap = millResolveGrievanceHeaderColsGs_(headers);
+  var legacyByCanon = {
+    'DEFORESTATION GRIEVANCES': [],
+    'BURN AREA GRIEVANCES': [],
+    'LEGALITY GRIEVANCE': [],
+    'HUMAN RIGHTS GRIEVANCE': ['HUMAN RIGHT'],
+    'SAFETY GRIEVANCE': ['SAFETY'],
+    'SOCIAL GRIEVANCE': ['SOCIAL'],
+    'ENVIRONMENT GRIEVANCE': ['ENVIRONMENT'],
+  };
   Object.keys(colMap).forEach(function(canonical) {
     var col = colMap[canonical];
     if (!col) return;
-    var yn = supplyNormalizeGrievanceYesNoGs_(row[canonical]);
-    var note = String(row[supplyGrievanceNoteKeyGs_(canonical)] || '').trim();
+    var legacy = legacyByCanon[canonical] || [];
+    var yn = supplyGrievanceValFromObjsGs_([row], canonical, legacy);
+    var note = supplyGrievanceNoteFromRowGs_(row, canonical);
     if (yn === 'Yes' && note) {
       sheet.getRange(targetRow, col).setNote(note);
-    } else {
+    } else if (yn === 'No' || (yn === 'Yes' && !note)) {
       sheet.getRange(targetRow, col).setNote('');
     }
   });
+  try { SpreadsheetApp.flush(); } catch (e) { /* ignore */ }
 }
 
 function supplyGrievanceNamedKeysGs_(canonical) {
