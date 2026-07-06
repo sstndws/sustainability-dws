@@ -5679,10 +5679,12 @@ function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
 function supplyFacilityFromDraftGs_(row, field, submitKind) {
   var direct = String(row[field] || '').trim();
   if (direct) return direct;
+  // BOTH: CPO and PK each have their own facility — do not mirror legacy single PLANT.
+  if (submitKind === 'BOTH') return '';
   var plant = supplyNormalizePlantValueGs_(row.PLANT || '');
   if (!plant) return '';
-  if (field === 'FACILITY NAME PK' && (submitKind === 'PK' || submitKind === 'BOTH')) return plant;
-  if (field === 'FACILITY NAME CPO' && (submitKind === 'CPO' || submitKind === 'BOTH')) return plant;
+  if (field === 'FACILITY NAME PK' && submitKind === 'PK') return plant;
+  if (field === 'FACILITY NAME CPO' && submitKind === 'CPO') return plant;
   return '';
 }
 

@@ -24617,6 +24617,7 @@ function initDashboardApp() {
       target.supply_type = 'CPO+PK';
       target.SUPPLY_TYPE = 'CPO+PK';
       target['PRODUCT SUPPLY'] = 'CPO, PK';
+      supplyClearDualRowPlant_(target);
       batch.rows.splice(p.pkIdx, 1);
     });
     return pairs.length;
@@ -24712,19 +24713,26 @@ function initDashboardApp() {
     return (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
   }
 
+  function supplyRowIsDualSupplyKind_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    return k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
+  }
+
+  /** Clear legacy single PLANT on dual rows so submit/load cannot copy one KCP into both facility columns. */
+  function supplyClearDualRowPlant_(row) {
+    if (!row || supplyRowSupplyKindStrict_(row) !== 'CPO+PK') return;
+    delete row.PLANT;
+  }
+
   /** Excel PLANT → FACILITY NAME CPO (import CPO) or FACILITY NAME PK (import PK); multi-KCP tetap satu nilai. */
   function supplyApplyPlantToDraftFacility_(draft, plant, kind) {
     if (!draft) return;
     const k = String(kind || draft.supply_type || draft.SUPPLY_TYPE || 'CPO').toUpperCase();
     const p = supplyNormalizePlantValue_(plant != null ? plant : draft.PLANT || '');
     if (!p) return;
+    // CPO+PK: each product keeps its own facility from separate CPO/PK imports — never mirror one PLANT.
+    if (supplyRowIsDualSupplyKind_(k)) return;
     draft.PLANT = p;
-    const isDual = k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
-    if (isDual) {
-      if (!String(draft['FACILITY NAME CPO'] || '').trim()) draft['FACILITY NAME CPO'] = p;
-      if (!String(draft['FACILITY NAME PK'] || '').trim()) draft['FACILITY NAME PK'] = p;
-      return;
-    }
     const routeKind = (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'PK' : 'CPO';
     draft[supplyFacilityFieldForKind_(routeKind)] = p;
   }
@@ -24733,11 +24741,12 @@ function initDashboardApp() {
     if (!row) return '';
     const direct = String(row[field] || '').trim();
     if (direct) return supplyNormalizePlantValue_(direct);
+    const k = String(kind || row.supply_type || row.SUPPLY_TYPE || 'CPO').toUpperCase();
+    if (supplyRowIsDualSupplyKind_(k)) return '';
     const plant = supplyNormalizePlantValue_(row.PLANT || '');
     if (!plant) return '';
-    const k = String(kind || row.supply_type || row.SUPPLY_TYPE || 'CPO').toUpperCase();
-    if (field === 'FACILITY NAME PK' && (k === 'PK' || k.indexOf('PK') >= 0)) return plant;
-    if (field === 'FACILITY NAME CPO' && (k === 'CPO' || k.indexOf('CPO') >= 0)) return plant;
+    if (field === 'FACILITY NAME PK' && k === 'PK') return plant;
+    if (field === 'FACILITY NAME CPO' && k === 'CPO') return plant;
     return '';
   }
 
@@ -24751,6 +24760,7 @@ function initDashboardApp() {
     if ((ek === 'CPO' && kind === 'PK') || (ek === 'PK' && kind === 'CPO')) {
       existing.supply_type = 'CPO+PK';
       existing.SUPPLY_TYPE = 'CPO+PK';
+      supplyClearDualRowPlant_(existing);
     }
     existing['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(existing);
     supplyRematchDraftRow_(existing, batch);
@@ -24780,6 +24790,7 @@ function initDashboardApp() {
     target.supply_type = 'CPO+PK';
     target.SUPPLY_TYPE = 'CPO+PK';
     target['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(target);
+    supplyClearDualRowPlant_(target);
   }
 
   function supplyConsolidateBatchesByPeriod_(batchList) {
