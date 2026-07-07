@@ -3947,8 +3947,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzZNset5EE9Qncu0r-IrZqMueuBhoLjcAYenLBU9tFKmFfgiKpImOUOCPtLA97IyB-2Hg/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzZNset5EE9Qncu0r-IrZqMueuBhoLjcAYenLBU9tFKmFfgiKpImOUOCPtLA97IyB-2Hg';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzeWaNnJXueI8HM7g2it4_njv2P8dXR9cb7YyIbcsXBBWGLvK40PxO9aPaaanGiYf_MPw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzeWaNnJXueI8HM7g2it4_njv2P8dXR9cb7YyIbcsXBBWGLvK40PxO9aPaaanGiYf_MPw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -5437,6 +5437,19 @@ function initDashboardApp() {
     return '';
   }
 
+  function millGrievanceNoteVal_(row, canonical) {
+    if (!row) return '';
+    const direct = String(row[millGrievanceNoteKey_(canonical)] || '').trim();
+    if (direct) return direct;
+    const flagKeys = MILL_GRIEVANCE_FLAG_ALIASES_[canonical] || [canonical];
+    for (let i = 0; i < flagKeys.length; i++) {
+      const nk = millGrievanceNoteKey_(flagKeys[i]);
+      const v = String(row[nk] || '').trim();
+      if (v) return v;
+    }
+    return '';
+  }
+
   function millNormalizeGrievanceFlagsOnRow_(row) {
     if (!row || typeof row !== 'object') return;
     Object.keys(MILL_GRIEVANCE_FLAG_ALIASES_).forEach(function(canonical) {
@@ -5887,8 +5900,7 @@ function initDashboardApp() {
         if (YESNO_FIELDS.includes(f)) {
           val = millNormalizeYesNoSelectVal_(val) || val;
           if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) {
-            const noteKey = millGrievanceNoteKey_(f);
-            const noteVal = data && data[noteKey] != null ? data[noteKey] : '';
+            const noteVal = data ? millGrievanceNoteVal_(data, f) : '';
             html += buildMillGrievanceSelectWithNote_(f, val, noteVal, isFull, fieldLabel);
           } else {
             html += buildCustomSelect(f, ['Yes','No'], val, true, isFull, fieldLabel);
@@ -8465,6 +8477,15 @@ function initDashboardApp() {
               const raw = millProfileResolveField_(d, key);
               const tier = millHaWidthTier_(raw);
               val = raw ? (String(raw) + ' ha' + (tier ? ' · ' + tier : '')) : '';
+            } else if (sec.title === 'Grievances') {
+              val = millProfileResolveField_(d, key, { yesNo: true });
+              const note = millGrievanceNoteVal_(d, key);
+              if (note) {
+                const yn = millNormalizeYesNoSelectVal_(val);
+                val = escHtml(val || yn || '—')
+                  + '<div class="mp-grievance-note"><span class="mp-grievance-note-label">Note</span> '
+                  + escHtml(note) + '</div>';
+              }
             } else {
               val = millProfileResolveField_(d, key, {
                 yesNo: MILL_PROFILE_YESNO_KEYS_.has(key),
@@ -24506,6 +24527,21 @@ function initDashboardApp() {
     });
   }
 
+  function supplyNormalizeDraftRowForApi_(row) {
+    if (!row) return row;
+    millNormalizeGrievanceFlagsOnRow_(row);
+    MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
+      const gv = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(row, f));
+      if (gv === 'Yes' || gv === 'No') row[f] = gv;
+    });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      const nv = millGrievanceNoteVal_(row, canon);
+      if (nv) row[k] = nv;
+    });
+    return row;
+  }
+
   async function supplyPersistDraftBatch_(batch) {
     if (!batch) throw new Error('Draft batch tidak ditemukan.');
     supplyEnsureDraftIdsOnRows_(batch.rows || [], batch.batch_id);
@@ -24514,7 +24550,7 @@ function initDashboardApp() {
     return apiPost({
       action: 'saveSupplyDraft',
       batch_id: batch.batch_id,
-      rows: batch.rows || [],
+      rows: (batch.rows || []).map(supplyNormalizeDraftRowForApi_),
       meta: supplyBatchMetaForApi_(batch),
     });
   }
@@ -25064,6 +25100,12 @@ function initDashboardApp() {
       const gv = millGrievanceFlagVal_(sourceRow, f);
       if (gv !== '') targetRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
     });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      if (skip.has(k)) return;
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      const nv = millGrievanceNoteVal_(sourceRow, canon);
+      if (nv) targetRow[k] = nv;
+    });
     millNormalizeGrievanceFlagsOnRow_(targetRow);
     targetRow._profile_draft_saved = true;
     targetRow.profile_draft_saved = 'true';
@@ -25153,6 +25195,12 @@ function initDashboardApp() {
       const gv = millGrievanceFlagVal_(profileCopy, f);
       if (gv !== '') draftRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
     });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      if (preserveDraft && millGrievanceNoteVal_(draftRow, canon)) return;
+      const nv = millGrievanceNoteVal_(profileCopy, canon);
+      if (nv) draftRow[k] = nv;
+    });
     if (!preserveDraft || !draftHasVal_('MILL CAPACITY (TON/HOUR)')) {
       const cap = millCapacityFromRow_(profileCopy);
       if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
@@ -25192,6 +25240,11 @@ function initDashboardApp() {
       const gv = millGrievanceFlagVal_(src, f);
       if (gv !== '') prefill[f] = millNormalizeYesNoSelectVal_(gv) || gv;
     });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      const nv = millGrievanceNoteVal_(src, canon);
+      if (nv) prefill[k] = nv;
+    });
     const cap = millCapacityFromRow_(src);
     if (cap) prefill['MILL CAPACITY (TON/HOUR)'] = cap;
     return prefill;
@@ -25229,6 +25282,15 @@ function initDashboardApp() {
       out.SUPPLY_TYPE = st;
     }
     if (!out['PRODUCT SUPPLY']) out['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
+      const gv = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(row, f));
+      if (gv === 'Yes' || gv === 'No') out[f] = gv;
+    });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      const nv = millGrievanceNoteVal_(row, canon);
+      if (nv) out[k] = nv;
+    });
     return out;
   }
 
@@ -25284,6 +25346,11 @@ function initDashboardApp() {
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
       const gv = millGrievanceFlagVal_(src, f);
       if (gv !== '') prefill[f] = millNormalizeYesNoSelectVal_(gv) || gv;
+    });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      const nv = millGrievanceNoteVal_(src, canon);
+      if (nv) prefill[k] = nv;
     });
     const cap = millCapacityFromRow_(src);
     if (cap) prefill['MILL CAPACITY (TON/HOUR)'] = cap;
@@ -25398,8 +25465,9 @@ function initDashboardApp() {
         if (dnorm === 'Yes' || dnorm === 'No') prefill[f] = dnorm;
       });
       MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
-        const nv = draftRow[k];
-        if (nv !== undefined && nv !== null && String(nv).trim() !== '') prefill[k] = nv;
+        const canon = k.replace(/\s+NOTE$/i, '').trim();
+        const nv = millGrievanceNoteVal_(draftRow, canon);
+        if (nv) prefill[k] = nv;
       });
       const cap = millCapacityFromRow_(draftRow);
       if (cap) prefill['MILL CAPACITY (TON/HOUR)'] = cap;
@@ -25455,8 +25523,10 @@ function initDashboardApp() {
         if (pnorm === 'Yes' || pnorm === 'No') prefill[f] = pnorm;
       });
       MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
-        const nv = profileDataRow[k];
-        if (nv !== undefined && nv !== null && String(nv).trim() !== '') prefill[k] = nv;
+        const canon = k.replace(/\s+NOTE$/i, '').trim();
+        const nv = millGrievanceNoteVal_(profileDataRow, canon)
+          || (profileRow ? millGrievanceNoteVal_(profileRow, canon) : '');
+        if (nv) prefill[k] = nv;
       });
     }
     ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'SOURCE TYPE', 'PROVINCE'].forEach(function(k) {
@@ -25836,9 +25906,8 @@ function initDashboardApp() {
       }
     });
     MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
-      if (Object.prototype.hasOwnProperty.call(data, k)) {
-        draftRow[k] = String(data[k] == null ? '' : data[k]).trim();
-      }
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      draftRow[k] = millGrievanceNoteVal_(data, canon);
     });
     if (payload['SOURCE TYPE']) draftRow['SOURCE TYPE'] = payload['SOURCE TYPE'];
     supplyNormalizeHaWidthFieldsOnRow_(draftRow);
@@ -25965,7 +26034,7 @@ function initDashboardApp() {
     draftRow._local_saved_at = Date.now();
     if (!supplyRowIsSubmitted_(draftRow)) draftRow.status = 'draft';
     const siblingRows = supplyPropagateCompanyDraftToSiblings_(draftRow, batch, ctx.rowIdx);
-    const rowsToSave = [draftRow].concat(siblingRows);
+    const rowsToSave = [draftRow].concat(siblingRows).map(supplyNormalizeDraftRowForApi_);
     supplyEnsureDraftIdsOnRows_(rowsToSave, ctx.batchId);
     await apiPost({ action: 'saveSupplyDraft', batch_id: ctx.batchId, rows: rowsToSave, meta: supplyBatchMetaForApi_(batch) });
     supplyCacheSavedDraftRows_(rowsToSave);
@@ -27328,7 +27397,7 @@ function initDashboardApp() {
       btn.textContent = '…'; btn.disabled = true;
       const merged = supplyMergeCpoPkPairsInBatch_(batch);
       renderSupplyDraftList_({ expandBatchIds: [bId] });
-      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: batch.rows, meta: supplyBatchMetaForApi_(batch) })
+      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: (batch.rows || []).map(supplyNormalizeDraftRowForApi_), meta: supplyBatchMetaForApi_(batch) })
         .then(function() {
           btn.disabled = false;
           alert('✓ ' + merged + ' pasangan digabung. Submit baris gabungan akan isi SUPPLY CPO dan SUPPLY PK sekaligus.');

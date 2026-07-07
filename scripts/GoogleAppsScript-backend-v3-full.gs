@@ -4071,7 +4071,7 @@ function getData(sheetKey) {
     : null;
   const dispDataRows = dispRows ? dispRows.slice(headerRowNum) : null;
 
-  return dataRows.map(function(row, i) {
+  var result = dataRows.map(function(row, i) {
     const sourceRow = dispDataRows ? dispDataRows[i] : row;
     const ttpRow = (sheetKey === 'ttp' && ttpStartCol > 0) ? row.slice(ttpStartCol) : row;
     const ttpSourceRow = (sheetKey === 'ttp' && ttpStartCol > 0 && dispDataRows)
@@ -4123,6 +4123,8 @@ function getData(sheetKey) {
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });
+  if (sheetKey === 'mill') millHydrateGrievanceNotesOnObjsGs_(sheet, headers, headerRowNum, result);
+  return result;
 }
 
 function addRow(sheetKey, data, insertAfter) {
@@ -4178,6 +4180,7 @@ function addRow(sheetKey, data, insertAfter) {
       targetRow = millFindNextAppendRow_(sheet, headers);
     }
     safeInsertRowAt_(sheet, headers, newRow, targetRow);
+    millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, data);
     return { success: true, row: targetRow };
   }
   if (sheetKey === 'ttp') {
@@ -4242,6 +4245,7 @@ function updateRow(sheetKey, rowNum, data) {
     return coerceSheetDateValue_(v);
   });
   sheet.getRange(r, 1, 1, updated.length).setValues([updated]);
+  if (sheetKey === 'mill') millApplyGrievanceNotesOnRowGs_(sheet, headers, r, data);
   return { success: true };
 }
 
@@ -5206,8 +5210,13 @@ function saveSupplyDraft_(rows, batchId, meta) {
         }
         if (!row[h]) return 'draft';
       }
-      var v = row[h];
+      var v = supplyRowFieldValueGs_(row, h);
       if (supplyIsHaWidthHeaderGs_(h)) return supplyNormalizeHaWidthValGs_(v);
+      if (supplyIsGrievanceNoteHeaderGs_(h)) {
+        var canon = String(h).replace(/\s+NOTE$/i, '').trim();
+        var fromNote = supplyGrievanceNoteFromRowGs_(row, canon);
+        if (fromNote) return fromNote;
+      }
       return (v !== undefined && v !== null) ? v : '';
     });
     if (existingIdx != null) {
@@ -5761,6 +5770,42 @@ function millResolveGrievanceHeaderColsGs_(headers) {
   return out;
 }
 
+function supplyRowFieldValueGs_(row, header) {
+  if (!row || !header) return '';
+  var h = String(header).trim();
+  var direct = row[h];
+  if (direct !== undefined && direct !== null && String(direct).trim() !== '') return direct;
+  var hUp = h.toUpperCase();
+  var keys = Object.keys(row);
+  var i;
+  for (i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (String(k).trim().toUpperCase() === hUp) {
+      var v = row[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+  }
+  return direct !== undefined && direct !== null ? direct : '';
+}
+
+function supplyIsGrievanceNoteHeaderGs_(header) {
+  return / GRIEVANCE( S)? NOTE$/i.test(String(header || '').trim())
+    || /GRIEVANCES NOTE$/i.test(String(header || '').trim());
+}
+
+function millFindHeaderColGs_(headers, names) {
+  var list = headers || [];
+  var wanted = (names || []).map(function(n) { return String(n || '').trim().toUpperCase(); }).filter(Boolean);
+  var i, j, h;
+  for (j = 0; j < wanted.length; j++) {
+    for (i = 0; i < list.length; i++) {
+      h = String(list[i] || '').trim();
+      if (h.toUpperCase() === wanted[j]) return i + 1;
+    }
+  }
+  return 0;
+}
+
 function supplyGrievanceNoteFromRowGs_(row, canonical) {
   if (!row) return '';
   var direct = String(row[supplyGrievanceNoteKeyGs_(canonical)] || '').trim();
@@ -5776,28 +5821,85 @@ function supplyGrievanceNoteFromRowGs_(row, canonical) {
   return '';
 }
 
+function millHydrateGrievanceNotesOnObjsGs_(sheet, headers, headerRowNum, objs) {
+  if (!sheet || !headers || !objs || !objs.length) return;
+  var specs = [
+    ['DEFORESTATION GRIEVANCES', []],
+    ['BURN AREA GRIEVANCES', []],
+    ['LEGALITY GRIEVANCE', []],
+    ['HUMAN RIGHTS GRIEVANCE', ['HUMAN RIGHT']],
+    ['SAFETY GRIEVANCE', ['SAFETY']],
+    ['SOCIAL GRIEVANCE', ['SOCIAL']],
+    ['ENVIRONMENT GRIEVANCE', ['ENVIRONMENT']],
+  ];
+  var colMap = millResolveGrievanceHeaderColsGs_(headers);
+  var colEntries = [];
+  specs.forEach(function(spec) {
+    var canonical = spec[0];
+    var col = colMap[canonical];
+    if (!col) col = millFindHeaderColGs_(headers, supplyGrievanceNamedKeysGs_(canonical));
+    if (!col) return;
+    colEntries.push({ canonical: canonical, col: col });
+  });
+  if (!colEntries.length) return;
+
+  var rows = objs.map(function(o) { return Number(o && o._row); }).filter(function(r) { return r >= 2; });
+  if (!rows.length) return;
+  var minR = Math.min.apply(null, rows);
+  var maxR = Math.max.apply(null, rows);
+  var rowIndexBySheetRow = {};
+  objs.forEach(function(o, idx) {
+    if (o && o._row) rowIndexBySheetRow[Number(o._row)] = idx;
+  });
+
+  colEntries.forEach(function(entry) {
+    var notes = sheet.getRange(minR, entry.col, maxR - minR + 1, 1).getNotes();
+    var r, idx, note;
+    for (r = minR; r <= maxR; r++) {
+      idx = rowIndexBySheetRow[r];
+      if (idx == null) continue;
+      note = String((notes[r - minR] && notes[r - minR][0]) || '').trim();
+      if (note) objs[idx][supplyGrievanceNoteKeyGs_(entry.canonical)] = note;
+    }
+  });
+}
+
 function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
   if (!sheet || !headers || !targetRow || !row) return;
   var colMap = millResolveGrievanceHeaderColsGs_(headers);
-  var legacyByCanon = {
-    'DEFORESTATION GRIEVANCES': [],
-    'BURN AREA GRIEVANCES': [],
-    'LEGALITY GRIEVANCE': [],
-    'HUMAN RIGHTS GRIEVANCE': ['HUMAN RIGHT'],
-    'SAFETY GRIEVANCE': ['SAFETY'],
-    'SOCIAL GRIEVANCE': ['SOCIAL'],
-    'ENVIRONMENT GRIEVANCE': ['ENVIRONMENT'],
-  };
-  Object.keys(colMap).forEach(function(canonical) {
+  var specs = [
+    ['DEFORESTATION GRIEVANCES', []],
+    ['BURN AREA GRIEVANCES', []],
+    ['LEGALITY GRIEVANCE', []],
+    ['HUMAN RIGHTS GRIEVANCE', ['HUMAN RIGHT']],
+    ['SAFETY GRIEVANCE', ['SAFETY']],
+    ['SOCIAL GRIEVANCE', ['SOCIAL']],
+    ['ENVIRONMENT GRIEVANCE', ['ENVIRONMENT']],
+  ];
+  specs.forEach(function(spec) {
+    var canonical = spec[0];
+    var legacy = spec[1];
     var col = colMap[canonical];
+    if (!col) col = millFindHeaderColGs_(headers, supplyGrievanceNamedKeysGs_(canonical));
     if (!col) return;
-    var legacy = legacyByCanon[canonical] || [];
     var yn = supplyGrievanceValFromObjsGs_([row], canonical, legacy);
+    if (!yn) {
+      try {
+        yn = supplyNormalizeGrievanceYesNoGs_(sheet.getRange(targetRow, col).getValue());
+      } catch (e) { /* ignore */ }
+    }
     var note = supplyGrievanceNoteFromRowGs_(row, canonical);
+    var noteCol = millFindHeaderColGs_(headers, [supplyGrievanceNoteKeyGs_(canonical)]);
     if (yn === 'Yes' && note) {
-      sheet.getRange(targetRow, col).setNote(note);
+      try { sheet.getRange(targetRow, col).setNote(note); } catch (e) { /* ignore */ }
+      if (noteCol) {
+        try { sheet.getRange(targetRow, noteCol).setValue(note); } catch (e) { /* ignore */ }
+      }
     } else if (yn === 'No' || (yn === 'Yes' && !note)) {
-      sheet.getRange(targetRow, col).setNote('');
+      try { sheet.getRange(targetRow, col).setNote(''); } catch (e) { /* ignore */ }
+      if (noteCol) {
+        try { sheet.getRange(targetRow, noteCol).clearContent(); } catch (e) { /* ignore */ }
+      }
     }
   });
   try { SpreadsheetApp.flush(); } catch (e) { /* ignore */ }
