@@ -19770,6 +19770,22 @@ function initDashboardApp() {
       return String(val || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
+    /**
+     * Does the Mill Onboarding row declare this facility in the given column?
+     * Keeps Facility Performance faithful to Mill Onboarding: a mill only belongs
+     * to a CPO/PK facility for a period if its FACILITY NAME CPO / FACILITY NAME PK
+     * for that period actually lists the facility. Prevents stale Supplied CPO/PK
+     * rows from re-assigning a mill to a facility it no longer supplies.
+     */
+    function pfMillRowDeclaresFacility_(millRow, facilityKey, column) {
+      if (!millRow) return false;
+      const want = pfNormalizeFacilityKey_(facilityKey);
+      if (!want) return false;
+      return pfSplitFacility_(millRow[column]).some(function(f) {
+        return pfNormalizeFacilityKey_(f) === want;
+      });
+    }
+
     function pfFindSuppliedPlantEntry_(lookup, facilityKey) {
       if (!lookup || !facilityKey) return null;
       if (lookup[facilityKey]) return { key: facilityKey, entry: lookup[facilityKey] };
@@ -19954,6 +19970,11 @@ function initDashboardApp() {
             return;
           }
           if (millHit) {
+            // Respect Mill Onboarding: only attach an onboarded mill to this CPO
+            // facility if its FACILITY NAME CPO for the period actually lists it.
+            if (!pfMillRowDeclaresFacility_(millHit, group.facilityKey, 'FACILITY NAME CPO')) {
+              return;
+            }
             group.companies.push(pfBuildCpoCompanyFromMillRow_(millHit, ttpLookup, ttpCertLookup));
             return;
           }
@@ -20026,6 +20047,11 @@ function initDashboardApp() {
             return;
           }
           if (millHit) {
+            // Respect Mill Onboarding: only attach an onboarded mill to this PK
+            // facility if its FACILITY NAME PK for the period actually lists it.
+            if (!pfMillRowDeclaresFacility_(millHit, group.facilityKey, 'FACILITY NAME PK')) {
+              return;
+            }
             group.companies.push(pfBuildPkCompanyFromMillRow_(millHit, ttpPkLookup, ttpCertLookup));
             return;
           }
