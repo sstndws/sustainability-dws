@@ -6512,7 +6512,7 @@ function initDashboardApp() {
   function millRowPeriodSortKey_(r) {
     const y = parseMillYearSort(millYearVal(r));
     if (!y) return 0;
-    const m = parseMillMonthSort(millMonthVal(r));
+    const m = pickMillMonthDirect_(r) || parseMillMonthSort(millMonthVal(r));
     return y * 100 + (m || 0);
   }
 
@@ -24498,16 +24498,22 @@ function initDashboardApp() {
   }
 
   /** Read Mill Onboarding profile for a draft row without mutating the draft. */
+  /** Profil referensi task list — selalu baris period terbaru (COMPANY NAME sama). */
   function supplyLookupMillProfileForDraft_(draftRow, batch) {
     if (!draftRow) return null;
+    const company = String(draftRow['COMPANY NAME'] || '').trim();
+    const latest = supplyPickLatestMillProfileForCompany_(company);
+    if (latest) {
+      if (latest._row) {
+        draftRow.target_mill_row = latest._row;
+        draftRow._mill_row = latest._row;
+      }
+      return latest;
+    }
     if (draftRow._mill_row != null) {
       const cached = supplyGetMillProfileByRow_(draftRow._mill_row);
       if (cached) return cached;
     }
-    const byPeriod = supplyPickMillProfileForCompanyPeriod_(draftRow['COMPANY NAME'], batch, draftRow);
-    if (byPeriod) return byPeriod;
-    const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME']);
-    if (latest) return latest;
     const kind2 = supplyResolveKindFromDraft_(draftRow, batch);
     const facField = kind2 === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
     const found = supplyFindMillProfileMatch_({
@@ -24967,40 +24973,6 @@ function initDashboardApp() {
     return best;
   }
 
-  /** Profil mill untuk company + periode batch/draft (hindari ambil bulan terbaru saja). */
-  function supplyPickMillProfileForCompanyPeriod_(company, batch, draftRow) {
-    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
-    const want = String(company || '').trim();
-    if (!want) return null;
-    let wantMonth = '';
-    let wantYear = '';
-    if (batch) {
-      wantMonth = String(batch.month || batch.quarter || '').trim();
-      wantYear = String(batch.year || '').trim();
-    }
-    if (draftRow) {
-      if (!wantMonth) wantMonth = String(draftRow.month || draftRow.MONTH || draftRow.quarter || '').trim();
-      if (!wantYear) wantYear = String(draftRow.year || draftRow.YEAR || '').trim();
-    }
-    const wantMonthNum = parseMillMonthSort(wantMonth);
-    const wantYearNum = parseMillYearSort(wantYear);
-    let exact = null;
-    let best = null;
-    let bestSk = 0;
-    src.forEach(function(d) {
-      if (!supplyCompanyMatchesProfile_(want, d)) return;
-      const sk = millRowPeriodSortKey_(d);
-      if (wantMonthNum && wantYearNum && sk === wantYearNum * 100 + wantMonthNum) {
-        exact = d;
-      }
-      if (!best || sk > bestSk || (sk === bestSk && (d._row || 0) > (best._row || 0))) {
-        best = d;
-        bestSk = sk;
-      }
-    });
-    return exact || best;
-  }
-
   function supplyFindMillReferenceProfile_(company) {
     return supplyPickLatestMillProfileForCompany_(company);
   }
@@ -25052,10 +25024,11 @@ function initDashboardApp() {
     draftRow.match_status = found.status;
     draftRow['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(draftRow);
     if (found.status === 'matched' && found.row) {
-      draftRow.target_mill_row = found.row._row;
-      draftRow._mill_row = found.row._row;
+      const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME']) || found.row;
+      draftRow.target_mill_row = latest._row;
+      draftRow._mill_row = latest._row;
       draftRow._profile_group_hint = '';
-      supplyCopyProfileIntoDraft_(draftRow, found.row, batch || { supply_type: kind }, opts);
+      supplyCopyProfileIntoDraft_(draftRow, latest, batch || { supply_type: kind }, opts);
       supplyApplyBatchPeriodToPayload_(draftRow, batch, draftRow);
       supplyApplyPlantToDraftFacility_(draftRow, draftRow.PLANT, draftRow.supply_type || kind);
       supplyNormalizeDraftQtyFields_(draftRow);
@@ -25094,6 +25067,16 @@ function initDashboardApp() {
       'FACILITY NAME CPO', 'FACILITY NAME PK',
       'created_at', 'updated_at', 'created_by', 'profile_draft_saved',
     ]);
+  }
+
+  /** Sinkronkan pointer profil draft ke baris Mill Onboarding terbaru (per company). */
+  function supplyRefreshDraftProfilePointers_(batch) {
+    if (!batch || !batch.rows || !batch.rows.length) return;
+    if ((!allDataRaw || !allDataRaw.length) && (!allData || !allData.length)) return;
+    batch.rows.forEach(function(row) {
+      if (supplyNormMatchStatus_(row) !== 'matched') return;
+      supplyLookupMillProfileForDraft_(row, batch);
+    });
   }
 
   function supplyFindBestCompanyDraftSource_(batch, draftRow) {
@@ -25453,7 +25436,7 @@ function initDashboardApp() {
   function supplyMergeProfilePrefillIntoDraftRow_(draftRow, batch) {
     if (!draftRow || draftRow.match_status !== 'matched') return;
     if (supplyDraftSavedFlag_(draftRow)) return;
-    const profileRow = supplyPickMillProfileForCompanyPeriod_(draftRow['COMPANY NAME'], batch, draftRow)
+    const profileRow = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'])
       || supplyLookupMillProfileForDraft_(draftRow, batch);
     const merged = supplyProfileIdentityPrefillFromRow_(profileRow);
     const skip = supplyDraftProfileSkipFields_(draftRow, batch);
@@ -27099,6 +27082,9 @@ function initDashboardApp() {
     });
 
     const batches = window._supplyDraftBatches || [];
+    if ((allDataRaw && allDataRaw.length) || (allData && allData.length)) {
+      batches.forEach(supplyRefreshDraftProfilePointers_);
+    }
     const loadErr = window._supplyDraftLoadError || '';
     if (!batches.length) {
       container.innerHTML = loadErr
@@ -27709,6 +27695,7 @@ function initDashboardApp() {
           b.supply_type = batchType;
           supplyNormalizeBatchSubmittedState_(b);
           supplySyncCompanyDraftAcrossBatch_(b);
+          supplyRefreshDraftProfilePointers_(b);
           return b;
         }));
         if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
