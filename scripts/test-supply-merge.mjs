@@ -67,5 +67,56 @@ assert(supplyNormalizePlantValue_('KCP A, KCP B') === 'KCP A, KCP B', 'multi KCP
 assert(supplyNormalizePlantValue_('KCP A\nKCP B') === 'KCP A, KCP B', 'newline KCPs normalize to one string');
 assert(supplyNormalizePlantValue_('KCP A / KCP B') === 'KCP A, KCP B', 'slash KCPs normalize to one string');
 
+// CPO+PK dual row: one PLANT must not fill both facility columns
+function supplyRowIsDualSupplyKind_(kind) {
+  const k = String(kind || '').trim().toUpperCase();
+  return k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
+}
+function supplyApplyPlantToDraftFacility_(draft, plant, kind) {
+  if (!draft) return;
+  const k = String(kind || draft.supply_type || draft.SUPPLY_TYPE || 'CPO').toUpperCase();
+  const p = supplyNormalizePlantValue_(plant != null ? plant : draft.PLANT || '');
+  if (!p) return;
+  if (supplyRowIsDualSupplyKind_(k)) return;
+  draft.PLANT = p;
+  const facField = (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+  draft[facField] = p;
+}
+function supplyClearDualRowPlant_(row) {
+  if (!row || String(row.supply_type || '').toUpperCase() !== 'CPO+PK') return;
+  delete row.PLANT;
+}
+function supplyMergeDraftRows_(target, source) {
+  if (!target || !source) return;
+  if (source['FACILITY NAME CPO']) target['FACILITY NAME CPO'] = source['FACILITY NAME CPO'];
+  if (source['FACILITY NAME PK']) target['FACILITY NAME PK'] = source['FACILITY NAME PK'];
+  target.supply_type = 'CPO+PK';
+  target.SUPPLY_TYPE = 'CPO+PK';
+  supplyClearDualRowPlant_(target);
+}
+
+const cpoRow = {
+  supply_type: 'CPO',
+  'FACILITY NAME CPO': 'EUP - BTG',
+  PLANT: 'EUP - BTG',
+};
+supplyApplyPlantToDraftFacility_(cpoRow, 'KCP Bontang', 'PK');
+assert(cpoRow['FACILITY NAME CPO'] === 'EUP - BTG', 'CPO facility kept after PK plant apply');
+assert(cpoRow['FACILITY NAME PK'] === 'KCP Bontang', 'PK facility set from PK import');
+cpoRow.supply_type = 'CPO+PK';
+cpoRow.SUPPLY_TYPE = 'CPO+PK';
+supplyClearDualRowPlant_(cpoRow);
+supplyApplyPlantToDraftFacility_(cpoRow, 'KCP Bontang', 'CPO+PK');
+assert(cpoRow['FACILITY NAME CPO'] === 'EUP - BTG', 'dual row: CPO facility not overwritten by PLANT');
+assert(cpoRow['FACILITY NAME PK'] === 'KCP Bontang', 'dual row: PK facility kept');
+assert(cpoRow.PLANT === undefined, 'dual row: legacy PLANT cleared');
+
+const mergeTarget = { supply_type: 'CPO', 'FACILITY NAME CPO': 'EUP - BTG', PLANT: 'EUP - BTG' };
+const mergeSource = { supply_type: 'PK', 'FACILITY NAME PK': 'KCP Bontang', PLANT: 'KCP Bontang' };
+supplyMergeDraftRows_(mergeTarget, mergeSource);
+assert(mergeTarget['FACILITY NAME CPO'] === 'EUP - BTG', 'merge keeps CPO facility');
+assert(mergeTarget['FACILITY NAME PK'] === 'KCP Bontang', 'merge copies PK facility');
+assert(mergeTarget.PLANT === undefined, 'merge clears single PLANT on dual row');
+
 console.log('Supply separate-row tests:', passed, 'passed,', failed, 'failed');
 process.exit(failed ? 1 : 0);
