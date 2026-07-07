@@ -5696,7 +5696,7 @@ function initDashboardApp() {
   }
 
   const FIELD_SECTIONS = [
-    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','PROVINCE','ADDRESS','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
+    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
     { title: 'Legalitas', fields: ['HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN'] },
     { title: 'Spatial & Peat', fields: ['DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH','MILL LOC'] },
     { title: 'Grievances', fields: MILL_GRIEVANCE_FLAG_FIELDS_.slice() },
