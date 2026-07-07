@@ -25069,13 +25069,39 @@ function initDashboardApp() {
     ]);
   }
 
+  /** Salin flag + note grievance dari profil Mill Onboarding ke baris draft. */
+  function supplyCopyGrievanceFromProfile_(draftRow, profile, opts) {
+    opts = opts || {};
+    if (!draftRow || !profile) return;
+    const preserveDraft = !!opts.preserveDraft;
+    const profileCopy = Object.assign({}, profile);
+    millNormalizeGrievanceFlagsOnRow_(profileCopy);
+    MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
+      if (preserveDraft) {
+        const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
+        if (dnorm === 'Yes' || dnorm === 'No') return;
+      }
+      const gv = millGrievanceFlagVal_(profileCopy, f);
+      if (gv !== '') draftRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
+    });
+    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
+      const canon = k.replace(/\s+NOTE$/i, '').trim();
+      if (preserveDraft && millGrievanceNoteVal_(draftRow, canon)) return;
+      const nv = millGrievanceNoteVal_(profileCopy, canon);
+      if (nv) draftRow[k] = nv;
+    });
+  }
+
   /** Sinkronkan pointer profil draft ke baris Mill Onboarding terbaru (per company). */
   function supplyRefreshDraftProfilePointers_(batch) {
     if (!batch || !batch.rows || !batch.rows.length) return;
     if ((!allDataRaw || !allDataRaw.length) && (!allData || !allData.length)) return;
     batch.rows.forEach(function(row) {
       if (supplyNormMatchStatus_(row) !== 'matched') return;
-      supplyLookupMillProfileForDraft_(row, batch);
+      const profile = supplyLookupMillProfileForDraft_(row, batch);
+      if (!profile) return;
+      const preserve = supplyDraftSavedFlag_(row) || supplyRowIsSubmitted_(row);
+      supplyCopyGrievanceFromProfile_(row, profile, { preserveDraft: preserve });
     });
   }
 
@@ -25206,20 +25232,7 @@ function initDashboardApp() {
       const w = supplyHaWidthFromProfile_(profileCopy, f);
       if (w !== '') draftRow[f] = w;
     });
-    MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
-      if (preserveDraft) {
-        const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
-        if (dnorm === 'Yes' || dnorm === 'No') return;
-      }
-      const gv = millGrievanceFlagVal_(profileCopy, f);
-      if (gv !== '') draftRow[f] = millNormalizeYesNoSelectVal_(gv) || gv;
-    });
-    MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) {
-      const canon = k.replace(/\s+NOTE$/i, '').trim();
-      if (preserveDraft && millGrievanceNoteVal_(draftRow, canon)) return;
-      const nv = millGrievanceNoteVal_(profileCopy, canon);
-      if (nv) draftRow[k] = nv;
-    });
+    supplyCopyGrievanceFromProfile_(draftRow, profileCopy, { preserveDraft: preserveDraft });
     if (!preserveDraft || !draftHasVal_('MILL CAPACITY (TON/HOUR)')) {
       const cap = millCapacityFromRow_(profileCopy);
       if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
@@ -25455,6 +25468,7 @@ function initDashboardApp() {
       draftRow.target_mill_row = profileRow._row;
       draftRow._mill_row = profileRow._row;
     }
+    supplyCopyGrievanceFromProfile_(draftRow, profileRow, { preserveDraft: false });
     millNormalizeGrievanceFlagsOnRow_(draftRow);
   }
 
@@ -26838,7 +26852,7 @@ function initDashboardApp() {
     function buildDraftFromExcel_(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
       const found = supplyFindMillProfileMatch_(r, kind);
-      const profile = found.row;
+      const profile = supplyPickLatestMillProfileForCompany_(names.company) || found.row;
 
       const draft = {
         draft_id:       batchId + '_' + Date.now() + '_' + idx,
