@@ -24504,6 +24504,8 @@ function initDashboardApp() {
       const cached = supplyGetMillProfileByRow_(draftRow._mill_row);
       if (cached) return cached;
     }
+    const byPeriod = supplyPickMillProfileForCompanyPeriod_(draftRow['COMPANY NAME'], batch, draftRow);
+    if (byPeriod) return byPeriod;
     const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME']);
     if (latest) return latest;
     const kind2 = supplyResolveKindFromDraft_(draftRow, batch);
@@ -24965,6 +24967,40 @@ function initDashboardApp() {
     return best;
   }
 
+  /** Profil mill untuk company + periode batch/draft (hindari ambil bulan terbaru saja). */
+  function supplyPickMillProfileForCompanyPeriod_(company, batch, draftRow) {
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    const want = String(company || '').trim();
+    if (!want) return null;
+    let wantMonth = '';
+    let wantYear = '';
+    if (batch) {
+      wantMonth = String(batch.month || batch.quarter || '').trim();
+      wantYear = String(batch.year || '').trim();
+    }
+    if (draftRow) {
+      if (!wantMonth) wantMonth = String(draftRow.month || draftRow.MONTH || draftRow.quarter || '').trim();
+      if (!wantYear) wantYear = String(draftRow.year || draftRow.YEAR || '').trim();
+    }
+    const wantMonthNum = parseMillMonthSort(wantMonth);
+    const wantYearNum = parseMillYearSort(wantYear);
+    let exact = null;
+    let best = null;
+    let bestSk = 0;
+    src.forEach(function(d) {
+      if (!supplyCompanyMatchesProfile_(want, d)) return;
+      const sk = millRowPeriodSortKey_(d);
+      if (wantMonthNum && wantYearNum && sk === wantYearNum * 100 + wantMonthNum) {
+        exact = d;
+      }
+      if (!best || sk > bestSk || (sk === bestSk && (d._row || 0) > (best._row || 0))) {
+        best = d;
+        bestSk = sk;
+      }
+    });
+    return exact || best;
+  }
+
   function supplyFindMillReferenceProfile_(company) {
     return supplyPickLatestMillProfileForCompany_(company);
   }
@@ -25417,7 +25453,7 @@ function initDashboardApp() {
   function supplyMergeProfilePrefillIntoDraftRow_(draftRow, batch) {
     if (!draftRow || draftRow.match_status !== 'matched') return;
     if (supplyDraftSavedFlag_(draftRow)) return;
-    const profileRow = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'])
+    const profileRow = supplyPickMillProfileForCompanyPeriod_(draftRow['COMPANY NAME'], batch, draftRow)
       || supplyLookupMillProfileForDraft_(draftRow, batch);
     const merged = supplyProfileIdentityPrefillFromRow_(profileRow);
     const skip = supplyDraftProfileSkipFields_(draftRow, batch);
@@ -25590,12 +25626,9 @@ function initDashboardApp() {
   function supplyHydrateRowForSubmit_(row, batch) {
     if (!row || supplyRowIsSubmitted_(row)) return;
     supplyEnsureDraftPeriodOnRows_([row], batch);
-    const profile = supplyLookupMillProfileForDraft_(row, batch);
 
     if (!supplyDraftSavedFlag_(row) && supplyNormMatchStatus_(row) === 'matched') {
       supplyMergeProfilePrefillIntoDraftRow_(row, batch);
-    } else if (profile && supplyDraftSavedFlag_(row)) {
-      supplyCopyProfileIntoDraft_(row, profile, batch, { forceProfileCopy: false });
     }
 
     const prefill = supplyBuildMillPrefillFromDraft_(row, batch, { rematch: false });

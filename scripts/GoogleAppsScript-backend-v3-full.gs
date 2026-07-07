@@ -5882,8 +5882,11 @@ function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
     var col = colMap[canonical];
     if (!col) col = millFindHeaderColGs_(headers, supplyGrievanceNamedKeysGs_(canonical));
     if (!col) return;
-    var yn = supplyGrievanceValFromObjsGs_([row], canonical, legacy);
-    if (!yn) {
+    var draftYn = supplyGrievanceValFromObjsGs_([row], canonical, legacy);
+    var yn = draftYn;
+    if (draftYn === 'Yes' || draftYn === 'No') {
+      try { sheet.getRange(targetRow, col).setValue(draftYn); } catch (e) { /* ignore */ }
+    } else {
       try {
         yn = supplyNormalizeGrievanceYesNoGs_(sheet.getRange(targetRow, col).getValue());
       } catch (e) { /* ignore */ }
@@ -6089,19 +6092,58 @@ function findMillRowForSupplySubmit_(millData, millHeaders, row) {
   return plan.insertAfter || 0;
 }
 
+function supplyNormalizeMonthTokGs_(raw) {
+  var s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  var n = parseInt(s, 10);
+  if (!isNaN(n) && n >= 1 && n <= 12) return String(n);
+  var low = s.toLowerCase().replace(/\s+/g, ' ');
+  var names = [
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+    'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+    'juli', 'agustus', 'september', 'oktober', 'november', 'desember',
+  ];
+  var i;
+  for (i = 0; i < names.length; i++) {
+    if (low === names[i] || low.indexOf(names[i].slice(0, 3)) === 0) return String((i % 12) + 1);
+  }
+  var qm = low.match(/^q\s*([1-4])$/);
+  if (qm) return String((parseInt(qm[1], 10) - 1) * 3 + 1);
+  return low;
+}
+
 function millSupplyRowFingerprintGs_(obj) {
   if (!obj) return '';
   var per = supplyReadPeriodFromRowGs_(obj);
   return [
     supplyNormKey_(obj['COMPANY NAME']),
     supplyNormKey_(obj['MILL NAME']),
-    String(per.month || '').trim(),
+    supplyNormalizeMonthTokGs_(per.month),
     String(per.year || '').trim(),
     supplyNormKey_(String(obj['SUPPLY CPO'] == null ? '' : obj['SUPPLY CPO'])),
     supplyNormKey_(String(obj['SUPPLY PK'] == null ? '' : obj['SUPPLY PK'])),
     supplyNormKey_(obj['FACILITY NAME CPO']),
     supplyNormKey_(obj['FACILITY NAME PK']),
   ].join('\u0001');
+}
+
+/** Baris mill onboarding untuk company + bulan + tahun (tanpa fingerprint supply). */
+function millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row) {
+  var co = supplyNormKey_(row['COMPANY NAME']);
+  var per = supplyReadPeriodFromRowGs_(row);
+  var wantMonth = supplyNormalizeMonthTokGs_(per.month);
+  var wantYear = String(per.year || '').trim();
+  if (!co || !wantMonth || !wantYear) return 0;
+  for (var r = 1; r < millData.length; r++) {
+    var obj = millRowToObjectGs_(millData[r], millHeaders);
+    if (supplyNormKey_(obj['COMPANY NAME']) !== co) continue;
+    var rp = supplyReadPeriodFromRowGs_(obj);
+    if (supplyNormalizeMonthTokGs_(rp.month) !== wantMonth) continue;
+    if (String(rp.year || '').trim() !== wantYear) continue;
+    return r + 1;
+  }
+  return 0;
 }
 
 /** Cegah baris supply identik (company + mill + period + qty + facility) masuk dua kali. */
@@ -6229,13 +6271,22 @@ function submitSupplyDraft_(batchId, rows, meta) {
         throw new Error('profil mill tidak ditemukan — match dulu');
       }
       var dupSheetRow = millFindDuplicateSupplyRowGs_(millData, millHeaders, row);
-      var targetSheetRow = dupSheetRow;
-      if (!dupSheetRow) {
+      var periodSheetRow = millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row);
+      var targetSheetRow = dupSheetRow || periodSheetRow;
+      if (!targetSheetRow) {
         var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
         if (!newSheetRow) {
           throw new Error('tidak ada data untuk ditulis');
         }
         targetSheetRow = newSheetRow;
+      } else if (!dupSheetRow) {
+        var identityPatch = mergeReferenceIdentityIntoPatchGs_(
+          Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
+          findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex)
+        );
+        resolveGrievanceKeysOnPatchGs_(identityPatch, millHeaders);
+        identityPatch = millStripFormulaFromPatchGs_(identityPatch);
+        millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetSheetRow, identityPatch);
       }
       if (targetSheetRow) {
         millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetSheetRow, row);
