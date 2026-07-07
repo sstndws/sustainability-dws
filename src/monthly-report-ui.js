@@ -75,9 +75,10 @@ function mrdDataPeriodShortLabel_(dataPeriod) {
   return 'all periods';
 }
 
-/** Facility Performance matches PF panel filters (reporting month, no −1 lag). */
+/** Facility Performance follows the same −1 month data period as the other sections
+ * (Supplied CPO/PK data lags one month behind the reporting month). */
 function getFacilityPeriod_() {
-  return getReportPeriod_();
+  return getDataPeriod_();
 }
 
 function mrdFacilityPeriodKey_(facilityPeriod) {
