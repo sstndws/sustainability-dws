@@ -116,7 +116,7 @@
       <div class="supply-section__head">
         <div class="supply-section__intro">
           <h4 class="supply-section__title">Import Supply Data</h4>
-          <p class="supply-section__desc">Upload Excel CPO atau PK per periode. Submit menambah <strong>baris baru di paling bawah</strong> Mill Onboarding — data lama (mis. Dec 2025) <strong>tidak diubah</strong>. Hanya kolom non-rumus yang diisi; kolom score / % / status tetap dari rumus sheet.</p>
+          <p class="supply-section__desc">Upload Excel Main Product (CPO/PK) atau Waste Product (POME ISCC/POME INS/SHELL GGL) per periode. Submit menambah <strong>baris baru di paling bawah</strong> sheet target (Mill Onboarding / Mill Onboarding Waste). Hanya kolom non-rumus yang diisi; kolom score / % / status tetap dari rumus sheet.</p>
         </div>
         <button type="button" class="btn-sm btn-filled supply-section__cta" id="btn-supply-import-open">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -129,7 +129,7 @@
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
         <p class="supply-empty__title">Belum ada draft import</p>
-        <p class="supply-empty__steps">1. Pilih jenis supply (CPO / PK)<br>2. Tentukan month &amp; year<br>3. Upload Excel → review di Task List</p>
+        <p class="supply-empty__steps">1. Pilih jenis product (Main / Waste)<br>2. Tentukan month &amp; year<br>3. Upload Excel → review di Task List</p>
         <button type="button" class="supply-btn supply-btn--primary supply-empty__btn" data-action="open-supply-import">Mulai Import</button>
       </div>
     </section>
@@ -141,7 +141,7 @@
       <header class="supply-import-modal__header">
         <div>
           <h2 id="supply-import-modal-title" class="supply-import-modal__title">Import Supply Data</h2>
-          <p class="supply-import-modal__subtitle">Upload per jenis supply. Month &amp; year yang sama akan digabung per <strong>Company Name</strong>.</p>
+          <p class="supply-import-modal__subtitle">Upload per jenis product. Month &amp; year yang sama akan diproses per <strong>Company Name</strong>.</p>
         </div>
         <button type="button" id="btn-supply-import-close" class="supply-import-modal__close" aria-label="Tutup">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -153,14 +153,14 @@
           <svg class="supply-import-callout__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <div>
             <strong>Format Excel (kolom A–F):</strong>
-            <strong>PLANT</strong> → Facility CPO/PK (sesuai jenis import); boleh lebih dari satu KCP dalam satu sel (mis. <strong>KCP A, KCP B</strong>) — tetap <strong>satu baris</strong> · CATEGORY · COMPANY GROUP NAME · COMPANY NAME · MILL NAME · <strong>QTY SUPPLY</strong>
+            <strong>PLANT</strong> → Facility sesuai jenis import (CPO/PK/ISCC/INS/SHELL); CATEGORY · COMPANY GROUP NAME · COMPANY NAME · MILL NAME · <strong>QTY SUPPLY (TON)</strong>
             <br>
-            <strong>Tip:</strong> Import CPO dulu, lalu PK dengan month &amp; year yang sama. Submit = baris baru di bawah list; profil lama tidak ditimpa. Kolom rumus (score, %, status) jangan diisi manual.
+            <strong>Tip:</strong> Main Product submit ke Mill Onboarding, Waste Product submit ke Mill Onboarding Waste. Kolom rumus (score, %, status) jangan diisi manual.
           </div>
         </div>
 
         <div class="supply-import-step">
-          <div class="supply-import-step__label"><span class="supply-import-step__num">1</span> Jenis Supply</div>
+          <div class="supply-import-step__label"><span class="supply-import-step__num">1</span> Jenis Product</div>
           <div id="supply-import-type-wrap" class="supply-type-seg" role="radiogroup" aria-label="Jenis supply">
             <label class="supply-type-seg__opt supply-type-seg__opt--cpo supply-type-seg__opt--active">
               <input type="radio" name="supply-import-type" value="CPO" checked>
@@ -173,6 +173,24 @@
               <span class="supply-type-seg__tag supply-type-seg__tag--pk">PK</span>
               <span class="supply-type-seg__name">Palm Kernel</span>
               <small>% Supply PK</small>
+            </label>
+            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
+              <input type="radio" name="supply-import-type" value="POME_ISCC">
+              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">POME ISCC</span>
+              <span class="supply-type-seg__name">Waste Product</span>
+              <small>% Supply ISCC</small>
+            </label>
+            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
+              <input type="radio" name="supply-import-type" value="POME_INS">
+              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">POME INS</span>
+              <span class="supply-type-seg__name">Waste Product</span>
+              <small>% Supply INS</small>
+            </label>
+            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
+              <input type="radio" name="supply-import-type" value="SHELL_GGL">
+              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">SHELL GGL</span>
+              <span class="supply-type-seg__name">Waste Product</span>
+              <small>% Supply SHELL</small>
             </label>
           </div>
         </div>

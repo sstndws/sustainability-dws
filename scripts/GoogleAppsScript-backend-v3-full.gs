@@ -43,6 +43,7 @@
 
 const SHEETS = {
   mill      : 'Mill Onboarding Profile',
+  millWaste : 'Mill Onboarding Waste',
   ttp       : 'Monitoring TTP/TTM',
   grievance : 'Grievance Monitoring',
   sdd       : 'SDD Data',
@@ -165,8 +166,14 @@ const SUPPLY_DRAFT_HEADERS = [
   'SUPPLY_QTY',
   'SUPPLY CPO',
   'SUPPLY PK',
+  'SUPPLY ISCC',
+  'SUPPLY INS',
+  'SUPPLY SHELL',
   'PERCENTAGE SUPPLY CPO',
   'PERCENTAGE SUPPLY PK',
+  'PERCENTAGE SUPPLY ISCC',
+  'PERCENTAGE SUPPLY INS',
+  'PERCENTAGE SUPPLY SHELL',
   // Mirror of MILL_FIELDS subset that may be pre-filled or user-edited:
   'MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'GROUP NAME',
   'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE',
@@ -182,7 +189,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'CERTIFICATION', 'TOTAL CERTIFICATION', 'TOTAL SCORE',
   'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
   'RECOMMENDATION LEVEL', 'PRIORITY ENGAGEMENT', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
-  'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK',
+  'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
   'PLANT', 'PRODUCT SUPPLY',
 ];
 
@@ -958,6 +965,11 @@ var MILL_FORMULA_HEADERS_ = {
   'STATUS SUPPLY CPO': true,
   'PK': true,
   'STATUS SUPPLY PK': true,
+  'LEGALITY SCORE': true,
+  'PERCENTAGE SUPPLY ISCC': true,
+  'PERCENTAGE SUPPLY INS': true,
+  'PERCENTAGE SUPPLY SHELL': true,
+  'DECLARATION MONITORING': true,
 };
 
 function millIsFormulaColumnGs_(header) {
@@ -5331,12 +5343,27 @@ function millRowSupplyKindGs_(obj) {
 }
 
 function supplySubmitKindFromDraftGs_(row) {
-  var st = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').trim().toUpperCase();
+  var stRaw = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
+  if (!stRaw) {
+    if (row['SUPPLY ISCC'] !== undefined && row['SUPPLY ISCC'] !== null && String(row['SUPPLY ISCC']).trim() !== '') stRaw = 'POME_ISCC';
+    else if (row['SUPPLY INS'] !== undefined && row['SUPPLY INS'] !== null && String(row['SUPPLY INS']).trim() !== '') stRaw = 'POME_INS';
+    else if (row['SUPPLY SHELL'] !== undefined && row['SUPPLY SHELL'] !== null && String(row['SUPPLY SHELL']).trim() !== '') stRaw = 'SHELL_GGL';
+    else stRaw = 'CPO';
+  }
+  var st = stRaw;
+  if (st === 'POME_ISCC') return 'POME_ISCC';
+  if (st === 'POME_INS') return 'POME_INS';
+  if (st === 'SHELL_GGL') return 'SHELL_GGL';
   if (st === 'PK') return 'PK';
   if (st === 'CPO') return 'CPO';
   if (st === 'CPO+PK' || st === 'BOTH') return 'BOTH';
   if (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0) return 'BOTH';
   return 'CPO';
+}
+
+function supplyIsWasteSubmitKind_(kind) {
+  var k = String(kind || '').trim().toUpperCase();
+  return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL';
 }
 
 function findMillRowsByCompanyGs_(millData, millHeaders, companyName) {
@@ -5720,6 +5747,18 @@ function supplyFacilityFromDraftGs_(row, field, submitKind) {
   var plant = supplyNormalizePlantValueGs_(row.PLANT || '');
   var src = direct || plant;
   if (!src) return '';
+  if (field === 'FACILITY NAME ISCC') {
+    if (submitKind === 'POME_ISCC') return src;
+    return '';
+  }
+  if (field === 'FACILITY NAME INS') {
+    if (submitKind === 'POME_INS') return src;
+    return '';
+  }
+  if (field === 'FACILITY NAME SHELL') {
+    if (submitKind === 'SHELL_GGL') return src;
+    return '';
+  }
   if (field === 'FACILITY NAME PK') {
     if (submitKind === 'PK') return src;
     if (submitKind === 'BOTH') {
@@ -6091,6 +6130,7 @@ function supplyBatchPeriodFromDraftDataGs_(draftData, draftHeaders, batchId) {
 function buildSupplyPatchFromDraftGs_(row) {
   var submitKind = supplySubmitKindFromDraftGs_(row);
   var patch = {};
+  var qtyWaste;
 
   if (submitKind === 'CPO' || submitKind === 'BOTH') {
     var facCpo = supplyFacilityFromDraftGs_(row, 'FACILITY NAME CPO', 'CPO');
@@ -6113,6 +6153,27 @@ function buildSupplyPatchFromDraftGs_(row) {
     if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '') {
       patch['SUPPLY PK'] = qtyPk;
     }
+  }
+  if (submitKind === 'POME_ISCC') {
+    var facIscc = supplyFacilityFromDraftGs_(row, 'FACILITY NAME ISCC', submitKind);
+    if (facIscc) patch['FACILITY NAME ISCC'] = facIscc;
+    qtyWaste = row['SUPPLY ISCC'];
+    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY) qtyWaste = row.SUPPLY_QTY;
+    if (qtyWaste !== undefined && qtyWaste !== null && String(qtyWaste).trim() !== '') patch['SUPPLY ISCC'] = qtyWaste;
+  }
+  if (submitKind === 'POME_INS') {
+    var facIns = supplyFacilityFromDraftGs_(row, 'FACILITY NAME INS', submitKind);
+    if (facIns) patch['FACILITY NAME INS'] = facIns;
+    qtyWaste = row['SUPPLY INS'];
+    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY) qtyWaste = row.SUPPLY_QTY;
+    if (qtyWaste !== undefined && qtyWaste !== null && String(qtyWaste).trim() !== '') patch['SUPPLY INS'] = qtyWaste;
+  }
+  if (submitKind === 'SHELL_GGL') {
+    var facShell = supplyFacilityFromDraftGs_(row, 'FACILITY NAME SHELL', submitKind);
+    if (facShell) patch['FACILITY NAME SHELL'] = facShell;
+    qtyWaste = row['SUPPLY SHELL'];
+    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY) qtyWaste = row.SUPPLY_QTY;
+    if (qtyWaste !== undefined && qtyWaste !== null && String(qtyWaste).trim() !== '') patch['SUPPLY SHELL'] = qtyWaste;
   }
 
   var monthTok = String(row.month || row['MONTH'] || row['Month'] || row.quarter || row.QUARTER || '').trim();
@@ -6165,21 +6226,30 @@ function supplyNormalizeMonthTokGs_(raw) {
 function millSupplyRowFingerprintGs_(obj) {
   if (!obj) return '';
   var per = supplyReadPeriodFromRowGs_(obj);
+  var kind = supplySubmitKindFromDraftGs_(obj);
   return [
+    kind,
     supplyNormKey_(obj['COMPANY NAME']),
     supplyNormKey_(obj['MILL NAME']),
     supplyNormalizeMonthTokGs_(per.month),
     String(per.year || '').trim(),
     supplyNormKey_(String(obj['SUPPLY CPO'] == null ? '' : obj['SUPPLY CPO'])),
     supplyNormKey_(String(obj['SUPPLY PK'] == null ? '' : obj['SUPPLY PK'])),
+    supplyNormKey_(String(obj['SUPPLY ISCC'] == null ? '' : obj['SUPPLY ISCC'])),
+    supplyNormKey_(String(obj['SUPPLY INS'] == null ? '' : obj['SUPPLY INS'])),
+    supplyNormKey_(String(obj['SUPPLY SHELL'] == null ? '' : obj['SUPPLY SHELL'])),
     supplyNormKey_(obj['FACILITY NAME CPO']),
     supplyNormKey_(obj['FACILITY NAME PK']),
+    supplyNormKey_(obj['FACILITY NAME ISCC']),
+    supplyNormKey_(obj['FACILITY NAME INS']),
+    supplyNormKey_(obj['FACILITY NAME SHELL']),
   ].join('\u0001');
 }
 
 /** Baris mill onboarding untuk company + bulan + tahun (tanpa fingerprint supply). */
 function millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row) {
   var co = supplyNormKey_(row['COMPANY NAME']);
+  var wantKind = supplySubmitKindFromDraftGs_(row);
   var per = supplyReadPeriodFromRowGs_(row);
   var wantMonth = supplyNormalizeMonthTokGs_(per.month);
   var wantYear = String(per.year || '').trim();
@@ -6187,6 +6257,7 @@ function millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row) {
   for (var r = 1; r < millData.length; r++) {
     var obj = millRowToObjectGs_(millData[r], millHeaders);
     if (supplyNormKey_(obj['COMPANY NAME']) !== co) continue;
+    if (supplySubmitKindFromDraftGs_(obj) !== wantKind) continue;
     var rp = supplyReadPeriodFromRowGs_(obj);
     if (supplyNormalizeMonthTokGs_(rp.month) !== wantMonth) continue;
     if (String(rp.year || '').trim() !== wantYear) continue;
@@ -6214,6 +6285,7 @@ function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, 
   if (statusCol < 0) return false;
   var per = supplyReadPeriodFromRowGs_(row);
   var coKey = supplyNormKey_(row['COMPANY NAME']);
+  var submitKind = supplySubmitKindFromDraftGs_(row);
   var bid = String(batchId || row.batch_id || '').trim();
   var dirty = false;
 
@@ -6232,6 +6304,7 @@ function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, 
     var obj = millRowToObjectGs_(draftData[di], draftHeaders);
     if (bid && batchCol >= 0 && String(draftData[di][batchCol] || '').trim() !== bid) continue;
     if (coKey && supplyNormKey_(obj['COMPANY NAME']) !== coKey) continue;
+    if (supplyIsWasteSubmitKind_(submitKind) && supplySubmitKindFromDraftGs_(obj) !== submitKind) continue;
     var rp = supplyReadPeriodFromRowGs_(obj);
     if (per.month && rp.month && String(rp.month) !== String(per.month)) continue;
     if (per.year && rp.year && String(rp.year) !== String(per.year)) continue;
@@ -6246,28 +6319,30 @@ function submitSupplyDraft_(batchId, rows, meta) {
   if (!batchId) throw new Error('batch_id required');
   ensureSupplyDraftHeaders_();
   meta = meta || {};
-
-  var millSheet   = getSheet('mill');
-  var millData    = millSheet.getDataRange().getValues();
+  var firstKind = 'CPO';
+  for (var rk = 0; rk < (rows || []).length; rk++) {
+    var k = supplySubmitKindFromDraftGs_(rows[rk] || {});
+    if (k) { firstKind = k; break; }
+  }
+  var targetSheetKey = supplyIsWasteSubmitKind_(firstKind) ? 'millWaste' : 'mill';
+  var millSheet = getSheet(targetSheetKey);
+  var millData = millSheet.getDataRange().getValues();
   var millHeaders = millData[0].map(function(h) { return String(h || '').trim(); });
 
-  var pctColCpo = millHeaders.indexOf('PERCENTAGE SUPPLY CPO');
-  var pctColPk  = millHeaders.indexOf('PERCENTAGE SUPPLY PK');
-  if (pctColCpo < 0) {
+  function ensureHeader_(header) {
+    var idx = millHeaders.indexOf(header);
+    if (idx >= 0) return idx;
     millSheet.insertColumnAfter(millSheet.getLastColumn());
-    pctColCpo = millSheet.getLastColumn() - 1;
-    millSheet.getRange(1, pctColCpo + 1).setValue('PERCENTAGE SUPPLY CPO');
+    millSheet.getRange(1, millSheet.getLastColumn()).setValue(header);
     millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
-    pctColCpo = millHeaders.indexOf('PERCENTAGE SUPPLY CPO');
     millData = millSheet.getDataRange().getValues();
+    return millHeaders.indexOf(header);
   }
-  if (pctColPk < 0) {
-    millSheet.insertColumnAfter(millSheet.getLastColumn());
-    millSheet.getRange(1, millSheet.getLastColumn()).setValue('PERCENTAGE SUPPLY PK');
-    millHeaders = millSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
-    pctColPk = millHeaders.indexOf('PERCENTAGE SUPPLY PK');
-    millData = millSheet.getDataRange().getValues();
-  }
+  ensureHeader_('PERCENTAGE SUPPLY CPO');
+  ensureHeader_('PERCENTAGE SUPPLY PK');
+  ensureHeader_('PERCENTAGE SUPPLY ISCC');
+  ensureHeader_('PERCENTAGE SUPPLY INS');
+  ensureHeader_('PERCENTAGE SUPPLY SHELL');
 
   var draftSheet   = getSheet('supplyDraft');
   var draftData    = draftSheet.getDataRange().getValues();
