@@ -5548,6 +5548,8 @@ function initDashboardApp() {
   let ttpScrollToMillAfterRender_ = '';
   let ttpLocationCascadeCache_ = null;
   let millLoadPromise = null;
+  let millSoftReloadPromise_ = null;
+  let _supplyPostSubmitRefreshTimer = null;
   let millDataLoaded = false;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -7743,23 +7745,36 @@ function initDashboardApp() {
   }
 
   async function reloadMillDataSoft_() {
+    if (millSoftReloadPromise_) return millSoftReloadPromise_;
     const scrollEl = document.querySelector('#panel-mill-onboarding .table-scroll');
     const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
     const savedFilters = cloneMillPdfDimFilters_();
     const savedPeriodMode = millPeriodMode;
-    try {
-      await loadMillDataImpl({ soft: true });
-      millPdfDimFilters = savedFilters;
-      millPeriodMode = savedPeriodMode;
-      millPdfRebuildDimPanels();
-      millSyncPeriodModeUi_();
-      scheduleRenderMillTable();
-      if (!millScrollToKey_ && scrollEl) {
-        requestAnimationFrame(function() { scrollEl.scrollTop = savedScrollTop; });
+    millSoftReloadPromise_ = (async function() {
+      try {
+        await loadMillDataImpl({ soft: true });
+        millPdfDimFilters = savedFilters;
+        millPeriodMode = savedPeriodMode;
+        millPdfRebuildDimPanels();
+        millSyncPeriodModeUi_();
+        scheduleRenderMillTable();
+        if (!millScrollToKey_ && scrollEl) {
+          requestAnimationFrame(function() { scrollEl.scrollTop = savedScrollTop; });
+        }
+      } catch (err) {
+        // Keep existing table visible — never fall back to full reload spinner
+        // (that hid the list and felt like endless loading after submit).
+        console.warn('[Mill] Soft reload failed:', err && err.message ? err.message : err);
+        scheduleRenderMillTable();
+        if (typeof window.showSddToast === 'function') {
+          window.showSddToast('Daftar mill belum terbarui — klik Refresh atau tunggu sebentar lalu buka ulang.', 'warning');
+        }
       }
-    } catch (err) {
-      console.warn('[Mill] Soft reload failed, falling back to full reload:', err);
-      await loadMillData({ force: true });
+    })();
+    try {
+      return await millSoftReloadPromise_;
+    } finally {
+      millSoftReloadPromise_ = null;
     }
   }
 
@@ -26150,20 +26165,33 @@ function initDashboardApp() {
     else supplyPatchBatchFooterSubmitCount_(batchId);
   }
 
-  /** Best-effort refresh after a submit — must never hold the submit button lock. */
-  function supplyRefreshAfterSubmit_(bId) {
-    const reloadDrafts = function() {
-      if (typeof loadSupplyDraftsFromServer_ === 'function') {
-        return loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
-      }
-    };
-    try {
-      if (typeof reloadMillDataSoft_ === 'function') {
-        reloadMillDataSoft_().then(reloadDrafts, reloadDrafts);
-      } else {
-        reloadDrafts();
-      }
-    } catch (_) { /* ignore refresh errors */ }
+  /** Best-effort refresh after submit — debounced, coalesced, never blocks UI. */
+  function supplyRefreshAfterSubmit_(opts) {
+    opts = opts || {};
+    if (_supplyPostSubmitRefreshTimer) clearTimeout(_supplyPostSubmitRefreshTimer);
+    _supplyPostSubmitRefreshTimer = setTimeout(function() {
+      _supplyPostSubmitRefreshTimer = null;
+      const submittedN = opts.submittedN != null ? Number(opts.submittedN) : 0;
+      const showMill = opts.showMill !== false && submittedN > 0;
+      const reloadDrafts = currentFilter === 'Task List';
+
+      const millWork = typeof reloadMillDataSoft_ === 'function'
+        ? reloadMillDataSoft_()
+        : Promise.resolve();
+
+      millWork
+        .then(function() {
+          if (showMill) supplyShowMillOnboardingList_();
+          else scheduleRenderMillTable();
+        })
+        .catch(function() {
+          if (showMill) supplyShowMillOnboardingList_();
+        })
+        .then(function() {
+          if (!reloadDrafts || typeof loadSupplyDraftsFromServer_ !== 'function') return;
+          return loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
+        });
+    }, 1500);
   }
 
   function supplyPatchBatchFooter_(batchId) {
@@ -26313,11 +26341,7 @@ function initDashboardApp() {
     if (!batch || !batch.rows[ctx.rowIdx]) throw new Error('Supply draft row not found.');
     await supplyCommitDraftRowToMill_(batch, batch.rows[ctx.rowIdx], data);
     renderSupplyDraftList_();
-    if (typeof reloadMillDataSoft_ === 'function') {
-      reloadMillDataSoft_().catch(function(err) {
-        console.warn('[supplyDraft] Mill reload after modal submit:', err.message);
-      });
-    }
+    supplyRefreshAfterSubmit_({ submittedN: 1 });
   }
 
   async function supplyOpenProfileFromDraft_(draftRow, batch) {
@@ -27624,10 +27648,12 @@ function initDashboardApp() {
       const confirmMsg = 'Tambah ' + pending.length + ' baris tercentang ke paling bawah Mill Onboarding?\n(Data lama tidak diubah; kolom rumus otomatis dari sheet)';
       if (!confirm(confirmMsg)) return;
       supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
+      let bulkSubmittedN = 0;
       supplySubmitAllPendingRows_(batch, bId, pending, function(done, total) {
         supplySetSubmitBtnBusy_(bId, true, 'Submitting ' + done + '/' + total + '…');
       })
         .then(function(result) {
+          bulkSubmittedN = result && result.submittedN ? result.submittedN : 0;
           const snap = supplyCaptureTaskListScroll_();
           renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
           supplyRestoreTaskListScroll_(snap);
@@ -27643,9 +27669,6 @@ function initDashboardApp() {
           } else {
             alert('✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote);
           }
-          if (result && result.submittedN > 0) {
-            supplyShowMillOnboardingList_();
-          }
           if (result && result.allDone && typeof window.showSddToast === 'function') {
             window.showSddToast('Batch selesai — semua baris sudah di-submit.', 'success');
           }
@@ -27654,11 +27677,8 @@ function initDashboardApp() {
           alert('Submit gagal: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
-          // Release the button the moment the submit finishes. The post-submit
-          // data refresh runs in the background so a slow/hanging reload can
-          // never leave the Submit button stuck (previously required a refresh).
           supplySetSubmitBtnBusy_(bId, false);
-          supplyRefreshAfterSubmit_(bId);
+          supplyRefreshAfterSubmit_({ submittedN: bulkSubmittedN });
         });
       return;
     }
@@ -27689,11 +27709,7 @@ function initDashboardApp() {
         .then(function() {
           renderSupplyDraftList_();
           btn.textContent = 'Submit'; btn.disabled = false;
-          if (typeof reloadMillDataSoft_ === 'function') {
-            reloadMillDataSoft_().catch(function(err) {
-              console.warn('[supplyDraft] Mill reload after submit:', err.message);
-            });
-          }
+          supplyRefreshAfterSubmit_({ submittedN: 1 });
         })
         .catch(function(err) {
           btn.textContent = 'Submit'; btn.disabled = false;
