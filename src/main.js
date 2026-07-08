@@ -3947,8 +3947,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw6DFSF6EMo5OR8JYDGdXIOvTeUcNgiG5m5VPpkuFUSx3yHd8xaqii3BOph672F2HY3UQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw6DFSF6EMo5OR8JYDGdXIOvTeUcNgiG5m5VPpkuFUSx3yHd8xaqii3BOph672F2HY3UQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwF7JFiGSijZFWv2xKkUfS1RJYdKgdy_WgQg3hpfrEV8uErIAHokfJUzIt90w9F65aLmQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwF7JFiGSijZFWv2xKkUfS1RJYdKgdy_WgQg3hpfrEV8uErIAHokfJUzIt90w9F65aLmQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -24399,11 +24399,39 @@ function initDashboardApp() {
 
   const SUPPLY_PCT_COL_CPO = 'PERCENTAGE SUPPLY CPO';
   const SUPPLY_PCT_COL_PK  = 'PERCENTAGE SUPPLY PK';
+  const SUPPLY_PCT_COL_ISCC = 'PERCENTAGE SUPPLY ISCC';
+  const SUPPLY_PCT_COL_INS = 'PERCENTAGE SUPPLY INS';
+  const SUPPLY_PCT_COL_SHELL = 'PERCENTAGE SUPPLY SHELL';
 
   function supplyImportType_() {
     const checked = document.querySelector('input[name="supply-import-type"]:checked');
     const v = checked ? String(checked.value || '').trim().toUpperCase() : 'CPO';
-    return v === 'PK' ? 'PK' : 'CPO';
+    if (v === 'PK') return 'PK';
+    if (v === 'POME_ISCC') return 'POME_ISCC';
+    if (v === 'POME_INS') return 'POME_INS';
+    if (v === 'SHELL_GGL') return 'SHELL_GGL';
+    return 'CPO';
+  }
+
+  function supplyImportIsWaste_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL';
+  }
+
+  function supplyWasteKindFromType_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    if (k === 'POME_ISCC') return { qty: 'SUPPLY ISCC', pct: SUPPLY_PCT_COL_ISCC, facility: 'FACILITY NAME ISCC', product: 'POME ISCC' };
+    if (k === 'POME_INS') return { qty: 'SUPPLY INS', pct: SUPPLY_PCT_COL_INS, facility: 'FACILITY NAME INS', product: 'POME INS' };
+    if (k === 'SHELL_GGL') return { qty: 'SUPPLY SHELL', pct: SUPPLY_PCT_COL_SHELL, facility: 'FACILITY NAME SHELL', product: 'SHELL GGL' };
+    return null;
+  }
+
+  function supplyKindLabel_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    if (k === 'POME_ISCC') return 'POME ISCC';
+    if (k === 'POME_INS') return 'POME INS';
+    if (k === 'SHELL_GGL') return 'SHELL GGL';
+    return k || 'CPO';
   }
 
   function supplyNormKey_(s) {
@@ -24491,6 +24519,12 @@ function initDashboardApp() {
     if (month) meta.month = month;
     if (year) meta.year = year;
     if (batch.supply_type) meta.supply_type = batch.supply_type;
+    if (supplyImportIsWaste_(batch.supply_type)) {
+      meta.product_lane = 'WASTE';
+      meta.waste_type = batch.supply_type;
+    } else {
+      meta.product_lane = 'MAIN';
+    }
     return meta;
   }
 
@@ -24707,6 +24741,8 @@ function initDashboardApp() {
   }
 
   function supplyCombineSupplyTypes_(a, b) {
+    if (supplyImportIsWaste_(a)) return String(a || '').trim().toUpperCase() || 'POME_ISCC';
+    if (supplyImportIsWaste_(b)) return String(b || '').trim().toUpperCase() || 'POME_ISCC';
     const types = [];
     function addToken(raw) {
       const u = String(raw || '').trim().toUpperCase();
@@ -24723,6 +24759,7 @@ function initDashboardApp() {
   function supplyRowSupplyKindStrict_(row) {
     if (!row) return 'CPO';
     const st = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
+    if (supplyImportIsWaste_(st)) return st;
     if (st === 'PK') return 'PK';
     if (st === 'CPO') return 'CPO';
     if (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0) return 'CPO+PK';
@@ -24745,6 +24782,9 @@ function initDashboardApp() {
 
   function supplyMergeProductSupplyField_(row) {
     const k = supplyRowSupplyKindStrict_(row);
+    if (k === 'POME_ISCC') return 'POME ISCC';
+    if (k === 'POME_INS') return 'POME INS';
+    if (k === 'SHELL_GGL') return 'SHELL GGL';
     if (k === 'CPO+PK') return 'CPO, PK';
     if (k === 'PK') return 'PK';
     if (k === 'CPO') return 'CPO';
@@ -24809,13 +24849,21 @@ function initDashboardApp() {
     let cpoN = 0;
     let pkN = 0;
     let dualN = 0;
+    let waste = {};
     (batch.rows || []).forEach(function(r) {
       const k = supplyRowSupplyKindStrict_(r);
+      if (supplyImportIsWaste_(k)) {
+        waste[k] = (waste[k] || 0) + 1;
+        return;
+      }
       if (k === 'CPO+PK') dualN++;
       else if (k === 'PK') pkN++;
       else cpoN++;
     });
     const parts = [];
+    Object.keys(waste).forEach(function(k) {
+      parts.push('<span class="supply-badge supply-badge--cpopk">' + waste[k] + ' ' + escHtml(supplyKindLabel_(k)) + '</span>');
+    });
     if (cpoN) parts.push('<span class="supply-badge supply-badge--cpo">' + cpoN + ' CPO</span>');
     if (pkN) parts.push('<span class="supply-badge supply-badge--pk">' + pkN + ' PK</span>');
     if (dualN) parts.push('<span class="supply-badge supply-badge--cpopk">' + dualN + ' gabung</span>');
@@ -24831,6 +24879,7 @@ function initDashboardApp() {
   /** Baris draft yang bisa dilengkapi lawan jenisnya (CPO↔PK) — month, year, company sama. */
   function supplyFindDraftRowForCpoPkMerge_(batch, month, year, companyName, incomingKind) {
     if (!batch || !batch.rows || !batch.rows.length) return null;
+    if (supplyImportIsWaste_(incomingKind)) return null;
     const wantCo = supplyCompanyKey_(companyName);
     if (!wantCo) return null;
     const ik = incomingKind === 'PK' ? 'PK' : 'CPO';
@@ -24862,7 +24911,8 @@ function initDashboardApp() {
   function supplyApplyParsedQtyToDraft_(draft, r, kind) {
     const qty = supplyParsedQty_(r);
     if (qty === '') return;
-    const qtyField = kind === 'PK' ? 'SUPPLY PK' : 'SUPPLY CPO';
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    const qtyField = wasteCfg ? wasteCfg.qty : (kind === 'PK' ? 'SUPPLY PK' : 'SUPPLY CPO');
     draft[qtyField] = qty;
     draft.SUPPLY_QTY = qty;
   }
@@ -24872,10 +24922,16 @@ function initDashboardApp() {
     if (!row) return;
     const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
     const hasPkQty = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
+    const hasIsccQty = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
+    const hasInsQty = row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '';
+    const hasShellQty = row['SUPPLY SHELL'] != null && String(row['SUPPLY SHELL']).trim() !== '';
     const legacy = row.SUPPLY_QTY != null && String(row.SUPPLY_QTY).trim() !== '';
-    if (hasCpoQty || hasPkQty || !legacy) return;
+    if (hasCpoQty || hasPkQty || hasIsccQty || hasInsQty || hasShellQty || !legacy) return;
     const st = String(row.supply_type || row.SUPPLY_TYPE || 'CPO').toUpperCase();
-    if (st === 'PK' || (st.indexOf('PK') >= 0 && st.indexOf('CPO') < 0)) row['SUPPLY PK'] = row.SUPPLY_QTY;
+    if (st === 'POME_ISCC') row['SUPPLY ISCC'] = row.SUPPLY_QTY;
+    else if (st === 'POME_INS') row['SUPPLY INS'] = row.SUPPLY_QTY;
+    else if (st === 'SHELL_GGL') row['SUPPLY SHELL'] = row.SUPPLY_QTY;
+    else if (st === 'PK' || (st.indexOf('PK') >= 0 && st.indexOf('CPO') < 0)) row['SUPPLY PK'] = row.SUPPLY_QTY;
     else row['SUPPLY CPO'] = row.SUPPLY_QTY;
   }
 
@@ -24892,6 +24948,8 @@ function initDashboardApp() {
 
   function supplyFacilityFieldForKind_(kind) {
     const k = String(kind || 'CPO').toUpperCase();
+    const wasteCfg = supplyWasteKindFromType_(k);
+    if (wasteCfg) return wasteCfg.facility;
     return (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
   }
 
@@ -24935,6 +24993,11 @@ function initDashboardApp() {
     const k = String(kind || draft.supply_type || draft.SUPPLY_TYPE || 'CPO').toUpperCase();
     const p = supplyNormalizePlantValue_(plant != null ? plant : draft.PLANT || '');
     if (p) draft.PLANT = p;
+    const wasteCfg = supplyWasteKindFromType_(k);
+    if (wasteCfg) {
+      if (p) draft[wasteCfg.facility] = p;
+      return;
+    }
     const isDual = k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
     const isPkOnly = !isDual && (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0));
     const isCpoOnly = !isDual && !isPkOnly;
@@ -24972,11 +25035,19 @@ function initDashboardApp() {
   }
 
   function supplyApplyImportToDraftRow_(existing, r, kind, batch) {
-    const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    const pctField = wasteCfg ? wasteCfg.pct : (kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO);
     existing[pctField] = r.SUPPLY_PCT;
     supplyApplyPlantToDraftFacility_(existing, r.PLANT, kind);
     if (r.CATEGORY && !existing['SOURCE TYPE']) existing['SOURCE TYPE'] = String(r.CATEGORY).trim().toUpperCase();
     supplyApplyParsedQtyToDraft_(existing, r, kind);
+    if (wasteCfg) {
+      existing.supply_type = kind;
+      existing.SUPPLY_TYPE = kind;
+      existing['PRODUCT SUPPLY'] = wasteCfg.product;
+      supplyRematchDraftRow_(existing, batch);
+      return;
+    }
     const ek = supplyRowSupplyKindStrict_(existing);
     if ((ek === 'CPO' && kind === 'PK') || (ek === 'PK' && kind === 'CPO')) {
       existing.supply_type = 'CPO+PK';
@@ -25021,7 +25092,8 @@ function initDashboardApp() {
         result.push(b);
         return;
       }
-      const pk = supplyPeriodKey_(b.month || b.quarter, b.year);
+      const kindKey = String(b.supply_type || '').trim().toUpperCase();
+      const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + (supplyImportIsWaste_(kindKey) ? ('|' + kindKey) : '');
       if (!openByPeriod[pk]) {
         openByPeriod[pk] = b;
         result.push(b);
@@ -25039,7 +25111,8 @@ function initDashboardApp() {
   }
 
   function supplyCountMergeableImportRows_(parsedRows, month, year, supplyType) {
-    const batch = supplyFindOpenPeriodBatch_(month, year);
+    if (supplyImportIsWaste_(supplyType)) return 0;
+    const batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     if (!batch || !parsedRows || !parsedRows.length) return 0;
     const kind = supplyType === 'PK' ? 'PK' : 'CPO';
     let n = 0;
@@ -25471,6 +25544,7 @@ function initDashboardApp() {
   function supplySubmitFillFields_() {
     const s = new Set(supplyProfileIdentityFields_());
     ['MONTH', 'YEAR', 'QUARTER', 'SUPPLY CPO', 'SUPPLY PK', 'FACILITY NAME CPO', 'FACILITY NAME PK',
+      'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
       'PRODUCT SUPPLY', 'PLANT', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME'].forEach(function(k) { s.add(k); });
     MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) { s.add(k); });
     return s;
@@ -25577,10 +25651,12 @@ function initDashboardApp() {
 
   function supplyResolveKindFromDraft_(draftRow, batch) {
     const rowKind = String((draftRow && draftRow.supply_type) || (draftRow && draftRow.SUPPLY_TYPE) || '').trim().toUpperCase();
+    if (supplyImportIsWaste_(rowKind)) return rowKind;
     if (rowKind === 'CPO+PK' || (rowKind.indexOf('CPO') >= 0 && rowKind.indexOf('PK') >= 0)) return 'CPO+PK';
     if (rowKind === 'PK') return 'PK';
     if (rowKind === 'CPO') return 'CPO';
     const batchKind = String((batch && batch.supply_type) || '').trim().toUpperCase();
+    if (supplyImportIsWaste_(batchKind)) return batchKind;
     if (batchKind === 'PK') return 'PK';
     if (batchKind === 'CPO') return 'CPO';
     return 'CPO';
@@ -25596,11 +25672,30 @@ function initDashboardApp() {
     );
     const qtyCpo = draftRow && draftRow['SUPPLY CPO'];
     const qtyPk = draftRow && draftRow['SUPPLY PK'];
+    const qtyIscc = draftRow && draftRow['SUPPLY ISCC'];
+    const qtyIns = draftRow && draftRow['SUPPLY INS'];
+    const qtyShell = draftRow && draftRow['SUPPLY SHELL'];
     const legacyQty = draftRow && draftRow.SUPPLY_QTY;
     delete out['SUPPLY CPO'];
     delete out['SUPPLY PK'];
     delete out['FACILITY NAME CPO'];
     delete out['FACILITY NAME PK'];
+    delete out['SUPPLY ISCC'];
+    delete out['SUPPLY INS'];
+    delete out['SUPPLY SHELL'];
+    delete out['FACILITY NAME ISCC'];
+    delete out['FACILITY NAME INS'];
+    delete out['FACILITY NAME SHELL'];
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    if (wasteCfg) {
+      let q = legacyQty;
+      if (kind === 'POME_ISCC') q = (qtyIscc != null && String(qtyIscc).trim() !== '') ? qtyIscc : legacyQty;
+      if (kind === 'POME_INS') q = (qtyIns != null && String(qtyIns).trim() !== '') ? qtyIns : legacyQty;
+      if (kind === 'SHELL_GGL') q = (qtyShell != null && String(qtyShell).trim() !== '') ? qtyShell : legacyQty;
+      if (q != null && String(q).trim() !== '') out[wasteCfg.qty] = q;
+      if (plant) out[wasteCfg.facility] = plant;
+      return out;
+    }
     if (kind === 'PK') {
       const q = (qtyPk != null && String(qtyPk).trim() !== '') ? qtyPk : legacyQty;
       if (q != null && String(q).trim() !== '') out['SUPPLY PK'] = q;
@@ -26687,6 +26782,9 @@ function initDashboardApp() {
 
   function supplyTypeBadgeHtml_(supplyKind) {
     const k = String(supplyKind || 'CPO').toUpperCase();
+    if (k === 'POME_ISCC') return '<span class="supply-badge supply-badge--cpopk">POME ISCC</span>';
+    if (k === 'POME_INS') return '<span class="supply-badge supply-badge--cpopk">POME INS</span>';
+    if (k === 'SHELL_GGL') return '<span class="supply-badge supply-badge--cpopk">SHELL GGL</span>';
     if (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0) {
       return '<span class="supply-badge supply-badge--cpopk">CPO+PK</span>';
     }
@@ -26696,6 +26794,10 @@ function initDashboardApp() {
 
   function supplyRowTypePillsHtml_(row) {
     const parts = [];
+    const kind = supplyRowSupplyKindStrict_(row);
+    if (supplyImportIsWaste_(kind)) {
+      return '<span class="supply-row-pills"><span class="supply-pill supply-pill--cpopk">' + escHtml(supplyKindLabel_(kind)) + '</span></span>';
+    }
     if (supplyRowHasCpo_(row)) parts.push('<span class="supply-pill supply-pill--cpo">CPO</span>');
     if (supplyRowHasPk_(row)) parts.push('<span class="supply-pill supply-pill--pk">PK</span>');
     if (!parts.length) return '';
@@ -26713,12 +26815,17 @@ function initDashboardApp() {
     return '<span class="supply-match-pill supply-match-pill--new">Baru</span>';
   }
 
-  function supplyFindOpenPeriodBatch_(month, year) {
+  function supplyFindOpenPeriodBatch_(month, year, supplyType) {
     const want = supplyPeriodKey_(month, year);
+    const wantType = String(supplyType || '').trim().toUpperCase();
     return (window._supplyDraftBatches || []).find(function(b) {
       if (b.status === 'submitted') return false;
       supplyNormalizeBatchPeriod_(b);
-      return supplyPeriodKey_(b.month || b.quarter, b.year) === want;
+      if (supplyPeriodKey_(b.month || b.quarter, b.year) !== want) return false;
+      if (!wantType) return true;
+      const batchType = String(b.supply_type || '').trim().toUpperCase();
+      if (supplyImportIsWaste_(wantType)) return batchType === wantType;
+      return !supplyImportIsWaste_(batchType);
     }) || null;
   }
 
@@ -26745,7 +26852,7 @@ function initDashboardApp() {
       hintEl.textContent = '';
       return;
     }
-    const batch = supplyFindOpenPeriodBatch_(m, y);
+    const batch = supplyFindOpenPeriodBatch_(m, y, supplyImportType_());
     if (!batch) {
       hintEl.hidden = true;
       hintEl.textContent = '';
@@ -26755,7 +26862,9 @@ function initDashboardApp() {
     const importKind = supplyImportType_();
     const rowCount = (batch.rows || []).length;
     const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
-    if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
+    if (supplyImportIsWaste_(kind) || supplyImportIsWaste_(importKind)) {
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + supplyKindLabel_(kind) + '). Import akan menambah atau update baris waste sesuai company+periode.';
+    } else if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini menambah baris baru (tidak mengganti baris yang sudah ada).';
     } else if ((kind === 'CPO' && importKind === 'PK') || (kind === 'PK' && importKind === 'CPO')) {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' akan <strong>menggabung</strong> ke baris company yang sama (isi SUPPLY/FACILITY ' + importKind + ').';
@@ -27010,8 +27119,9 @@ function initDashboardApp() {
     const tBody  = document.getElementById('supply-import-preview-body');
     const stats  = document.getElementById('supply-import-preview-stats');
     if (!wrap || !tHead || !tBody) return;
-    const pctLabel = supplyType === 'PK' ? '% PK' : '% CPO';
-    const kind = supplyType === 'PK' ? 'PK' : 'CPO';
+    const wasteCfg = supplyWasteKindFromType_(supplyType);
+    const pctLabel = wasteCfg ? ('% ' + wasteCfg.product.replace('POME ', '').replace(' GGL', '')) : (supplyType === 'PK' ? '% PK' : '% CPO');
+    const kind = wasteCfg ? supplyType : (supplyType === 'PK' ? 'PK' : 'CPO');
     let matchedN = 0;
     let newN = 0;
     parsedRows.forEach(function(r) {
@@ -27047,7 +27157,7 @@ function initDashboardApp() {
     }
     if (stats) {
       let statTxt = parsedRows.length + ' baris · ' + matchedN + ' matched · ' + newN + ' baru';
-      if (mergeableN > 0) {
+      if (!wasteCfg && mergeableN > 0) {
         statTxt += ' · ' + mergeableN + ' akan digabung ke baris yang sudah ada (company + periode sama)';
       }
       stats.textContent = statTxt;
@@ -27068,12 +27178,13 @@ function initDashboardApp() {
       await loadMillData();
     }
 
-    const now     = new Date().toISOString();
-    const kind    = supplyType === 'PK' ? 'PK' : 'CPO';
-    const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
-    const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+    const now = new Date().toISOString();
+    const wasteCfg = supplyWasteKindFromType_(supplyType);
+    const kind = wasteCfg ? supplyType : (supplyType === 'PK' ? 'PK' : 'CPO');
+    const pctField = wasteCfg ? wasteCfg.pct : (kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO);
+    const facField = wasteCfg ? wasteCfg.facility : (kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO');
 
-    let batch = supplyFindOpenPeriodBatch_(month, year);
+    let batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     const batchId = batch ? batch.batch_id : ('batch-' + Date.now());
 
     if (!batch) {
@@ -27142,13 +27253,13 @@ function initDashboardApp() {
         supplyApplyPlantToDraftFacility_(draft, r.PLANT || profile[facField] || '', kind);
       }
 
-      draft['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(draft);
+      draft['PRODUCT SUPPLY'] = wasteCfg ? wasteCfg.product : supplyMergeProductSupplyField_(draft);
       return draft;
     }
 
     parsedRows.forEach(function(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
-      const mergeTarget = supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
+      const mergeTarget = wasteCfg ? null : supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
       if (mergeTarget) {
         supplyApplyImportToDraftRow_(mergeTarget, r, kind, batch);
         return;
@@ -27156,10 +27267,10 @@ function initDashboardApp() {
       batch.rows.push(buildDraftFromExcel_(r, idx));
     });
 
-    batch.supply_type = supplyCombineSupplyTypes_(batch.supply_type, kind);
+    batch.supply_type = wasteCfg ? kind : supplyCombineSupplyTypes_(batch.supply_type, kind);
     (batch.rows || []).forEach(supplyNormalizeDraftQtyFields_);
     window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
-    batch = supplyFindOpenPeriodBatch_(month, year);
+    batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     if (!batch) throw new Error('Gagal menyimpan draft supply untuk periode ini.');
     renderSupplyDraftList_();
 
