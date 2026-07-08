@@ -19649,6 +19649,32 @@ function initDashboardApp() {
       });
     }
 
+    /** KCP (kernel crushing plant) = PK-only facility; refineries are CPO. */
+    function pfFacilityIsKcp_(name) {
+      return String(name == null ? '' : name).toUpperCase().indexOf('KCP') !== -1;
+    }
+
+    /** CPO facilities declared on a mill row, excluding any KCP names (those are PK). */
+    function pfSplitCpoFacilities_(raw) {
+      return pfSplitFacility_(raw).filter(function(f) { return !pfFacilityIsKcp_(f); });
+    }
+
+    /** PK facilities for a mill row: FACILITY NAME PK plus any KCP names that
+     * leaked into FACILITY NAME CPO on older/stale sheet rows. Deduped. */
+    function pfSplitPkFacilities_(pkRaw, cpoRaw) {
+      const out = [];
+      const seen = {};
+      function add_(f) {
+        const key = String(f || '').trim().toUpperCase();
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        out.push(f);
+      }
+      pfSplitFacility_(pkRaw).forEach(add_);
+      pfSplitFacility_(cpoRaw).forEach(function(f) { if (pfFacilityIsKcp_(f)) add_(f); });
+      return out;
+    }
+
     function pfFormatMonth_(v) {
       const n = parseMillMonthSort(v);
       return n ? millMonthLabel_(n) + ' (' + n + ')' : (String(v || '').trim() || '—');
@@ -20718,7 +20744,7 @@ function initDashboardApp() {
       // Group mill rows by facility
       const byFacility = new Map();
       millRows.forEach(function(r) {
-        const facilities = pfSplitFacility_(r['FACILITY NAME CPO']);
+        const facilities = pfSplitCpoFacilities_(r['FACILITY NAME CPO']);
         const company = pfBuildCpoCompanyFromMillRow_(r, ttpLookup, ttpCertLookup);
 
         facilities.forEach(function(fac) {
@@ -20792,11 +20818,9 @@ function initDashboardApp() {
 
       const byFacility = new Map();
       millRows.forEach(function(r) {
-        const pkRaw = String(r['FACILITY NAME PK'] || '').trim();
-        if (!pkRaw || !pfIsValidFacilityName_(pkRaw)) return;
-        // Split by comma or semicolon (same as CPO)
-        const facilities = pkRaw.split(/[,;]/).map(function(s) { return s.trim(); })
-          .filter(function(s) { return s && pfIsValidFacilityName_(s); });
+        // PK facilities from FACILITY NAME PK, plus any KCP names that leaked into
+        // FACILITY NAME CPO on stale sheet rows (KCP is always a PK facility).
+        const facilities = pfSplitPkFacilities_(r['FACILITY NAME PK'], r['FACILITY NAME CPO']);
         if (!facilities.length) return;
 
         const company = pfBuildPkCompanyFromMillRow_(r, ttpPkLookup, ttpCertLookup);
