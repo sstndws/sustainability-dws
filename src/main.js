@@ -26122,8 +26122,25 @@ function initDashboardApp() {
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
-    if (busy) window._supplyBulkSubmitInFlight = batchId;
-    else if (window._supplyBulkSubmitInFlight === batchId) window._supplyBulkSubmitInFlight = null;
+    if (busy) {
+      window._supplyBulkSubmitInFlight = batchId;
+      // Self-healing watchdog: never let the submit lock stick permanently
+      // (e.g. if a follow-up refresh hangs), so the button can't get "stuck".
+      if (window._supplyBulkSubmitWatchdog) clearTimeout(window._supplyBulkSubmitWatchdog);
+      window._supplyBulkSubmitWatchdog = setTimeout(function() {
+        if (window._supplyBulkSubmitInFlight === batchId) {
+          const stuck = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+          if (stuck) stuck._submitInFlight = false;
+          supplySetSubmitBtnBusy_(batchId, false);
+        }
+      }, 180000);
+    } else {
+      if (window._supplyBulkSubmitInFlight === batchId) window._supplyBulkSubmitInFlight = null;
+      if (window._supplyBulkSubmitWatchdog) {
+        clearTimeout(window._supplyBulkSubmitWatchdog);
+        window._supplyBulkSubmitWatchdog = null;
+      }
+    }
     const wrap = document.getElementById('supply-batch-table-' + batchId);
     const btn = wrap && wrap.querySelector('[data-action="submit-selected"]');
     if (!btn) return;
@@ -26131,6 +26148,22 @@ function initDashboardApp() {
     btn.classList.toggle('is-busy', !!busy);
     if (label) btn.textContent = label;
     else supplyPatchBatchFooterSubmitCount_(batchId);
+  }
+
+  /** Best-effort refresh after a submit — must never hold the submit button lock. */
+  function supplyRefreshAfterSubmit_(bId) {
+    const reloadDrafts = function() {
+      if (typeof loadSupplyDraftsFromServer_ === 'function') {
+        return loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
+      }
+    };
+    try {
+      if (typeof reloadMillDataSoft_ === 'function') {
+        reloadMillDataSoft_().then(reloadDrafts, reloadDrafts);
+      } else {
+        reloadDrafts();
+      }
+    } catch (_) { /* ignore refresh errors */ }
   }
 
   function supplyPatchBatchFooter_(batchId) {
@@ -27610,36 +27643,22 @@ function initDashboardApp() {
           } else {
             alert('✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote);
           }
-          if (typeof reloadMillDataSoft_ === 'function') {
-            return reloadMillDataSoft_().then(function() {
-              if (typeof loadSupplyDraftsFromServer_ === 'function') {
-                return loadSupplyDraftsFromServer_({ preserveUi: true });
-              }
-            }).then(function() { return result; });
-          }
-          if (typeof loadSupplyDraftsFromServer_ === 'function') {
-            return loadSupplyDraftsFromServer_({ preserveUi: true }).then(function() { return result; });
-          }
-          return result;
-        })
-        .then(function(result) {
           if (result && result.submittedN > 0) {
             supplyShowMillOnboardingList_();
-            if (typeof window.showSddToast === 'function') {
-              window.showSddToast('Data terpilih sudah ada di Mill Onboarding.', 'success');
-            }
           }
-          if (result && result.allDone) {
-            if (typeof window.showSddToast === 'function') {
-              window.showSddToast('Batch selesai — semua baris sudah di-submit.', 'success');
-            }
+          if (result && result.allDone && typeof window.showSddToast === 'function') {
+            window.showSddToast('Batch selesai — semua baris sudah di-submit.', 'success');
           }
         })
         .catch(function(err) {
           alert('Submit gagal: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
+          // Release the button the moment the submit finishes. The post-submit
+          // data refresh runs in the background so a slow/hanging reload can
+          // never leave the Submit button stuck (previously required a refresh).
           supplySetSubmitBtnBusy_(bId, false);
+          supplyRefreshAfterSubmit_(bId);
         });
       return;
     }
