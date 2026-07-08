@@ -8347,6 +8347,7 @@ function initDashboardApp() {
     [MILL_SAFETY_GRIEVANCE]: MILL_GRIEVANCE_FLAG_ALIASES_[MILL_SAFETY_GRIEVANCE],
     [MILL_SOCIAL_GRIEVANCE]: MILL_GRIEVANCE_FLAG_ALIASES_[MILL_SOCIAL_GRIEVANCE],
     [MILL_ENVIRONMENT_GRIEVANCE]: MILL_GRIEVANCE_FLAG_ALIASES_[MILL_ENVIRONMENT_GRIEVANCE],
+    'LEGALITY SCORE': ['LEGALITY SCORE', 'Legality Score', 'LEGALITY SCC', 'SCORE'],
   };
 
   const MILL_PROFILE_YESNO_KEYS_ = new Set([
@@ -8356,18 +8357,18 @@ function initDashboardApp() {
     MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
   ]);
 
-  /** Sheet column LEGALITY SCORE (or SCORE): 1 → Complete, 0 → Not Complete. */
+  /** Sheet LEGALITY SCORE: 1 → COMPLETE, 0 → NOT COMPLETE (do not reverse). */
   function millProfileLegalityFromScore_(d) {
-    const raw = pickSavedCol(d, ['LEGALITY SCORE', 'SCORE', 'Legality Score']);
+    const raw = pickSavedCol(d, ['LEGALITY SCORE', 'Legality Score', 'LEGALITY SCC', 'SCORE']);
     if (raw === '' || raw === null || raw === undefined) return '';
     if (typeof raw === 'number' && !isNaN(raw)) {
-      if (raw === 1) return 'Complete';
-      if (raw === 0) return 'Not Complete';
+      if (raw === 1) return 'COMPLETE';
+      if (raw === 0) return 'NOT COMPLETE';
     }
     const s = String(raw).trim();
     const t = s.toLowerCase();
-    if (t === '1' || t === 'complete') return 'Complete';
-    if (t === '0' || t === 'not complete' || t === 'non complete') return 'Not Complete';
+    if (t === '1' || t === 'complete') return 'COMPLETE';
+    if (t === '0' || t === 'not complete' || t === 'non complete') return 'NOT COMPLETE';
     return s;
   }
 
@@ -8425,6 +8426,7 @@ function initDashboardApp() {
         title: 'Legality',
         fields: [
           ['MILL LOC', 'Mill Location'],
+          ['LEGALITY SCORE', 'Legality Score'],
         ],
       },
       {
@@ -8473,6 +8475,8 @@ function initDashboardApp() {
             let val = '';
             if (key === 'SOURCE TYPE') {
               val = millSourceTypeValFromRow_(d);
+            } else if (key === 'LEGALITY SCORE') {
+              val = millProfileLegalityFromScore_(d);
             } else if (MILL_HA_WIDTH_FIELDS.has(key)) {
               const raw = millProfileResolveField_(d, key);
               const tier = millHaWidthTier_(raw);
@@ -8546,7 +8550,7 @@ function initDashboardApp() {
       const periodText = (year || month) ? ('Period: ' + [year ? year : '', month ? (millMonthLabel_(parseInt(month, 10)) + ' (' + month + ')') : ''].filter(Boolean).join(' ')) : '';
       const sections = [
         { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['SOURCE TYPE','Source Type'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
-        { title: 'Legality', fields: [['MILL LOC', 'Mill Location']] },
+        { title: 'Legality', fields: [['MILL LOC', 'Mill Location'], ['LEGALITY SCORE', 'Legality Score']] },
         { title: 'Grievances', fields: [
           ['DEFORESTATION GRIEVANCES', 'Deforestation Grievances'],
           ['BURN AREA GRIEVANCES', 'Burn Area Grievances'],
@@ -8607,6 +8611,9 @@ function initDashboardApp() {
         }
         if (key === 'SOURCE TYPE') {
           return valOrDash(millSourceTypeValFromRow_(row));
+        }
+        if (key === 'LEGALITY SCORE') {
+          return valOrDash(millProfileLegalityFromScore_(row));
         }
         if (key === MILL_LEGALITY_GRIEVANCE) {
           return valOrDash(millProfileResolveField_(row, key, { yesNo: true }));
@@ -24782,6 +24789,40 @@ function initDashboardApp() {
     return (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
   }
 
+  /** KCP (Kernel Crushing Plant) is a PK-only facility; refineries (EOP, SPC, CRC…) are CPO. */
+  function supplyPlantIsKcp_(name) {
+    return String(name == null ? '' : name).toUpperCase().indexOf('KCP') !== -1;
+  }
+
+  /**
+   * Route facility names to the correct product column by facility type.
+   * KCP names ALWAYS land in FACILITY NAME PK, refinery names in FACILITY NAME CPO —
+   * never the reverse. Accepts raw values from either column, dedupes case-insensitively.
+   */
+  function supplyRouteFacilityNames_(cpoRaw, pkRaw) {
+    const cpoOut = [];
+    const pkOut = [];
+    const seenCpo = {};
+    const seenPk = {};
+    function add_(list, seen, tok) {
+      const t = String(tok || '').trim();
+      if (!t) return;
+      const key = t.toUpperCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      list.push(t);
+    }
+    [cpoRaw, pkRaw].forEach(function(raw) {
+      String(raw == null ? '' : raw).split(',').forEach(function(tok) {
+        const t = String(tok || '').trim();
+        if (!t) return;
+        if (supplyPlantIsKcp_(t)) add_(pkOut, seenPk, t);
+        else add_(cpoOut, seenCpo, t);
+      });
+    });
+    return { cpo: cpoOut.join(', '), pk: pkOut.join(', ') };
+  }
+
   /** Excel PLANT → FACILITY NAME CPO (import CPO) or FACILITY NAME PK (import PK); multi-KCP tetap satu nilai. */
   function supplyApplyPlantToDraftFacility_(draft, plant, kind) {
     if (!draft) return;
@@ -24790,13 +24831,19 @@ function initDashboardApp() {
     if (!p) return;
     draft.PLANT = p;
     const isDual = k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
-    if (isDual) {
-      if (!String(draft['FACILITY NAME CPO'] || '').trim()) draft['FACILITY NAME CPO'] = p;
-      if (!String(draft['FACILITY NAME PK'] || '').trim()) draft['FACILITY NAME PK'] = p;
+    const isPkOnly = !isDual && (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0));
+    if (isPkOnly) {
+      // PK import — the whole plant belongs to the PK facility (KCP names).
+      draft['FACILITY NAME PK'] = p;
       return;
     }
-    const routeKind = (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0)) ? 'PK' : 'CPO';
-    draft[supplyFacilityFieldForKind_(routeKind)] = p;
+    // CPO import or dual (CPO+PK): split by facility type so a KCP plant never
+    // contaminates FACILITY NAME CPO. Refinery → CPO, KCP → PK.
+    const split = supplyRouteFacilityNames_(p, '');
+    if (split.cpo) draft['FACILITY NAME CPO'] = split.cpo;
+    if (split.pk && !String(draft['FACILITY NAME PK'] || '').trim()) {
+      draft['FACILITY NAME PK'] = split.pk;
+    }
   }
 
   function supplyFacilityFromDraftRow_(row, field, kind) {
@@ -25448,12 +25495,20 @@ function initDashboardApp() {
     } else if (kind === 'CPO') {
       const q = (qtyCpo != null && String(qtyCpo).trim() !== '') ? qtyCpo : legacyQty;
       if (q != null && String(q).trim() !== '') out['SUPPLY CPO'] = q;
-      if (plant) out['FACILITY NAME CPO'] = plant;
+      // Route by facility type so a KCP plant never lands in FACILITY NAME CPO.
+      const routed = supplyRouteFacilityNames_(plant, '');
+      if (routed.cpo) out['FACILITY NAME CPO'] = routed.cpo;
+      if (routed.pk) out['FACILITY NAME PK'] = routed.pk;
     } else if (kind === 'CPO+PK') {
       if (qtyCpo != null && String(qtyCpo).trim() !== '') out['SUPPLY CPO'] = qtyCpo;
       if (qtyPk != null && String(qtyPk).trim() !== '') out['SUPPLY PK'] = qtyPk;
-      if (draftRow && draftRow['FACILITY NAME CPO']) out['FACILITY NAME CPO'] = draftRow['FACILITY NAME CPO'];
-      if (draftRow && draftRow['FACILITY NAME PK']) out['FACILITY NAME PK'] = draftRow['FACILITY NAME PK'];
+      // Sanitize both facility columns: KCP → PK, refinery → CPO (never crossed).
+      const routed = supplyRouteFacilityNames_(
+        draftRow ? draftRow['FACILITY NAME CPO'] : '',
+        draftRow ? draftRow['FACILITY NAME PK'] : ''
+      );
+      if (routed.cpo) out['FACILITY NAME CPO'] = routed.cpo;
+      if (routed.pk) out['FACILITY NAME PK'] = routed.pk;
     }
     return out;
   }
