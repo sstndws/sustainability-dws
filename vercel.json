@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/gas-proxy.js": {
+      "maxDuration": 120
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",

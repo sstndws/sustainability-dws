@@ -4122,11 +4122,12 @@ function normalizeGetArray(data) {
 
 async function apiGet(sheet, opts) {
   opts = opts || {};
-  const bustCache = sheet === 'sdd' || sheet === 'mill' || sheet === 'supplyDraft' || !!opts.bustCache;
+  const bustCache = sheet === 'sdd' || !!opts.bustCache;
+  const timeoutMs = opts.timeoutMs || (sheet === 'mill' ? 120000 : 60000);
   if (isSecureGasEnabled()) {
     var secParams = { action: 'getAll', sheet: sheet };
     if (bustCache) secParams._ts = String(Date.now());
-    var secData = await gasSecureRequest_({ method: 'GET', params: secParams });
+    var secData = await gasSecureRequest_({ method: 'GET', params: secParams, timeoutMs: timeoutMs });
     return normalizeGetArray(secData);
   }
 
@@ -4140,7 +4141,7 @@ async function apiGet(sheet, opts) {
   var lastErr;
   for (var attempt = 1; attempt <= maxAttempts; attempt++) {
     var controller = new AbortController();
-    var tid = setTimeout(function () { controller.abort(); }, 60000);
+    var tid = setTimeout(function () { controller.abort(); }, timeoutMs);
     try {
       res = await fetch(fullUrl, {
         method: 'GET',
@@ -4165,7 +4166,7 @@ async function apiGet(sheet, opts) {
     var ename = lastErr && lastErr.name;
     var emsg = (lastErr && lastErr.message) || String(lastErr);
     if (ename === 'AbortError') {
-      throw new Error('GET timeout (60s). Check your network or the Apps Script URL (SDD_WEBAPP_URL).');
+      throw new Error('GET timeout (' + Math.round(timeoutMs / 1000) + 's). Check your network or the Apps Script URL (SDD_WEBAPP_URL).');
     }
     if (emsg.indexOf('Failed to fetch') !== -1 || ename === 'TypeError') {
       var hint = sddIsLocalDevHost_()
@@ -7621,23 +7622,98 @@ function initDashboardApp() {
     });
   })();
 
+  const MILL_SESSION_CACHE_KEY_ = 'SDD_MILL_DATA_CACHE_V1';
+
+  function millApplyFetchedRows_(rawRows) {
+    const rawData = (Array.isArray(rawRows) ? rawRows : [])
+      .map(normalizeMillApiRow)
+      .filter(millRowHasCompanyName_);
+    allDataRaw = rawData.map(prepareMillRowPerfCache);
+    allData = allDataRaw.slice();
+    millDataLoaded = true;
+  }
+
+  function millReadSessionCache_() {
+    try {
+      const raw = sessionStorage.getItem(MILL_SESSION_CACHE_KEY_);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.rows) || !parsed.rows.length) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function millWriteSessionCache_(rawRows) {
+    if (!Array.isArray(rawRows) || !rawRows.length) return;
+    try {
+      sessionStorage.setItem(MILL_SESSION_CACHE_KEY_, JSON.stringify({
+        ts: Date.now(),
+        rows: rawRows,
+      }));
+    } catch (e) {
+      console.warn('[Mill] sessionStorage cache skipped:', e && e.message ? e.message : e);
+    }
+  }
+
+  function millHydrateFromSessionCache_() {
+    const cached = millReadSessionCache_();
+    if (!cached) return false;
+    millApplyFetchedRows_(cached.rows);
+    return true;
+  }
+
+  function millRenderTop5Card_() {
+    function parseDateImported(row) {
+      const raw = row['Date Imported'] || row['DATE IMPORTED'] || row['Last Updated'] || row['LAST UPDATED'] || row['Timestamp'] || row['TIMESTAMP'] || '';
+      if (!raw) return 0;
+      const d = new Date(String(raw).trim());
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+    const sortedByDate = allData.slice().sort(function(a, b) { return parseDateImported(b) - parseDateImported(a); });
+    const top5 = sortedByDate.filter(function(d) { return parseDateImported(d) > 0; }).slice(0, 5);
+    const top5Card = document.getElementById('top5-card');
+    const top5List = document.getElementById('top5-list');
+    if (!top5Card || !top5List) return;
+    if (top5.length > 0) {
+      top5Card.style.display = 'block';
+      const rankColors = ['#8B1A1A','#A52020','#C03030','#9C8080','#7C6565'];
+      top5List.innerHTML = top5.map(function(d, i) {
+        const company = d['Company Name'] || d['COMPANY NAME'] || d['Group Name'] || d['GROUP NAME'] || d['Mill Name'] || d['MILL NAME'] || '(Unknown)';
+        const mill    = d['Mill Name']    || d['MILL NAME']    || '';
+        const millId  = d['Mill ID']  || d['UML ID'] || d['MILL ID'] || '';
+        const rawDate = d['Date Imported'] || d['DATE IMPORTED'] || d['Last Updated'] || d['LAST UPDATED'] || d['Timestamp'] || d['TIMESTAMP'] || '';
+        const dObj = new Date(String(rawDate).trim());
+        const dateStr = isNaN(dObj.getTime()) ? rawDate : dObj.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
+        return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:' + (i===0?'rgba(139,26,26,0.05)':'rgba(74,28,28,0.02)') + ';border:1px solid ' + (i===0?'rgba(139,26,26,0.15)':'rgba(74,28,28,0.06)') + ';">'
+          + '<div style="width:24px;height:24px;border-radius:50%;background:' + rankColors[i] + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+          + '<span style="font-size:11px;font-weight:700;color:white;">' + (i+1) + '</span></div>'
+          + '<div style="flex:1;min-width:0;">'
+          + '<div style="font-size:13px;font-weight:600;color:#1A0A0A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + company + (mill && mill !== company ? ' <span style="color:#9C8080;font-weight:400;font-size:12px;">· '+mill+'</span>' : '') + '</div>'
+          + '<div style="font-size:11px;color:#9C8080;margin-top:2px;">' + (millId ? millId+' · ' : '') + dateStr + '</div>'
+          + '</div></div>';
+      }).join('');
+    } else {
+      top5Card.style.display = 'none';
+    }
+  }
+
   async function loadMillDataImpl(opts) {
     opts = opts || {};
-    const soft = !!opts.soft;
+    let soft = !!opts.soft;
+    const bustCache = !!opts.bustCache;
     const loading = document.getElementById('mill-loading');
     const errorEl = document.getElementById('mill-error');
     const table = document.getElementById('millTable');
     const hasMillUi = !!(loading && errorEl && table);
+    const millApiOpts = { bustCache: bustCache, timeoutMs: 120000 };
+
     if (!hasMillUi && !soft) {
-      // Monthly Report / other panels still need mill rows even when Mill UI is absent.
       try {
-        const rawRows = await apiGet('mill');
-        const rawData = (Array.isArray(rawRows) ? rawRows : [])
-          .map(normalizeMillApiRow)
-          .filter(millRowHasCompanyName_);
-        allDataRaw = rawData.map(prepareMillRowPerfCache);
-        allData = allDataRaw.slice();
-        millDataLoaded = true;
+        const rawRows = await apiGet('mill', millApiOpts);
+        millApplyFetchedRows_(rawRows);
+        millWriteSessionCache_(rawRows);
       } catch (err) {
         console.warn('[dashboard] Mill data load (headless):', err && err.message ? err.message : err);
         throw err;
@@ -7645,63 +7721,41 @@ function initDashboardApp() {
       return;
     }
     if (!hasMillUi) return;
+
+    let hydratedFromCache = false;
+    if (!soft && !bustCache && !millDataLoaded && millHydrateFromSessionCache_()) {
+      hydratedFromCache = true;
+      soft = true;
+      loading.style.display = 'none';
+      table.style.display = 'table';
+      scheduleRenderMillTable();
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Menampilkan data cache — memuat versi terbaru di background…', 'info');
+      }
+    }
+
     try {
-      if (!soft) {
+      if (!soft && !hydratedFromCache) {
         loading.style.display = 'block';
+        loading.textContent = 'Memuat data mill… (600+ baris, bisa 1–2 menit — mohon tunggu)';
         errorEl.style.display = 'none';
         table.style.display = 'none';
       }
-      const rawRows = await apiGet('mill');
-      const rawData = (Array.isArray(rawRows) ? rawRows : [])
-        .map(normalizeMillApiRow)
-        .filter(millRowHasCompanyName_);
-      allDataRaw = rawData.map(prepareMillRowPerfCache);
-      // Satu baris sheet = satu baris tabel — tidak ada dedup/merge by UML atau field lain.
-      allData = allDataRaw.slice();
 
-      // ── SORT by Date Imported DESC for Top 5 ──
-      function parseDateImported(row) {
-        const raw = row['Date Imported'] || row['DATE IMPORTED'] || row['Last Updated'] || row['LAST UPDATED'] || row['Timestamp'] || row['TIMESTAMP'] || '';
-        if (!raw) return 0;
-        const d = new Date(String(raw).trim());
-        return isNaN(d.getTime()) ? 0 : d.getTime();
-      }
-      const sortedByDate = allData.slice().sort((a, b) => parseDateImported(b) - parseDateImported(a));
-      const top5 = sortedByDate.filter(d => parseDateImported(d) > 0).slice(0, 5);
+      const rawRows = await apiGet('mill', Object.assign({}, millApiOpts, { bustCache: bustCache || hydratedFromCache }));
+      millApplyFetchedRows_(rawRows);
+      millWriteSessionCache_(rawRows);
+      millRenderTop5Card_();
 
-      const top5Card = document.getElementById('top5-card');
-      const top5List = document.getElementById('top5-list');
-      if (top5.length > 0) {
-        top5Card.style.display = 'block';
-        const rankColors = ['#8B1A1A','#A52020','#C03030','#9C8080','#7C6565'];
-        top5List.innerHTML = top5.map((d, i) => {
-          const company = d['Company Name'] || d['COMPANY NAME'] || d['Group Name'] || d['GROUP NAME'] || d['Mill Name'] || d['MILL NAME'] || '(Unknown)';
-          const mill    = d['Mill Name']    || d['MILL NAME']    || '';
-          const millId  = d['Mill ID']  || d['UML ID'] || d['MILL ID'] || '';
-          const rawDate = d['Date Imported'] || d['DATE IMPORTED'] || d['Last Updated'] || d['LAST UPDATED'] || d['Timestamp'] || d['TIMESTAMP'] || '';
-          const dObj = new Date(String(rawDate).trim());
-          const dateStr = isNaN(dObj.getTime()) ? rawDate : dObj.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:${i===0?'rgba(139,26,26,0.05)':'rgba(74,28,28,0.02)'};border:1px solid ${i===0?'rgba(139,26,26,0.15)':'rgba(74,28,28,0.06)'};">
-            <div style="width:24px;height:24px;border-radius:50%;background:${rankColors[i]};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <span style="font-size:11px;font-weight:700;color:white;">${i+1}</span>
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:600;color:#1A0A0A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${company}${mill && mill !== company ? ' <span style="color:#9C8080;font-weight:400;font-size:12px;">· '+mill+'</span>' : ''}</div>
-              <div style="font-size:11px;color:#9C8080;margin-top:2px;">${millId ? millId+' · ' : ''}${dateStr}</div>
-            </div>
-            <div style="flex-shrink:0;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C03030" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-          </div>`;
-        }).join('');
-      } else {
-        top5Card.style.display = 'none';
-      }
+      const statTotal = document.getElementById('stat-total');
+      const statGroups = document.getElementById('stat-groups');
+      const statHighRisk = document.getElementById('stat-high-risk');
+      const statNbl = document.getElementById('stat-nbl');
+      if (statTotal) statTotal.textContent = '—';
+      if (statGroups) statGroups.textContent = '—';
+      if (statHighRisk) statHighRisk.textContent = '—';
+      if (statNbl) statNbl.textContent = '—';
 
-      document.getElementById('stat-total').textContent = '—';
-      document.getElementById('stat-groups').textContent = '—';
-      document.getElementById('stat-high-risk').textContent = '—';
-      document.getElementById('stat-nbl').textContent = '—';
       if (!soft) {
         loading.style.display = 'none';
         table.style.display = 'table';
@@ -7710,16 +7764,28 @@ function initDashboardApp() {
         millPdfRebuildDimPanels();
         millSyncPeriodModeUi_();
       }
-      millDataLoaded = true;
       scheduleRenderMillTable();
       if (soft) millRestoreUiAfterRender_();
     } catch(err) {
       if (!soft) {
+        if (!millDataLoaded && millHydrateFromSessionCache_()) {
+          loading.style.display = 'none';
+          table.style.display = 'table';
+          scheduleRenderMillTable();
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast('Gagal refresh — menampilkan data cache. Coba lagi nanti.', 'warning');
+          }
+        } else {
+          loading.style.display = 'none';
+          errorEl.style.display = 'block';
+          errorEl.textContent = 'Gagal memuat data mill: ' + err.message;
+        }
+      } else if (!millDataLoaded) {
         loading.style.display = 'none';
         errorEl.style.display = 'block';
-        errorEl.textContent = 'Failed to load data: ' + err.message;
+        errorEl.textContent = 'Gagal memuat data mill: ' + err.message;
       } else {
-        throw err;
+        console.warn('[Mill] Background refresh failed:', err && err.message ? err.message : err);
       }
     }
   }
@@ -7754,7 +7820,7 @@ function initDashboardApp() {
     const savedPeriodMode = millPeriodMode;
     millSoftReloadPromise_ = (async function() {
       try {
-        await loadMillDataImpl({ soft: true });
+        await loadMillDataImpl({ soft: true, bustCache: true });
         millPdfDimFilters = savedFilters;
         millPeriodMode = savedPeriodMode;
         millPdfRebuildDimPanels();
@@ -7784,7 +7850,9 @@ function initDashboardApp() {
     opts = opts || {};
     if (!opts.force && millDataLoaded) return;
     if (millLoadPromise) return millLoadPromise;
-    millLoadPromise = loadMillDataImpl(opts);
+    const implOpts = Object.assign({}, opts);
+    if (implOpts.force) implOpts.bustCache = true;
+    millLoadPromise = loadMillDataImpl(implOpts);
     try {
       await millLoadPromise;
     } finally {
