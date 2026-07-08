@@ -24934,22 +24934,29 @@ function initDashboardApp() {
     if (!draft) return;
     const k = String(kind || draft.supply_type || draft.SUPPLY_TYPE || 'CPO').toUpperCase();
     const p = supplyNormalizePlantValue_(plant != null ? plant : draft.PLANT || '');
-    if (!p) return;
-    draft.PLANT = p;
+    if (p) draft.PLANT = p;
     const isDual = k === 'CPO+PK' || k === 'BOTH' || (k.indexOf('CPO') >= 0 && k.indexOf('PK') >= 0);
     const isPkOnly = !isDual && (k === 'PK' || (k.indexOf('PK') >= 0 && k.indexOf('CPO') < 0));
+    const isCpoOnly = !isDual && !isPkOnly;
+
     if (isPkOnly) {
-      // PK import — the whole plant belongs to the PK facility (KCP names).
-      draft['FACILITY NAME PK'] = p;
+      // PK Task List import → FACILITY NAME PK (e.g. KCP PURA), never FACILITY NAME CPO.
+      if (p) draft['FACILITY NAME PK'] = p;
       return;
     }
-    // CPO import or dual (CPO+PK): split by facility type so a KCP plant never
-    // contaminates FACILITY NAME CPO. Refinery → CPO, KCP → PK.
-    const split = supplyRouteFacilityNames_(p, '');
-    if (split.cpo) draft['FACILITY NAME CPO'] = split.cpo;
-    if (split.pk && !String(draft['FACILITY NAME PK'] || '').trim()) {
-      draft['FACILITY NAME PK'] = split.pk;
+    if (isCpoOnly) {
+      // CPO Task List import → FACILITY NAME CPO (e.g. CRC, EOP, SPC).
+      if (!p) return;
+      const split = supplyRouteFacilityNames_(p, '');
+      draft['FACILITY NAME CPO'] = split.cpo || (!supplyPlantIsKcp_(p) ? p : '');
+      if (split.pk) draft['FACILITY NAME PK'] = split.pk;
+      return;
     }
+    // CPO+PK combined row — route by facility type (KCP → PK, refinery → CPO).
+    if (!p) return;
+    const dualSplit = supplyRouteFacilityNames_(p, draft['FACILITY NAME PK'] || '');
+    if (dualSplit.cpo) draft['FACILITY NAME CPO'] = dualSplit.cpo;
+    if (dualSplit.pk) draft['FACILITY NAME PK'] = dualSplit.pk;
   }
 
   function supplyFacilityFromDraftRow_(row, field, kind) {
@@ -25601,9 +25608,9 @@ function initDashboardApp() {
     } else if (kind === 'CPO') {
       const q = (qtyCpo != null && String(qtyCpo).trim() !== '') ? qtyCpo : legacyQty;
       if (q != null && String(q).trim() !== '') out['SUPPLY CPO'] = q;
-      // Route by facility type so a KCP plant never lands in FACILITY NAME CPO.
+      // CPO import → FACILITY NAME CPO (CRC, EOP…); KCP names in same cell → FACILITY NAME PK.
       const routed = supplyRouteFacilityNames_(plant, '');
-      if (routed.cpo) out['FACILITY NAME CPO'] = routed.cpo;
+      out['FACILITY NAME CPO'] = routed.cpo || (plant && !supplyPlantIsKcp_(plant) ? plant : '');
       if (routed.pk) out['FACILITY NAME PK'] = routed.pk;
     } else if (kind === 'CPO+PK') {
       if (qtyCpo != null && String(qtyCpo).trim() !== '') out['SUPPLY CPO'] = qtyCpo;

@@ -5686,13 +5686,62 @@ function mergeMillIdentityWithSupplyPatchGs_(baseObj, patch, submitKind) {
   return out;
 }
 
+function supplyPlantIsKcpGs_(name) {
+  return String(name == null ? '' : name).toUpperCase().indexOf('KCP') !== -1;
+}
+
+/** KCP → FACILITY NAME PK; refinery (CRC, EOP…) → FACILITY NAME CPO. */
+function supplyRouteFacilityNamesGs_(cpoRaw, pkRaw) {
+  var cpoOut = [];
+  var pkOut = [];
+  var seenCpo = {};
+  var seenPk = {};
+  function add_(list, seen, tok) {
+    var t = String(tok || '').trim();
+    if (!t) return;
+    var key = t.toUpperCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    list.push(t);
+  }
+  [cpoRaw, pkRaw].forEach(function(raw) {
+    String(raw == null ? '' : raw).split(',').forEach(function(tok) {
+      var t = String(tok || '').trim();
+      if (!t) return;
+      if (supplyPlantIsKcpGs_(t)) add_(pkOut, seenPk, t);
+      else add_(cpoOut, seenCpo, t);
+    });
+  });
+  return { cpo: cpoOut.join(', '), pk: pkOut.join(', ') };
+}
+
 function supplyFacilityFromDraftGs_(row, field, submitKind) {
   var direct = String(row[field] || '').trim();
-  if (direct) return direct;
   var plant = supplyNormalizePlantValueGs_(row.PLANT || '');
-  if (!plant) return '';
-  if (field === 'FACILITY NAME PK' && (submitKind === 'PK' || submitKind === 'BOTH')) return plant;
-  if (field === 'FACILITY NAME CPO' && (submitKind === 'CPO' || submitKind === 'BOTH')) return plant;
+  var src = direct || plant;
+  if (!src) return '';
+  if (field === 'FACILITY NAME PK') {
+    if (submitKind === 'PK') return src;
+    if (submitKind === 'BOTH') {
+      var pkRouted = supplyRouteFacilityNamesGs_('', src);
+      if (pkRouted.pk) return pkRouted.pk;
+      return supplyPlantIsKcpGs_(src) ? src : '';
+    }
+    return '';
+  }
+  if (field === 'FACILITY NAME CPO') {
+    if (submitKind === 'CPO') {
+      if (!supplyPlantIsKcpGs_(src)) return src;
+      var cpoRouted = supplyRouteFacilityNamesGs_(src, '');
+      return cpoRouted.cpo || '';
+    }
+    if (submitKind === 'BOTH') {
+      var bothRouted = supplyRouteFacilityNamesGs_(src, row['FACILITY NAME PK'] || '');
+      if (bothRouted.cpo) return bothRouted.cpo;
+      return !supplyPlantIsKcpGs_(src) ? src : '';
+    }
+    return '';
+  }
   return '';
 }
 
