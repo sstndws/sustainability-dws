@@ -4121,9 +4121,11 @@ function normalizeGetArray(data) {
 }
 
 async function apiGet(sheet, opts) {
+  opts = opts || {};
+  const bustCache = sheet === 'sdd' || sheet === 'mill' || sheet === 'supplyDraft' || !!opts.bustCache;
   if (isSecureGasEnabled()) {
     var secParams = { action: 'getAll', sheet: sheet };
-    if (sheet === 'sdd') secParams._ts = String(Date.now());
+    if (bustCache) secParams._ts = String(Date.now());
     var secData = await gasSecureRequest_({ method: 'GET', params: secParams });
     return normalizeGetArray(secData);
   }
@@ -4131,7 +4133,7 @@ async function apiGet(sheet, opts) {
   var url = (opts && opts.baseUrl) ? normalizeSddWebAppUrl_(opts.baseUrl) : getSddApiUrl();
   if (!url) url = SDD_DEFAULT_WEBAPP_URL;
   var params = new URLSearchParams({ action: 'getAll', sheet: sheet });
-  if (sheet === 'sdd') params.set('_ts', String(Date.now()));
+  if (bustCache) params.set('_ts', String(Date.now()));
   var fullUrl = url + '?' + params.toString();
   var maxAttempts = 3;
   var res;
@@ -7980,26 +7982,23 @@ function initDashboardApp() {
 
   function millProfileSameEntityRows_(anchorRow) {
     if (!anchorRow || typeof anchorRow !== 'object') return [];
-    if (!Array.isArray(allData) || !allData.length) return [anchorRow];
-    function nk(r, k) {
-      return String(r && r[k] != null ? r[k] : '').trim().toLowerCase();
-    }
-    const c = nk(anchorRow, 'COMPANY NAME');
-    const m = nk(anchorRow, 'MILL NAME');
-    const g = nk(anchorRow, 'GROUP NAME');
-    const rows = allData.filter(function(r) {
-      return nk(r, 'COMPANY NAME') === c && nk(r, 'MILL NAME') === m && nk(r, 'GROUP NAME') === g;
+    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    if (!src.length) return [anchorRow];
+    const wantKey = millRegistryEntityKey_(anchorRow);
+    if (!wantKey || wantKey === '\u0001') return [anchorRow];
+    // Match company + mill only (same key as registry "newest" mode).
+    // Group may change between periods (e.g. MULTI PLANTATION → MUKTI) — still one mill.
+    const rows = src.filter(function(r) {
+      return millRegistryEntityKey_(r) === wantKey;
     });
     return rows.length ? rows : [anchorRow];
   }
 
   function millProfileComparePeriodDesc_(a, b) {
-    const ya = parseMillYearSort(millYearVal(a));
-    const yb = parseMillYearSort(millYearVal(b));
-    if (ya !== yb) return yb - ya;
-    const ma = parseMillMonthSort(millMonthVal(a));
-    const mb = parseMillMonthSort(millMonthVal(b));
-    return mb - ma;
+    const skA = millRowPeriodSortKey_(a);
+    const skB = millRowPeriodSortKey_(b);
+    if (skA !== skB) return skB - skA;
+    return (b._row || 0) - (a._row || 0);
   }
 
   function millProfileSortYearTokDesc_(toks) {
@@ -26174,12 +26173,19 @@ function initDashboardApp() {
       const submittedN = opts.submittedN != null ? Number(opts.submittedN) : 0;
       const showMill = opts.showMill !== false && submittedN > 0;
       const reloadDrafts = currentFilter === 'Task List';
+      const prevRowCount = (allDataRaw && allDataRaw.length) || 0;
 
-      const millWork = typeof reloadMillDataSoft_ === 'function'
-        ? reloadMillDataSoft_()
-        : Promise.resolve();
+      function reloadMillOnce_() {
+        return typeof reloadMillDataSoft_ === 'function' ? reloadMillDataSoft_() : Promise.resolve();
+      }
 
-      millWork
+      reloadMillOnce_()
+        .then(function() {
+          const grew = ((allDataRaw && allDataRaw.length) || 0) > prevRowCount;
+          if (submittedN > 0 && !grew && typeof reloadMillDataSoft_ === 'function') {
+            return new Promise(function(r) { setTimeout(r, 2500); }).then(reloadMillOnce_);
+          }
+        })
         .then(function() {
           if (showMill) supplyShowMillOnboardingList_();
           else scheduleRenderMillTable();
@@ -26191,7 +26197,7 @@ function initDashboardApp() {
           if (!reloadDrafts || typeof loadSupplyDraftsFromServer_ !== 'function') return;
           return loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
         });
-    }, 1500);
+    }, 2000);
   }
 
   function supplyPatchBatchFooter_(batchId) {
