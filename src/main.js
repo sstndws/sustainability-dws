@@ -27878,19 +27878,74 @@ function initDashboardApp() {
     });
   }
 
+  function supplyBatchTableColumns_(batch) {
+    const base = [
+      ['COMPANY NAME', 'Company Name'],
+      ['MILL NAME', 'Mill Name'],
+      ['GROUP NAME', 'Group Name'],
+      ['SOURCE TYPE', 'Source Type'],
+    ];
+    const kind = String(batch && batch.supply_type || '').trim().toUpperCase();
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    if (wasteCfg) {
+      return base.concat([
+        ['PLANT', 'Plant'],
+        [wasteCfg.facility, 'Facility'],
+        [wasteCfg.qty, 'Qty ' + wasteCfg.product],
+      ]);
+    }
+    if (kind === 'PK') {
+      return base.concat([
+        ['PLANT', 'Plant'],
+        ['SUPPLY PK', 'Qty PK'],
+      ]);
+    }
+    if (kind === 'CPO+PK' || kind === 'BOTH') {
+      return base.concat([
+        ['PLANT', 'Plant'],
+        ['SUPPLY CPO', 'Qty CPO'],
+        ['SUPPLY PK', 'Qty PK'],
+      ]);
+    }
+    return base.concat([
+      ['PLANT', 'Plant'],
+      ['SUPPLY CPO', 'Qty CPO'],
+    ]);
+  }
+
+  function supplyBatchCellDisplayVal_(row, key, batch) {
+    if (!row) return '';
+    if (key === 'SOURCE TYPE') return millSourceTypeValFromRow_(row) || row[key] || '';
+    const kind = supplyResolveKindFromDraft_(row, batch);
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    if (key === 'PLANT') {
+      return supplyNormalizePlantValue_(row.PLANT || row[key] || (wasteCfg && row[wasteCfg.facility]) || '');
+    }
+    if (wasteCfg && key === wasteCfg.facility) {
+      return row[wasteCfg.facility] || row.PLANT || '';
+    }
+    if (wasteCfg && key === wasteCfg.qty) {
+      const q = row[wasteCfg.qty];
+      if (q != null && String(q).trim() !== '') return q;
+      return row.SUPPLY_QTY != null ? row.SUPPLY_QTY : '';
+    }
+    if (key === 'SUPPLY CPO' || key === 'SUPPLY PK') {
+      const direct = row[key];
+      if (direct != null && String(direct).trim() !== '') return direct;
+      if (row.SUPPLY_QTY != null && String(row.SUPPLY_QTY).trim() !== '') {
+        if (key === 'SUPPLY PK' && kind === 'PK') return row.SUPPLY_QTY;
+        if (key === 'SUPPLY CPO' && kind !== 'PK') return row.SUPPLY_QTY;
+      }
+      return '';
+    }
+    return row[key] != null ? row[key] : '';
+  }
+
   function renderSupplyBatchTable_(batch) {
     if (!batch.rows || !batch.rows.length) return '<p style="padding:12px;font-size:12px;color:#9C8080;">No rows.</p>';
     const isSubmitted = batch.status === 'submitted';
     const rowFilter = supplyGetBatchRowFilter_(batch.batch_id);
-    const SHOW_COLS = [
-      ['COMPANY NAME',    'Company Name'],
-      ['MILL NAME',       'Mill Name'],
-      ['GROUP NAME',      'Group Name'],
-      ['SOURCE TYPE',     'Source Type'],
-      ['SUPPLY CPO',      'Qty CPO'],
-      ['SUPPLY PK',       'Qty PK'],
-      ['PROVINCE',        'Province'],
-    ];
+    const SHOW_COLS = supplyBatchTableColumns_(batch);
 
     const head = '<tr>'
       + (isSubmitted ? '' : '<th class="supply-batch-th--check"><input type="checkbox" class="supply-batch-check-all" data-batch="' + escHtml(batch.batch_id) + '" checked aria-label="Pilih semua baris"></th>')
@@ -27921,8 +27976,7 @@ function initDashboardApp() {
       const typePills  = supplyRowTypePillsHtml_(row);
       const cells = SHOW_COLS.map(function(c) {
         const key = c[0];
-        let val = row[key] != null ? row[key] : '';
-        if (key === 'SOURCE TYPE') val = millSourceTypeValFromRow_(row) || val;
+        const val = supplyBatchCellDisplayVal_(row, key, batch);
         if (key === 'COMPANY NAME') {
           return '<td class="supply-batch-td--company">'
             + escHtml(String(val || '—')) + typePills + matchBadge + '</td>';
