@@ -3948,7 +3948,7 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
 var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzpyNfUT-OYgTVg_a58KCPDR9mRiVG8C-lHlRbWKuupUDRZctSs-sPnEIidZXg0gnT1FQ';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
