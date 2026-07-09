@@ -7791,7 +7791,6 @@ function initDashboardApp() {
     try {
       if (!soft && !hydratedFromCache) {
         loading.style.display = 'block';
-        loading.textContent = 'Memuat data mill… (600+ baris, bisa 1–2 menit — mohon tunggu)';
         errorEl.style.display = 'none';
         table.style.display = 'none';
       }
