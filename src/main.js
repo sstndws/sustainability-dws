@@ -8088,10 +8088,21 @@ function initDashboardApp() {
     const seen = new Set();
     const out = [];
     const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
+    function normalizeTokenLabel(tok) {
+      const raw = String(tok || '').trim();
+      const key = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!key) return '';
+      if (key === 'CPO') return 'CPO';
+      if (key === 'PK') return 'PK';
+      if (key === 'POMEISCC' || key === 'ISCC' || key === 'POMEISCCS') return 'POME ISCC';
+      if (key === 'POMEINS' || key === 'INS') return 'POME INS';
+      if (key === 'SHELLGGL' || key === 'SHELL') return 'SHELL GGL';
+      return raw;
+    }
     function add(tok) {
-      const t = String(tok || '').trim();
+      const t = normalizeTokenLabel(tok);
       if (!t) return;
-      const k = t.toUpperCase();
+      const k = t.toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (seen.has(k)) return;
       seen.add(k);
       out.push(t);
@@ -8179,12 +8190,41 @@ function initDashboardApp() {
     return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
+  function millGeneralResolvedPeriodKey_(row) {
+    const companyKey = millGeneralCompanyKey_(row);
+    let monthKey = millGeneralMonthKey_(row);
+    let yearKey = millGeneralYearKey_(row);
+    if (!companyKey || (monthKey && yearKey)) {
+      return { monthKey: monthKey, yearKey: yearKey };
+    }
+    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
+    const src = isWasteRow
+      ? ((allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []))
+      : ((allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []));
+    if (!src.length) return { monthKey: monthKey, yearKey: yearKey };
+
+    const yearCand = new Set();
+    const monthCand = new Set();
+    src.forEach(function(r) {
+      if (millGeneralCompanyKey_(r) !== companyKey) return;
+      const y = parseMillYearSort(millYearVal(r));
+      const m = parseMillMonthSort(millMonthVal(r));
+      if (y) yearCand.add(String(y));
+      if (m) monthCand.add(String(m));
+    });
+
+    if (!yearKey && yearCand.size === 1) yearKey = Array.from(yearCand)[0];
+    if (!monthKey && monthCand.size === 1) monthKey = Array.from(monthCand)[0];
+    return { monthKey: monthKey, yearKey: yearKey };
+  }
+
   /** Kunci gabungan General: company + bulan + tahun (main + waste). */
   function millGeneralMergeKey_(row) {
+    const p = millGeneralResolvedPeriodKey_(row);
     return [
       millGeneralCompanyKey_(row),
-      millGeneralMonthKey_(row),
-      millGeneralYearKey_(row),
+      p.monthKey,
+      p.yearKey,
     ].join('\u0001');
   }
 
@@ -8215,6 +8255,14 @@ function initDashboardApp() {
       const merged = Object.assign({}, g.primary);
       merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
       merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
+      if (!String(millMonthVal(merged) || '').trim()) {
+        const m = g.members.map(function(r) { return parseMillMonthSort(millMonthVal(r)); }).find(function(x) { return x > 0; });
+        if (m) merged.MONTH = String(m);
+      }
+      if (!String(millYearVal(merged) || '').trim()) {
+        const y = g.members.map(function(r) { return parseMillYearSort(millYearVal(r)); }).find(function(x) { return x > 0; });
+        if (y) merged.YEAR = String(y);
+      }
       merged._millGeneralMerged = g.members.length > 1;
       merged._millGeneralMergeCount = g.members.length;
       merged._millGeneralMergeSources = g.members.slice();
