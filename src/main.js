@@ -3947,8 +3947,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwF7JFiGSijZFWv2xKkUfS1RJYdKgdy_WgQg3hpfrEV8uErIAHokfJUzIt90w9F65aLmQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwF7JFiGSijZFWv2xKkUfS1RJYdKgdy_WgQg3hpfrEV8uErIAHokfJUzIt90w9F65aLmQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpyNfUT-OYgTVg_a58KCPDR9mRiVG8C-lHlRbWKuupUDRZctSs-sPnEIidZXg0gnT1FQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzpyNfUT-OYgTVg_a58KCPDR9mRiVG8C-lHlRbWKuupUDRZctSs-sPnEIidZXg0gnT1FQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -24403,14 +24403,78 @@ function initDashboardApp() {
   const SUPPLY_PCT_COL_INS = 'PERCENTAGE SUPPLY INS';
   const SUPPLY_PCT_COL_SHELL = 'PERCENTAGE SUPPLY SHELL';
 
+  let _supplyFlowStep = 'root'; // root | main | waste | pome
+
   function supplyImportType_() {
-    const checked = document.querySelector('input[name="supply-import-type"]:checked');
-    const v = checked ? String(checked.value || '').trim().toUpperCase() : 'CPO';
+    const el = document.getElementById('supply-import-type-value');
+    const v = el ? String(el.value || '').trim().toUpperCase() : '';
     if (v === 'PK') return 'PK';
     if (v === 'POME_ISCC') return 'POME_ISCC';
     if (v === 'POME_INS') return 'POME_INS';
     if (v === 'SHELL_GGL') return 'SHELL_GGL';
-    return 'CPO';
+    if (v === 'CPO') return 'CPO';
+    return '';
+  }
+
+  function supplySetImportType_(value) {
+    const el = document.getElementById('supply-import-type-value');
+    if (el) el.value = String(value || '').trim().toUpperCase();
+    supplyApplyTypeFlow_();
+  }
+
+  function supplyGoFlowStep_(step) {
+    _supplyFlowStep = step || 'root';
+    supplyApplyTypeFlow_();
+  }
+
+  function supplyResetTypeFlow_() {
+    _supplyFlowStep = 'root';
+    const valEl = document.getElementById('supply-import-type-value');
+    if (valEl) valEl.value = '';
+    supplyApplyTypeFlow_();
+  }
+
+  function supplyApplyTypeFlow_() {
+    const kind = supplyImportType_();
+    const step = _supplyFlowStep;
+    const panel = document.getElementById('supply-type-flow-panel');
+    const subMain = document.getElementById('supply-sub-main');
+    const subWaste = document.getElementById('supply-sub-waste');
+    const subPome = document.getElementById('supply-sub-pome');
+    const selected = document.getElementById('supply-type-selected');
+    const selectedLabel = document.getElementById('supply-type-selected-label');
+    const catMain = document.getElementById('supply-cat-main');
+    const catWaste = document.getElementById('supply-cat-waste');
+    const isFinal = !!kind;
+
+    if (subMain) subMain.hidden = step !== 'main';
+    if (subWaste) subWaste.hidden = step !== 'waste';
+    if (subPome) subPome.hidden = step !== 'pome';
+    if (panel) panel.hidden = step === 'root' || isFinal;
+
+    if (selected) selected.hidden = !isFinal;
+    if (selectedLabel && isFinal) selectedLabel.textContent = supplyKindLabel_(kind);
+
+    if (catMain) {
+      catMain.classList.toggle('supply-type-cat--active', step === 'main' || kind === 'CPO' || kind === 'PK');
+      catMain.classList.toggle('supply-type-cat--locked', isFinal && kind !== 'CPO' && kind !== 'PK');
+    }
+    if (catWaste) {
+      catWaste.classList.toggle('supply-type-cat--active', step === 'waste' || step === 'pome' || supplyImportIsWaste_(kind));
+      catWaste.classList.toggle('supply-type-cat--locked', isFinal && !supplyImportIsWaste_(kind));
+    }
+
+    document.querySelectorAll('.supply-type-opt[data-supply-value]').forEach(function(btn) {
+      const v = String(btn.getAttribute('data-supply-value') || '').toUpperCase();
+      btn.classList.toggle('supply-type-opt--active', !!kind && v === kind);
+    });
+    document.querySelectorAll('.supply-type-opt[data-waste-tier="pome"]').forEach(function(btn) {
+      btn.classList.toggle('supply-type-opt--active', step === 'pome' && !kind);
+    });
+  }
+
+  function supplySyncTypeFlow_() {
+    supplyApplyTypeFlow_();
   }
 
   function supplyImportIsWaste_(kind) {
@@ -24552,9 +24616,48 @@ function initDashboardApp() {
 
   function supplyProfilePeriodPillHtml_(draftRow, batch) {
     if (!draftRow || draftRow.match_status !== 'matched') return '';
-    const label = supplyMillProfilePeriodFromRow_(supplyLookupMillProfileForDraft_(draftRow, batch));
+    let label = String(draftRow._profile_source_period || '').trim();
+    if (!label) {
+      label = supplyMillProfilePeriodFromRow_(supplyLookupMillProfileForDraft_(draftRow, batch));
+    }
     if (!label) return '';
-    return '<span class="supply-match-pill supply-match-pill--profile-period" title="Periode data di Mill Onboarding">Profil: ' + escHtml(label) + '</span>';
+    const isWaste = supplyImportIsWaste_(supplyResolveKindFromDraft_(draftRow, batch));
+    const title = isWaste
+      ? 'Data profil disalin dari Mill Onboarding. Sesuaikan field waste sebelum submit ke Mill Onboarding Waste.'
+      : 'Periode data profil di Mill Onboarding';
+    return '<span class="supply-match-pill supply-match-pill--profile-period" title="' + escHtml(title) + '">Profil: ' + escHtml(label) + '</span>';
+  }
+
+  function supplyImportMatchCellHtml_(excelRow, kind) {
+    const names = supplyResolveNamesFromExcel_(excelRow);
+    const match = supplyFindMillProfileMatch_(excelRow, kind);
+    let html = supplyMatchBadgeHtml_(match.status);
+    if (match.status === 'matched') {
+      const profile = supplyPickLatestMillProfileForCompany_(names.company) || match.row;
+      const label = supplyMillProfilePeriodFromRow_(profile);
+      if (label) {
+        html += '<span class="supply-match-pill supply-match-pill--profile-period" title="Data akan disalin dari profil Mill Onboarding periode ini">Profil: ' + escHtml(label) + '</span>';
+      }
+    }
+    return html;
+  }
+
+  function supplyStampProfileSourceOnDraft_(draftRow, profile) {
+    if (!draftRow || !profile) return;
+    const month = pickMillMonthDirect_(profile) || millMonthVal(profile) || millQuarterVal(profile);
+    const year = millYearVal(profile);
+    draftRow._profile_source_month = month;
+    draftRow._profile_source_year = year;
+    draftRow._profile_source_period = supplyFormatPeriodLabel_(month, year);
+    if (profile._row) {
+      draftRow.target_mill_row = profile._row;
+      draftRow._mill_row = profile._row;
+    }
+  }
+
+  function supplyBatchTargetSheetLabel_(batch) {
+    const kind = batch ? String(batch.supply_type || '').trim().toUpperCase() : '';
+    return supplyImportIsWaste_(kind) ? 'Mill Onboarding Waste' : 'Mill Onboarding';
   }
 
   function supplyIndexLocalDraftRows_() {
@@ -24688,7 +24791,7 @@ function initDashboardApp() {
       if (cached) return cached;
     }
     const kind2 = supplyResolveKindFromDraft_(draftRow, batch);
-    const facField = kind2 === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+    const facField = supplyFacilityFieldForKind_(kind2);
     const found = supplyFindMillProfileMatch_({
       COMPANY_NAME: draftRow['COMPANY NAME'],
       MILL_NAME: draftRow['MILL NAME'],
@@ -25272,7 +25375,7 @@ function initDashboardApp() {
     }
     const kind = supplyResolveKindFromDraft_(draftRow, batch);
     const matchKind = kind === 'CPO+PK' ? 'CPO+PK' : kind;
-    const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
+    const facField = supplyFacilityFieldForKind_(kind);
     const excelLike = {
       COMPANY_NAME: draftRow['COMPANY NAME'],
       MILL_NAME: draftRow['MILL NAME'],
@@ -25304,16 +25407,27 @@ function initDashboardApp() {
 
   function supplyDraftProfileSkipFields_(draftRow, batch) {
     const kind = supplyResolveKindFromDraft_(draftRow, batch);
-    const pctField = kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO;
-    const facField = kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO';
-    return new Set([
-      pctField, SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    const skip = new Set([
       'MONTH', 'QUARTER', 'YEAR',
       'COMPANY NAME', 'MILL NAME', 'GROUP NAME',
-      'FACILITY NAME CPO', 'FACILITY NAME PK', 'SOURCE TYPE',
+      'SOURCE TYPE',
       'SUPPLY CPO', 'SUPPLY PK', 'SUPPLY_QTY', 'SUPPLY_PERCENTAGE',
-      facField,
+      SUPPLY_PCT_COL_CPO, SUPPLY_PCT_COL_PK,
+      'FACILITY NAME CPO', 'FACILITY NAME PK',
+      SUPPLY_PCT_COL_ISCC, SUPPLY_PCT_COL_INS, SUPPLY_PCT_COL_SHELL,
+      'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL',
+      'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
     ]);
+    if (wasteCfg) {
+      skip.add(wasteCfg.pct);
+      skip.add(wasteCfg.qty);
+      skip.add(wasteCfg.facility);
+    } else {
+      skip.add(kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO);
+      skip.add(kind === 'PK' ? 'FACILITY NAME PK' : 'FACILITY NAME CPO');
+    }
+    return skip;
   }
 
   /** Kolom yang tetap per-baris saat copy draft antar COMPANY NAME sama. */
@@ -25496,6 +25610,7 @@ function initDashboardApp() {
       const cap = millCapacityFromRow_(profileCopy);
       if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
     }
+    supplyStampProfileSourceOnDraft_(draftRow, profile);
   }
 
   /** Build modal prefill object from a matched Mill Onboarding profile row. */
@@ -26302,7 +26417,7 @@ function initDashboardApp() {
     btn.setAttribute('aria-disabled', checkedN === 0 ? 'true' : 'false');
     btn.title = checkedN === 0
       ? 'Centang baris yang akan di-submit'
-      : ('Submit ' + checkedN + ' baris tercentang ke Mill Onboarding');
+      : ('Submit ' + checkedN + ' baris tercentang ke ' + supplyBatchTargetSheetLabel_(batch));
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
@@ -26875,14 +26990,7 @@ function initDashboardApp() {
   }
 
   function supplySyncTypeSegActive_() {
-    const typeWrap = document.getElementById('supply-import-type-wrap');
-    if (!typeWrap) return;
-    const kind = supplyImportType_();
-    typeWrap.querySelectorAll('.supply-type-seg__opt').forEach(function(lbl) {
-      const inp = lbl.querySelector('input[name="supply-import-type"]');
-      const isActive = inp && String(inp.value || '').toUpperCase() === kind;
-      lbl.classList.toggle('supply-type-seg__opt--active', isActive);
-    });
+    supplySyncTypeFlow_();
   }
 
   // Supply import state — must be declared before initSupplyImport() runs loadSupplyDraftsFromServer_().
@@ -26890,16 +26998,10 @@ function initDashboardApp() {
   let _supplyBuildTaskInFlight = null;
 
   (function initSupplyImport() {
-    // ── Year options ─────────────────────────────────────────────────────────
+    // ── Year field (free input — tidak dibatasi dropdown) ───────────────────
     const yearSel = document.getElementById('supply-import-year');
     if (yearSel) {
-      const curYear = new Date().getFullYear();
-      for (let y = curYear + 1; y >= curYear - 4; y--) {
-        const opt = document.createElement('option');
-        opt.value = String(y); opt.textContent = String(y);
-        yearSel.appendChild(opt);
-      }
-      yearSel.value = String(curYear);
+      yearSel.value = String(new Date().getFullYear());
     }
 
     // ── Modal open/close (portal to body — fixed overlay inside .main-content leaves a gap at bottom)
@@ -26944,7 +27046,7 @@ function initDashboardApp() {
       if (!el) return;
       lockSupplyImportScroll_();
       el.classList.add('open');
-      supplySyncTypeSegActive_();
+      supplyResetTypeFlow_();
       supplyRefreshPeriodHint_();
       supplySetProceedReady_(false);
     }
@@ -26982,23 +27084,63 @@ function initDashboardApp() {
     function checkProceedReady_() {
       const m = monthSel ? monthSel.value : '';
       const y = yearSel ? yearSel.value : '';
+      const hasType = !!supplyImportType_();
       const hasData = window._supplyImportParsedRows && window._supplyImportParsedRows.length > 0;
-      supplySetProceedReady_(!!(m && y && hasData));
+      supplySetProceedReady_(!!(m && y && hasType && hasData));
       supplyRefreshPeriodHint_();
     }
     if (monthSel) monthSel.addEventListener('change', checkProceedReady_);
-    if (yearSel)  yearSel.addEventListener('change', checkProceedReady_);
+    if (yearSel) {
+      yearSel.addEventListener('change', checkProceedReady_);
+      yearSel.addEventListener('input', checkProceedReady_);
+    }
 
     const typeWrap = document.getElementById('supply-import-type-wrap');
     if (typeWrap) {
-      typeWrap.querySelectorAll('.supply-type-seg__opt').forEach(function(lbl) {
-        lbl.addEventListener('click', function() {
-          supplySyncTypeSegActive_();
-          const inp = lbl.querySelector('input[name="supply-import-type"]');
-          if (inp) inp.checked = true;
-          window._supplyImportParsedRows = null;
-          resetImportModal_(true);
-          checkProceedReady_();
+      const catMain = document.getElementById('supply-cat-main');
+      const catWaste = document.getElementById('supply-cat-waste');
+      const changeBtn = document.getElementById('supply-type-change');
+      function onTypeChanged_() {
+        window._supplyImportParsedRows = null;
+        resetImportModal_(true);
+        checkProceedReady_();
+      }
+      if (catMain) catMain.addEventListener('click', function() {
+        if (supplyImportType_()) return;
+        supplySetImportType_('');
+        supplyGoFlowStep_('main');
+        onTypeChanged_();
+      });
+      if (catWaste) catWaste.addEventListener('click', function() {
+        if (supplyImportType_()) return;
+        supplySetImportType_('');
+        supplyGoFlowStep_('waste');
+        onTypeChanged_();
+      });
+      if (changeBtn) changeBtn.addEventListener('click', function() {
+        supplyResetTypeFlow_();
+        onTypeChanged_();
+      });
+      typeWrap.querySelectorAll('[data-supply-back]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const back = btn.getAttribute('data-supply-back');
+          supplySetImportType_('');
+          supplyGoFlowStep_(back === 'waste' ? 'waste' : 'root');
+          onTypeChanged_();
+        });
+      });
+      typeWrap.querySelectorAll('.supply-type-opt[data-supply-value]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const v = btn.getAttribute('data-supply-value');
+          supplySetImportType_(v);
+          onTypeChanged_();
+        });
+      });
+      typeWrap.querySelectorAll('.supply-type-opt[data-waste-tier="pome"]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          supplySetImportType_('');
+          supplyGoFlowStep_('pome');
+          onTypeChanged_();
         });
       });
     }
@@ -27039,7 +27181,10 @@ function initDashboardApp() {
   })();
 
   function resetImportModal_(keepType) {
-    if (!keepType) window._supplyImportParsedRows = null;
+    if (!keepType) {
+      window._supplyImportParsedRows = null;
+      supplyResetTypeFlow_();
+    }
     const fileInput  = document.getElementById('supply-import-file-input');
     const fileInfo   = document.getElementById('supply-import-file-info');
     const fileError  = document.getElementById('supply-import-file-error');
@@ -27064,6 +27209,11 @@ function initDashboardApp() {
       if (fileInfo)  fileInfo.hidden = true;
     }
     if (fileError) fileError.hidden = true;
+
+    if (!supplyImportType_()) {
+      showErr('Pilih jenis product dulu sebelum upload Excel.');
+      return;
+    }
 
     if (typeof XLSX === 'undefined') {
       const script = document.createElement('script');
@@ -27144,11 +27294,10 @@ function initDashboardApp() {
     const preview = parsedRows.slice(0, 8);
     tBody.innerHTML = preview.map(function(r) {
       const names = supplyResolveNamesFromExcel_(r);
-      const match = supplyFindMillProfileMatch_(r, kind);
       const millDisp = names.mill || '—';
       return '<tr>'
         + [r.PLANT, r.CATEGORY, names.group, names.company, millDisp, r.SUPPLY_QTY,
-            supplyMatchBadgeHtml_(match.status), r.SUPPLY_PCT].map(function(v) {
+            supplyImportMatchCellHtml_(r, kind), r.SUPPLY_PCT].map(function(v) {
             return '<td>' + (typeof v === 'string' && v.indexOf('<span') === 0 ? v : escHtml(String(v != null && v !== '' ? v : '—'))) + '</td>';
           }).join('') + '</tr>';
     }).join('');
@@ -27157,6 +27306,9 @@ function initDashboardApp() {
     }
     if (stats) {
       let statTxt = parsedRows.length + ' baris · ' + matchedN + ' matched · ' + newN + ' baru';
+      if (wasteCfg && matchedN > 0) {
+        statTxt += ' · profil disalin dari Mill Onboarding (lihat kolom Match)';
+      }
       if (!wasteCfg && mergeableN > 0) {
         statTxt += ' · ' + mergeableN + ' akan digabung ke baris yang sudah ada (company + periode sama)';
       }
@@ -27671,12 +27823,16 @@ function initDashboardApp() {
     const checkedN = supplyCountFooterSubmit_(batchId);
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
+    const targetSheet = supplyBatchTargetSheetLabel_(batch);
     const btnTitle = checkedN === 0
       ? 'Centang baris yang akan di-submit'
-      : ('Submit ' + checkedN + ' baris tercentang ke Mill Onboarding');
+      : ('Submit ' + checkedN + ' baris tercentang ke ' + targetSheet);
+    const hintWaste = supplyImportIsWaste_(batch && batch.supply_type)
+      ? ' Baris matched menyalin data profil dari <strong>Mill Onboarding</strong> (lihat badge Profil: bulan/tahun). Submit mengirim ke <strong>Mill Onboarding Waste</strong>.'
+      : '';
     return '<div class="supply-batch-footer">'
-      + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk Mill Onboarding. '
-      + '<strong>Submit Terpilih</strong> mengirim semua baris tercentang ke Mill Onboarding (profil diisi otomatis dari data import / Mill Onboarding jika ada).</p>'
+      + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk sheet. '
+      + '<strong>Submit Terpilih</strong> mengirim baris tercentang ke <strong>' + escHtml(targetSheet) + '</strong> (profil diisi otomatis dari Mill Onboarding jika matched).' + hintWaste + '</p>'
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')

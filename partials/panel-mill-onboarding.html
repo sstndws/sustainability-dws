@@ -149,49 +149,75 @@
       </header>
 
       <div class="supply-import-modal__body">
-        <div class="supply-import-callout" role="note">
-          <svg class="supply-import-callout__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <div>
-            <strong>Format Excel (kolom A–F):</strong>
-            <strong>PLANT</strong> → Facility sesuai jenis import (CPO/PK/ISCC/INS/SHELL); CATEGORY · COMPANY GROUP NAME · COMPANY NAME · MILL NAME · <strong>QTY SUPPLY (TON)</strong>
-            <br>
-            <strong>Tip:</strong> Main Product submit ke Mill Onboarding, Waste Product submit ke Mill Onboarding Waste. Kolom rumus (score, %, status) jangan diisi manual.
-          </div>
-        </div>
-
         <div class="supply-import-step">
           <div class="supply-import-step__label"><span class="supply-import-step__num">1</span> Jenis Product</div>
-          <div id="supply-import-type-wrap" class="supply-type-seg" role="radiogroup" aria-label="Jenis supply">
-            <label class="supply-type-seg__opt supply-type-seg__opt--cpo supply-type-seg__opt--active">
-              <input type="radio" name="supply-import-type" value="CPO" checked>
-              <span class="supply-type-seg__tag supply-type-seg__tag--cpo">CPO</span>
-              <span class="supply-type-seg__name">Crude Palm Oil</span>
-              <small>% Supply CPO</small>
-            </label>
-            <label class="supply-type-seg__opt supply-type-seg__opt--pk">
-              <input type="radio" name="supply-import-type" value="PK">
-              <span class="supply-type-seg__tag supply-type-seg__tag--pk">PK</span>
-              <span class="supply-type-seg__name">Palm Kernel</span>
-              <small>% Supply PK</small>
-            </label>
-            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
-              <input type="radio" name="supply-import-type" value="POME_ISCC">
-              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">POME ISCC</span>
-              <span class="supply-type-seg__name">Waste Product</span>
-              <small>% Supply ISCC</small>
-            </label>
-            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
-              <input type="radio" name="supply-import-type" value="POME_INS">
-              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">POME INS</span>
-              <span class="supply-type-seg__name">Waste Product</span>
-              <small>% Supply INS</small>
-            </label>
-            <label class="supply-type-seg__opt supply-type-seg__opt--waste">
-              <input type="radio" name="supply-import-type" value="SHELL_GGL">
-              <span class="supply-type-seg__tag supply-type-seg__tag--cpopk">SHELL GGL</span>
-              <span class="supply-type-seg__name">Waste Product</span>
-              <small>% Supply SHELL</small>
-            </label>
+          <div id="supply-import-type-wrap" class="supply-type-flow" aria-label="Jenis supply">
+            <div class="supply-type-flow__cats">
+              <button type="button" class="supply-type-cat" data-supply-cat="main" id="supply-cat-main">
+                <span class="supply-type-cat__title">Main Product</span>
+                <span class="supply-type-cat__hint">CPO · PK</span>
+              </button>
+              <button type="button" class="supply-type-cat" data-supply-cat="waste" id="supply-cat-waste">
+                <span class="supply-type-cat__title">Waste Product</span>
+                <span class="supply-type-cat__hint">POME · SHELL</span>
+              </button>
+            </div>
+
+            <div id="supply-type-flow-panel" class="supply-type-flow__panel" hidden>
+              <div id="supply-sub-main" class="supply-type-flow__sub" data-flow-step="main" hidden>
+                <span class="supply-type-flow__sub-label">Pilih jenis main product</span>
+                <div class="supply-type-flow__opts">
+                  <button type="button" class="supply-type-opt supply-type-opt--cpo" data-supply-value="CPO">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--cpo">CPO</span>
+                    <span class="supply-type-opt__name">Crude Palm Oil</span>
+                  </button>
+                  <button type="button" class="supply-type-opt supply-type-opt--pk" data-supply-value="PK">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--pk">PK</span>
+                    <span class="supply-type-opt__name">Palm Kernel</span>
+                  </button>
+                </div>
+              </div>
+
+              <div id="supply-sub-waste" class="supply-type-flow__sub" data-flow-step="waste" hidden>
+                <span class="supply-type-flow__sub-label">Pilih jenis waste product</span>
+                <div class="supply-type-flow__opts">
+                  <button type="button" class="supply-type-opt supply-type-opt--waste" data-waste-tier="pome">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--waste">POME</span>
+                    <span class="supply-type-opt__name">Palm Oil Mill Effluent</span>
+                  </button>
+                  <button type="button" class="supply-type-opt supply-type-opt--waste" data-supply-value="SHELL_GGL">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--waste">SHELL</span>
+                    <span class="supply-type-opt__name">Shell GGL</span>
+                  </button>
+                </div>
+              </div>
+
+              <div id="supply-sub-pome" class="supply-type-flow__sub" data-flow-step="pome" hidden>
+                <button type="button" class="supply-type-flow__back" data-supply-back="waste">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                  Kembali
+                </button>
+                <span class="supply-type-flow__sub-label">Pilih sertifikasi POME</span>
+                <div class="supply-type-flow__opts">
+                  <button type="button" class="supply-type-opt supply-type-opt--waste" data-supply-value="POME_ISCC">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--waste">ISCC</span>
+                    <span class="supply-type-opt__name">POME ISCC</span>
+                  </button>
+                  <button type="button" class="supply-type-opt supply-type-opt--waste" data-supply-value="POME_INS">
+                    <span class="supply-type-opt__tag supply-type-opt__tag--waste">INS</span>
+                    <span class="supply-type-opt__name">POME INS</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div id="supply-type-selected" class="supply-type-selected" hidden>
+              <span class="supply-type-selected__dot" aria-hidden="true"></span>
+              <span id="supply-type-selected-label" class="supply-type-selected__label"></span>
+              <button type="button" id="supply-type-change" class="supply-type-selected__change">Ubah</button>
+            </div>
+
+            <input type="hidden" id="supply-import-type-value" value="">
           </div>
         </div>
 
@@ -218,9 +244,7 @@
             </div>
             <div class="supply-import-field">
               <label class="supply-import-field__label" for="supply-import-year">Year</label>
-              <select id="supply-import-year" class="supply-import-select">
-                <option value="">— Pilih Year —</option>
-              </select>
+              <input type="number" id="supply-import-year" class="supply-import-select" inputmode="numeric" min="2000" max="9999" step="1" placeholder="cth. 2029">
             </div>
           </div>
           <div id="supply-import-period-hint" class="supply-import-period-hint" hidden></div>

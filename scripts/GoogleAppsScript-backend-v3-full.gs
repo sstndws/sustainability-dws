@@ -5430,7 +5430,7 @@ function millPickLatestMatchObjGs_(matches) {
   return best.obj;
 }
 
-function findMillReferenceForSupplyGs_(millData, millHeaders, row, companyIndex) {
+function findMillReferenceForSupplyGs_(millData, millHeaders, row, companyIndex, fallback) {
   var company = String(row['COMPANY NAME'] || '').trim();
   var key = supplyNormKey_(company);
   var matches = (companyIndex && companyIndex[key]) ? companyIndex[key] : [];
@@ -5439,6 +5439,9 @@ function findMillReferenceForSupplyGs_(millData, millHeaders, row, companyIndex)
   var targetRef = Number(row.target_mill_row || row._mill_row || 0);
   if (targetRef >= 2 && targetRef <= millData.length) {
     return millRowToObjectGs_(millData[targetRef - 1], millHeaders);
+  }
+  if (fallback && fallback.data && fallback.headers) {
+    return findMillReferenceForSupplyGs_(fallback.data, fallback.headers, row, fallback.companyIndex);
   }
   return null;
 }
@@ -5592,7 +5595,7 @@ function mergeReferenceIdentityIntoPatchGs_(patch, refObj) {
  */
 function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   state = state || {};
-  var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row, state.companyIndex);
+  var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row, state.companyIndex, state.mainMillFallback);
   if (!ref && !String(row['COMPANY NAME'] || '').trim()) {
     throw new Error('profil mill tidak ditemukan');
   }
@@ -6372,6 +6375,16 @@ function submitSupplyDraft_(batchId, rows, meta) {
     activeLast: millFindActiveZoneLastRow_(millSheet, millHeaders),
     lastRow: millSheet.getLastRow(),
   };
+  if (targetSheetKey === 'millWaste') {
+    var mainSheet = getSheet('mill');
+    var mainData = mainSheet.getDataRange().getValues();
+    var mainHeaders = mainData[0].map(function(h) { return String(h || '').trim(); });
+    millState.mainMillFallback = {
+      data: mainData,
+      headers: mainHeaders,
+      companyIndex: buildMillCompanyIndexGs_(mainData, mainHeaders),
+    };
+  }
 
   rows.forEach(function(row) {
     var rp = supplyReadPeriodFromRowGs_(row);
@@ -6390,7 +6403,7 @@ function submitSupplyDraft_(batchId, rows, meta) {
     }
 
     try {
-      if (!findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex)
+      if (!findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex, millState.mainMillFallback)
           && !String(row['COMPANY NAME'] || '').trim()) {
         throw new Error('profil mill tidak ditemukan — match dulu');
       }
@@ -6406,7 +6419,7 @@ function submitSupplyDraft_(batchId, rows, meta) {
       } else if (!dupSheetRow) {
         var identityPatch = mergeReferenceIdentityIntoPatchGs_(
           Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
-          findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex)
+          findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex, millState.mainMillFallback)
         );
         resolveGrievanceKeysOnPatchGs_(identityPatch, millHeaders);
         identityPatch = millStripFormulaFromPatchGs_(identityPatch);
