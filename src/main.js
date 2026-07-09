@@ -5482,6 +5482,44 @@ function initDashboardApp() {
 
   const MILL_FIELDS = ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH',MILL_LEGALITY_GRIEVANCE,'DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES',MILL_HUMAN_RIGHTS_GRIEVANCE,MILL_SAFETY_GRIEVANCE,MILL_SOCIAL_GRIEVANCE,MILL_ENVIRONMENT_GRIEVANCE,'TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
 
+  /** Editable columns on Mill Onboarding Waste (formula cols excluded). */
+  const MILL_WASTE_SUPPLY_FIELDS = [
+    'MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
+    'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY',
+    'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
+    'MILL LOC',
+    MILL_LEGALITY_GRIEVANCE, 'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
+    MILL_HUMAN_RIGHTS_GRIEVANCE, MILL_SAFETY_GRIEVANCE, MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
+    'NDPE', 'HRDD', 'CERTIFICATION',
+    'FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL',
+    'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION',
+  ];
+
+  function supplyModalFieldsList_(batchOrKind) {
+    const kind = batchOrKind && typeof batchOrKind === 'object'
+      ? (batchOrKind.supply_type || batchOrKind.SUPPLY_TYPE)
+      : batchOrKind;
+    return supplyImportIsWaste_(kind) ? MILL_WASTE_SUPPLY_FIELDS : (window.MILL_FIELDS_LIST || MILL_FIELDS);
+  }
+
+  function millWasteSupplySections_(wasteKind) {
+    const wasteCfg = supplyWasteKindFromType_(wasteKind);
+    const supplyTitle = wasteCfg ? ('Supply Waste — ' + wasteCfg.product) : 'Supply Waste';
+    const supplyFields = wasteCfg
+      ? [wasteCfg.facility, wasteCfg.qty]
+      : ['FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL'];
+    return [
+      { title: 'Identitas Mill', fields: ['MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY'] },
+      { title: 'Legalitas', fields: ['HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN'] },
+      { title: 'Lokasi', fields: ['MILL LOC'] },
+      { title: 'Grievances', fields: MILL_GRIEVANCE_FLAG_FIELDS_.slice() },
+      { title: 'Policy', fields: ['NDPE', 'HRDD'] },
+      { title: 'Sertifikasi', fields: ['CERTIFICATION'] },
+      { title: supplyTitle, fields: supplyFields },
+      { title: 'Lainnya', fields: ['BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION'] },
+    ];
+  }
+
   /** Sheet formulas — jangan ditulis supply submit / form save (rumus di belakang). */
   const MILL_SHEET_COMPUTED_FIELDS = new Set([
     'COMPLIMENT/NOT COMPLIMENT',
@@ -5506,6 +5544,11 @@ function initDashboardApp() {
     'STATUS SUPPLY CPO',
     'PK',
     'STATUS SUPPLY PK',
+    'LEGALITY SCORE',
+    'PERCENTAGE SUPPLY ISCC',
+    'PERCENTAGE SUPPLY INS',
+    'PERCENTAGE SUPPLY SHELL',
+    'DECLARATION MONITORING',
     // UI-only / legacy computed (tetap jangan overwrite manual save)
     'SCORE',
     'VOLUME SUPPLY STATUS',
@@ -5858,7 +5901,10 @@ function initDashboardApp() {
     }
   }
 
-  function buildMillForm(data) {
+  function buildMillForm(data, formOpts) {
+    formOpts = formOpts || {};
+    const isWasteSupply = !!formOpts.wasteSupply;
+    const sections = isWasteSupply ? millWasteSupplySections_(formOpts.wasteKind) : FIELD_SECTIONS;
     const grid = document.getElementById('modalFormGrid');
     grid.className = 'modal-form-grid cols-1';
     if (data) millNormalizeGrievanceFlagsOnRow_(data);
@@ -5869,12 +5915,15 @@ function initDashboardApp() {
         + (data._supplyImportPeriod
           ? '<div style="margin-top:6px;font-size:12px;color:#3d6a8a;"><strong>Periode import Task List (disubmit):</strong> ' + escHtml(data._supplyImportPeriod) + '</div>'
           : '')
+        + (isWasteSupply
+          ? '<div style="margin-top:6px;font-size:12px;color:#6b1a2a;"><strong>Submit target:</strong> Mill Onboarding Waste — hanya kolom waste (bukan form Mill Onboarding utama).</div>'
+          : '')
         + (data._supplyCompanyDraftShared
           ? '<div style="margin-top:6px;font-size:12px;color:#1565c0;"><strong>Data perusahaan</strong> diisi dari baris lain dengan COMPANY NAME sama — hanya supply/facility per baris yang berbeda.</div>'
           : '')
         + '</div>';
     }
-    FIELD_SECTIONS.forEach(sec => {
+    sections.forEach(sec => {
       const visibleFields = sec.fields.filter(f => !millIsSheetComputedField_(f));
       if (!visibleFields.length) return;
       html += `<div class="mill-form-section"><div class="mill-form-section-title">${sec.title}</div><div class="mill-form-grid">`;
@@ -5890,7 +5939,7 @@ function initDashboardApp() {
         if (f === 'SOURCE TYPE' && data) {
           val = millSourceTypeValFromRow_(data) || val;
         }
-        if (f === 'MILL CAPACITY (TON/HOUR)' && data) {
+        if ((f === 'MILL CAPACITY (TON/HOUR)' || f === 'MILL CAPACITY') && data) {
           val = millCapacityFromRow_(data) || val;
         }
         if (MILL_HA_WIDTH_FIELDS.has(f)) {
@@ -5952,7 +6001,9 @@ function initDashboardApp() {
     if (!grid) return;
 
     if (sheet === 'mill') {
-      buildMillForm(data);
+      const supplyCtx = window._supplyModalContext;
+      const isWasteSupply = !!(supplyCtx && supplyCtx.isWaste);
+      buildMillForm(data, isWasteSupply ? { wasteSupply: true, wasteKind: supplyCtx.wasteKind } : undefined);
     } else if (sheet === 'grievance') {
       buildGrvForm(data);
     } else if (sheet === 'ttp') {
@@ -6070,8 +6121,11 @@ function initDashboardApp() {
           setTimeout(function() { supplyRestoreTaskListScroll_(scrollSnap); }, 120);
         }
         if (typeof window.showSddToast === 'function') {
+          const isWaste = !!(supplyCtx && supplyCtx.isWaste);
           window.showSddToast(
-            isSupplySubmit ? 'Mill profile submitted to Mill Onboarding.' : 'Draft saved — you can continue later.',
+            isSupplySubmit
+              ? (isWaste ? 'Submitted to Mill Onboarding Waste.' : 'Mill profile submitted to Mill Onboarding.')
+              : 'Draft saved — you can continue later.',
             'success'
           );
         }
@@ -25591,24 +25645,29 @@ function initDashboardApp() {
       const v = draftRow[f];
       return v !== undefined && v !== null && String(v).trim() !== '';
     }
-    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+    (supplyModalFieldsList_(batch)).forEach(function(f) {
       if (skip.has(f)) return;
       if (millIsSheetComputedField_(f)) return;
-      if (MILL_HA_WIDTH_FIELDS.has(f)) return;
+      if (!supplyImportIsWaste_(batch && batch.supply_type) && MILL_HA_WIDTH_FIELDS.has(f)) return;
       if (preserveDraft && draftHasVal_(f)) return;
       if (profileCopy[f] !== undefined && profileCopy[f] !== null && String(profileCopy[f]).trim() !== '') {
         draftRow[f] = profileCopy[f];
       }
     });
-    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-      if (preserveDraft && supplyIsValidHaWidthDraftVal_(draftRow[f])) return;
-      const w = supplyHaWidthFromProfile_(profileCopy, f);
-      if (w !== '') draftRow[f] = w;
-    });
+    if (!supplyImportIsWaste_(batch && batch.supply_type)) {
+      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+        if (preserveDraft && supplyIsValidHaWidthDraftVal_(draftRow[f])) return;
+        const w = supplyHaWidthFromProfile_(profileCopy, f);
+        if (w !== '') draftRow[f] = w;
+      });
+    }
     supplyCopyGrievanceFromProfile_(draftRow, profileCopy, { preserveDraft: preserveDraft });
-    if (!preserveDraft || !draftHasVal_('MILL CAPACITY (TON/HOUR)')) {
+    if (!preserveDraft || !millCapacityFromRow_(draftRow)) {
       const cap = millCapacityFromRow_(profileCopy);
-      if (cap) draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
+      if (cap) {
+        draftRow['MILL CAPACITY (TON/HOUR)'] = cap;
+        if (supplyImportIsWaste_(batch && batch.supply_type)) draftRow['MILL CAPACITY'] = cap;
+      }
     }
     supplyStampProfileSourceOnDraft_(draftRow, profile);
   }
@@ -25625,6 +25684,19 @@ function initDashboardApp() {
       'MILL LOC', 'CERTIFICATION',
       'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
       'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
+    ];
+  }
+
+  /** Kolom identitas untuk submit Mill Onboarding Waste (tanpa spatial CPO/PK). */
+  function supplyWasteProfileIdentityFields_() {
+    return [
+      'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME',
+      'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'MILL CAPACITY (TON/HOUR)',
+      'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
+      'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
+      'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
+      'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
+      'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION',
     ];
   }
 
@@ -25656,11 +25728,13 @@ function initDashboardApp() {
     return prefill;
   }
 
-  function supplySubmitFillFields_() {
-    const s = new Set(supplyProfileIdentityFields_());
+  function supplySubmitFillFields_(batch) {
+    const isWaste = batch && supplyImportIsWaste_(batch.supply_type);
+    const identity = isWaste ? supplyWasteProfileIdentityFields_() : supplyProfileIdentityFields_();
+    const s = new Set(identity);
     ['MONTH', 'YEAR', 'QUARTER', 'SUPPLY CPO', 'SUPPLY PK', 'FACILITY NAME CPO', 'FACILITY NAME PK',
       'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
-      'PRODUCT SUPPLY', 'PLANT', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME'].forEach(function(k) { s.add(k); });
+      'PLANT', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME'].forEach(function(k) { s.add(k); });
     MILL_GRIEVANCE_NOTE_FIELDS_.forEach(function(k) { s.add(k); });
     return s;
   }
@@ -25670,14 +25744,21 @@ function initDashboardApp() {
     const out = {};
     if (!row) return out;
     supplyApplyTypedQtyAndFacility_(out, row, batch);
-    supplySubmitFillFields_().forEach(function(k) {
+    supplySubmitFillFields_(batch).forEach(function(k) {
       if (millIsSheetComputedField_(k)) return;
       const v = row[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = v;
     });
-    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-      if (supplyIsValidHaWidthDraftVal_(row[f])) out[f] = supplyNormalizeHaWidthField_(row[f]);
-    });
+    if (!supplyImportIsWaste_(batch && batch.supply_type)) {
+      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+        if (supplyIsValidHaWidthDraftVal_(row[f])) out[f] = supplyNormalizeHaWidthField_(row[f]);
+      });
+    }
+    const cap = millCapacityFromRow_(row);
+    if (cap) {
+      out['MILL CAPACITY'] = cap;
+      if (!supplyImportIsWaste_(batch && batch.supply_type)) out['MILL CAPACITY (TON/HOUR)'] = cap;
+    }
     supplyApplyBatchPeriodToPayload_(out, batch, row);
     if (row.draft_id) out.draft_id = row.draft_id;
     if (row.batch_id) out.batch_id = row.batch_id;
@@ -25688,7 +25769,9 @@ function initDashboardApp() {
       out.supply_type = st;
       out.SUPPLY_TYPE = st;
     }
-    if (!out['PRODUCT SUPPLY']) out['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    if (!supplyImportIsWaste_(batch && batch.supply_type) && !out['PRODUCT SUPPLY']) {
+      out['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    }
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
       const gv = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(row, f));
       if (gv === 'Yes' || gv === 'No') out[f] = gv;
@@ -25878,6 +25961,8 @@ function initDashboardApp() {
 
   function supplyBuildMillPrefillFromDraft_(draftRow, batch, opts) {
     opts = opts || {};
+    const isWaste = supplyImportIsWaste_(supplyResolveKindFromDraft_(draftRow, batch));
+    const fieldsList = supplyModalFieldsList_(batch);
     const rowDraftSaved = supplyDraftSavedFlag_(draftRow);
     const profileRow = rowDraftSaved || opts.rematch === false
       ? supplyLookupMillProfileForDraft_(draftRow, batch)
@@ -25886,17 +25971,19 @@ function initDashboardApp() {
     if (!rowDraftSaved) {
       Object.assign(prefill, supplyProfilePrefillFromRow_(profileRow));
     } else {
-      (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      fieldsList.forEach(function(f) {
         if (millIsSheetComputedField_(f)) return;
-        if (MILL_HA_WIDTH_FIELDS.has(f)) return;
+        if (!isWaste && MILL_HA_WIDTH_FIELDS.has(f)) return;
         if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) return;
         if (draftRow[f] !== undefined && draftRow[f] !== null) prefill[f] = draftRow[f];
       });
-      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-        if (supplyIsValidHaWidthDraftVal_(draftRow[f])) {
-          prefill[f] = supplyNormalizeHaWidthField_(draftRow[f]);
-        }
-      });
+      if (!isWaste) {
+        MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+          if (supplyIsValidHaWidthDraftVal_(draftRow[f])) {
+            prefill[f] = supplyNormalizeHaWidthField_(draftRow[f]);
+          }
+        });
+      }
       MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
         const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(draftRow, f));
         if (dnorm === 'Yes' || dnorm === 'No') prefill[f] = dnorm;
@@ -25907,7 +25994,10 @@ function initDashboardApp() {
         if (nv) prefill[k] = nv;
       });
       const cap = millCapacityFromRow_(draftRow);
-      if (cap) prefill['MILL CAPACITY (TON/HOUR)'] = cap;
+      if (cap) {
+        if (isWaste) prefill['MILL CAPACITY'] = cap;
+        else prefill['MILL CAPACITY (TON/HOUR)'] = cap;
+      }
     }
     if (batch) {
       if (batch.month) prefill['MONTH'] = String(batch.month);
@@ -25928,9 +26018,9 @@ function initDashboardApp() {
       prefill._supplyCompanyDraftShared = true;
     }
     if (!rowDraftSaved) {
-      (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+      fieldsList.forEach(function(f) {
         if (millIsSheetComputedField_(f)) return;
-        if (MILL_HA_WIDTH_FIELDS.has(f)) return;
+        if (!isWaste && MILL_HA_WIDTH_FIELDS.has(f)) return;
         if (MILL_GRIEVANCE_FLAG_FIELDS_.indexOf(f) >= 0) return;
         if (supplyCompanyDraftSharedSkipFields_().has(f)) {
           const sv = draftRow[f];
@@ -25942,12 +26032,14 @@ function initDashboardApp() {
           if (v !== undefined && v !== null) prefill[f] = v;
         }
       });
-      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-        const dv = profileDataRow[f];
-        if (supplyIsValidHaWidthDraftVal_(dv)) {
-          prefill[f] = supplyNormalizeHaWidthField_(dv);
-        }
-      });
+      if (!isWaste) {
+        MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+          const dv = profileDataRow[f];
+          if (supplyIsValidHaWidthDraftVal_(dv)) {
+            prefill[f] = supplyNormalizeHaWidthField_(dv);
+          }
+        });
+      }
       MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
         if (draftSaved) {
           const dnorm = millNormalizeYesNoSelectVal_(millGrievanceFlagVal_(profileDataRow, f));
@@ -25972,6 +26064,19 @@ function initDashboardApp() {
     });
     const st = millSourceTypeValFromRow_(draftRow);
     if (st) prefill['SOURCE TYPE'] = st;
+    const capFinal = millCapacityFromRow_(prefill) || millCapacityFromRow_(draftRow);
+    if (capFinal) {
+      if (isWaste) prefill['MILL CAPACITY'] = capFinal;
+      else prefill['MILL CAPACITY (TON/HOUR)'] = capFinal;
+    }
+    if (isWaste) {
+      const wasteCfg = supplyWasteKindFromType_(supplyResolveKindFromDraft_(draftRow, batch));
+      if (wasteCfg) {
+        ['FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL'].forEach(function(k) {
+          if (k !== wasteCfg.facility && k !== wasteCfg.qty && prefill[k] !== undefined) delete prefill[k];
+        });
+      }
+    }
     return prefill;
   }
 
@@ -26033,7 +26138,7 @@ function initDashboardApp() {
     }
 
     const prefill = supplyBuildMillPrefillFromDraft_(row, batch, { rematch: false });
-    const fillKeys = supplySubmitFillFields_();
+    const fillKeys = supplySubmitFillFields_(batch);
     fillKeys.forEach(function(f) {
       if (millIsSheetComputedField_(f)) return;
       const cur = row[f];
@@ -26043,12 +26148,14 @@ function initDashboardApp() {
         row[f] = pv;
       }
     });
-    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-      if (!fillKeys.has(f)) return;
-      if (!supplyIsValidHaWidthDraftVal_(row[f]) && prefill[f] != null && supplyIsValidHaWidthDraftVal_(prefill[f])) {
-        row[f] = supplyNormalizeHaWidthField_(prefill[f]);
-      }
-    });
+    if (!supplyImportIsWaste_(batch && batch.supply_type)) {
+      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+        if (!fillKeys.has(f)) return;
+        if (!supplyIsValidHaWidthDraftVal_(row[f]) && prefill[f] != null && supplyIsValidHaWidthDraftVal_(prefill[f])) {
+          row[f] = supplyNormalizeHaWidthField_(prefill[f]);
+        }
+      });
+    }
 
     if (!String(row['SOURCE TYPE'] || '').trim()) {
       row['SOURCE TYPE'] = millSourceTypeValFromRow_(row) || 'MILL';
@@ -26325,12 +26432,18 @@ function initDashboardApp() {
   function supplyCopyModalIntoDraftRow_(draftRow, data, batch) {
     if (!draftRow || !data) return;
     const payload = supplyPrepareMillSavePayload_(data, batch, draftRow);
-    MILL_HA_WIDTH_FIELDS.forEach(function(f) {
-      if (Object.prototype.hasOwnProperty.call(data, f)) {
-        payload[f] = supplyNormalizeHaWidthField_(data[f]);
-      }
-    });
-    (window.MILL_FIELDS_LIST || MILL_FIELDS).forEach(function(f) {
+    if (data['MILL CAPACITY'] && String(data['MILL CAPACITY']).trim() !== '') {
+      payload['MILL CAPACITY'] = data['MILL CAPACITY'];
+      payload['MILL CAPACITY (TON/HOUR)'] = data['MILL CAPACITY'];
+    }
+    if (!supplyImportIsWaste_(batch && batch.supply_type)) {
+      MILL_HA_WIDTH_FIELDS.forEach(function(f) {
+        if (Object.prototype.hasOwnProperty.call(data, f)) {
+          payload[f] = supplyNormalizeHaWidthField_(data[f]);
+        }
+      });
+    }
+    supplyModalFieldsList_(batch).forEach(function(f) {
       if (Object.prototype.hasOwnProperty.call(payload, f)) draftRow[f] = payload[f];
     });
     MILL_GRIEVANCE_FLAG_FIELDS_.forEach(function(f) {
@@ -26648,12 +26761,13 @@ function initDashboardApp() {
 
   function supplyApplyPrefillToMillModal_(prefill) {
     const titleName = prefill['MILL NAME'] || prefill['COMPANY NAME'] || prefill['GROUP NAME'] || '';
+    const isWaste = window._supplyModalContext && window._supplyModalContext.isWaste;
     requestAnimationFrame(function() {
       const titleEl = document.getElementById('modalTitle');
       if (titleEl) {
         titleEl.textContent = titleName
-          ? ('Add Mill — ' + titleName + ' (supply import)')
-          : 'Add Mill (supply import)';
+          ? ('Add Mill — ' + titleName + (isWaste ? ' (supply import → Waste)' : ' (supply import)'))
+          : (isWaste ? 'Add Mill (supply import → Waste)' : 'Add Mill (supply import)');
       }
       document.querySelectorAll('#modalFormGrid [data-field]').forEach(function(el) {
         const field = el.dataset.field;
@@ -27838,11 +27952,13 @@ function initDashboardApp() {
     }
 
     const prefill = supplyBuildMillPrefillFromDraft_(draftRow, batch, { rematch: !supplyDraftSavedFlag_(draftRow) });
+    const wasteKind = supplyResolveKindFromDraft_(draftRow, batch);
+    const isWaste = supplyImportIsWaste_(wasteKind);
     modalTaskKey = '';
     modalTaskLineId = '';
-    window._supplyModalContext = { batchId: bId, rowIdx: rowIdx };
+    window._supplyModalContext = { batchId: bId, rowIdx: rowIdx, isWaste: isWaste, wasteKind: wasteKind };
     window._supplyLastScrollSnap = supplyCaptureTaskListScroll_();
-    openModal('mill', MILL_FIELDS, 'add', prefill);
+    openModal('mill', supplyModalFieldsList_(batch), 'add', prefill);
     syncSupplyModalChrome_(true);
     supplyApplyPrefillToMillModal_(prefill);
     requestAnimationFrame(function() {
