@@ -8659,21 +8659,74 @@ function initDashboardApp() {
     return millProfileTitleCaseWords_(g) + ' — ' + millProfileTitleCaseWords_(p);
   }
 
+  function millProfileHeaderSupplyRow_(row) {
+    if (!row || typeof row !== 'object') return row;
+    if (millRegistryProductView === 'general') {
+      const key = millGeneralMergeKey_(row);
+      if (!key || key === '\u0001\u0001') return row;
+      const main = millRegistryBaseRows_('main').filter(function(r) { return millGeneralMergeKey_(r) === key; });
+      const waste = millRegistryBaseRows_('waste').filter(function(r) { return millGeneralMergeKey_(r) === key; });
+      if (main.length || waste.length) {
+        const merged = millMergeGeneralRegistryRows_(main, waste);
+        if (merged[0]) return merged[0];
+      }
+    }
+    if (millRegistryProductView === 'waste') {
+      const key = millGeneralMergeKey_(row);
+      const waste = millRegistryBaseRows_('waste').filter(function(r) { return millGeneralMergeKey_(r) === key; });
+      if (waste[0]) return waste[0];
+    }
+    return row;
+  }
+
+  function millProfileQtyHeaderHtml_(row) {
+    const supplyRow = millProfileHeaderSupplyRow_(row);
+    let text = millRegistryQtyCellText_(supplyRow);
+    if ((!text || text === '—') && millRegistryProductView === 'main') {
+      const parts = [];
+      const cpo = millSupplyCpoCellText_(supplyRow);
+      const pk = millSupplyPkCellText_(supplyRow);
+      if (cpo && cpo !== '—') parts.push('CPO: ' + cpo);
+      if (pk && pk !== '—') parts.push('PK: ' + pk);
+      text = parts.join(' · ');
+    }
+    if (!text || text === '—') {
+      return '<span class="mp-head-qty mp-head-qty--empty">—</span>';
+    }
+    const segments = text.split(/\s*·\s*/).filter(Boolean);
+    if (segments.length <= 1) {
+      return '<span class="mp-head-qty">' + escHtml(text) + '</span>';
+    }
+    return '<span class="mp-head-qty">' + segments.map(function(part) {
+      return '<span class="mp-qty-seg">' + escHtml(part.trim()) + '</span>';
+    }).join('') + '</span>';
+  }
+
   function millProfileProductSupplyHeaderHtml_(row) {
-    const raw = millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']);
+    const supplyRow = millProfileHeaderSupplyRow_(row);
+    const raw = millPickField_(supplyRow, ['PRODUCT SUPPLY', 'Product Supply']);
     const trimmed = String(raw || '').trim();
     if (!trimmed || /^no\s*data$/i.test(trimmed)) {
-      return '<span class="mp-head-product-supply mp-head-product-supply--empty">' + (trimmed ? escHtml(trimmed) : '—') + '</span>';
+      const tokens = millCollectProductSupplyTokens_(supplyRow);
+      if (!tokens.length) {
+        return '<span class="mp-head-product-supply mp-head-product-supply--empty">' + (trimmed ? escHtml(trimmed) : '—') + '</span>';
+      }
     }
-    const tokens = millProductSupplyTokens_(row);
-    if (!tokens.length) {
+    const tokens = millCollectProductSupplyTokens_(supplyRow);
+    if (!tokens.length && trimmed) {
       return '<span class="mp-head-product-supply">' + escHtml(trimmed) + '</span>';
+    }
+    if (!tokens.length) {
+      return '<span class="mp-head-product-supply mp-head-product-supply--empty">—</span>';
     }
     const parts = [];
     tokens.forEach(function(tok) {
-      const u = tok.toUpperCase();
+      const u = tok.toUpperCase().replace(/\s+/g, ' ');
       if (u === 'CPO') parts.push('<span class="supply-pill supply-pill--cpo">CPO</span>');
       else if (u === 'PK') parts.push('<span class="supply-pill supply-pill--pk">PK</span>');
+      else if (u.indexOf('ISCC') >= 0) parts.push('<span class="supply-pill supply-pill--waste">POME ISCC</span>');
+      else if (u.indexOf('INS') >= 0) parts.push('<span class="supply-pill supply-pill--waste">POME INS</span>');
+      else if (u.indexOf('SHELL') >= 0 || u.indexOf('GGL') >= 0) parts.push('<span class="supply-pill supply-pill--waste">SHELL GGL</span>');
       else parts.push('<span class="supply-pill supply-pill--neutral">' + escHtml(tok) + '</span>');
     });
     return '<span class="mp-head-product-supply supply-row-pills">' + parts.join('') + '</span>';
@@ -8685,6 +8738,7 @@ function initDashboardApp() {
     const locEl = document.getElementById('mp-mill-loc');
     const supEl = document.getElementById('mp-mill-supplier');
     const productSupplyEl = document.getElementById('mp-mill-product-supply');
+    const qtyEl = document.getElementById('mp-mill-qty');
     const nblEl = document.getElementById('mp-mill-nbl');
     const nblSourceEl = document.getElementById('mp-mill-nbl-source');
     const rrEl = document.getElementById('mp-mill-result-risk');
@@ -8701,6 +8755,7 @@ function initDashboardApp() {
     const sup = String(row['SUPPLIER STATUS'] != null ? row['SUPPLIER STATUS'] : '').trim();
     supEl.textContent = sup ? millProfileTitleCaseWords_(sup) : '—';
     if (productSupplyEl) productSupplyEl.innerHTML = millProfileProductSupplyHeaderHtml_(row);
+    if (qtyEl) qtyEl.innerHTML = millProfileQtyHeaderHtml_(row);
     nblEl.innerHTML = nblBadge(row['BUYER NO BUY LIST']);
     if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);

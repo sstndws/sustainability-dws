@@ -4619,91 +4619,100 @@
      justify-content: space-between;
      gap: 14px;
      width: 100%;
-   }
-   .mill-profile-head-main {
-     display: flex;
-     flex-direction: row;
-     flex-wrap: nowrap;
-     align-items: flex-start;
-     gap: 18px 28px;
-     flex: 1 1 auto;
-     width: 100%;
-     min-width: 0;
+     margin-bottom: 14px;
    }
    .mill-profile-head-left {
-     flex: 0 1 auto;
+     flex: 1 1 auto;
      min-width: 0;
-     max-width: min(100%, 520px);
    }
-   .mill-profile-head-right {
-     display: flex;
-     flex-direction: row;
-     flex-wrap: wrap;
-     align-items: flex-start;
-     justify-content: flex-end;
-     gap: 16px 22px;
-     text-align: right;
-     flex: 0 0 auto;
-     margin-left: auto;
+   .mill-profile-head-metrics {
+     display: grid;
+     grid-template-columns: repeat(4, minmax(0, 1fr));
+     gap: 10px;
+     width: 100%;
      padding-top: 2px;
-     min-width: 158px;
    }
-   .mp-head-stack .mp-head-k {
+   .mp-metric {
+     background: rgba(255, 255, 255, 0.88);
+     border: 1px solid rgba(139, 26, 26, 0.1);
+     border-radius: 12px;
+     padding: 10px 12px;
+     min-width: 0;
+   }
+   .mp-metric-k {
      display: block;
-     font-size: 10.5px;
+     font-size: 10px;
      font-weight: 700;
      letter-spacing: 0.08em;
      text-transform: uppercase;
      color: #8B1A1A;
-     margin-bottom: 6px;
+     margin-bottom: 8px;
+     line-height: 1.2;
    }
-   .mp-head-val {
+   .mp-metric-v {
      display: flex;
-     justify-content: flex-end;
-     align-items: center;
      flex-wrap: wrap;
-     gap: 6px;
+     align-items: center;
+     gap: 5px;
+     min-height: 24px;
    }
-  .mp-head-sub {
-    margin-top: 6px;
-    max-width: 260px;
-    font-size: 11px;
-    line-height: 1.4;
-    color: #6a5555;
-  }
-  .mp-head-sub strong {
-    color: #8B1A1A;
-    font-weight: 700;
-  }
-   #millProfileOverlay .mill-profile-head-right .status-badge {
-     font-size: 13px;
-     padding: 6px 13px;
+   .mp-metric-sub {
+     margin-top: 6px;
+     font-size: 10.5px;
+     line-height: 1.35;
+     color: #6a5555;
+   }
+   .mp-metric-sub strong {
+     color: #8B1A1A;
      font-weight: 700;
    }
-   #millProfileOverlay .mill-profile-head-right .mill-rrl {
-     justify-content: flex-end;
+   #millProfileOverlay .mp-metric .status-badge {
+     font-size: 12px;
+     padding: 5px 11px;
+     font-weight: 700;
    }
-   #millProfileOverlay .mill-profile-head-right .mill-rrl-pill {
-     padding: 6px 14px;
-     min-height: 26px;
-     font-size: 10.5px;
+   #millProfileOverlay .mp-metric .mill-rrl-pill {
+     padding: 5px 12px;
+     min-height: 24px;
+     font-size: 10px;
    }
    .mp-head-product-supply {
      display: inline-flex;
      flex-wrap: wrap;
      gap: 5px;
-     justify-content: flex-end;
-     font-size: 13px;
+     font-size: 12px;
      font-weight: 600;
      color: #2a1818;
    }
-   .mp-head-product-supply--empty {
+   .mp-head-product-supply--empty,
+   .mp-head-qty--empty {
      color: #9C8080;
      font-weight: 500;
+     font-size: 13px;
+   }
+   .mp-head-qty {
+     display: flex;
+     flex-direction: column;
+     gap: 4px;
+     font-size: 12px;
+     font-weight: 600;
+     color: #2a1818;
+     line-height: 1.35;
+   }
+   .mp-qty-seg {
+     display: block;
+     white-space: nowrap;
+     overflow: hidden;
+     text-overflow: ellipsis;
+     max-width: 100%;
    }
    #millProfileOverlay .mp-head-product-supply .supply-pill {
-     font-size: 11px;
-     padding: 3px 9px;
+     font-size: 10.5px;
+     padding: 3px 8px;
+   }
+   .supply-pill--waste {
+     background: rgba(46, 125, 50, 0.12);
+     color: #2e7d32;
    }
    .supply-pill--neutral {
      background: rgba(42, 24, 24, 0.08);
@@ -5119,36 +5128,12 @@
      .modal-form-grid { grid-template-columns: 1fr; }
      .mill-profile-overlay { padding: 12px; }
      .mill-profile-head { padding: 18px 18px 14px; }
-     .mill-profile-head-main {
-       flex-direction: column;
-       gap: 16px;
+     .mill-profile-head-metrics {
+       grid-template-columns: repeat(2, minmax(0, 1fr));
      }
-     .mill-profile-head-left {
-       max-width: 100%;
-     }
-     .mill-profile-head-right {
-       align-items: flex-start;
-       text-align: left;
-       width: 100%;
-       margin-left: 0;
-       padding-top: 0;
-       flex-direction: column;
-     }
-     .mp-head-val {
-       justify-content: flex-start;
-     }
-    .mp-head-sub {
-      max-width: none;
-    }
     .mill-profile-qy-export-btn {
       margin-left: 0;
     }
-     #millProfileOverlay .mill-profile-head-right .mill-rrl {
-       justify-content: flex-start;
-     }
-     #millProfileOverlay .mp-head-product-supply {
-       justify-content: flex-start;
-     }
      .mill-profile-body { padding: 16px 18px 20px; }
    }
    @media (max-width: 480px) {
