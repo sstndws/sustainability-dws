@@ -8,7 +8,7 @@
     "dev:clean": "rm -rf node_modules/.vite && vite --force",
     "build": "vite build",
     "preview": "vite preview",
-    "test:supply": "node scripts/test-supply-merge.mjs && node scripts/test-supply-routing.mjs"
+    "test:supply": "node scripts/test-supply-merge.mjs && node scripts/test-supply-routing.mjs && node scripts/test-mill-registry-views.mjs"
   },
   "devDependencies": {
     "vite": "^5.4.0"

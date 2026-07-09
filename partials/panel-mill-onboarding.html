@@ -95,6 +95,18 @@
     </div>
   </section>
 
+  <section class="mill-period-card" aria-label="Product view Mill Registry">
+    <div class="mill-period-card__head">
+      <span class="mill-period-card__title">Product</span>
+      <span class="mill-period-card__hint" id="millProductViewHint">Gabungan Mill Onboarding + Waste — Product Supply &amp; Quantity digabung per company &amp; periode</span>
+    </div>
+    <div class="mill-period-mode" role="group" aria-label="Product view mode">
+      <button type="button" class="mill-period-mode-btn active" data-mill-product-view="general">General</button>
+      <button type="button" class="mill-period-mode-btn" data-mill-product-view="main">Main Product</button>
+      <button type="button" class="mill-period-mode-btn" data-mill-product-view="waste">Waste Product</button>
+    </div>
+  </section>
+
   <!-- Task List Panel (shown when filter=Task List) -->
   <div id="mill-task-list-panel" style="display:none;">
     <!-- ── SDD Screenings (existing) ── -->
@@ -382,6 +394,9 @@
             <th class="mill-th mill-th--mill" scope="col"><div class="mill-th-inner"><span class="mill-th-label">Mill Name</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="MILL NAME" aria-label="Filter Mill Name" title="Filter">▾</button></div></th>
             <th class="mill-th mill-th--province" scope="col"><div class="mill-th-inner"><span class="mill-th-label">Province</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="PROVINCE" aria-label="Filter Province" title="Filter">▾</button></div></th>
             <th class="mill-th mill-th--product" scope="col"><div class="mill-th-inner"><span class="mill-th-label">Product Supply</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="PRODUCT SUPPLY" aria-label="Filter Product Supply" title="Filter">▾</button></div></th>
+            <th class="mill-th mill-th--qty" scope="col" data-mill-col="quantity"><div class="mill-th-inner"><span class="mill-th-label">Quantity</span></div></th>
+            <th class="mill-th mill-th--supply-cpo" scope="col" data-mill-col="supply-cpo"><div class="mill-th-inner"><span class="mill-th-label">Supply CPO</span></div></th>
+            <th class="mill-th mill-th--supply-pk" scope="col" data-mill-col="supply-pk"><div class="mill-th-inner"><span class="mill-th-label">Supply PK</span></div></th>
             <th class="mill-th mill-th--priority" scope="col"><div class="mill-th-inner"><span class="mill-th-label">Priority Engagement</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="PRIORITY ENGAGEMENT" aria-label="Filter Priority Engagement" title="Filter">▾</button></div></th>
             <th class="mill-th mill-th--nbl" scope="col"><div class="mill-th-inner"><span class="mill-th-label">No Buy List</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="BUYER NO BUY LIST" aria-label="Filter No Buy List" title="Filter">▾</button></div></th>
             <th class="mill-th mill-th--cert" scope="col"><div class="mill-th-inner"><span class="mill-th-label">Certification</span><button type="button" class="mill-th-filter-btn" data-mill-filter-btn="CERTIFICATION" aria-label="Filter Certification" title="Filter">▾</button></div></th>

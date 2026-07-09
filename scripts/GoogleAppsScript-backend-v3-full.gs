@@ -190,7 +190,7 @@ const SUPPLY_DRAFT_HEADERS = [
   'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
   'RECOMMENDATION LEVEL', 'PRIORITY ENGAGEMENT', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
   'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
-  'PLANT', 'PRODUCT SUPPLY',
+  'PLANT', 'PRODUCT SUPPLY', 'GHG VALUE',
 ];
 
 const NBL_HEADERS = [
@@ -3996,11 +3996,16 @@ function mirrorTtpFieldsByPosition_(obj, row, headers) {
   });
 }
 
-/** SUPPLY CPO/PK: use stored numeric value (getValues), not display string — avoids "66,000" vs "66.000" ambiguity. */
+/** SUPPLY CPO/PK/waste qty: use stored numeric value (getValues), not display string. */
 function millSupplyUsesRawNumber_(header) {
   var u = String(header || '').trim().toUpperCase();
   return u === 'SUPPLY CPO' || u === 'SUPPLY PK'
+    || u === 'SUPPLY ISCC' || u === 'SUPPLY INS' || u === 'SUPPLY SHELL'
     || u === 'DEFORESTATION WIDTH' || u === 'BURN AREA WIDTH' || u === 'PEAT WIDTH';
+}
+
+function isMillLikeSheetKey_(sheetKey) {
+  return sheetKey === 'mill' || sheetKey === 'millWaste';
 }
 
 /** Date-only cells from Sheets → stable yyyy-MM-dd for API (avoids UTC off-by-one in JSON). */
@@ -4078,7 +4083,7 @@ function getData(sheetKey) {
   }
 
   // Preserve display formatting (Mill, BL Monitoring, TTP %/volume cells).
-  const dispRows = (sheetKey === 'mill' || sheetKey === 'blMonitoring' || sheetKey === 'ttp')
+  const dispRows = (isMillLikeSheetKey_(sheetKey) || sheetKey === 'blMonitoring' || sheetKey === 'ttp')
     ? range.getDisplayValues()
     : null;
   const dispDataRows = dispRows ? dispRows.slice(headerRowNum) : null;
@@ -4101,16 +4106,16 @@ function getData(sheetKey) {
       var key = String(h || '').replace(/\s+/g, ' ').trim();
       if (!key) return;
       var rawVal = rowCells[j];
-      if (sheetKey === 'mill' && millSupplyUsesRawNumber_(h)
+      if (isMillLikeSheetKey_(sheetKey) && millSupplyUsesRawNumber_(h)
           && typeof rawVal === 'number' && !isNaN(rawVal)) {
         obj[key] = rawVal;
       } else {
         obj[key] = formatApiCellValue_(srcCells[j]);
       }
     });
-    if (sheetKey === 'mill') mirrorMillQuarterYearOnRead_(obj);
-    if (sheetKey === 'mill') mirrorMillGroupNameOnRead_(obj);
-    if (sheetKey === 'mill') mirrorMillCompanyNameOnRead_(obj);
+    if (isMillLikeSheetKey_(sheetKey)) mirrorMillQuarterYearOnRead_(obj);
+    if (isMillLikeSheetKey_(sheetKey)) mirrorMillGroupNameOnRead_(obj);
+    if (isMillLikeSheetKey_(sheetKey)) mirrorMillCompanyNameOnRead_(obj);
     if (sheetKey === 'ttp') {
       mirrorGroupNameOnRead_(obj);
       if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];
@@ -4129,13 +4134,13 @@ function getData(sheetKey) {
     return obj;
   }).filter(function(obj) {
     if (sheetKey === 'facilityProfile') return facilityProfileRowHasContent_(obj);
-    if (sheetKey === 'mill') return millRowHasContent_(obj);
+    if (isMillLikeSheetKey_(sheetKey)) return millRowHasContent_(obj);
     // TTP: drop KPI/summary rows and header echo; detail filter on dashboard (ttpIsDataRow_).
     if (sheetKey === 'ttp') return !ttpRowLooksLikeKpiData_(obj) && !ttpRowLooksLikeHeaderEcho_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });
-  if (sheetKey === 'mill') millHydrateGrievanceNotesOnObjsGs_(sheet, headers, headerRowNum, result);
+  if (isMillLikeSheetKey_(sheetKey)) millHydrateGrievanceNotesOnObjsGs_(sheet, headers, headerRowNum, result);
   return result;
 }
 
@@ -6071,6 +6076,7 @@ function buildSupplyIdentityPatchFromDraftGs_(row) {
     'MILL LOC', 'CERTIFICATION',
     'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
     'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
+    'GHG VALUE',
   ];
   var patch = {};
   fillKeys.forEach(function(k) {

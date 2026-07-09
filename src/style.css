@@ -2799,6 +2799,14 @@
      color: #fff;
      box-shadow: 0 2px 8px rgba(139, 26, 26, 0.22);
    }
+   /* Mill registry — column visibility per product view */
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="supply-cpo"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="supply-pk"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="supply-cpo"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="supply-pk"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="quantity"] {
+     display: none;
+   }
    #panel-mill-onboarding .mill-period-pickers {
      display: flex;
      align-items: center;

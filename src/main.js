@@ -3947,7 +3947,7 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzFydN5wOjsXbjMYjf88uhThltDeZXsV02oU8oPhYoh3ZYdZw9PGj9z0DInGgXqaL-PJg/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -4123,7 +4123,7 @@ function normalizeGetArray(data) {
 async function apiGet(sheet, opts) {
   opts = opts || {};
   const bustCache = sheet === 'sdd' || !!opts.bustCache;
-  const timeoutMs = opts.timeoutMs || (sheet === 'mill' ? 120000 : 60000);
+  const timeoutMs = opts.timeoutMs || (sheet === 'mill' || sheet === 'millWaste' ? 120000 : 60000);
   if (isSecureGasEnabled()) {
     var secParams = { action: 'getAll', sheet: sheet };
     if (bustCache) secParams._ts = String(Date.now());
@@ -5492,7 +5492,7 @@ function initDashboardApp() {
     MILL_HUMAN_RIGHTS_GRIEVANCE, MILL_SAFETY_GRIEVANCE, MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
     'NDPE', 'HRDD', 'CERTIFICATION',
     'FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL',
-    'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR',
+    'GHG VALUE',
   ];
 
   function supplyModalFieldsList_(batchOrKind) {
@@ -5516,7 +5516,7 @@ function initDashboardApp() {
       { title: 'Policy', fields: ['NDPE', 'HRDD'] },
       { title: 'Sertifikasi', fields: ['CERTIFICATION'] },
       { title: supplyTitle, fields: supplyFields },
-      { title: 'Lainnya', fields: ['BUYER NO BUY LIST', 'RISK REDUCTION FACTOR'] },
+      { title: 'GHG', fields: ['GHG VALUE'] },
     ];
   }
 
@@ -5582,6 +5582,10 @@ function initDashboardApp() {
   let _millTaskTraderCache = {}; // submission_id → { mills, main, fetchedAt }
   let allData = [];
   let allDataRaw = [];
+  let allDataWasteRaw = [];
+  let allDataWaste = [];
+  let millWasteDataLoaded = false;
+  let millRegistryProductView = 'general';
   let currentFilter = 'All';
   let currentSearch = '';
   let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpPkPctCol = '', ttpCategoryCol = '', ttpSearch = '';
@@ -7298,12 +7302,15 @@ function initDashboardApp() {
   }
 
   function millRowsAfterRegistryDimFilters() {
-    let rows = allData.filter(function(d) {
-      return millRowHasCompanyName_(d)
-        && millRowMatchesChipAndSearch(d)
-        && millRowMatchesPdfDimFilters(d);
-    });
-    return millApplyRegistryPeriodView_(rows);
+    if (millRegistryProductView === 'waste') {
+      return millRegistryBaseRows_('waste');
+    }
+    if (millRegistryProductView === 'main') {
+      return millRegistryBaseRows_('main');
+    }
+    const mainRows = millRegistryBaseRows_('main');
+    const wasteRows = millRegistryBaseRows_('waste');
+    return millMergeGeneralRegistryRows_(mainRows, wasteRows);
   }
 
   function getMillRowsForPdfExport() {
@@ -7654,7 +7661,14 @@ function initDashboardApp() {
         setMillPeriodMode_(btn.getAttribute('data-mill-period-mode'));
       });
     });
+    document.querySelectorAll('[data-mill-product-view]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        setMillRegistryProductView_(btn.getAttribute('data-mill-product-view'));
+      });
+    });
     millSyncPeriodModeUi_();
+    millSyncProductViewUi_();
   })();
 
   const scheduleRenderMillTable = makeRafScheduler(function() {
@@ -7676,7 +7690,7 @@ function initDashboardApp() {
     });
   })();
 
-  const MILL_SESSION_CACHE_KEY_ = 'SDD_MILL_DATA_CACHE_V1';
+  const MILL_SESSION_CACHE_KEY_ = 'SDD_MILL_DATA_CACHE_V2';
 
   function millApplyFetchedRows_(rawRows) {
     const rawData = (Array.isArray(rawRows) ? rawRows : [])
@@ -7685,6 +7699,16 @@ function initDashboardApp() {
     allDataRaw = rawData.map(prepareMillRowPerfCache);
     allData = allDataRaw.slice();
     millDataLoaded = true;
+  }
+
+  function millApplyFetchedWasteRows_(rawRows) {
+    const rawData = (Array.isArray(rawRows) ? rawRows : [])
+      .map(normalizeMillApiRow)
+      .filter(millRowHasCompanyName_);
+    allDataWasteRaw = rawData.map(prepareMillRowPerfCache);
+    allDataWaste = allDataWasteRaw.slice();
+    allDataWaste.forEach(function(r) { r._millSheetSource = 'waste'; });
+    millWasteDataLoaded = true;
   }
 
   function millReadSessionCache_() {
@@ -7699,12 +7723,13 @@ function initDashboardApp() {
     }
   }
 
-  function millWriteSessionCache_(rawRows) {
+  function millWriteSessionCache_(rawRows, wasteRows) {
     if (!Array.isArray(rawRows) || !rawRows.length) return;
     try {
       sessionStorage.setItem(MILL_SESSION_CACHE_KEY_, JSON.stringify({
         ts: Date.now(),
         rows: rawRows,
+        wasteRows: Array.isArray(wasteRows) ? wasteRows : [],
       }));
     } catch (e) {
       console.warn('[Mill] sessionStorage cache skipped:', e && e.message ? e.message : e);
@@ -7715,6 +7740,9 @@ function initDashboardApp() {
     const cached = millReadSessionCache_();
     if (!cached) return false;
     millApplyFetchedRows_(cached.rows);
+    if (cached.wasteRows && cached.wasteRows.length) {
+      millApplyFetchedWasteRows_(cached.wasteRows);
+    }
     return true;
   }
 
@@ -7765,9 +7793,16 @@ function initDashboardApp() {
 
     if (!hasMillUi && !soft) {
       try {
-        const rawRows = await apiGet('mill', millApiOpts);
-        millApplyFetchedRows_(rawRows);
-        millWriteSessionCache_(rawRows);
+        const results = await Promise.all([
+          apiGet('mill', millApiOpts),
+          apiGet('millWaste', millApiOpts).catch(function(err) {
+            console.warn('[dashboard] Mill waste load (headless):', err && err.message ? err.message : err);
+            return [];
+          }),
+        ]);
+        millApplyFetchedRows_(results[0]);
+        millApplyFetchedWasteRows_(results[1]);
+        millWriteSessionCache_(results[0], results[1]);
       } catch (err) {
         console.warn('[dashboard] Mill data load (headless):', err && err.message ? err.message : err);
         throw err;
@@ -7795,9 +7830,16 @@ function initDashboardApp() {
         table.style.display = 'none';
       }
 
-      const rawRows = await apiGet('mill', Object.assign({}, millApiOpts, { bustCache: bustCache || hydratedFromCache }));
-      millApplyFetchedRows_(rawRows);
-      millWriteSessionCache_(rawRows);
+      const results = await Promise.all([
+        apiGet('mill', Object.assign({}, millApiOpts, { bustCache: bustCache || hydratedFromCache })),
+        apiGet('millWaste', Object.assign({}, millApiOpts, { bustCache: bustCache || hydratedFromCache })).catch(function(err) {
+          console.warn('[Mill] Waste sheet load failed:', err && err.message ? err.message : err);
+          return [];
+        }),
+      ]);
+      millApplyFetchedRows_(results[0]);
+      millApplyFetchedWasteRows_(results[1]);
+      millWriteSessionCache_(results[0], results[1]);
       millRenderTop5Card_();
 
       const statTotal = document.getElementById('stat-total');
@@ -7816,6 +7858,7 @@ function initDashboardApp() {
         millPeriodMode = 'newest';
         millPdfRebuildDimPanels();
         millSyncPeriodModeUi_();
+        millSyncProductViewUi_();
       }
       scheduleRenderMillTable();
       if (soft) millRestoreUiAfterRender_();
@@ -7871,13 +7914,16 @@ function initDashboardApp() {
     const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
     const savedFilters = cloneMillPdfDimFilters_();
     const savedPeriodMode = millPeriodMode;
+    const savedProductView = millRegistryProductView;
     millSoftReloadPromise_ = (async function() {
       try {
         await loadMillDataImpl({ soft: true, bustCache: true });
         millPdfDimFilters = savedFilters;
         millPeriodMode = savedPeriodMode;
+        millRegistryProductView = savedProductView;
         millPdfRebuildDimPanels();
         millSyncPeriodModeUi_();
+        millSyncProductViewUi_();
         scheduleRenderMillTable();
         if (!millScrollToKey_ && scrollEl) {
           requestAnimationFrame(function() { scrollEl.scrollTop = savedScrollTop; });
@@ -8003,6 +8049,186 @@ function initDashboardApp() {
     return out.join('; ');
   }
 
+  function millFormatSupplyQtyDisplay_(raw) {
+    if (raw == null || raw === '') return '';
+    if (typeof raw === 'number' && isFinite(raw)) {
+      if (Number.isInteger(raw) && Math.abs(raw) >= 1000) {
+        return String(raw).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      }
+      return String(raw);
+    }
+    return String(raw).trim();
+  }
+
+  function millCollectProductSupplyTokens_(row) {
+    const seen = new Set();
+    const out = [];
+    function add(tok) {
+      const t = String(tok || '').trim();
+      if (!t) return;
+      const k = t.toUpperCase();
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(t);
+    }
+    const ps = millNormalizeProductSupply_(row);
+    if (ps) {
+      ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
+    }
+    if (millParseSupplyQty_(row['SUPPLY CPO']) > 0) add('CPO');
+    if (millParseSupplyQty_(row['SUPPLY PK']) > 0) add('PK');
+    if (millParseSupplyQty_(row['SUPPLY ISCC']) > 0) add('POME ISCC');
+    if (millParseSupplyQty_(row['SUPPLY INS']) > 0) add('POME INS');
+    if (millParseSupplyQty_(row['SUPPLY SHELL']) > 0) add('SHELL GGL');
+    return out;
+  }
+
+  function millJoinProductSupplyTokens_(rows) {
+    const seen = new Set();
+    const out = [];
+    (rows || []).forEach(function(r) {
+      millCollectProductSupplyTokens_(r).forEach(function(tok) {
+        const k = tok.toUpperCase();
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push(tok);
+      });
+    });
+    return out.join('; ');
+  }
+
+  function millBuildQtySummaryFromRow_(row) {
+    if (!row) return '';
+    const parts = [];
+    function push(label, field) {
+      const raw = row[field];
+      const q = millParseSupplyQty_(raw);
+      if (q > 0) {
+        parts.push(label + ': ' + millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q));
+      }
+    }
+    push('CPO', 'SUPPLY CPO');
+    push('PK', 'SUPPLY PK');
+    push('POME ISCC', 'SUPPLY ISCC');
+    push('POME INS', 'SUPPLY INS');
+    push('SHELL GGL', 'SUPPLY SHELL');
+    return parts.join('; ');
+  }
+
+  function millBuildQtySummaryFromRows_(rows) {
+    const parts = [];
+    const seen = new Set();
+    (rows || []).forEach(function(r) {
+      const s = millBuildQtySummaryFromRow_(r);
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      parts.push(s);
+    });
+    return parts.join(' · ');
+  }
+
+  /** Kunci gabungan General: company + bulan + tahun (main + waste). */
+  function millGeneralMergeKey_(row) {
+    return [
+      String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
+      String(millMonthVal(row) || '').trim().toLowerCase(),
+      String(millYearVal(row) || '').trim().toLowerCase(),
+    ].join('\u0001');
+  }
+
+  function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
+    const map = new Map();
+    const order = [];
+    function ingest(r, isMain) {
+      const key = millGeneralMergeKey_(r);
+      if (!pickMillCompanyName_(r)) return;
+      if (!map.has(key)) {
+        map.set(key, { primary: r, members: [r], hasMain: !!isMain });
+        order.push(key);
+        return;
+      }
+      const g = map.get(key);
+      g.members.push(r);
+      if (isMain) {
+        g.primary = r;
+        g.hasMain = true;
+      } else if (!g.hasMain) {
+        g.primary = r;
+      }
+    }
+    (mainRows || []).forEach(function(r) { ingest(r, true); });
+    (wasteRows || []).forEach(function(r) { ingest(r, false); });
+    return order.map(function(key) {
+      const g = map.get(key);
+      const merged = Object.assign({}, g.primary);
+      merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
+      merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
+      merged._millGeneralMerged = g.members.length > 1;
+      merged._millGeneralMergeCount = g.members.length;
+      merged._millGeneralMergeSources = g.members.slice();
+      return merged;
+    });
+  }
+
+  function millRegistryBaseRows_(source) {
+    const src = source === 'waste' ? allDataWaste : allData;
+    let rows = src.filter(function(d) {
+      return millRowHasCompanyName_(d)
+        && millRowMatchesChipAndSearch(d)
+        && millRowMatchesPdfDimFilters(d);
+    });
+    return millApplyRegistryPeriodView_(rows);
+  }
+
+  function millSyncProductViewUi_() {
+    document.querySelectorAll('[data-mill-product-view]').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mill-product-view') === millRegistryProductView);
+    });
+    const hint = document.getElementById('millProductViewHint');
+    if (hint) {
+      if (millRegistryProductView === 'main') {
+        hint.textContent = 'Mill Onboarding Profile — CPO & PK (main product)';
+      } else if (millRegistryProductView === 'waste') {
+        hint.textContent = 'Mill Onboarding Waste — POME ISCC, POME INS, Shell GGL';
+      } else {
+        hint.textContent = 'Gabungan main + waste per company & periode — hanya Product Supply & Quantity yang digabung';
+      }
+    }
+    const table = document.getElementById('millTable');
+    if (table) {
+      table.classList.toggle('mill-registry-table--view-general', millRegistryProductView === 'general');
+      table.classList.toggle('mill-registry-table--view-main', millRegistryProductView === 'main');
+      table.classList.toggle('mill-registry-table--view-waste', millRegistryProductView === 'waste');
+    }
+  }
+
+  function setMillRegistryProductView_(mode) {
+    const m = String(mode || '').trim().toLowerCase();
+    millRegistryProductView = (m === 'main' || m === 'waste') ? m : 'general';
+    millSyncProductViewUi_();
+    scheduleRenderMillTable();
+  }
+
+  function millSupplyCpoCellText_(row) {
+    const q = millSupplyCpoQty_(row);
+    if (q <= 0) return '—';
+    const raw = millPickRawField_(row, ['SUPPLY CPO', 'Supply CPO']);
+    return millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q);
+  }
+
+  function millSupplyPkCellText_(row) {
+    const q = millSupplyPkQty_(row);
+    if (q <= 0) return '—';
+    const raw = millPickRawField_(row, ['SUPPLY PK', 'Supply PK']);
+    return millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q);
+  }
+
+  function millRegistryQtyCellText_(row) {
+    if (row && row._millQtySummary) return row._millQtySummary;
+    const s = millBuildQtySummaryFromRow_(row);
+    return s || '—';
+  }
+
   /** View-only: collapse duplikat periode di tabel Mill Onboarding. */
   function millCollapseRowsForTableDisplay_(rows) {
     if (!rows || !rows.length) return [];
@@ -8037,15 +8263,19 @@ function initDashboardApp() {
     ensureMillPdfDimFilters_();
     bindMillTableDelegationOnce();
     bindMillHeaderFiltersOnce();
+    millSyncProductViewUi_();
     const baseFiltered = millRowsAfterRegistryDimFilters();
     millRefreshFilterOptions(baseFiltered);
     const filtered = baseFiltered.filter(millRowMatchesColumnFilters);
     const sorted = sortMillRowsForDisplay(filtered);
-    const displayRows = millCollapseRowsForTableDisplay_(sorted);
+    const displayRows = millRegistryProductView === 'general'
+      ? sorted
+      : millCollapseRowsForTableDisplay_(sorted);
     millFilteredRows = displayRows;
     updateMillPdfExportScope();
     updateMillStatsCards_();
 
+    const colCount = 15;
     const theadRow = document.querySelector('#millTable thead tr');
     if (millSortKey && theadRow && !theadRow.querySelector('[data-mill-sort="' + millSortKey + '"]')) {
       millSortKey = null;
@@ -8065,27 +8295,34 @@ function initDashboardApp() {
     }
 
     body.innerHTML = displayRows.length === 0
-      ? `<tr><td colspan="12" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
+      ? `<tr><td colspan="${colCount}" style="text-align:center;padding:32px;color:#9C8A8A;">No data found</td></tr>`
       : displayRows.map((d, i) => {
         const millKey = [pickMillGroupName_(d), pickMillCompanyName_(d), millPickField_(d, ['MILL NAME', 'Mill Name'])].map(function(x) {
           return String(x || '').trim();
         }).join('|');
         const millName = millPickField_(d, ['MILL NAME', 'Mill Name']);
         const umlId = millPickField_(d, ['UML ID', 'UML Id', 'UML_ID']);
-        const mergeBadge = d._millTableMerged
-          ? '<span class="mill-merge-badge" title="Gabungan ' + d._millTableMergeCount + ' baris di sheet (company, mill, bulan, tahun sama)">Gabungan ×' + d._millTableMergeCount + '</span>'
-          : '';
-        const rowTitle = d._millTableMerged
-          ? 'Gabungan ' + d._millTableMergeCount + ' baris sheet — klik untuk detail'
-          : 'Click to view full details';
+        const mergeBadge = d._millGeneralMerged
+          ? '<span class="mill-merge-badge" title="Gabungan main + waste (' + d._millGeneralMergeCount + ' baris)">General ×' + d._millGeneralMergeCount + '</span>'
+          : (d._millTableMerged
+            ? '<span class="mill-merge-badge" title="Gabungan ' + d._millTableMergeCount + ' baris di sheet (company, mill, bulan, tahun sama)">Gabungan ×' + d._millTableMergeCount + '</span>'
+            : '');
+        const rowTitle = d._millGeneralMerged
+          ? 'Gabungan main + waste — klik untuk detail'
+          : (d._millTableMerged
+            ? 'Gabungan ' + d._millTableMergeCount + ' baris sheet — klik untuk detail'
+            : 'Click to view full details');
         return `
-        <tr class="mill-row-clickable${d._millTableMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
+        <tr class="mill-row-clickable${d._millTableMerged || d._millGeneralMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
           <td class="mill-td mill-td--group">${millTableCellText_(pickMillGroupName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
           <td class="mill-td mill-td--product">${millTableCellText_(d['PRODUCT SUPPLY'], { wrap: true })}</td>
+          <td class="mill-td mill-td--qty" data-mill-col="quantity">${millTableCellText_(millRegistryQtyCellText_(d), { wrap: true })}</td>
+          <td class="mill-td mill-td--supply-cpo" data-mill-col="supply-cpo">${millTableCellText_(millSupplyCpoCellText_(d))}</td>
+          <td class="mill-td mill-td--supply-pk" data-mill-col="supply-pk">${millTableCellText_(millSupplyPkCellText_(d))}</td>
           <td class="mill-td mill-td--priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
           <td class="mill-td mill-td--nbl">${nblBadge(d['BUYER NO BUY LIST'])}</td>
           <td class="mill-td mill-td--cert">${millTableCellText_(d['CERTIFICATION'], { wrap: true, certPills: true })}</td>
@@ -23111,7 +23348,11 @@ function initDashboardApp() {
     ttpData = [];
     allData = [];
     allDataRaw = [];
+    allDataWaste = [];
+    allDataWasteRaw = [];
     millDataLoaded = false;
+    millWasteDataLoaded = false;
+    millRegistryProductView = 'general';
     millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
     millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
     millPdfRebuildDimPanels();
@@ -25695,7 +25936,7 @@ function initDashboardApp() {
       'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
       'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
       'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-      'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR',
+      'GHG VALUE',
     ];
   }
 
