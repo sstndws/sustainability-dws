@@ -6397,8 +6397,8 @@ function submitSupplyDraft_(batchId, rows, meta) {
     }
 
     var matchStatus = String(row.match_status || '').trim().toLowerCase();
-    if (matchStatus !== 'matched') {
-      errors.push((row['COMPANY NAME'] || 'row') + ': bukan status Matched');
+    if (matchStatus !== 'matched' && matchStatus !== 'new') {
+      errors.push((row['COMPANY NAME'] || 'row') + ': status tidak valid untuk submit');
       return;
     }
 

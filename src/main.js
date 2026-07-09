@@ -5492,7 +5492,7 @@ function initDashboardApp() {
     MILL_HUMAN_RIGHTS_GRIEVANCE, MILL_SAFETY_GRIEVANCE, MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
     'NDPE', 'HRDD', 'CERTIFICATION',
     'FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL',
-    'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION',
+    'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR',
   ];
 
   function supplyModalFieldsList_(batchOrKind) {
@@ -5516,7 +5516,7 @@ function initDashboardApp() {
       { title: 'Policy', fields: ['NDPE', 'HRDD'] },
       { title: 'Sertifikasi', fields: ['CERTIFICATION'] },
       { title: supplyTitle, fields: supplyFields },
-      { title: 'Lainnya', fields: ['BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION'] },
+      { title: 'Lainnya', fields: ['BUYER NO BUY LIST', 'RISK REDUCTION FACTOR'] },
     ];
   }
 
@@ -25696,7 +25696,7 @@ function initDashboardApp() {
       'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
       'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
       'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-      'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR', 'EUDR DEFORESTATION',
+      'BUYER NO BUY LIST', 'RISK REDUCTION FACTOR',
     ];
   }
 
@@ -25764,7 +25764,7 @@ function initDashboardApp() {
     if (row.batch_id) out.batch_id = row.batch_id;
     if (row.match_status) out.match_status = row.match_status;
     if (row.target_mill_row) out.target_mill_row = row.target_mill_row;
-    const st = row.supply_type || row.SUPPLY_TYPE;
+    const st = row.supply_type || row.SUPPLY_TYPE || (batch && batch.supply_type);
     if (st) {
       out.supply_type = st;
       out.SUPPLY_TYPE = st;
@@ -25934,10 +25934,11 @@ function initDashboardApp() {
 
   /** Merge profil mill ke draft row sebelum submit — tidak menimpa draft yang sudah disimpan user. */
   function supplyMergeProfilePrefillIntoDraftRow_(draftRow, batch) {
-    if (!draftRow || draftRow.match_status !== 'matched') return;
+    if (!draftRow) return;
     if (supplyDraftSavedFlag_(draftRow)) return;
     const profileRow = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'])
       || supplyLookupMillProfileForDraft_(draftRow, batch);
+    if (!profileRow) return;
     const merged = supplyProfileIdentityPrefillFromRow_(profileRow);
     const skip = supplyDraftProfileSkipFields_(draftRow, batch);
     Object.keys(merged).forEach(function(k) {
@@ -25951,12 +25952,37 @@ function initDashboardApp() {
       }
       if (String(mv).trim() !== '') draftRow[k] = mv;
     });
-    if (profileRow && profileRow._row) {
+    if (profileRow._row) {
       draftRow.target_mill_row = profileRow._row;
       draftRow._mill_row = profileRow._row;
     }
+    draftRow.match_status = 'matched';
     supplyCopyGrievanceFromProfile_(draftRow, profileRow, { preserveDraft: false });
     millNormalizeGrievanceFlagsOnRow_(draftRow);
+  }
+
+  function supplyFillMinimalDraftDefaults_(row) {
+    if (!row) return;
+    const company = String(row['COMPANY NAME'] || '').trim();
+    if (!company) return;
+    if (!String(row['MILL NAME'] || '').trim()) row['MILL NAME'] = company;
+    if (!String(row['SOURCE TYPE'] || '').trim()) row['SOURCE TYPE'] = millSourceTypeValFromRow_(row) || 'MILL';
+    if (!String(row.match_status || '').trim()) {
+      row.match_status = (row.target_mill_row || row._mill_row) ? 'matched' : 'new';
+    }
+  }
+
+  function supplyRowHasSupplyQty_(row, batch) {
+    if (!row) return false;
+    const kind = supplyResolveKindFromDraft_(row, batch);
+    const wasteCfg = supplyWasteKindFromType_(kind);
+    if (wasteCfg) {
+      const q = row[wasteCfg.qty] || row.SUPPLY_QTY;
+      return q != null && String(q).trim() !== '';
+    }
+    if (row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '') return true;
+    if (row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '') return true;
+    return row.SUPPLY_QTY != null && String(row.SUPPLY_QTY).trim() !== '';
   }
 
   function supplyBuildMillPrefillFromDraft_(draftRow, batch, opts) {
@@ -26112,17 +26138,12 @@ function initDashboardApp() {
     return String(row && row.match_status || '').trim().toLowerCase();
   }
 
-  function supplyRowReadyForSubmit_(row) {
+  function supplyRowReadyForSubmit_(row, batch) {
     if (!row || supplyRowIsSubmitted_(row)) return false;
-    if (supplyNormMatchStatus_(row) === 'matched') {
-      return !!(String(row['COMPANY NAME'] || '').trim() && String(row['MILL NAME'] || '').trim());
-    }
-    if (supplyDraftSavedFlag_(row)) {
-      return ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID'].every(function(k) {
-        return String(row[k] || '').trim();
-      });
-    }
-    return false;
+    if (!String(row['COMPANY NAME'] || '').trim()) return false;
+    if (supplyDraftSavedFlag_(row)) return true;
+    if (supplyNormMatchStatus_(row) === 'matched') return true;
+    return supplyRowHasSupplyQty_(row, batch);
   }
 
   function supplyRowCheckedForSubmit_(row) {
@@ -26133,7 +26154,7 @@ function initDashboardApp() {
     if (!row || supplyRowIsSubmitted_(row)) return;
     supplyEnsureDraftPeriodOnRows_([row], batch);
 
-    if (!supplyDraftSavedFlag_(row) && supplyNormMatchStatus_(row) === 'matched') {
+    if (!supplyDraftSavedFlag_(row)) {
       supplyMergeProfilePrefillIntoDraftRow_(row, batch);
     }
 
@@ -26157,16 +26178,20 @@ function initDashboardApp() {
       });
     }
 
+    supplyFillMinimalDraftDefaults_(row);
     if (!String(row['SOURCE TYPE'] || '').trim()) {
       row['SOURCE TYPE'] = millSourceTypeValFromRow_(row) || 'MILL';
     }
-    if (String(row['COMPANY NAME'] || '').trim()) {
-      row.match_status = 'matched';
-    }
     const kind = supplyResolveKindFromDraft_(row, batch);
+    if (!row.supply_type && !row.SUPPLY_TYPE && batch && batch.supply_type) {
+      row.supply_type = batch.supply_type;
+      row.SUPPLY_TYPE = batch.supply_type;
+    }
     supplyApplyPlantToDraftFacility_(row, row.PLANT, kind);
     supplyApplyTypedQtyAndFacility_(row, row, batch);
-    row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    if (!supplyImportIsWaste_(batch && batch.supply_type)) {
+      row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    }
   }
 
   const SUPPLY_SUBMIT_CHUNK_SIZE_ = 40;
@@ -26185,7 +26210,9 @@ function initDashboardApp() {
   }
 
   function supplyRowsPendingSubmit_(batch) {
-    return (batch && batch.rows ? batch.rows : []).filter(supplyRowReadyForSubmit_);
+    return (batch && batch.rows ? batch.rows : []).filter(function(r) {
+      return supplyRowReadyForSubmit_(r, batch);
+    });
   }
 
   function supplyCountPendingSubmit_(batch) {
@@ -26216,12 +26243,12 @@ function initDashboardApp() {
 
   function supplyCountCheckedPendingSubmit_(batchId, batch) {
     return supplyRowsFromIndexes_(batch, supplyGetCheckedRowIndexes_(batchId))
-      .filter(supplyRowReadyForSubmit_).length;
+      .filter(function(r) { return supplyRowReadyForSubmit_(r, batch); }).length;
   }
 
   function supplyGetCheckedPendingRows_(batchId, batch) {
     return supplyRowsFromIndexes_(batch, supplyGetCheckedRowIndexes_(batchId))
-      .filter(supplyRowReadyForSubmit_);
+      .filter(function(r) { return supplyRowReadyForSubmit_(r, batch); });
   }
 
   function supplyCountFooterSubmit_(batchId) {
@@ -26800,8 +26827,12 @@ function initDashboardApp() {
         + escHtml(batch.batch_id) + '" data-row="' + i + '">Submit</button>'
         + '</div>';
     }
-    return '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="open-modal-row" data-batch="'
-      + escHtml(batch.batch_id) + '" data-row="' + i + '">Lengkapi</button>';
+    return '<div class="supply-row-actions">'
+      + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="open-modal-row" data-batch="'
+      + escHtml(batch.batch_id) + '" data-row="' + i + '">Lengkapi</button>'
+      + '<button type="button" class="supply-btn supply-btn--primary supply-btn--row" data-action="submit-row" data-batch="'
+      + escHtml(batch.batch_id) + '" data-row="' + i + '">Submit</button>'
+      + '</div>';
   }
 
   function supplyCalcPercentages_(parsedRows) {
@@ -27935,8 +27966,9 @@ function initDashboardApp() {
       ? ' Baris matched menyalin data profil dari <strong>Mill Onboarding</strong> (lihat badge Profil: bulan/tahun). Submit mengirim ke <strong>Mill Onboarding Waste</strong>.'
       : '';
     return '<div class="supply-batch-footer">'
-      + '<p class="supply-batch-footer__hint"><strong>Simpan draft</strong> di form Lengkapi menyimpan progress tanpa masuk sheet. '
-      + '<strong>Submit Terpilih</strong> mengirim baris tercentang ke <strong>' + escHtml(targetSheet) + '</strong> (profil diisi otomatis dari Mill Onboarding jika matched).' + hintWaste + '</p>'
+      + '<p class="supply-batch-footer__hint"><strong>Lengkapi</strong> opsional — untuk edit profil manual. '
+      + '<strong>Submit Terpilih</strong> langsung mengirim baris tercentang ke <strong>' + escHtml(targetSheet) + '</strong> '
+      + '(data import + profil Mill Onboarding otomatis jika matched, tanpa perlu buka form).' + hintWaste + '</p>'
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
@@ -28116,7 +28148,8 @@ function initDashboardApp() {
         alert('Baris tercentang sudah di-submit semua, atau tidak ada baris valid.');
         return;
       }
-      const confirmMsg = 'Tambah ' + pending.length + ' baris tercentang ke paling bawah Mill Onboarding?\n(Data lama tidak diubah; kolom rumus otomatis dari sheet)';
+      const confirmMsg = 'Tambah ' + pending.length + ' baris tercentang ke paling bawah '
+        + supplyBatchTargetSheetLabel_(batch) + '?\n(Data lama tidak diubah; matched = profil otomatis, baru = data import saja)';
       if (!confirm(confirmMsg)) return;
       supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       let bulkSubmittedN = 0;
@@ -28133,8 +28166,9 @@ function initDashboardApp() {
             ? (' Beberapa gagal: ' + result.errors.slice(0, 5).join('; '))
             : '';
           if (typeof window.showSddToast === 'function') {
+            const sheetLabel = supplyBatchTargetSheetLabel_(batch);
             window.showSddToast(
-              '✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote,
+              '✓ ' + result.submittedN + ' baris ditambahkan ke ' + sheetLabel + '.' + errNote,
               result.errors.length ? 'warning' : 'success'
             );
           } else {
@@ -28154,7 +28188,7 @@ function initDashboardApp() {
       return;
     }
 
-    // Submit a single row — full mill profile when draft saved / baru; supply % only when already matched
+    // Submit a single row — same hydrate + bulk path as Submit Terpilih (Lengkapi tidak wajib)
     if (action === 'submit-row') {
       collectInlineEdits_(bId);
       const rowIdx = parseInt(btn.dataset.row, 10);
@@ -28162,23 +28196,23 @@ function initDashboardApp() {
       if (!row) return;
       btn.textContent = '…'; btn.disabled = true;
       supplyEnsureDraftPeriodOnRows_([row], batch);
-      if (!supplyDraftSavedFlag_(row)) supplyMergeProfilePrefillIntoDraftRow_(row, batch);
-      const needsFullCommit = supplyDraftSavedFlag_(row) || row.match_status !== 'matched';
-      const work = needsFullCommit
-        ? supplyCommitDraftRowToMill_(batch, row, row)
-        : apiPost({
-          action: 'submitSupplyDraft',
-          batch_id: bId,
-          rows: [row],
-          meta: supplyBatchMetaForApi_(batch),
-        }).then(function() {
-          row._submitted = true;
-          row.status = 'submitted';
-          supplyNormalizeBatchSubmittedState_(batch);
-        });
-      work
+      supplyHydrateRowForSubmit_(row, batch);
+      if (!String(row['COMPANY NAME'] || '').trim()) {
+        alert('COMPANY NAME kosong — tidak bisa submit.');
+        btn.textContent = 'Submit'; btn.disabled = false;
+        return;
+      }
+      if (!supplyRowHasSupplyQty_(row, batch)) {
+        alert('QTY supply kosong — tidak bisa submit.');
+        btn.textContent = 'Submit'; btn.disabled = false;
+        return;
+      }
+      supplySubmitAllPendingRows_(batch, bId, [row])
         .then(function() {
-          renderSupplyDraftList_();
+          const snap = supplyCaptureTaskListScroll_();
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
+          supplyRestoreTaskListScroll_(snap);
+          supplyPatchBatchFooterSubmitCount_(bId);
           btn.textContent = 'Submit'; btn.disabled = false;
           supplyRefreshAfterSubmit_({ submittedN: 1 });
         })
