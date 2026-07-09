@@ -2730,6 +2730,58 @@
    #panel-mill-onboarding #millTable tbody tr.mill-row-clickable:hover td {
      background: #fdf8f8;
    }
+   #panel-mill-onboarding .mill-registry-filters {
+     margin: 0 0 18px;
+     padding: 0;
+     background: #fff;
+     border: 1px solid rgba(139, 26, 26, 0.09);
+     border-radius: 14px;
+     box-shadow: 0 1px 3px rgba(74, 28, 28, 0.04);
+     overflow: hidden;
+   }
+   #panel-mill-onboarding .mill-registry-filters[hidden] {
+     display: none !important;
+   }
+   #panel-mill-onboarding .mill-registry-filters__row {
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+     gap: 16px 24px;
+     padding: 14px 18px;
+     min-height: 56px;
+   }
+   #panel-mill-onboarding .mill-registry-filters__divider {
+     height: 1px;
+     margin: 0 18px;
+     background: rgba(139, 26, 26, 0.07);
+   }
+   #panel-mill-onboarding .mill-registry-filters__meta {
+     flex: 0 0 auto;
+     min-width: 0;
+     max-width: 280px;
+   }
+   #panel-mill-onboarding .mill-registry-filters__label {
+     display: block;
+     font-size: 11px;
+     font-weight: 700;
+     letter-spacing: 0.07em;
+     text-transform: uppercase;
+     color: #8b1a1a;
+     margin-bottom: 3px;
+   }
+   #panel-mill-onboarding .mill-registry-filters__hint {
+     display: block;
+     font-size: 11.5px;
+     line-height: 1.4;
+     color: #9c8080;
+   }
+   #panel-mill-onboarding .mill-registry-filters__controls {
+     flex: 1 1 auto;
+     display: flex;
+     align-items: center;
+     justify-content: flex-end;
+     min-width: 0;
+   }
    #panel-mill-onboarding .mill-period-card {
      margin: 0 0 16px;
      padding: 12px 16px 10px;
@@ -2769,13 +2821,13 @@
    #panel-mill-onboarding .mill-period-mode {
      display: inline-flex;
      align-items: center;
-     gap: 4px;
-     height: 36px;
+     gap: 3px;
+     height: 34px;
      box-sizing: border-box;
      padding: 3px;
-     background: rgba(255, 255, 255, 0.85);
-     border-radius: 8px;
-     border: 1px solid rgba(139, 26, 26, 0.14);
+     background: #f7f2f2;
+     border-radius: 9px;
+     border: 1px solid rgba(139, 26, 26, 0.1);
    }
    #panel-mill-onboarding .mill-period-mode-btn {
      border: none;
@@ -5130,6 +5182,17 @@
      .mill-profile-head { padding: 18px 18px 14px; }
      .mill-profile-head-metrics {
        grid-template-columns: repeat(2, minmax(0, 1fr));
+     }
+     #panel-mill-onboarding .mill-registry-filters__row {
+       flex-direction: column;
+       align-items: stretch;
+       gap: 12px;
+     }
+     #panel-mill-onboarding .mill-registry-filters__meta {
+       max-width: none;
+     }
+     #panel-mill-onboarding .mill-registry-filters__controls {
+       justify-content: flex-start;
      }
     .mill-profile-qy-export-btn {
       margin-left: 0;

@@ -6727,6 +6727,12 @@ function initDashboardApp() {
     return parts.length ? ('Snapshot as-of · ' + parts.join(' · ')) : 'Pilih month & year untuk snapshot as-of';
   }
 
+  function millSyncRegistryFiltersVisibility_() {
+    const el = document.getElementById('millRegistryFilters');
+    if (!el) return;
+    el.hidden = currentFilter === 'Task List';
+  }
+
   function millSyncPeriodModeUi_() {
     const toolbar = document.getElementById('millPeriodToolbar');
     if (toolbar) {
@@ -6738,7 +6744,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Semua company — versi terbaru masing-masing (period bisa berbeda antar company)'
+        ? 'Versi terbaru per company'
         : millPeriodFilterHintText_();
     }
   }
@@ -7669,6 +7675,7 @@ function initDashboardApp() {
     });
     millSyncPeriodModeUi_();
     millSyncProductViewUi_();
+    millSyncRegistryFiltersVisibility_();
   })();
 
   const scheduleRenderMillTable = makeRafScheduler(function() {
@@ -7859,6 +7866,7 @@ function initDashboardApp() {
         millPdfRebuildDimPanels();
         millSyncPeriodModeUi_();
         millSyncProductViewUi_();
+        millSyncRegistryFiltersVisibility_();
       }
       scheduleRenderMillTable();
       if (soft) millRestoreUiAfterRender_();
@@ -8187,11 +8195,11 @@ function initDashboardApp() {
     const hint = document.getElementById('millProductViewHint');
     if (hint) {
       if (millRegistryProductView === 'main') {
-        hint.textContent = 'Mill Onboarding Profile — CPO & PK (main product)';
+        hint.textContent = 'CPO & PK dari Mill Onboarding';
       } else if (millRegistryProductView === 'waste') {
-        hint.textContent = 'Mill Onboarding Waste — POME ISCC, POME INS, Shell GGL';
+        hint.textContent = 'POME ISCC, INS, Shell GGL — Waste sheet';
       } else {
-        hint.textContent = 'Gabungan main + waste per company & periode — hanya Product Supply & Quantity yang digabung';
+        hint.textContent = 'Gabungan main + waste per company & periode';
       }
     }
     const table = document.getElementById('millTable');
@@ -20012,6 +20020,7 @@ function initDashboardApp() {
         const tableCard = document.querySelector('#panel-mill-onboarding .table-card');
         if (taskPanel) taskPanel.style.display = 'none';
         if (tableCard) tableCard.style.display = '';
+        millSyncRegistryFiltersVisibility_();
       }
       scheduleRenderMillTable();
     }
@@ -23514,6 +23523,7 @@ function initDashboardApp() {
         if (tableCard) tableCard.style.display = '';
         scheduleRenderMillTable();
       }
+      millSyncRegistryFiltersVisibility_();
     });
   });
 
@@ -26615,6 +26625,7 @@ function initDashboardApp() {
     const tableCard = document.querySelector('#panel-mill-onboarding .table-card');
     if (taskPanel) taskPanel.style.display = 'none';
     if (tableCard) tableCard.style.display = '';
+    millSyncRegistryFiltersVisibility_();
     scheduleRenderMillTable();
     if (typeof updateMillPdfExportScope === 'function') updateMillPdfExportScope();
   }
@@ -27886,6 +27897,7 @@ function initDashboardApp() {
     const tableCard = document.querySelector('#panel-mill-onboarding .table-card');
     if (taskPanel) taskPanel.style.display = 'block';
     if (tableCard) tableCard.style.display = 'none';
+    millSyncRegistryFiltersVisibility_();
   }
 
   function supplyGetBatchRowFilter_(batchId) {
