@@ -6540,6 +6540,22 @@ function initDashboardApp() {
     const s = String(v || '').trim();
     const n = parseInt(s, 10);
     if (!isNaN(n) && n >= 1 && n <= 12) return n;
+    const k = s.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
+    const map = {
+      jan: 1, januari: 1, january: 1,
+      feb: 2, februari: 2, february: 2,
+      mar: 3, maret: 3, march: 3,
+      apr: 4, april: 4,
+      mei: 5, may: 5,
+      jun: 6, juni: 6, june: 6,
+      jul: 7, juli: 7, july: 7,
+      agu: 8, ags: 8, agustus: 8, aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9,
+      okt: 10, october: 10, oktober: 10, oct: 10,
+      nov: 11, november: 11,
+      des: 12, dec: 12, desember: 12, december: 12,
+    };
+    if (map[k]) return map[k];
     return 0;
   }
 
@@ -8071,6 +8087,7 @@ function initDashboardApp() {
   function millCollectProductSupplyTokens_(row) {
     const seen = new Set();
     const out = [];
+    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
     function add(tok) {
       const t = String(tok || '').trim();
       if (!t) return;
@@ -8083,8 +8100,8 @@ function initDashboardApp() {
     if (ps) {
       ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
     }
-    if (millParseSupplyQty_(row['SUPPLY CPO']) > 0) add('CPO');
-    if (millParseSupplyQty_(row['SUPPLY PK']) > 0) add('PK');
+    if (!isWasteRow && millParseSupplyQty_(row['SUPPLY CPO']) > 0) add('CPO');
+    if (!isWasteRow && millParseSupplyQty_(row['SUPPLY PK']) > 0) add('PK');
     if (millParseSupplyQty_(row['SUPPLY ISCC']) > 0) add('POME ISCC');
     if (millParseSupplyQty_(row['SUPPLY INS']) > 0) add('POME INS');
     if (millParseSupplyQty_(row['SUPPLY SHELL']) > 0) add('SHELL GGL');
@@ -8108,6 +8125,7 @@ function initDashboardApp() {
   function millBuildQtySummaryFromRow_(row) {
     if (!row) return '';
     const parts = [];
+    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
     function push(label, field) {
       const raw = row[field];
       const q = millParseSupplyQty_(raw);
@@ -8115,8 +8133,10 @@ function initDashboardApp() {
         parts.push(label + ': ' + millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q));
       }
     }
-    push('CPO', 'SUPPLY CPO');
-    push('PK', 'SUPPLY PK');
+    if (!isWasteRow) {
+      push('CPO', 'SUPPLY CPO');
+      push('PK', 'SUPPLY PK');
+    }
     push('POME ISCC', 'SUPPLY ISCC');
     push('POME INS', 'SUPPLY INS');
     push('SHELL GGL', 'SUPPLY SHELL');
@@ -8135,12 +8155,36 @@ function initDashboardApp() {
     return parts.join(' · ');
   }
 
+  function millRegistryProductSupplyCellText_(row) {
+    const raw = String(millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']) || '').trim();
+    if (raw && !/^no\s*data$/i.test(raw) && raw !== '—' && raw !== '-') return raw;
+    const tokens = millCollectProductSupplyTokens_(row);
+    return tokens.length ? tokens.join('; ') : '—';
+  }
+
+  function millGeneralCompanyKey_(row) {
+    return String(pickMillCompanyName_(row) || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function millGeneralMonthKey_(row) {
+    const m = parseMillMonthSort(millMonthVal(row));
+    return m ? String(m) : String(millMonthVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  function millGeneralYearKey_(row) {
+    const y = parseMillYearSort(millYearVal(row));
+    return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
   /** Kunci gabungan General: company + bulan + tahun (main + waste). */
   function millGeneralMergeKey_(row) {
     return [
-      String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
-      String(millMonthVal(row) || '').trim().toLowerCase(),
-      String(millYearVal(row) || '').trim().toLowerCase(),
+      millGeneralCompanyKey_(row),
+      millGeneralMonthKey_(row),
+      millGeneralYearKey_(row),
     ].join('\u0001');
   }
 
@@ -8327,7 +8371,7 @@ function initDashboardApp() {
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
-          <td class="mill-td mill-td--product">${millTableCellText_(d['PRODUCT SUPPLY'], { wrap: true })}</td>
+          <td class="mill-td mill-td--product">${millTableCellText_(millRegistryProductSupplyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--qty" data-mill-col="quantity">${millTableCellText_(millRegistryQtyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--supply-cpo" data-mill-col="supply-cpo">${millTableCellText_(millSupplyCpoCellText_(d))}</td>
           <td class="mill-td mill-td--supply-pk" data-mill-col="supply-pk">${millTableCellText_(millSupplyPkCellText_(d))}</td>
@@ -8348,7 +8392,17 @@ function initDashboardApp() {
 
   function millProfileSameEntityRows_(anchorRow) {
     if (!anchorRow || typeof anchorRow !== 'object') return [];
-    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    let src = [];
+    const wasteSrc = (allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []);
+    const mainSrc = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    const isWasteAnchor = String(anchorRow._millSheetSource || '').toLowerCase() === 'waste';
+    if (isWasteAnchor || millRegistryProductView === 'waste') {
+      src = wasteSrc;
+    } else if (millRegistryProductView === 'general') {
+      src = [].concat(mainSrc || [], wasteSrc || []);
+    } else {
+      src = mainSrc;
+    }
     if (!src.length) return [anchorRow];
     const wantKey = millRegistryEntityKey_(anchorRow);
     if (!wantKey || wantKey === '\u0001') return [anchorRow];
