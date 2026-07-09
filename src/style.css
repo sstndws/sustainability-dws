@@ -5923,7 +5923,7 @@ body.supply-import-open {
 }
 .supply-batch-card-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
@@ -5936,6 +5936,8 @@ body.supply-import-open {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  flex: 1 1 240px;
+  min-width: 0;
 }
 .supply-batch-period {
   font-size: 14px;
@@ -5963,6 +5965,10 @@ body.supply-import-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 0 0 auto;
+  margin-left: auto;
+  position: relative;
+  z-index: 2;
 }
 .supply-batch-table-wrap {
   padding: 0 12px 12px;
@@ -6145,10 +6151,14 @@ body.supply-import-open {
 }
 .supply-btn--ghost {
   background: #fff;
-  color: #5A4040;
-  border-color: rgba(139, 26, 26, 0.2);
+  color: #3A2020;
+  border-color: rgba(139, 26, 26, 0.28);
 }
-.supply-btn--ghost:hover { background: rgba(139, 26, 26, 0.05); }
+.supply-btn--ghost:hover {
+  background: rgba(139, 26, 26, 0.06);
+  border-color: rgba(139, 26, 26, 0.4);
+  color: #1A0A0A;
+}
 .supply-btn--primary {
   background: #8B1A1A;
   color: #fff;

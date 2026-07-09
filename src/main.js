@@ -27424,7 +27424,7 @@ function initDashboardApp() {
     window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
     batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     if (!batch) throw new Error('Gagal menyimpan draft supply untuk periode ini.');
-    renderSupplyDraftList_();
+    renderSupplyDraftList_({ expandBatchIds: [batch.batch_id], scrollToBatchId: batch.batch_id });
 
     try {
       await supplyPersistDraftBatch_(batch);
@@ -27657,7 +27657,7 @@ function initDashboardApp() {
         + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
         + '</div>'
         + '<div class="supply-batch-actions">'
-        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--expand" data-batch="' + escHtml(b.batch_id) + '">Lihat / Edit</button>' : '')
+        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="toggle-batch" data-batch="' + escHtml(b.batch_id) + '" aria-expanded="false">Lihat / Edit</button>' : '')
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '" title="Ambil ulang data mill dari Mill Onboarding (width, grievance, dll.)">↻ Pulihkan profil</button>' : '')
         + (!isSubmitted && mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(b.batch_id) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
         + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Hapus</button>'
@@ -27669,27 +27669,17 @@ function initDashboardApp() {
         + '</div>';
     }).join('');
 
-    container.querySelectorAll('.supply-btn--expand').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        const batchId = btn.dataset.batch;
-        const wrap    = document.getElementById('supply-batch-table-' + batchId);
-        if (!wrap) return;
-        const isOpen = !wrap.hidden;
-        wrap.hidden = isOpen;
-        btn.textContent = isOpen ? 'Lihat / Edit' : 'Tutup';
-        btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
-        if (!isOpen) {
-          requestAnimationFrame(function() {
-            const footer = wrap.querySelector('.supply-batch-footer');
-            if (footer) footer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          });
-        }
-      });
+    container.querySelectorAll('[data-action="toggle-batch"][data-batch]').forEach(function(btn) {
+      const batchId = btn.dataset.batch;
+      const wrap = document.getElementById('supply-batch-table-' + batchId);
+      const isOpen = wrap && !wrap.hidden;
+      btn.textContent = isOpen ? 'Tutup' : 'Lihat / Edit';
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
 
     expandedBatchIds.forEach(function(batchId) {
       const wrap = document.getElementById('supply-batch-table-' + batchId);
-      const btn = container.querySelector('.supply-btn--expand[data-batch="' + batchId + '"]');
+      const btn = container.querySelector('[data-action="toggle-batch"][data-batch="' + batchId + '"]');
       if (wrap) wrap.hidden = false;
       if (btn) {
         btn.textContent = 'Tutup';
@@ -27883,6 +27873,23 @@ function initDashboardApp() {
           btn.disabled = false;
           btn.textContent = prev;
         });
+      return;
+    }
+
+    if (action === 'toggle-batch') {
+      const batchId = btn.dataset.batch;
+      const wrap = document.getElementById('supply-batch-table-' + batchId);
+      if (!wrap) return;
+      const isOpen = !wrap.hidden;
+      wrap.hidden = isOpen;
+      btn.textContent = isOpen ? 'Lihat / Edit' : 'Tutup';
+      btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      if (!isOpen) {
+        requestAnimationFrame(function() {
+          const footer = wrap.querySelector('.supply-batch-footer');
+          if (footer) footer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
       return;
     }
 
