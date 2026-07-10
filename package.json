@@ -8,7 +8,10 @@
     "dev:clean": "rm -rf node_modules/.vite && vite --force",
     "build": "vite build",
     "preview": "vite preview",
-    "test:supply": "node scripts/test-supply-merge.mjs && node scripts/test-supply-routing.mjs && node scripts/test-mill-registry-views.mjs"
+    "test:supply": "node scripts/test-supply-merge.mjs && node scripts/test-supply-routing.mjs && node scripts/test-mill-registry-views.mjs",
+    "test:ttp": "node scripts/test-ttp-mill-sync.mjs",
+    "test:period": "node scripts/test-period-filtering.mjs",
+    "test:all": "npm run test:supply && npm run test:ttp && npm run test:period && npm run build"
   },
   "devDependencies": {
     "vite": "^5.4.0"

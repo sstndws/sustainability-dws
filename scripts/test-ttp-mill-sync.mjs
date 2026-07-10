@@ -451,11 +451,11 @@ assert(gs.includes('trader_tml_'), 'trader mirror line id prefix in backend');
 assert(gs.includes('not_submitted'), 'backend checks SCR submitted status');
 assert(mainJs.includes("Fill Group Name, Company Name, Mill Name, and UML ID"), 'frontend validates before save');
 assert(mainJs.includes('Mill saved but Traceability sync failed'), 'frontend shows sync failure to user');
-assert(mainJs.includes("data['SOURCE TYPE'] = supplierType"), 'frontend sets SOURCE TYPE on task list save');
-assert(mainJs.includes("data['TRADER NAME'] = resolveTraderNameFromMain_(sddMain)"), 'TRADER task list save forces header trader name');
+assert(mainJs.includes("data['SOURCE TYPE'] = sourceType"), 'frontend sets SOURCE TYPE on task list save');
+assert(mainJs.includes("data['TRADER NAME'] = millTraderNameForOnboarding_(sddMain, sourceType)"), 'TRADER task list save sets trader name via helper');
 assert(mainJs.includes("mainRow['Group Name'] || mainRow['Grup Name']"), 'TRADER NAME resolves from header group');
-assert(mainJs.includes("data['TRADER NAME'] = 'No Data'"), 'frontend sets TRADER NAME No Data for MILL/KCP');
-assert(mainJs.includes("'QUARTER': String(data['QUARTER']"), 'frontend passes QUARTER to TTP sync');
+assert(mainJs.includes("return 'No Data'"), 'millTraderNameForOnboarding returns No Data for non-trader paths');
+assert(mainJs.includes("'MONTH': String(data['MONTH']"), 'frontend passes MONTH to TTP sync');
 assert(gs.includes('readSddMainDecisionLabel_'), 'backend reads legacy SDD decision columns');
 assert(gs.includes('ttpFindNextAppendRow_'), 'TTP sync inserts into active zone');
 assert(gs.includes('safeInsertRowAt_'), 'TTP sync uses safe insert');
@@ -486,7 +486,7 @@ assertEq(quarterYearFromSddImportDate_('2026-05-01'), { quarter: 'Q2', year: '20
 assertEq(quarterYearFromSddImportDate_('2026-08-20'), { quarter: 'Q3', year: '2026' }, 'Aug → Q3');
 assertEq(quarterYearFromSddImportDate_('2026-11-30'), { quarter: 'Q4', year: '2026' }, 'Nov → Q4');
 assert(mainJs.includes('resolveSddPeriodFromMainRow_'), 'resolve period from SDD main row');
-assert(mainJs.includes("data['QUARTER'] = period.quarter"), 'save forces QUARTER from SDD import date');
+assert(mainJs.includes("data['MONTH'] = period.month"), 'save forces MONTH from SDD import date');
 assert(mainJs.includes('applySddPeriodToMillPayload_'), 'prefill applies SDD period');
 
 console.log('\n=== Results: ' + passed + ' passed, ' + failed + ' failed ===\n');
