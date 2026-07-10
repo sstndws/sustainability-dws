@@ -199,8 +199,30 @@ const partial = pfExactFilter_(rows, '2026', '3');
 const asOf = pfAsOfFilter_(rows, '2026', '3');
 assert(partial.length < asOf.length, 'MRD as-of shows more entities than PF exact when updates lag');
 
+// Supplied-only sellers must not appear under exact period filter (no mill row for period)
+function pfSimulateSuppliedMerge_(millRows, sellerKey, periodMonth, periodYear) {
+  const strict = !!(periodMonth || periodYear);
+  const millHit = (function() {
+    const scoped = millRows.filter(function(r) {
+      return String(r['COMPANY NAME'] || '').toUpperCase() === sellerKey;
+    });
+    if (scoped.length) return scoped[0];
+    if (strict) return null;
+    return null;
+  })();
+  if (millHit) return { source: 'mill', month: millMonthVal(millHit) };
+  if (strict) return null;
+  return { source: 'supplied-only', month: periodMonth };
+}
+const decMillRows = [{ 'COMPANY NAME': 'CO Z', 'MILL NAME': 'M1', MONTH: '12', YEAR: '2025' }];
+assert(pfSimulateSuppliedMerge_(decMillRows, 'CO Z', '12', '2025').source === 'mill', 'scoped mill hit for exact period');
+assert(pfSimulateSuppliedMerge_(decMillRows, 'CO MISSING', '12', '2025') === null, 'no supplied-only under exact filter');
+assert(pfSimulateSuppliedMerge_([], 'CO MISSING', '', '').source === 'supplied-only', 'supplied-only allowed when no period filter');
+
 // ── Source wiring ───────────────────────────────────────────────────────────
-assert(mainJs.includes('_pfMrdBuildCtx'), 'PF MRD build context flag');
+assert(mainJs.includes('pfShouldStrictMillLookup_'), 'PF strict mill lookup guard');
+assert(mainJs.includes('if (pfShouldStrictMillLookup_()) return null'), 'PF blocks registry fallback when filtered');
+assert(mainJs.includes('const anchor = d || millProfileVariantRows_[0]'), 'mill profile opens on clicked row period');
 assert(mainJs.includes("millPickMode === 'as-of'"), 'PF as-of mode branch');
 assert(mainJs.includes('millPickLatestPerCompany_(rows, pf)'), 'PF report uses millPickLatestPerCompany');
 assert(mainJs.includes('skipPeriodFilter'), 'PF skips exact company filter in as-of mode');

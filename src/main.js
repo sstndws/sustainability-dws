@@ -9283,7 +9283,7 @@ function initDashboardApp() {
 
   function openMillProfile(d) {
     millProfileVariantRows_ = millProfileSameEntityRows_(d).slice().sort(millProfileComparePeriodDesc_);
-    const chosen = millProfileVariantRows_[0] || d;
+    const anchor = d || millProfileVariantRows_[0];
     const mpOverlay = document.getElementById('millProfileOverlay');
     const yBar = document.getElementById('millProfileQyBar');
     const ySel = document.getElementById('millProfileYearSel');
@@ -9293,24 +9293,24 @@ function initDashboardApp() {
       yBar.hidden = false;
       const yearToks = millProfileCollectYearToks_(millProfileVariantRows_);
       millProfileFillSelectToks_(ySel, yearToks);
-      const yTokChosen = millPdfTokenForCell(millYearVal(chosen));
+      const yTokChosen = millPdfTokenForCell(millYearVal(anchor));
       if (yearToks.indexOf(yTokChosen) !== -1) ySel.value = yTokChosen;
       else if (ySel.options.length) ySel.selectedIndex = 0;
       const yTok = ySel.value;
       const mToks = millProfileCollectMonthToksForYear_(millProfileVariantRows_, yTok);
       millProfileFillSelectToks_(mSel, mToks);
-      const mTokChosen = millPdfTokenForCell(millMonthVal(chosen));
+      const mTokChosen = millPdfTokenForCell(millMonthVal(anchor));
       if (mToks.indexOf(mTokChosen) !== -1) mSel.value = mTokChosen;
       else if (mSel.options.length) mSel.selectedIndex = 0;
     }
 
-    let yTokFinal = millPdfTokenForCell(millYearVal(chosen));
-    let mTokFinal = millPdfTokenForCell(millMonthVal(chosen));
+    let yTokFinal = millPdfTokenForCell(millYearVal(anchor));
+    let mTokFinal = millPdfTokenForCell(millMonthVal(anchor));
     if (ySel && mSel) {
       yTokFinal = ySel.value;
       mTokFinal = mSel.value;
     }
-    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, mTokFinal) || chosen;
+    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, mTokFinal) || anchor;
     millProfileUpdateHeaderFromRow_(displayRow);
     millProfileRenderBody_(displayRow);
 
@@ -20454,11 +20454,19 @@ function initDashboardApp() {
       return pfPickBestMillRowMatch_(matches);
     }
 
-    /** Match seller → Mill Onboarding row (period-scoped first, then full registry). */
+    /** True when Facility Performance (or MRD facility build) has an active period filter. */
+    function pfShouldStrictMillLookup_() {
+      if (_pfMrdBuildCtx) return true;
+      const p = pfGetPeriodFilters_();
+      return !!(p.m || p.y);
+    }
+
+    /** Match seller → Mill Onboarding row (period-scoped; no registry fallback when filter is set). */
     function pfFindMillRowForSeller_(sellerUpper, millRows) {
       if (!sellerUpper) return null;
       const scoped = pfFindMillRowInList_(sellerUpper, millRows);
       if (scoped) return scoped;
+      if (pfShouldStrictMillLookup_()) return null;
       return pfFindMillRowInList_(sellerUpper, pfAllMillRowsForLookup_());
     }
 
@@ -20584,6 +20592,7 @@ function initDashboardApp() {
             group.companies.push(pfBuildCpoCompanyFromMillRow_(millHit, ttpLookup, ttpCertLookup));
             return;
           }
+          if (pfShouldStrictMillLookup_()) return;
           const pct = pfTtpPctForSeller_(ttpLookup, sellerKey);
           const certs = pfTtpCertsForCompany_(ttpCertLookup, sellerKey);
           group.companies.push({
@@ -20661,6 +20670,7 @@ function initDashboardApp() {
             group.companies.push(pfBuildPkCompanyFromMillRow_(millHit, ttpPkLookup, ttpCertLookup));
             return;
           }
+          if (pfShouldStrictMillLookup_()) return;
           const pct = pfTtpPkPctForSeller_(ttpPkLookup, sellerKey);
           const certs = pfTtpCertsForCompany_(ttpCertLookup, sellerKey);
           group.companies.push({
