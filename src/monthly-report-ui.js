@@ -50,6 +50,7 @@ let _snapshot = null;
 let _search = '';
 let _year = String(new Date().getFullYear());
 let _month = String(new Date().getMonth() + 1);
+let _productView = 'main';
 let _expanded = new Set();
 let _loadGen = 0;
 let _eudrPending = false;
@@ -152,13 +153,27 @@ function mrdReadExportYear_() {
   return String(new Date().getFullYear());
 }
 
-/** Sync year/month from toolbar before export, header, or reload. */
+/** Sync year/month/product from toolbar before export, header, or reload. */
 function syncPeriodFromUi_() {
   const yearSel = document.getElementById('mrdYearSel');
   const monthSel = document.getElementById('mrdMonthSel');
   if (yearSel && yearSel.value) _year = yearSel.value;
   if (monthSel) _month = monthSel.value;
-  return { year: _year, month: _month };
+  return { year: _year, month: _month, productView: _productView };
+}
+
+function mrdSyncProductViewUi_() {
+  document.querySelectorAll('[data-mrd-product-view]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-mrd-product-view') === _productView);
+  });
+}
+
+function setMrdProductView_(mode) {
+  const m = String(mode || '').trim().toLowerCase();
+  _productView = (m === 'waste' || m === 'general') ? m : 'main';
+  mrdSyncProductViewUi_();
+  _nblByCache.clear();
+  loadAndRender();
 }
 
 function applyDefaultMonthSelection_() {
@@ -709,8 +724,9 @@ function buildSnapshotSync(opts) {
   }
 
   // Mill Onboarding: same as-of snapshot + dedupe as Mill Registry (reporting period).
+  // productView: main | waste | general — mirrors Mill Registry product selector.
   const mills = (_deps.getMillsForReportPeriod && periodYear)
-    ? _deps.getMillsForReportPeriod(periodYear, periodMonth)
+    ? _deps.getMillsForReportPeriod(periodYear, periodMonth, _productView)
     : filterMillsByPeriod_(periodYear, periodMonth);
   const millEffectiveYear = periodYear;
   const millEffectiveMonth = periodMonth;
@@ -1257,6 +1273,8 @@ function updateScopeText(extra) {
   const report = getReportPeriod_();
   const meta = mrdReportHeaderMeta_(report.year, report.month);
   let txt = meta.periodLine + ' · ' + meta.dataPeriodLine + ' · ' + meta.cutoffLine;
+  const productLabel = _productView === 'waste' ? 'Waste' : (_productView === 'general' ? 'General' : 'Main');
+  txt += ' · Product: ' + productLabel;
   if (_snapshot) {
     txt += ' · ' + _snapshot.stats.totalMills + ' mills · ' + _snapshot.stats.sddSubmitted + ' SDD submitted';
   }
@@ -1624,6 +1642,7 @@ function bindOnce() {
 
   populateYearSelect();
   applyDefaultMonthSelection_();
+  mrdSyncProductViewUi_();
 
   const yearSel = document.getElementById('mrdYearSel');
   const monthSel = document.getElementById('mrdMonthSel');
@@ -1649,6 +1668,15 @@ function bindOnce() {
       loadAndRender();
     });
   }
+
+  document.querySelectorAll('[data-mrd-product-view]').forEach(function(btn) {
+    if (btn._mrdBound) return;
+    btn._mrdBound = true;
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      setMrdProductView_(btn.getAttribute('data-mrd-product-view'));
+    });
+  });
 
   if (searchEl && !searchEl._mrdBound) {
     searchEl._mrdBound = true;

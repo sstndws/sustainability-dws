@@ -9072,6 +9072,44 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   align-items: center;
   gap: 8px;
 }
+#panel-monthly-report-detail .mrd-product-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#panel-monthly-report-detail .mrd-product-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 3px;
+  background: #f7f2f2;
+  border-radius: 9px;
+  border: 1px solid rgba(139, 26, 26, 0.1);
+}
+#panel-monthly-report-detail .mrd-product-mode-btn {
+  border: none;
+  background: transparent;
+  color: #6a3a3a;
+  font-size: 12px;
+  font-weight: 600;
+  height: 100%;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+}
+#panel-monthly-report-detail .mrd-product-mode-btn:hover {
+  background: rgba(139, 26, 26, 0.08);
+}
+#panel-monthly-report-detail .mrd-product-mode-btn.active {
+  background: #8b1a1a;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(139, 26, 26, 0.22);
+}
 .mrd-export-modal { z-index: 9080; }
 .mrd-export-section-item span { flex: 1; }
 .mrd-export-period-row {

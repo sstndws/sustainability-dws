@@ -6711,10 +6711,12 @@ function initDashboardApp() {
     return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
 
-  /** Monthly Report — same as-of snapshot + dedupe as Mill Registry period mode. */
-  function millRowsForReportPeriod_(year, month) {
+  /** Monthly Report — same as-of snapshot + dedupe as Mill Registry period mode.
+   *  productView: 'main' | 'waste' | 'general' (default main). */
+  function millRowsForReportPeriod_(year, month, productView) {
     const y = parseInt(String(year || ''), 10);
     const m = parseInt(String(month || ''), 10);
+    const view = String(productView || 'main').trim().toLowerCase();
     const pf = {
       hasYear: !!y,
       hasMonth: m >= 1 && m <= 12,
@@ -6722,9 +6724,20 @@ function initDashboardApp() {
       maxMonth: m >= 1 && m <= 12 ? m : 0,
       hasEmptyMonth: false,
     };
-    const rows = (allData || []).filter(millRowHasCompanyName_);
-    if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerEntity_(rows);
-    return millPickLatestPerCompany_(rows, pf);
+    function pickPeriodRows_(src) {
+      const rows = (src || []).filter(millRowHasCompanyName_);
+      if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerEntity_(rows);
+      return millPickLatestPerCompany_(rows, pf);
+    }
+    if (view === 'waste') {
+      return pickPeriodRows_(allDataWaste);
+    }
+    if (view === 'general') {
+      const mainRows = pickPeriodRows_(allData);
+      const wasteRows = pickPeriodRows_(allDataWaste);
+      return millMergeGeneralRegistryRows_(mainRows, wasteRows);
+    }
+    return pickPeriodRows_(allData);
   }
 
   function millPeriodFilterHintText_() {
@@ -8229,18 +8242,41 @@ function initDashboardApp() {
   }
 
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-    const map = new Map();
-    const order = [];
-    function ingest(r, isMain) {
-      const key = millGeneralMergeKey_(r);
-      if (!pickMillCompanyName_(r)) return;
-      if (!map.has(key)) {
-        map.set(key, { primary: r, members: [r], hasMain: !!isMain });
-        order.push(key);
-        return;
+    const groups = [];
+    function pickGroupForRow(r) {
+      const company = millGeneralCompanyKey_(r);
+      const year = millGeneralYearKey_(r);
+      const month = millGeneralMonthKey_(r);
+      if (!company) return null;
+      let wildcardMatch = null;
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (g.company !== company) continue;
+        if (g.year && year && g.year !== year) continue;
+        if (g.month && month && g.month === month) return g; // exact month wins
+        if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
+          wildcardMatch = wildcardMatch || g; // month kosong boleh match
+        }
       }
-      const g = map.get(key);
+      return wildcardMatch;
+    }
+    function ingest(r, isMain) {
+      if (!pickMillCompanyName_(r)) return;
+      let g = pickGroupForRow(r);
+      if (!g) {
+        g = {
+          company: millGeneralCompanyKey_(r),
+          month: millGeneralMonthKey_(r),
+          year: millGeneralYearKey_(r),
+          primary: r,
+          members: [],
+          hasMain: false,
+        };
+        groups.push(g);
+      }
       g.members.push(r);
+      if (!g.month) g.month = millGeneralMonthKey_(r);
+      if (!g.year) g.year = millGeneralYearKey_(r);
       if (isMain) {
         g.primary = r;
         g.hasMain = true;
@@ -8250,8 +8286,7 @@ function initDashboardApp() {
     }
     (mainRows || []).forEach(function(r) { ingest(r, true); });
     (wasteRows || []).forEach(function(r) { ingest(r, false); });
-    return order.map(function(key) {
-      const g = map.get(key);
+    return groups.map(function(g) {
       const merged = Object.assign({}, g.primary);
       merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
       merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
@@ -29052,8 +29087,8 @@ function initDashboardApp() {
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
         getMillData: function() { return allData; },
-        getMillsForReportPeriod: function(year, month) {
-          return millRowsForReportPeriod_(year, month);
+        getMillsForReportPeriod: function(year, month, productView) {
+          return millRowsForReportPeriod_(year, month, productView);
         },
         getTtpData: function() { return ttpData; },
         getTtpFields: function() { return ttpFields; },
@@ -29061,7 +29096,7 @@ function initDashboardApp() {
         getNblRegistry: function() { return nblRegistryData; },
         getNblUnilever: function() { return nblUnileverData; },
         ensureMillData: async function() {
-          if (!allData.length) {
+          if (!allData.length || !millWasteDataLoaded) {
             await loadMillData();
           }
           if (!allData.length) {
