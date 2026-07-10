@@ -8259,7 +8259,7 @@ function initDashboardApp() {
       if (!key) return '';
       if (key === 'CPO') return 'CPO';
       if (key === 'PK') return 'PK';
-      if (key === 'POMEISCC' || key === 'ISCC' || key === 'POMEISCCS') return 'POME ISCC';
+      if (key === 'POMEISCC' || key === 'ISCC' || key === 'POMEISCCS' || key === 'ISCCPOME') return 'POME ISCC';
       if (key === 'POMEINS' || key === 'INS') return 'POME INS';
       if (key === 'SHELLGGL' || key === 'SHELL') return 'SHELL GGL';
       return raw;
@@ -8272,6 +8272,14 @@ function initDashboardApp() {
       seen.add(k);
       out.push(t);
     }
+    // Import / draft supply type (POME_ISCC → "POME ISCC")
+    const st = String(row && (row.supply_type || row.SUPPLY_TYPE) || '').trim().toUpperCase();
+    if (st === 'POME_ISCC') add('POME ISCC');
+    else if (st === 'POME_INS') add('POME INS');
+    else if (st === 'SHELL_GGL') add('SHELL GGL');
+    else if (st === 'CPO') add('CPO');
+    else if (st === 'PK') add('PK');
+
     const ps = millNormalizeProductSupply_(row);
     if (ps) {
       ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
@@ -8279,11 +8287,21 @@ function initDashboardApp() {
     function qtyOf_(names) {
       return millParseSupplyQty_(millPickRawField_(row, names));
     }
+    function hasFac_(names) {
+      const v = millPickRawField_(row, names);
+      if (v == null) return false;
+      const s = String(v).trim();
+      return !!s && s !== '—' && s !== '-' && !/^no\s*data$/i.test(s);
+    }
     if (!isWasteRow && qtyOf_(['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']) > 0) add('CPO');
     if (!isWasteRow && qtyOf_(['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']) > 0) add('PK');
-    if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']) > 0) add('POME ISCC');
-    if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']) > 0) add('POME INS');
-    if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']) > 0) add('SHELL GGL');
+    // Waste import is one product at a time — detect from qty and/or facility column written at import.
+    if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']) > 0
+      || hasFac_(['FACILITY NAME ISCC', 'Facility Name ISCC'])) add('POME ISCC');
+    if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']) > 0
+      || hasFac_(['FACILITY NAME INS', 'Facility Name INS'])) add('POME INS');
+    if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']) > 0
+      || hasFac_(['FACILITY NAME SHELL', 'Facility Name SHELL'])) add('SHELL GGL');
     return out;
   }
 
@@ -8335,10 +8353,12 @@ function initDashboardApp() {
   }
 
   function millRegistryProductSupplyCellText_(row) {
+    // Prefer derived labels from import/qty/facility so waste "satu2" rows still show product name.
+    const tokens = millCollectProductSupplyTokens_(row);
+    if (tokens.length) return tokens.join('; ');
     const raw = String(millPickField_(row, ['PRODUCT SUPPLY', 'Product Supply']) || '').trim();
     if (raw && !/^no\s*data$/i.test(raw) && raw !== '—' && raw !== '-') return raw;
-    const tokens = millCollectProductSupplyTokens_(row);
-    return tokens.length ? tokens.join('; ') : '—';
+    return '—';
   }
 
   function millGeneralCompanyKey_(row) {
@@ -8479,7 +8499,7 @@ function initDashboardApp() {
       if (millRegistryProductView === 'main') {
         hint.textContent = 'CPO & PK dari Mill Onboarding';
       } else if (millRegistryProductView === 'waste') {
-        hint.textContent = 'POME ISCC, INS, Shell — qty terpisah per kolom (Waste sheet)';
+        hint.textContent = 'Product Supply = jenis produk saat import (POME ISCC / INS / Shell)';
       } else {
         hint.textContent = 'Gabungan main + waste per company & periode';
       }

@@ -334,6 +334,28 @@ assert(millWasteSupplyCellText_({ 'SUPPLY POME INS': 50 }, 'INS') === '50', 'INS
 assert(millWasteSupplyCellText_({ 'SUPPLY SHELL': 9 }, 'SHELL') === '9', 'SHELL qty');
 assert(millWasteSupplyCellText_({}, 'ISCC') === '—', 'empty ISCC dash');
 
+// Waste Product Supply label from import/facility even when qty empty
+function millCollectProductSupplyTokensTest_(row) {
+  const out = [];
+  const seen = new Set();
+  function add(t) {
+    const k = t.toUpperCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
+  }
+  const st = String(row.supply_type || '').toUpperCase();
+  if (st === 'POME_ISCC') add('POME ISCC');
+  if (st === 'POME_INS') add('POME INS');
+  if (st === 'SHELL_GGL') add('SHELL GGL');
+  if (row['FACILITY NAME INS']) add('POME INS');
+  if (row['SUPPLY POME ISCC'] > 0) add('POME ISCC');
+  return out;
+}
+assert(millCollectProductSupplyTokensTest_({ supply_type: 'POME_INS' }).join('; ') === 'POME INS', 'product from import type');
+assert(millCollectProductSupplyTokensTest_({ 'FACILITY NAME INS': 'EUP - TJPR' }).indexOf('POME INS') >= 0, 'product from facility col');
+assert(millCollectProductSupplyTokensTest_({ 'SUPPLY POME ISCC': 10 }).indexOf('POME ISCC') >= 0, 'product from qty col');
+
 // parametric: 50 merge scenarios
 for (let i = 0; i < 50; i++) {
   const co = 'COMPANY ' + (i % 10);
