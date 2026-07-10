@@ -6651,7 +6651,14 @@ function initDashboardApp() {
     const merged = Object.assign({}, base);
     merged['FACILITY NAME CPO'] = millJoinUniqueSplitValues_([base, incoming], 'FACILITY NAME CPO');
     merged['FACILITY NAME PK'] = millJoinUniqueSplitValues_([base, incoming], 'FACILITY NAME PK');
-    merged['PRODUCT SUPPLY'] = millJoinUniqueSplitValues_([base, incoming], 'PRODUCT SUPPLY');
+    merged['FACILITY NAME ISCC'] = millJoinUniqueSplitValues_([base, incoming], 'FACILITY NAME ISCC');
+    merged['FACILITY NAME INS'] = millJoinUniqueSplitValues_([base, incoming], 'FACILITY NAME INS');
+    merged['FACILITY NAME SHELL'] = millJoinUniqueSplitValues_([base, incoming], 'FACILITY NAME SHELL');
+    millFillEmptySupplyFields_(merged, incoming);
+    millFillEmptySupplyFields_(merged, base);
+    const joinedPs = millJoinProductSupplyTokens_([base, incoming]);
+    if (joinedPs) merged['PRODUCT SUPPLY'] = joinedPs;
+    else merged['PRODUCT SUPPLY'] = millJoinUniqueSplitValues_([base, incoming], 'PRODUCT SUPPLY');
     const prefer = (incoming._row || 0) >= (base._row || 0) ? incoming : base;
     ['GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'COMPANY CODE', 'SOURCE TYPE',
       'ADDRESS', 'PROVINCE', 'COORDINATES', 'CERTIFICATION', 'SUPPLIER STATUS'].forEach(function(k) {
@@ -6660,14 +6667,56 @@ function initDashboardApp() {
     });
     merged._row = Math.max(base._row || 0, incoming._row || 0);
     merged._millRegistryMerged = true;
+    merged._millQtySummary = millBuildQtySummaryFromRows_([base, incoming]);
     return merged;
+  }
+
+  /** Carry forward supply/qty/facility when a newer period row is missing those fields. */
+  function millIsBlankSupplyCell_(v) {
+    if (v == null) return true;
+    const s = String(v).trim();
+    return !s || s === '—' || s === '-' || /^no\s*data$/i.test(s);
+  }
+
+  function millFillEmptySupplyFields_(target, source) {
+    if (!target || !source) return target;
+    [
+      'PRODUCT SUPPLY',
+      'SUPPLY CPO', 'SUPPLY PK', 'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL',
+      'FACILITY NAME CPO', 'FACILITY NAME PK',
+      'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
+      'PERCENTAGE SUPPLY CPO', 'PERCENTAGE SUPPLY PK',
+      'PERCENTAGE SUPPLY ISCC', 'PERCENTAGE SUPPLY INS', 'PERCENTAGE SUPPLY SHELL',
+    ].forEach(function(k) {
+      if (!millIsBlankSupplyCell_(target[k]) ) return;
+      if (!millIsBlankSupplyCell_(source[k])) target[k] = source[k];
+    });
+    return target;
   }
 
   function millPickRegistryRowWinner_(existing, incoming) {
     const sk = millRowPeriodSortKey_(incoming);
     const skOld = millRowPeriodSortKey_(existing);
-    if (sk > skOld) return incoming;
-    if (sk < skOld) return existing;
+    if (sk > skOld) {
+      const newer = Object.assign({}, incoming);
+      millFillEmptySupplyFields_(newer, existing);
+      if (millIsBlankSupplyCell_(newer['PRODUCT SUPPLY'])) {
+        const toks = millJoinProductSupplyTokens_([newer, existing]);
+        if (toks) newer['PRODUCT SUPPLY'] = toks;
+      }
+      newer._millQtySummary = millBuildQtySummaryFromRows_([newer, existing]) || newer._millQtySummary;
+      return newer;
+    }
+    if (sk < skOld) {
+      const newer = Object.assign({}, existing);
+      millFillEmptySupplyFields_(newer, incoming);
+      if (millIsBlankSupplyCell_(newer['PRODUCT SUPPLY'])) {
+        const toks = millJoinProductSupplyTokens_([newer, incoming]);
+        if (toks) newer['PRODUCT SUPPLY'] = toks;
+      }
+      newer._millQtySummary = millBuildQtySummaryFromRows_([newer, incoming]) || newer._millQtySummary;
+      return newer;
+    }
     if (sk > 0) return millMergeRegistrySupplyRows_(existing, incoming);
     return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
   }
@@ -8124,11 +8173,14 @@ function initDashboardApp() {
     if (ps) {
       ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
     }
-    if (!isWasteRow && millParseSupplyQty_(row['SUPPLY CPO']) > 0) add('CPO');
-    if (!isWasteRow && millParseSupplyQty_(row['SUPPLY PK']) > 0) add('PK');
-    if (millParseSupplyQty_(row['SUPPLY ISCC']) > 0) add('POME ISCC');
-    if (millParseSupplyQty_(row['SUPPLY INS']) > 0) add('POME INS');
-    if (millParseSupplyQty_(row['SUPPLY SHELL']) > 0) add('SHELL GGL');
+    function qtyOf_(names) {
+      return millParseSupplyQty_(millPickRawField_(row, names));
+    }
+    if (!isWasteRow && qtyOf_(['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']) > 0) add('CPO');
+    if (!isWasteRow && qtyOf_(['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']) > 0) add('PK');
+    if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC']) > 0) add('POME ISCC');
+    if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS']) > 0) add('POME INS');
+    if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL']) > 0) add('SHELL GGL');
     return out;
   }
 
@@ -8150,20 +8202,20 @@ function initDashboardApp() {
     if (!row) return '';
     const parts = [];
     const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
-    function push(label, field) {
-      const raw = row[field];
+    function push(label, names) {
+      const raw = millPickRawField_(row, names);
       const q = millParseSupplyQty_(raw);
       if (q > 0) {
         parts.push(label + ': ' + millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q));
       }
     }
     if (!isWasteRow) {
-      push('CPO', 'SUPPLY CPO');
-      push('PK', 'SUPPLY PK');
+      push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
+      push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    push('POME ISCC', 'SUPPLY ISCC');
-    push('POME INS', 'SUPPLY INS');
-    push('SHELL GGL', 'SUPPLY SHELL');
+    push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC']);
+    push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS']);
+    push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL']);
     return parts.join('; ');
   }
 
@@ -8379,12 +8431,29 @@ function initDashboardApp() {
     });
     return order.map(function(key) {
       const members = groups.get(key);
-      if (members.length < 2) return members[0];
+      if (members.length < 2) {
+        const one = members[0];
+        if (one && millIsBlankSupplyCell_(one['PRODUCT SUPPLY'])) {
+          const toks = millJoinProductSupplyTokens_([one]);
+          if (toks) one['PRODUCT SUPPLY'] = toks;
+        }
+        if (one && !one._millQtySummary) {
+          const qty = millBuildQtySummaryFromRow_(one);
+          if (qty) one._millQtySummary = qty;
+        }
+        return one;
+      }
       const primary = members[0];
       const merged = Object.assign({}, primary);
+      members.forEach(function(m) { millFillEmptySupplyFields_(merged, m); });
       merged['FACILITY NAME CPO'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME CPO');
       merged['FACILITY NAME PK'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME PK');
-      merged['PRODUCT SUPPLY'] = millJoinUniqueSplitValues_(members, 'PRODUCT SUPPLY');
+      merged['FACILITY NAME ISCC'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME ISCC');
+      merged['FACILITY NAME INS'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME INS');
+      merged['FACILITY NAME SHELL'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME SHELL');
+      const toks = millJoinProductSupplyTokens_(members);
+      merged['PRODUCT SUPPLY'] = toks || millJoinUniqueSplitValues_(members, 'PRODUCT SUPPLY');
+      merged._millQtySummary = millBuildQtySummaryFromRows_(members);
       merged._millTableMerged = true;
       merged._millTableMergeCount = members.length;
       merged._millTableMergeSources = members.slice();

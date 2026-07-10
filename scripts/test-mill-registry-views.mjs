@@ -207,6 +207,53 @@ function millSupplyPkCellText_(row) {
 assert(millSupplyCpoCellText_(mainRows[0]) === '6.052', 'CPO qty formatted');
 assert(millSupplyPkCellText_(mainRows[0]) === '—', 'empty PK shows dash');
 
+// Newest period with empty supply should still carry product/qty from older row
+function millIsBlankSupplyCell_(v) {
+  if (v == null) return true;
+  const s = String(v).trim();
+  return !s || s === '—' || s === '-' || /^no\s*data$/i.test(s);
+}
+function millFillEmptySupplyFields_(target, source) {
+  ['PRODUCT SUPPLY', 'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL'].forEach(function(k) {
+    if (!millIsBlankSupplyCell_(target[k])) return;
+    if (!millIsBlankSupplyCell_(source[k])) target[k] = source[k];
+  });
+  return target;
+}
+function millRowPeriodSortKey_(r) {
+  return (parseInt(r.YEAR, 10) || 0) * 100 + (parseInt(r.MONTH, 10) || 0);
+}
+function millPickNewestCarryForward_(existing, incoming) {
+  const sk = millRowPeriodSortKey_(incoming);
+  const skOld = millRowPeriodSortKey_(existing);
+  if (sk > skOld) {
+    const newer = Object.assign({}, incoming);
+    millFillEmptySupplyFields_(newer, existing);
+    if (millIsBlankSupplyCell_(newer['PRODUCT SUPPLY']) && !millIsBlankSupplyCell_(existing['PRODUCT SUPPLY'])) {
+      newer['PRODUCT SUPPLY'] = existing['PRODUCT SUPPLY'];
+    }
+    return newer;
+  }
+  if (sk < skOld) {
+    const newer = Object.assign({}, existing);
+    millFillEmptySupplyFields_(newer, incoming);
+    return newer;
+  }
+  return incoming;
+}
+const olderWaste = {
+  'COMPANY NAME': 'GUNUNG RIJUAN', MONTH: '2', YEAR: '2026',
+  'PRODUCT SUPPLY': 'POME INS', 'SUPPLY INS': 1200, _millSheetSource: 'waste',
+};
+const newerEmpty = {
+  'COMPANY NAME': 'GUNUNG RIJUAN', MONTH: '3', YEAR: '2026',
+  'PRODUCT SUPPLY': '', 'SUPPLY INS': '', _millSheetSource: 'waste',
+};
+const carried = millPickNewestCarryForward_(olderWaste, newerEmpty);
+assert(carried.MONTH === '3', 'newest month kept');
+assert(carried['PRODUCT SUPPLY'] === 'POME INS', 'product supply carried from older period');
+assert(String(carried['SUPPLY INS']) === '1200', 'qty carried from older period');
+
 // parametric: 50 merge scenarios
 for (let i = 0; i < 50; i++) {
   const co = 'COMPANY ' + (i % 10);
