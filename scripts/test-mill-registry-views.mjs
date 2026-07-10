@@ -282,6 +282,25 @@ assert(carried.MONTH === '3', 'newest month kept');
 assert(carried['PRODUCT SUPPLY'] === 'POME INS', 'product supply carried from older period');
 assert(String(carried['SUPPLY INS']) === '1200', 'qty carried from older period');
 
+// COMPLIMENT/NOT COMPLIMENT sheet codes → display labels
+function millFormatComplimentLabel_(raw) {
+  if (raw === undefined || raw === null) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  const u = s.toUpperCase().replace(/\s+/g, ' ');
+  if (u === 'C' || u === 'COMPLIMENT') return 'Compliment';
+  if (u === 'NC' || u === 'NOT COMPLIMENT' || u === 'NON COMPLIMENT' || u === 'NOT COMPLETE') {
+    return 'Not Compliment';
+  }
+  if (/^not\s*compliment$/i.test(s)) return 'Not Compliment';
+  if (/^compliment$/i.test(s)) return 'Compliment';
+  return s;
+}
+assert(millFormatComplimentLabel_('C') === 'Compliment', 'C → Compliment');
+assert(millFormatComplimentLabel_('NC') === 'Not Compliment', 'NC → Not Compliment');
+assert(millFormatComplimentLabel_('compliment') === 'Compliment', 'compliment passthrough');
+assert(millFormatComplimentLabel_('') === '', 'empty compliment');
+
 // parametric: 50 merge scenarios
 for (let i = 0; i < 50; i++) {
   const co = 'COMPANY ' + (i % 10);

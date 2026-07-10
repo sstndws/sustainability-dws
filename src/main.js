@@ -9124,9 +9124,29 @@ function initDashboardApp() {
     }
     const s = String(raw).trim();
     const t = s.toLowerCase();
-    if (t === '1' || t === 'complete') return 'COMPLETE';
-    if (t === '0' || t === 'not complete' || t === 'non complete') return 'NOT COMPLETE';
+    if (t === '1' || t === 'complete' || t === 'c') return 'COMPLETE';
+    if (t === '0' || t === 'not complete' || t === 'non complete' || t === 'nc') return 'NOT COMPLETE';
     return s;
+  }
+
+  /** Sheet COMPLIMENT/NOT COMPLIMENT stores C/NC — display as Compliment / Not Compliment. */
+  function millFormatComplimentLabel_(raw) {
+    if (raw === undefined || raw === null) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    const u = s.toUpperCase().replace(/\s+/g, ' ');
+    if (u === 'C' || u === 'COMPLIMENT') return 'Compliment';
+    if (u === 'NC' || u === 'NOT COMPLIMENT' || u === 'NON COMPLIMENT' || u === 'NOT COMPLETE') {
+      return 'Not Compliment';
+    }
+    if (/^not\s*compliment$/i.test(s)) return 'Not Compliment';
+    if (/^compliment$/i.test(s)) return 'Compliment';
+    return s;
+  }
+
+  function millProfileComplimentFromRow_(d) {
+    const raw = pickSavedCol(d, ['COMPLIMENT/NOT COMPLIMENT', 'Compliment/Not Compliment']);
+    return millFormatComplimentLabel_(raw);
   }
 
   function millProfileFormatYesNo_(raw) {
@@ -9140,6 +9160,7 @@ function initDashboardApp() {
 
   function millProfileResolveField_(d, key, opts) {
     opts = opts || {};
+    if (key === 'COMPLIMENT/NOT COMPLIMENT') return millProfileComplimentFromRow_(d);
     const aliases = MILL_PROFILE_FIELD_ALIASES_[key] || [key];
     const v = pickSavedCol(d, aliases);
     if (!v) return '';
@@ -9236,6 +9257,8 @@ function initDashboardApp() {
               val = millSourceTypeValFromRow_(d);
             } else if (key === 'LEGALITY SCORE') {
               val = millProfileLegalityFromScore_(d);
+            } else if (key === 'COMPLIMENT/NOT COMPLIMENT') {
+              val = millProfileComplimentFromRow_(d);
             } else if (key === 'MILL CAPACITY' || key === 'MILL CAPACITY (TON/HOUR)') {
               val = millCapacityFromRow_(d) || millProfileResolveField_(d, key);
             } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
@@ -9397,6 +9420,9 @@ function initDashboardApp() {
         }
         if (key === 'LEGALITY SCORE') {
           return valOrDash(millProfileLegalityFromScore_(row));
+        }
+        if (key === 'COMPLIMENT/NOT COMPLIMENT') {
+          return valOrDash(millProfileComplimentFromRow_(row));
         }
         if (key === MILL_LEGALITY_GRIEVANCE) {
           return valOrDash(millProfileResolveField_(row, key, { yesNo: true }));
