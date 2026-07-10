@@ -5542,9 +5542,7 @@ function initDashboardApp() {
       {
         title: 'Legality',
         fields: [
-          // Permit Yes/No (HGU/HGB, Izin Lokasi, IUP, Izin Lingkungan) stay on Task List form only.
-          // Profile shows Legality Score (Complete / Not Complete) from sheet formula.
-          ['LEGALITY SCORE', 'Legality Score'],
+          // Permit Yes/No stay on Task List only. Profile shows Compliment status (more decisive than Legality Score).
           ['MILL LOC', 'Mill Location'],
           ['COMPLIMENT/NOT COMPLIMENT', 'Compliment / Not Compliment'],
         ],
@@ -9388,8 +9386,10 @@ function initDashboardApp() {
             const isWide = key === 'ADDRESS';
             const isLong = key === 'COORDINATES' || (sec.title === 'Certification' && key === 'CERTIFICATION');
             const isComputed = millIsSheetComputedField_(key);
+            // Compliment is formula-backed but shown as the main legality status — no "auto" badge.
+            const showAutoTag = isComputed && key !== 'COMPLIMENT/NOT COMPLIMENT';
             return `<div class="mp-field${isWide ? ' wide' : ''}${isLong ? ' full' : ''}${isComputed ? ' mp-field--computed' : ''}">
-              <div class="mp-label">${label}${isComputed ? ' <span class="mp-computed-tag">auto</span>' : ''}</div>
+              <div class="mp-label">${label}${showAutoTag ? ' <span class="mp-computed-tag">auto</span>' : ''}</div>
               <div class="mp-val">${val || '—'}</div>
             </div>`;
           }).join('')}
