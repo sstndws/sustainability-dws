@@ -8255,14 +8255,17 @@ function initDashboardApp() {
     const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
     function normalizeTokenLabel(tok) {
       const raw = String(tok || '').trim();
+      if (!raw) return '';
       const key = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (!key) return '';
       if (key === 'CPO') return 'CPO';
       if (key === 'PK') return 'PK';
-      if (key === 'POMEISCC' || key === 'ISCC' || key === 'POMEISCCS' || key === 'ISCCPOME') return 'POME ISCC';
-      if (key === 'POMEINS' || key === 'INS') return 'POME INS';
-      if (key === 'SHELLGGL' || key === 'SHELL') return 'SHELL GGL';
-      return raw;
+      // Sheet formula may emit POMEISCCEU / ISCCEU / etc.
+      if (key.indexOf('ISCC') >= 0) return 'POME ISCC';
+      if (key === 'POMEINS' || key === 'INS' || (key.indexOf('POME') >= 0 && key.indexOf('INS') >= 0)) return 'POME INS';
+      if (key.indexOf('SHELL') >= 0 || key.indexOf('GGL') >= 0) return 'SHELL GGL';
+      if (key === 'INS') return 'POME INS';
+      return isWasteRow ? '' : raw;
     }
     function add(tok) {
       const t = normalizeTokenLabel(tok);
@@ -8280,10 +8283,6 @@ function initDashboardApp() {
     else if (st === 'CPO') add('CPO');
     else if (st === 'PK') add('PK');
 
-    const ps = millNormalizeProductSupply_(row);
-    if (ps) {
-      ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
-    }
     function qtyOf_(names) {
       return millParseSupplyQty_(millPickRawField_(row, names));
     }
@@ -8302,7 +8301,39 @@ function initDashboardApp() {
       || hasFac_(['FACILITY NAME INS', 'Facility Name INS'])) add('POME INS');
     if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']) > 0
       || hasFac_(['FACILITY NAME SHELL', 'Facility Name SHELL'])) add('SHELL GGL');
+
+    // Sheet PRODUCT SUPPLY formula last (normalize junk like POMEISCCEU → POME ISCC)
+    const ps = millNormalizeProductSupply_(row);
+    if (ps) {
+      ps.split(/[,;/]+/).forEach(function(part) { add(part.trim()); });
+    }
     return out;
+  }
+
+  function millProductSupplyPillsHtml_(rowOrTokens) {
+    let tokens = [];
+    if (Array.isArray(rowOrTokens)) tokens = rowOrTokens.slice();
+    else if (rowOrTokens && typeof rowOrTokens === 'object') tokens = millCollectProductSupplyTokens_(rowOrTokens);
+    else if (typeof rowOrTokens === 'string') {
+      String(rowOrTokens).split(/[,;/]+/).forEach(function(part) {
+        const t = String(part || '').trim();
+        if (t) tokens.push(t);
+      });
+      // re-normalize via a fake row collector path
+      const tmp = { 'PRODUCT SUPPLY': tokens.join('; '), _millSheetSource: 'waste' };
+      tokens = millCollectProductSupplyTokens_(tmp);
+    }
+    if (!tokens.length) return '<span class="cert-pill-empty">—</span>';
+    return '<div class="cert-pill-list mill-product-pill-list">' + tokens.map(function(tok) {
+      const u = String(tok || '').toUpperCase().replace(/\s+/g, ' ');
+      let cls = 'cert-pill mill-product-pill';
+      if (u === 'CPO') cls += ' mill-product-pill--cpo';
+      else if (u === 'PK') cls += ' mill-product-pill--pk';
+      else if (u.indexOf('ISCC') >= 0) cls += ' mill-product-pill--iscc';
+      else if (u.indexOf('INS') >= 0) cls += ' mill-product-pill--ins';
+      else if (u.indexOf('SHELL') >= 0 || u.indexOf('GGL') >= 0) cls += ' mill-product-pill--shell';
+      return '<span class="' + cls + '">' + escHtml(tok) + '</span>';
+    }).join('') + '</div>';
   }
 
   function millJoinProductSupplyTokens_(rows) {

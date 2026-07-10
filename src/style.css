@@ -2531,6 +2531,28 @@
     font-size: 12px;
     padding: 5px 11px;
   }
+  .mill-product-pill-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mill-product-pill--cpo {
+    color: #1b4d89;
+    border-color: rgba(27, 77, 137, 0.22);
+    background: rgba(27, 77, 137, 0.08);
+  }
+  .mill-product-pill--pk {
+    color: #6a3d12;
+    border-color: rgba(180, 100, 30, 0.25);
+    background: rgba(180, 100, 30, 0.08);
+  }
+  .mill-product-pill--iscc,
+  .mill-product-pill--ins,
+  .mill-product-pill--shell {
+    color: #2e7d32;
+    border-color: rgba(46, 125, 50, 0.25);
+    background: rgba(46, 125, 50, 0.10);
+  }
    .ttp-detail-foot {
      display: flex;
      flex-wrap: wrap;
