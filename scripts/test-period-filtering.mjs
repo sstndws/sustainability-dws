@@ -234,6 +234,8 @@ assert(mrdJs.includes("getMillsForReportPeriod(periodYear, periodMonth, 'main')"
 assert(mrdJs.includes("getMillsForReportPeriod(periodYear, periodMonth, 'waste')"), 'MRD loads Waste mills');
 assert(mrdJs.includes('Product: Main + Waste'), 'MRD scope shows both products');
 assert(!mrdJs.includes('data-mrd-product-view'), 'MRD has no product picker');
+assert(!mrdJs.includes('mrdSyncProductViewUi_'), 'dead product UI sync removed');
+assert(mrdJs.includes('reportPeriod: { year:'), 'snapshot stores report period');
 
 console.log('\nPeriod filtering tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

@@ -527,8 +527,13 @@ async function exportMonthlyReport_(exportOpts) {
   if (btn) btn.textContent = 'Preparing…';
 
   try {
-    syncPeriodFromUi_();
-    const pageDataPeriod = getReportPeriod_();
+    _year = String(reportPeriod.year || _year);
+    _month = String(reportPeriod.month != null ? reportPeriod.month : _month);
+    const yearSel = document.getElementById('mrdYearSel');
+    const monthSel = document.getElementById('mrdMonthSel');
+    if (yearSel && _year) yearSel.value = _year;
+    if (monthSel) monthSel.value = _month;
+    const pageDataPeriod = { year: _year, month: _month };
     const facilityPeriod = getFacilityReportContext_();
 
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
@@ -545,7 +550,7 @@ async function exportMonthlyReport_(exportOpts) {
       facilityPeriod: facilityPeriod,
     });
 
-    _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
+    _snapshot = rebuildSnapshot_({ reportPeriod: pageDataPeriod, sddRows: _sddCache, sddLoading: false });
     await resolveNblMillsForSnapshot_();
 
     const prevEudr = (_snapshot && _snapshot.eudrPotential) || [];
@@ -559,7 +564,10 @@ async function exportMonthlyReport_(exportOpts) {
     } else if (extraEudr.length > bestEudr.length) {
       bestEudr = extraEudr.slice();
     }
-    _snapshot = rebuildSnapshot_({ eudrPotential: bestEudr.length ? bestEudr : undefined });
+    _snapshot = rebuildSnapshot_({
+      reportPeriod: pageDataPeriod,
+      eudrPotential: bestEudr.length ? bestEudr : undefined,
+    });
     const s = _snapshot;
 
     if (btn) btn.textContent = 'Building PDF…';
@@ -852,6 +860,7 @@ function buildSnapshotSync(opts) {
   const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
 
   return {
+    reportPeriod: { year: String(periodYear || ''), month: String(periodMonth || '') },
     sdd: mrdSortSddRows_(sddFiltered),
     mills: mrdSortMillItems_(millRows),
     highRiskMills: mrdSortMillItems_(highRiskMillRows),
@@ -1269,6 +1278,7 @@ function renderEudrSection(rows, loading) {
 
 function renderAll() {
   if (!_snapshot) return;
+  syncPeriodFromUi_();
   renderKpis(_snapshot.stats, {
     tracePending: !!_snapshot.supplementalLoading || !_ttpFetchOk,
     eudrPending: !!_snapshot.eudrLoading || _eudrPending || !_eudrFetchOk,
@@ -1278,7 +1288,9 @@ function renderAll() {
   const s = _snapshot;
   const stats = s.stats || {};
   let html = '';
-  const reportPeriod = getReportPeriod_();
+  const reportPeriod = (s.reportPeriod && (s.reportPeriod.year || s.reportPeriod.month))
+    ? s.reportPeriod
+    : getReportPeriod_();
   const reportLabel = mrdDataPeriodShortLabel_(reportPeriod);
   const traceYear = mrdTraceYearFromReport_(reportPeriod.year);
   const tracePeriodLabel = traceYear ? ('Year ' + traceYear) : (reportPeriod.year ? ('Full year ' + reportPeriod.year) : 'all periods');
@@ -1296,7 +1308,10 @@ function renderAll() {
 function updateScopeText(extra) {
   const el = document.getElementById('mrdScopeText');
   if (!el) return;
-  const report = getReportPeriod_();
+  syncPeriodFromUi_();
+  const report = (_snapshot && _snapshot.reportPeriod && (_snapshot.reportPeriod.year || _snapshot.reportPeriod.month))
+    ? _snapshot.reportPeriod
+    : getReportPeriod_();
   const meta = mrdReportHeaderMeta_(report.year, report.month);
   let txt = meta.periodLine + ' · ' + meta.dataPeriodLine + ' · ' + meta.cutoffLine;
   txt += ' · Product: Main + Waste';
@@ -1449,8 +1464,10 @@ function scheduleNblRiserResolve_() {
 }
 
 function rebuildSnapshot_(opts) {
+  opts = opts || {};
   const prev = _snapshot || {};
   const snap = buildSnapshotSync({
+    reportPeriod: opts.reportPeriod || getReportPeriod_(),
     sddRows: opts.sddRows != null ? opts.sddRows : _sddCache,
     eudrPotential: opts.eudrPotential != null ? opts.eudrPotential : (prev.eudrPotential || []),
     eudrLoading: opts.eudrLoading != null ? opts.eudrLoading : !!prev.eudrLoading,
@@ -1661,13 +1678,11 @@ function populateYearSelect() {
 
 function bindOnce() {
   if (_bound) return;
-  _bound = true;
   const panel = document.getElementById('panel-monthly-report-detail');
   if (!panel) return;
 
   populateYearSelect();
   applyDefaultMonthSelection_();
-  mrdSyncProductViewUi_();
 
   const yearSel = document.getElementById('mrdYearSel');
   const monthSel = document.getElementById('mrdMonthSel');
@@ -1676,7 +1691,7 @@ function bindOnce() {
   if (yearSel && !yearSel._mrdBound) {
     yearSel._mrdBound = true;
     yearSel.addEventListener('change', function() {
-      _year = yearSel.value || String(new Date().getFullYear());
+      syncPeriodFromUi_();
       _nblByCache.clear();
       _facilityBundles = [];
       _facilityBundlesPeriodKey = '';
@@ -1687,7 +1702,8 @@ function bindOnce() {
   if (monthSel && !monthSel._mrdBound) {
     monthSel._mrdBound = true;
     monthSel.addEventListener('change', function() {
-      _month = monthSel.value || '';
+      syncPeriodFromUi_();
+      _nblByCache.clear();
       _facilityBundles = [];
       _facilityBundlesPeriodKey = '';
       loadAndRender();
@@ -1695,6 +1711,7 @@ function bindOnce() {
   }
 
   document.getElementById('mrdBtnRefresh')?.addEventListener('click', function() {
+    syncPeriodFromUi_();
     _nblByCache.clear();
     _facilityBundles = [];
     _facilityBundlesPeriodKey = '';
@@ -1748,6 +1765,8 @@ function bindOnce() {
       }
     }
   });
+
+  _bound = true;
 }
 
 export function initMonthlyReport_(deps) {
