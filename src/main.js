@@ -8198,6 +8198,10 @@ function initDashboardApp() {
   }
 
   function millTableCellText_(val, opts) {
+    if (opts && opts.productPills) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) return millProductSupplyPillsHtml_(val);
+      return millProductSupplyPillsHtml_(val);
+    }
     const raw = String(val != null && val !== '' ? val : '').trim();
     if (opts && opts.certPills) {
       return certPillsHtml_(raw);
@@ -8249,29 +8253,61 @@ function initDashboardApp() {
     return String(raw).trim();
   }
 
+  function millCanonicalProductSupplyKey_(tok) {
+    const t = String(tok || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!t) return '';
+    if (t === 'CPO') return 'CPO';
+    if (t === 'PK') return 'PK';
+    if (t.indexOf('ISCC') >= 0) return 'POMEISCC';
+    if (t === 'INS' || t === 'POMEINS' || (t.indexOf('POME') >= 0 && t.indexOf('INS') >= 0)) return 'POMEINS';
+    if (t.indexOf('SHELL') >= 0 || t.indexOf('GGL') >= 0) return 'SHELLGGL';
+    return t;
+  }
+
+  function millCanonicalProductSupplyLabel_(tok) {
+    const k = millCanonicalProductSupplyKey_(tok);
+    if (k === 'CPO') return 'CPO';
+    if (k === 'PK') return 'PK';
+    if (k === 'POMEISCC') return 'POME ISCC';
+    if (k === 'POMEINS') return 'POME INS';
+    if (k === 'SHELLGGL') return 'SHELL GGL';
+    return String(tok || '').trim();
+  }
+
+  function millDedupeProductSupplyTokens_(tokens) {
+    const seen = new Set();
+    const out = [];
+    (tokens || []).forEach(function(tok) {
+      const label = millCanonicalProductSupplyLabel_(tok);
+      if (!label) return;
+      const k = millCanonicalProductSupplyKey_(label);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      out.push(label);
+    });
+    return out;
+  }
+
   function millCollectProductSupplyTokens_(row) {
     const seen = new Set();
     const out = [];
-    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
-    function normalizeTokenLabel(tok) {
-      const raw = String(tok || '').trim();
-      if (!raw) return '';
-      const key = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (!key) return '';
-      if (key === 'CPO') return 'CPO';
-      if (key === 'PK') return 'PK';
-      // Sheet formula may emit POMEISCCEU / ISCCEU / etc.
-      if (key.indexOf('ISCC') >= 0) return 'POME ISCC';
-      if (key === 'POMEINS' || key === 'INS' || (key.indexOf('POME') >= 0 && key.indexOf('INS') >= 0)) return 'POME INS';
-      if (key.indexOf('SHELL') >= 0 || key.indexOf('GGL') >= 0) return 'SHELL GGL';
-      if (key === 'INS') return 'POME INS';
-      return isWasteRow ? '' : raw;
+    // Prefer member rows when general/table merge already joined sources — avoids double-count.
+    if (row && (row._millGeneralMergeSources || row._millTableMergeSources)) {
+      const members = row._millGeneralMergeSources || row._millTableMergeSources;
+      return millDedupeProductSupplyTokens_(
+        (members || []).reduce(function(acc, r) {
+          return acc.concat(millCollectProductSupplyTokens_(r));
+        }, [])
+      );
     }
+    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
     function add(tok) {
-      const t = normalizeTokenLabel(tok);
+      const t = millCanonicalProductSupplyLabel_(tok);
       if (!t) return;
-      const k = t.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (seen.has(k)) return;
+      const k = millCanonicalProductSupplyKey_(t);
+      if (!k || seen.has(k)) return;
+      // Only known product labels — drops sheet junk like POMEISCCEU after canonicalize.
+      if (k !== 'CPO' && k !== 'PK' && k !== 'POMEISCC' && k !== 'POMEINS' && k !== 'SHELLGGL') return;
       seen.add(k);
       out.push(t);
     }
@@ -8294,7 +8330,6 @@ function initDashboardApp() {
     }
     if (!isWasteRow && qtyOf_(['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']) > 0) add('CPO');
     if (!isWasteRow && qtyOf_(['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']) > 0) add('PK');
-    // Waste import is one product at a time — detect from qty and/or facility column written at import.
     if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']) > 0
       || hasFac_(['FACILITY NAME ISCC', 'Facility Name ISCC'])) add('POME ISCC');
     if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']) > 0
@@ -8312,42 +8347,31 @@ function initDashboardApp() {
 
   function millProductSupplyPillsHtml_(rowOrTokens) {
     let tokens = [];
-    if (Array.isArray(rowOrTokens)) tokens = rowOrTokens.slice();
+    if (Array.isArray(rowOrTokens)) tokens = millDedupeProductSupplyTokens_(rowOrTokens);
     else if (rowOrTokens && typeof rowOrTokens === 'object') tokens = millCollectProductSupplyTokens_(rowOrTokens);
     else if (typeof rowOrTokens === 'string') {
-      String(rowOrTokens).split(/[,;/]+/).forEach(function(part) {
-        const t = String(part || '').trim();
-        if (t) tokens.push(t);
-      });
-      // re-normalize via a fake row collector path
-      const tmp = { 'PRODUCT SUPPLY': tokens.join('; '), _millSheetSource: 'waste' };
-      tokens = millCollectProductSupplyTokens_(tmp);
+      tokens = millDedupeProductSupplyTokens_(String(rowOrTokens).split(/[,;/]+/));
     }
+    tokens = millDedupeProductSupplyTokens_(tokens);
     if (!tokens.length) return '<span class="cert-pill-empty">—</span>';
     return '<div class="cert-pill-list mill-product-pill-list">' + tokens.map(function(tok) {
-      const u = String(tok || '').toUpperCase().replace(/\s+/g, ' ');
+      const k = millCanonicalProductSupplyKey_(tok);
       let cls = 'cert-pill mill-product-pill';
-      if (u === 'CPO') cls += ' mill-product-pill--cpo';
-      else if (u === 'PK') cls += ' mill-product-pill--pk';
-      else if (u.indexOf('ISCC') >= 0) cls += ' mill-product-pill--iscc';
-      else if (u.indexOf('INS') >= 0) cls += ' mill-product-pill--ins';
-      else if (u.indexOf('SHELL') >= 0 || u.indexOf('GGL') >= 0) cls += ' mill-product-pill--shell';
+      if (k === 'CPO') cls += ' mill-product-pill--cpo';
+      else if (k === 'PK') cls += ' mill-product-pill--pk';
+      else if (k === 'POMEISCC') cls += ' mill-product-pill--iscc';
+      else if (k === 'POMEINS') cls += ' mill-product-pill--ins';
+      else if (k === 'SHELLGGL') cls += ' mill-product-pill--shell';
       return '<span class="' + cls + '">' + escHtml(tok) + '</span>';
     }).join('') + '</div>';
   }
 
   function millJoinProductSupplyTokens_(rows) {
-    const seen = new Set();
-    const out = [];
-    (rows || []).forEach(function(r) {
-      millCollectProductSupplyTokens_(r).forEach(function(tok) {
-        const k = tok.toUpperCase();
-        if (seen.has(k)) return;
-        seen.add(k);
-        out.push(tok);
-      });
-    });
-    return out.join('; ');
+    return millDedupeProductSupplyTokens_(
+      (rows || []).reduce(function(acc, r) {
+        return acc.concat(millCollectProductSupplyTokens_(r));
+      }, [])
+    ).join('; ');
   }
 
   function millBuildQtySummaryFromRow_(row) {
@@ -8703,7 +8727,7 @@ function initDashboardApp() {
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
-          <td class="mill-td mill-td--product" data-mill-col="product-supply">${millTableCellText_(millRegistryProductSupplyCellText_(d), { wrap: true })}</td>
+          <td class="mill-td mill-td--product" data-mill-col="product-supply">${millTableCellText_(d, { productPills: true })}</td>
           <td class="mill-td mill-td--qty" data-mill-col="quantity">${millTableCellText_(millRegistryQtyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--supply-cpo" data-mill-col="supply-cpo">${millTableCellText_(millSupplyCpoCellText_(d))}</td>
           <td class="mill-td mill-td--supply-pk" data-mill-col="supply-pk">${millTableCellText_(millSupplyPkCellText_(d))}</td>

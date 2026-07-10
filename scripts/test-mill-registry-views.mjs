@@ -356,6 +356,34 @@ assert(millCollectProductSupplyTokensTest_({ supply_type: 'POME_INS' }).join('; 
 assert(millCollectProductSupplyTokensTest_({ 'FACILITY NAME INS': 'EUP - TJPR' }).indexOf('POME INS') >= 0, 'product from facility col');
 assert(millCollectProductSupplyTokensTest_({ 'SUPPLY POME ISCC': 10 }).indexOf('POME ISCC') >= 0, 'product from qty col');
 
+// Deduplicate POME ISCC variants (POMEISCCEU + POME ISCC → one)
+function millCanonicalProductSupplyKey_(tok) {
+  const t = String(tok || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!t) return '';
+  if (t === 'CPO') return 'CPO';
+  if (t === 'PK') return 'PK';
+  if (t.indexOf('ISCC') >= 0) return 'POMEISCC';
+  if (t === 'INS' || t === 'POMEINS' || (t.indexOf('POME') >= 0 && t.indexOf('INS') >= 0)) return 'POMEINS';
+  if (t.indexOf('SHELL') >= 0 || t.indexOf('GGL') >= 0) return 'SHELLGGL';
+  return t;
+}
+function millDedupeProductSupplyTokens_(tokens) {
+  const seen = new Set();
+  const out = [];
+  (tokens || []).forEach(function(tok) {
+    const k = millCanonicalProductSupplyKey_(tok);
+    if (!k || seen.has(k)) return;
+    if (k !== 'CPO' && k !== 'PK' && k !== 'POMEISCC' && k !== 'POMEINS' && k !== 'SHELLGGL') return;
+    seen.add(k);
+    const label = k === 'POMEISCC' ? 'POME ISCC' : (k === 'POMEINS' ? 'POME INS' : (k === 'SHELLGGL' ? 'SHELL GGL' : k));
+    out.push(label);
+  });
+  return out;
+}
+const deduped = millDedupeProductSupplyTokens_(['PK', 'POME ISCC', 'POME INS', 'POMEISCCEU', 'POME ISCC']);
+assert(deduped.filter(function(t) { return t === 'POME ISCC'; }).length === 1, 'POME ISCC deduped to one');
+assert(deduped.indexOf('PK') >= 0 && deduped.indexOf('POME INS') >= 0, 'other products kept');
+
 // parametric: 50 merge scenarios
 for (let i = 0; i < 50; i++) {
   const co = 'COMPANY ' + (i % 10);
