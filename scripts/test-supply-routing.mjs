@@ -228,28 +228,36 @@ assert(supplyFacilityFieldForKind_('POME_ISCC') === 'FACILITY NAME ISCC', 'fac I
 assert(supplyFacilityFieldForKind_('POME_INS') === 'FACILITY NAME INS', 'fac INS');
 assert(supplyFacilityFieldForKind_('SHELL_GGL') === 'FACILITY NAME SHELL', 'fac SHELL');
 
-// ── GHG VALUE (waste identity — replaces RISK REDUCTION FACTOR) ───────────
+// ── Waste identity fields (sheet input cols; formula cols excluded) ───────────
 const MILL_WASTE_IDENTITY_FIELDS = [
   'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME',
   'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'MILL CAPACITY (TON/HOUR)',
   'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
-  'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
-  'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
-  'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-  'GHG VALUE',
+  'MILL LOC', 'CERTIFICATION', 'TYPE OF STERILIZER',
+  'GHG VALUE', 'RISK REDUCTION FACTOR',
 ];
 assert(MILL_WASTE_IDENTITY_FIELDS.includes('GHG VALUE'), 'waste identity includes GHG VALUE');
-assert(!MILL_WASTE_IDENTITY_FIELDS.includes('RISK REDUCTION FACTOR'), 'RISK REDUCTION FACTOR removed');
+assert(MILL_WASTE_IDENTITY_FIELDS.includes('TYPE OF STERILIZER'), 'waste identity includes TYPE OF STERILIZER');
+assert(MILL_WASTE_IDENTITY_FIELDS.includes('RISK REDUCTION FACTOR'), 'waste identity includes RISK REDUCTION FACTOR');
+
+const MILL_WASTE_FORMULA_FIELDS = [
+  'LEGALITY SCORE', 'COMPLIMENT/NOT COMPLIMENT', 'TOTAL CERTIFICATION',
+  'TOTAL POME SUPPLY', 'MAX SUPPLY POME', 'REMAINING STOCK POME', 'PERCENTAGE SUPPLY ISCC',
+  'MAX SUPPLY SHELL', 'REMAINING STOCK SHELL', 'PERCENTAGE SUPPLY SHELL',
+  'PRODUCT SUPPLY', 'TOTAL SCORE SUPPLY', 'DECLARATION MONITORING',
+  'TOTAL RISK LEVEL', 'RESULT RISK LEVEL', 'SUPPLIER STATUS',
+];
+assert(MILL_WASTE_FORMULA_FIELDS.includes('REMAINING STOCK POME'), 'formula list has REMAINING STOCK POME');
+assert(MILL_WASTE_FORMULA_FIELDS.includes('REMAINING STOCK SHELL'), 'formula list has REMAINING STOCK SHELL');
+assert(!MILL_WASTE_IDENTITY_FIELDS.some(function(k) { return MILL_WASTE_FORMULA_FIELDS.includes(k); }), 'identity ∩ formula empty');
 
 function buildSupplyIdentityPatchFromDraftGs_(row) {
   const fillKeys = [
     'MONTH', 'YEAR', 'QUARTER', 'SOURCE TYPE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME',
     'UML ID', 'COMPANY CODE', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY',
-    'MILL CAPACITY (TON/HOUR)', 'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
-    'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
-    'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
-    'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-    'GHG VALUE',
+    'MILL CAPACITY (TON/HOUR)', 'MILL CAPACITY', 'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
+    'MILL LOC', 'CERTIFICATION', 'TRADER NAME', 'TYPE OF STERILIZER',
+    'GHG VALUE', 'RISK REDUCTION FACTOR',
   ];
   const patch = {};
   fillKeys.forEach(function(k) {
@@ -263,10 +271,13 @@ const ghgPatch = buildSupplyIdentityPatchFromDraftGs_({
   supply_type: 'POME_INS',
   'COMPANY NAME': 'TEST CO',
   'GHG VALUE': '0.42',
+  'RISK REDUCTION FACTOR': '1',
+  'TYPE OF STERILIZER': 'Vertikal',
   'SUPPLY INS': 961760,
 });
 assert(ghgPatch['GHG VALUE'] === '0.42', 'GHG VALUE in identity patch');
-assert(!ghgPatch['RISK REDUCTION FACTOR'], 'no RISK REDUCTION FACTOR in patch');
+assert(ghgPatch['RISK REDUCTION FACTOR'] === '1', 'RISK REDUCTION FACTOR in identity patch');
+assert(ghgPatch['TYPE OF STERILIZER'] === 'Vertikal', 'TYPE OF STERILIZER in identity patch');
 assert(!ghgPatch['SUPPLY INS'], 'qty stays in supply patch not identity');
 
 // Waste sheet may rename qty headers → remap canonical keys before write

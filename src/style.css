@@ -2856,8 +2856,37 @@
    #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="supply-pk"],
    #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="supply-cpo"],
    #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="supply-pk"],
-   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="quantity"] {
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="quantity"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="waste-sterilizer"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="waste-ghg"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="waste-fac-iscc"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="waste-fac-ins"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-main [data-mill-col="waste-fac-shell"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="waste-sterilizer"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="waste-ghg"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="waste-fac-iscc"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="waste-fac-ins"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-general [data-mill-col="waste-fac-shell"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="main-priority"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="main-nbl"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="fac-cpo"],
+   #panel-mill-onboarding #millTable.mill-registry-table--view-waste [data-mill-col="fac-pk"] {
      display: none;
+   }
+   #panel-mill-onboarding .mp-computed-tag {
+     display: inline-block;
+     margin-left: 6px;
+     padding: 1px 6px;
+     border-radius: 999px;
+     font-size: 10px;
+     font-weight: 600;
+     letter-spacing: 0.02em;
+     text-transform: uppercase;
+     color: #6b5b4a;
+     background: #f0e8dc;
+   }
+   #panel-mill-onboarding .mp-field--computed .mp-val {
+     color: #5a5048;
    }
    #panel-mill-onboarding .mill-period-pickers {
      display: flex;

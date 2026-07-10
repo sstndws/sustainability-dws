@@ -5482,17 +5482,26 @@ function initDashboardApp() {
 
   const MILL_FIELDS = ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)','HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN','SCORE','MILL LOC','COMPLIMENT/NOT COMPLIMENT','DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH',MILL_LEGALITY_GRIEVANCE,'DEFORESTATION GRIEVANCES','BURN AREA GRIEVANCES',MILL_HUMAN_RIGHTS_GRIEVANCE,MILL_SAFETY_GRIEVANCE,MILL_SOCIAL_GRIEVANCE,MILL_ENVIRONMENT_GRIEVANCE,'TOTAL GRIEVANCES','NDPE','HRDD','TOTAL POLICY','CERTIFICATION','TOTAL CERTIFICATION','TOTAL SCORE','SUPPLIER LEVEL','BUYER NO BUY LIST','VOLUME SUPPLY STATUS','RECOMMENDATION LEVEL','PRIORITY ENGAGEMENT','SUPPLIER STATUS','RISK LEVEL','RESULT RISK LEVEL','FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'];
 
-  /** Editable columns on Mill Onboarding Waste (formula cols excluded). */
+  /**
+   * Mill Onboarding Waste — editable columns only (mirror live sheet; formula cols excluded).
+   * Qty keys stay canonical SUPPLY ISCC/INS/SHELL; GAS remaps to SUPPLY POME * headers.
+   */
   const MILL_WASTE_SUPPLY_FIELDS = [
     'MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
     'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY',
     'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
-    'MILL LOC',
-    MILL_LEGALITY_GRIEVANCE, 'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
-    MILL_HUMAN_RIGHTS_GRIEVANCE, MILL_SAFETY_GRIEVANCE, MILL_SOCIAL_GRIEVANCE, MILL_ENVIRONMENT_GRIEVANCE,
-    'NDPE', 'HRDD', 'CERTIFICATION',
+    'MILL LOC', 'CERTIFICATION', 'TYPE OF STERILIZER',
     'FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL',
-    'GHG VALUE',
+    'GHG VALUE', 'RISK REDUCTION FACTOR',
+  ];
+
+  /** Formula / auto columns on Mill Onboarding Waste — display only, never write from web. */
+  const MILL_WASTE_FORMULA_FIELDS = [
+    'LEGALITY SCORE', 'COMPLIMENT/NOT COMPLIMENT', 'TOTAL CERTIFICATION',
+    'TOTAL POME SUPPLY', 'MAX SUPPLY POME', 'REMAINING STOCK POME', 'PERCENTAGE SUPPLY ISCC',
+    'MAX SUPPLY SHELL', 'REMAINING STOCK SHELL', 'PERCENTAGE SUPPLY SHELL',
+    'PRODUCT SUPPLY', 'TOTAL SCORE SUPPLY', 'DECLARATION MONITORING',
+    'TOTAL RISK LEVEL', 'RESULT RISK LEVEL', 'SUPPLIER STATUS',
   ];
 
   function supplyModalFieldsList_(batchOrKind) {
@@ -5509,14 +5518,72 @@ function initDashboardApp() {
       ? [wasteCfg.facility, wasteCfg.qty]
       : ['FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL'];
     return [
-      { title: 'Identitas Mill', fields: ['MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY'] },
-      { title: 'Legalitas', fields: ['HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN'] },
-      { title: 'Lokasi', fields: ['MILL LOC'] },
-      { title: 'Grievances', fields: MILL_GRIEVANCE_FLAG_FIELDS_.slice() },
-      { title: 'Policy', fields: ['NDPE', 'HRDD'] },
+      { title: 'Identitas Mill', fields: ['MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'TYPE OF STERILIZER'] },
+      { title: 'Legalitas', fields: ['HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'MILL LOC'] },
       { title: 'Sertifikasi', fields: ['CERTIFICATION'] },
       { title: supplyTitle, fields: supplyFields },
-      { title: 'GHG', fields: ['GHG VALUE'] },
+      { title: 'GHG & Risk Input', fields: ['GHG VALUE', 'RISK REDUCTION FACTOR'] },
+    ];
+  }
+
+  /** Profile sections for waste rows — every live-sheet column (formula shown read-only). */
+  function millWasteProfileSections_() {
+    return [
+      {
+        title: 'Mill Identity',
+        fields: [
+          ['MONTH', 'Month'], ['YEAR', 'Year'], ['COMPANY CODE', 'Company Code'], ['SOURCE TYPE', 'Source Type'],
+          ['TRADER NAME', 'Trader Name'], ['GROUP NAME', 'Group Name'], ['COMPANY NAME', 'Company Name'],
+          ['MILL NAME', 'Mill Name'], ['UML ID', 'UML ID'], ['ADDRESS', 'Address'], ['PROVINCE', 'Province'],
+          ['COORDINATES', 'Coordinates'], ['MILL CATEGORY', 'Mill Category'], ['MILL CAPACITY', 'Mill Capacity'],
+          ['TYPE OF STERILIZER', 'Type of Sterilizer'],
+        ],
+      },
+      {
+        title: 'Legality',
+        fields: [
+          ['HGU/HGB', 'HGU/HGB'], ['IZIN LOKASI', 'Izin Lokasi'], ['IUP', 'IUP'], ['IZIN LINGKUNGAN', 'Izin Lingkungan'],
+          ['LEGALITY SCORE', 'Legality Score'], ['MILL LOC', 'Mill Location'], ['COMPLIMENT/NOT COMPLIMENT', 'Compliment / Not Compliment'],
+        ],
+      },
+      {
+        title: 'Certification',
+        fields: [
+          ['CERTIFICATION', 'Certification'], ['TOTAL CERTIFICATION', 'Total Certification'],
+        ],
+      },
+      {
+        title: 'Supply POME',
+        fields: [
+          ['SUPPLY ISCC', 'Supply POME ISCC'], ['SUPPLY INS', 'Supply POME INS'],
+          ['TOTAL POME SUPPLY', 'Total POME Supply'], ['MAX SUPPLY POME', 'Max Supply POME'],
+          ['REMAINING STOCK POME', 'Remaining Stock POME'], ['PERCENTAGE SUPPLY ISCC', 'Percentage Supply ISCC'],
+        ],
+      },
+      {
+        title: 'Supply Shell',
+        fields: [
+          ['SUPPLY SHELL', 'Supply Shell'], ['MAX SUPPLY SHELL', 'Max Supply Shell'],
+          ['REMAINING STOCK SHELL', 'Remaining Stock Shell'], ['PERCENTAGE SUPPLY SHELL', 'Percentage Supply Shell'],
+        ],
+      },
+      {
+        title: 'Product & Score',
+        fields: [
+          ['PRODUCT SUPPLY', 'Product Supply'], ['TOTAL SCORE SUPPLY', 'Total Score Supply'],
+          ['GHG VALUE', 'GHG Value'], ['DECLARATION MONITORING', 'Declaration Monitoring'],
+          ['RISK REDUCTION FACTOR', 'Risk Reduction Factor'], ['TOTAL RISK LEVEL', 'Total Risk Level'],
+          ['RESULT RISK LEVEL', 'Result Risk Level'], ['SUPPLIER STATUS', 'Supplier Status'],
+        ],
+      },
+      {
+        title: 'Facility',
+        fields: [
+          ['FACILITY NAME ISCC', 'Facility Name ISCC'],
+          ['FACILITY NAME INS', 'Facility Name INS'],
+          ['FACILITY NAME SHELL', 'Facility Name Shell'],
+        ],
+      },
     ];
   }
 
@@ -5549,6 +5616,15 @@ function initDashboardApp() {
     'PERCENTAGE SUPPLY INS',
     'PERCENTAGE SUPPLY SHELL',
     'DECLARATION MONITORING',
+    // Mill Onboarding Waste formula columns
+    'TOTAL POME SUPPLY',
+    'MAX SUPPLY POME',
+    'MAX SUPPLY SHELL',
+    'MAX SUPPLY POME/SHELL',
+    'REMAINING STOCK POME',
+    'REMAINING STOCK SHELL',
+    'TOTAL SCORE SUPPLY',
+    'TOTAL RISK LEVEL',
     // UI-only / legacy computed (tetap jangan overwrite manual save)
     'SCORE',
     'VOLUME SUPPLY STATUS',
@@ -5571,9 +5647,13 @@ function initDashboardApp() {
     return out;
   }
 
-  function millProfileFieldsVisible_(pairs) {
+  function millProfileFieldsVisible_(pairs, opts) {
+    opts = opts || {};
+    const keepComputed = !!opts.keepComputed;
     return (pairs || []).filter(function(fl) {
-      return fl && fl[0] && !millIsSheetComputedField_(fl[0]) && fl[0] !== 'FACILITY NAME';
+      if (!fl || !fl[0] || fl[0] === 'FACILITY NAME') return false;
+      if (!keepComputed && millIsSheetComputedField_(fl[0])) return false;
+      return true;
     });
   }
   let modalSheet = '', modalMode = '', modalRow = null, modalFields = [];
@@ -5676,6 +5756,7 @@ function initDashboardApp() {
     'MILL LOC': ['APL','Non APL'],
     'MILL CATEGORY': ['COMMERCIAL', 'INTEGRATED'],
     'BUYER NO BUY LIST': ['Yes','No'],
+    'TYPE OF STERILIZER': ['Vertikal', 'Horizontal'],
   };
 
   const MILL_HA_WIDTH_FIELDS = new Set(['DEFORESTATION WIDTH', 'BURN AREA WIDTH', 'PEAT WIDTH']);
@@ -8501,7 +8582,7 @@ function initDashboardApp() {
     updateMillPdfExportScope();
     updateMillStatsCards_();
 
-    const colCount = 15;
+    const colCount = millRegistryProductView === 'waste' ? 16 : 15;
     const theadRow = document.querySelector('#millTable thead tr');
     if (millSortKey && theadRow && !theadRow.querySelector('[data-mill-sort="' + millSortKey + '"]')) {
       millSortKey = null;
@@ -8538,6 +8619,8 @@ function initDashboardApp() {
           : (d._millTableMerged
             ? 'Gabungan ' + d._millTableMergeCount + ' baris sheet — klik untuk detail'
             : 'Click to view full details');
+        const sterilizer = millPickField_(d, ['TYPE OF STERILIZER', 'Type of Sterilizer']);
+        const ghg = millPickRawField_(d, ['GHG VALUE', 'GHG Value']);
         return `
         <tr class="mill-row-clickable${d._millTableMerged || d._millGeneralMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
@@ -8549,11 +8632,16 @@ function initDashboardApp() {
           <td class="mill-td mill-td--qty" data-mill-col="quantity">${millTableCellText_(millRegistryQtyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--supply-cpo" data-mill-col="supply-cpo">${millTableCellText_(millSupplyCpoCellText_(d))}</td>
           <td class="mill-td mill-td--supply-pk" data-mill-col="supply-pk">${millTableCellText_(millSupplyPkCellText_(d))}</td>
-          <td class="mill-td mill-td--priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
-          <td class="mill-td mill-td--nbl">${nblBadge(d['BUYER NO BUY LIST'])}</td>
+          <td class="mill-td mill-td--sterilizer" data-mill-col="waste-sterilizer">${millTableCellText_(sterilizer)}</td>
+          <td class="mill-td mill-td--ghg" data-mill-col="waste-ghg">${millTableCellText_(ghg)}</td>
+          <td class="mill-td mill-td--priority" data-mill-col="main-priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
+          <td class="mill-td mill-td--nbl" data-mill-col="main-nbl">${nblBadge(d['BUYER NO BUY LIST'])}</td>
           <td class="mill-td mill-td--cert">${millTableCellText_(d['CERTIFICATION'], { wrap: true, certPills: true })}</td>
-          <td class="mill-td mill-td--fac-cpo">${millTableCellText_(d['FACILITY NAME CPO'], { wrap: true })}</td>
-          <td class="mill-td mill-td--fac-pk">${millTableCellText_(d['FACILITY NAME PK'], { wrap: true })}</td>
+          <td class="mill-td mill-td--fac-cpo" data-mill-col="fac-cpo">${millTableCellText_(d['FACILITY NAME CPO'], { wrap: true })}</td>
+          <td class="mill-td mill-td--fac-pk" data-mill-col="fac-pk">${millTableCellText_(d['FACILITY NAME PK'], { wrap: true })}</td>
+          <td class="mill-td mill-td--fac-iscc" data-mill-col="waste-fac-iscc">${millTableCellText_(d['FACILITY NAME ISCC'], { wrap: true })}</td>
+          <td class="mill-td mill-td--fac-ins" data-mill-col="waste-fac-ins">${millTableCellText_(d['FACILITY NAME INS'], { wrap: true })}</td>
+          <td class="mill-td mill-td--fac-shell" data-mill-col="waste-fac-shell">${millTableCellText_(d['FACILITY NAME SHELL'], { wrap: true })}</td>
           <td class="mill-td mill-td--supplier">${supplierBadge(d['SUPPLIER STATUS'])}</td>
         </tr>`;
       }).join('');
@@ -9011,6 +9099,12 @@ function initDashboardApp() {
     [MILL_SOCIAL_GRIEVANCE]: MILL_GRIEVANCE_FLAG_ALIASES_[MILL_SOCIAL_GRIEVANCE],
     [MILL_ENVIRONMENT_GRIEVANCE]: MILL_GRIEVANCE_FLAG_ALIASES_[MILL_ENVIRONMENT_GRIEVANCE],
     'LEGALITY SCORE': ['LEGALITY SCORE', 'Legality Score', 'LEGALITY SCC', 'SCORE'],
+    'MILL CAPACITY': ['MILL CAPACITY', 'MILL CAPACITY (TON/HOUR)', 'Mill Capacity'],
+    'TYPE OF STERILIZER': ['TYPE OF STERILIZER', 'Type of Sterilizer'],
+    'RISK REDUCTION FACTOR': ['RISK REDUCTION FACTOR', 'Risk Reduction Factor'],
+    'SUPPLY ISCC': ['SUPPLY ISCC', 'SUPPLY POME ISCC'],
+    'SUPPLY INS': ['SUPPLY INS', 'SUPPLY POME INS'],
+    'SUPPLY SHELL': ['SUPPLY SHELL', 'SUPPLY POME SHELL'],
   };
 
   const MILL_PROFILE_YESNO_KEYS_ = new Set([
@@ -9076,7 +9170,9 @@ function initDashboardApp() {
       return s;
     }
 
-    const sections = [
+    const isWasteProfile = String(d && d._millSheetSource || '').toLowerCase() === 'waste'
+      || millRegistryProductView === 'waste';
+    const sections = isWasteProfile ? millWasteProfileSections_() : [
       {
         title: 'Mill Identity',
         fields: [
@@ -9126,7 +9222,7 @@ function initDashboardApp() {
       },
     ];
     return sections.map(function(sec) {
-      const visibleFields = millProfileFieldsVisible_(sec.fields);
+      const visibleFields = millProfileFieldsVisible_(sec.fields, { keepComputed: isWasteProfile });
       if (!visibleFields.length) return '';
       return `
       <div class="mp-section">
@@ -9140,6 +9236,21 @@ function initDashboardApp() {
               val = millSourceTypeValFromRow_(d);
             } else if (key === 'LEGALITY SCORE') {
               val = millProfileLegalityFromScore_(d);
+            } else if (key === 'MILL CAPACITY' || key === 'MILL CAPACITY (TON/HOUR)') {
+              val = millCapacityFromRow_(d) || millProfileResolveField_(d, key);
+            } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
+              || key === 'TOTAL POME SUPPLY' || key === 'MAX SUPPLY POME' || key === 'REMAINING STOCK POME'
+              || key === 'MAX SUPPLY SHELL' || key === 'REMAINING STOCK SHELL'
+              || key === 'PERCENTAGE SUPPLY ISCC' || key === 'PERCENTAGE SUPPLY SHELL'
+              || key === 'GHG VALUE' || key === 'RISK REDUCTION FACTOR' || key === 'TOTAL SCORE SUPPLY'
+              || key === 'TOTAL RISK LEVEL') {
+              const aliasMap = {
+                'SUPPLY ISCC': ['SUPPLY ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC'],
+                'SUPPLY INS': ['SUPPLY INS', 'SUPPLY POME INS', 'Supply POME INS'],
+                'SUPPLY SHELL': ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL'],
+              };
+              const raw = millPickRawField_(d, aliasMap[key] || [key]);
+              val = millProfileFormatSupplyValue_(raw);
             } else if (MILL_HA_WIDTH_FIELDS.has(key)) {
               const raw = millProfileResolveField_(d, key);
               const tier = millHaWidthTier_(raw);
@@ -9161,10 +9272,17 @@ function initDashboardApp() {
             if (key === 'CERTIFICATION') {
               val = certPillsHtml_(val, { className: 'cert-pill-list cert-pill-list--profile' });
             }
+            if (key === 'RESULT RISK LEVEL' && val) {
+              val = resultRiskLevelPill(val);
+            }
+            if (key === 'SUPPLIER STATUS' && val) {
+              val = supplierBadge(val);
+            }
             const isWide = key === 'ADDRESS';
             const isLong = key === 'COORDINATES' || (sec.title === 'Certification' && key === 'CERTIFICATION');
-            return `<div class="mp-field${isWide ? ' wide' : ''}${isLong ? ' full' : ''}">
-              <div class="mp-label">${label}</div>
+            const isComputed = millIsSheetComputedField_(key);
+            return `<div class="mp-field${isWide ? ' wide' : ''}${isLong ? ' full' : ''}${isComputed ? ' mp-field--computed' : ''}">
+              <div class="mp-label">${label}${isComputed ? ' <span class="mp-computed-tag">auto</span>' : ''}</div>
               <div class="mp-val">${val || '—'}</div>
             </div>`;
           }).join('')}
@@ -9211,7 +9329,9 @@ function initDashboardApp() {
       const month = String(millMonthVal(row) || '').trim();
       const year = String(millYearVal(row) || '').trim();
       const periodText = (year || month) ? ('Period: ' + [year ? year : '', month ? (millMonthLabel_(parseInt(month, 10)) + ' (' + month + ')') : ''].filter(Boolean).join(' ')) : '';
-      const sections = [
+      const isWastePdf = String(row._millSheetSource || '').toLowerCase() === 'waste'
+        || millRegistryProductView === 'waste';
+      const sections = (isWastePdf ? millWasteProfileSections_() : [
         { title: 'Mill Identity', fields: [['COMPANY CODE','Company Code'], ['MILL NAME','Mill Name'], ['SOURCE TYPE','Source Type'], ['ADDRESS','Address'], ['PROVINCE','Province'], ['COORDINATES','Coordinates'], ['MILL CATEGORY','Mill Category'], ['UML ID','UML ID'], ['MILL CAPACITY (TON/HOUR)','Capacity (Ton/Hour)']] },
         { title: 'Legality', fields: [['MILL LOC', 'Mill Location'], ['LEGALITY SCORE', 'Legality Score']] },
         { title: 'Grievances', fields: [
@@ -9226,8 +9346,8 @@ function initDashboardApp() {
         { title: 'Certification', fields: [['CERTIFICATION','Certification']] },
         { title: 'Spatial', fields: [['DEFORESTATION WIDTH','Deforestation Width (Ha)'], ['BURN AREA WIDTH','Burn Area Width (Ha)'], ['PEAT WIDTH','Peat Width (Ha)']] },
         { title: 'Policy', fields: [['NDPE','NDPE'], ['HRDD','HRDD']] },
-      ].map(function(sec) {
-        return Object.assign({}, sec, { fields: millProfileFieldsVisible_(sec.fields) });
+      ]).map(function(sec) {
+        return Object.assign({}, sec, { fields: millProfileFieldsVisible_(sec.fields, { keepComputed: isWastePdf }) });
       }).filter(function(sec) { return sec.fields.length; });
       const valOrDash = function(v) {
         const s = String(v == null ? '' : v).trim();
@@ -26272,16 +26392,14 @@ function initDashboardApp() {
     ];
   }
 
-  /** Kolom identitas untuk submit Mill Onboarding Waste (tanpa spatial CPO/PK). */
+  /** Kolom identitas untuk submit Mill Onboarding Waste (tanpa spatial/grievance main). */
   function supplyWasteProfileIdentityFields_() {
     return [
       'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME',
       'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'MILL CAPACITY (TON/HOUR)',
       'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
-      'NDPE', 'HRDD', 'MILL LOC', 'CERTIFICATION',
-      'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
-      'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-      'GHG VALUE',
+      'MILL LOC', 'CERTIFICATION', 'TYPE OF STERILIZER',
+      'GHG VALUE', 'RISK REDUCTION FACTOR',
     ];
   }
 

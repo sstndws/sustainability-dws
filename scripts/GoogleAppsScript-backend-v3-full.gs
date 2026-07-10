@@ -190,7 +190,8 @@ const SUPPLY_DRAFT_HEADERS = [
   'SUPPLIER LEVEL', 'BUYER NO BUY LIST', 'VOLUME SUPPLY STATUS',
   'RECOMMENDATION LEVEL', 'PRIORITY ENGAGEMENT', 'SIGN', 'SUPPLIER STATUS', 'RISK LEVEL',
   'RESULT RISK LEVEL', 'FACILITY NAME CPO', 'FACILITY NAME PK', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
-  'PLANT', 'PRODUCT SUPPLY', 'GHG VALUE',
+  'PLANT', 'PRODUCT SUPPLY', 'GHG VALUE', 'RISK REDUCTION FACTOR', 'TYPE OF STERILIZER', 'TRADER NAME',
+  'MILL CAPACITY',
 ];
 
 const NBL_HEADERS = [
@@ -975,6 +976,8 @@ var MILL_FORMULA_HEADERS_ = {
   'MAX SUPPLY POME': true,
   'MAX SUPPLY SHELL': true,
   'MAX SUPPLY POME/SHELL': true,
+  'REMAINING STOCK POME': true,
+  'REMAINING STOCK SHELL': true,
   'TOTAL SCORE SUPPLY': true,
   'TOTAL RISK LEVEL': true,
 };
@@ -5654,9 +5657,10 @@ function mergeReferenceIdentityIntoPatchGs_(patch, refObj) {
   }
   var identityKeys = [
     'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'COMPANY CODE',
-    'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)',
+    'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY (TON/HOUR)', 'MILL CAPACITY',
     'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'NDPE', 'HRDD',
     'DEFORESTATION WIDTH', 'BURN AREA WIDTH', 'PEAT WIDTH', 'MILL LOC', 'CERTIFICATION', 'SOURCE TYPE',
+    'TRADER NAME', 'TYPE OF STERILIZER', 'GHG VALUE', 'RISK REDUCTION FACTOR',
     'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
     'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
   ];
@@ -5670,6 +5674,7 @@ function mergeReferenceIdentityIntoPatchGs_(patch, refObj) {
     var refCap = millCapacityFromObjGs_(refObj);
     if (refCap !== undefined && refCap !== null && String(refCap).trim() !== '') {
       out['MILL CAPACITY (TON/HOUR)'] = refCap;
+      out['MILL CAPACITY'] = refCap;
     }
   }
   return out;
@@ -6154,12 +6159,12 @@ function buildSupplyIdentityPatchFromDraftGs_(row) {
   var fillKeys = [
     'MONTH', 'YEAR', 'QUARTER', 'SOURCE TYPE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME',
     'UML ID', 'COMPANY CODE', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY',
-    'MILL CAPACITY (TON/HOUR)', 'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
+    'MILL CAPACITY (TON/HOUR)', 'MILL CAPACITY', 'HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN',
     'NDPE', 'HRDD', 'DEFORESTATION WIDTH', 'BURN AREA WIDTH', 'PEAT WIDTH',
-    'MILL LOC', 'CERTIFICATION',
+    'MILL LOC', 'CERTIFICATION', 'TRADER NAME', 'TYPE OF STERILIZER',
     'DEFORESTATION GRIEVANCES', 'BURN AREA GRIEVANCES',
     'LEGALITY GRIEVANCE', 'HUMAN RIGHTS GRIEVANCE', 'SAFETY GRIEVANCE', 'SOCIAL GRIEVANCE', 'ENVIRONMENT GRIEVANCE',
-    'GHG VALUE',
+    'GHG VALUE', 'RISK REDUCTION FACTOR',
   ];
   var patch = {};
   fillKeys.forEach(function(k) {
@@ -6170,6 +6175,7 @@ function buildSupplyIdentityPatchFromDraftGs_(row) {
   var cap = millCapacityFromObjGs_(row);
   if (cap !== undefined && cap !== null && String(cap).trim() !== '') {
     patch['MILL CAPACITY (TON/HOUR)'] = cap;
+    patch['MILL CAPACITY'] = cap;
   }
   if (kind === 'CPO' || kind === 'BOTH') {
     if (row['FACILITY NAME CPO']) patch['FACILITY NAME CPO'] = row['FACILITY NAME CPO'];
