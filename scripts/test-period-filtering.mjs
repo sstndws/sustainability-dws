@@ -230,6 +230,10 @@ assert(mrdJs.includes('getFacilityReportContext_'), 'MRD facility report context
 assert(mrdJs.includes("millPickMode: 'as-of'"), 'MRD passes as-of to facility loader');
 assert(mainJs.includes('/** Row eligible for “as-of” period view'), 'as-of filter documented');
 assert(mainJs.includes('Mill Onboarding rows for Facility Performance'), 'PF exact mode documented');
+assert(mrdJs.includes("getMillsForReportPeriod(periodYear, periodMonth, 'main')"), 'MRD loads Main mills');
+assert(mrdJs.includes("getMillsForReportPeriod(periodYear, periodMonth, 'waste')"), 'MRD loads Waste mills');
+assert(mrdJs.includes('Product: Main + Waste'), 'MRD scope shows both products');
+assert(!mrdJs.includes('data-mrd-product-view'), 'MRD has no product picker');
 
 console.log('\nPeriod filtering tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

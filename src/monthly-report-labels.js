@@ -57,13 +57,21 @@ export const MRD_SDD_TABLE_TITLE = 'Saved screening (Draft / Submitted)';
 export const MRD_SDD_COLS = ['Date Import', 'Company Name', 'Category', 'Status', 'Last Update'];
 
 export const MRD_MILL_SUMMARY_COLS = [
-  'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List',
+  'Product', 'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List',
 ];
 
 export const MRD_MILL_FULL_COLS = [
-  'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List',
+  'Product', 'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List',
   'Supplier Status', 'Certification', 'Total Grievances', 'Facility Name CPO', 'Facility Name PK',
 ];
+
+/** Monthly Report product label for a mill row (Main = CPO/PK, Waste = POME/SHELL). */
+export function mrdMillProductLabel_(rowOrItem) {
+  const r = rowOrItem && rowOrItem.row ? rowOrItem.row : rowOrItem;
+  if (rowOrItem && rowOrItem.product) return String(rowOrItem.product);
+  const raw = r && (r._mrdProduct || r._millSheetSource);
+  return String(raw || '').toLowerCase() === 'waste' ? 'Waste' : 'Main';
+}
 
 /** Mill onboarding row — SOURCE TYPE column (MILL / TRADER / REFINERY). */
 export function mrdSourceTypeVal_(rowOrItem) {

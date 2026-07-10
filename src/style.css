@@ -9742,6 +9742,14 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   background: rgba(192, 57, 43, 0.12);
   color: #c0392b;
 }
+#panel-monthly-report-detail .mrd-pill--main {
+  background: rgba(122, 31, 31, 0.1);
+  color: #7a1f1f;
+}
+#panel-monthly-report-detail .mrd-pill--waste {
+  background: rgba(51, 65, 85, 0.1);
+  color: #334155;
+}
 #panel-monthly-report-detail .mrd-pill--med {
   background: rgba(200, 168, 75, 0.18);
   color: #8a6e1a;

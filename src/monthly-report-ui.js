@@ -38,6 +38,7 @@ import {
   mrdFacilityEudrPotentialCount_,
   mrdUniqueFacilityCompanyCount_,
   mrdCompanyIsEudrPotential_,
+  mrdMillProductLabel_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 
@@ -50,7 +51,6 @@ let _snapshot = null;
 let _search = '';
 let _year = String(new Date().getFullYear());
 let _month = String(new Date().getMonth() + 1);
-let _productView = 'main';
 let _expanded = new Set();
 let _loadGen = 0;
 let _eudrPending = false;
@@ -168,27 +168,13 @@ function mrdReadExportYear_() {
   return String(new Date().getFullYear());
 }
 
-/** Sync year/month/product from toolbar before export, header, or reload. */
+/** Sync year/month from toolbar before export, header, or reload. */
 function syncPeriodFromUi_() {
   const yearSel = document.getElementById('mrdYearSel');
   const monthSel = document.getElementById('mrdMonthSel');
   if (yearSel && yearSel.value) _year = yearSel.value;
   if (monthSel) _month = monthSel.value;
-  return { year: _year, month: _month, productView: _productView };
-}
-
-function mrdSyncProductViewUi_() {
-  document.querySelectorAll('[data-mrd-product-view]').forEach(function(btn) {
-    btn.classList.toggle('active', btn.getAttribute('data-mrd-product-view') === _productView);
-  });
-}
-
-function setMrdProductView_(mode) {
-  const m = String(mode || '').trim().toLowerCase();
-  _productView = m === 'waste' ? 'waste' : 'main';
-  mrdSyncProductViewUi_();
-  _nblByCache.clear();
-  loadAndRender();
+  return { year: _year, month: _month };
 }
 
 function applyDefaultMonthSelection_() {
@@ -738,11 +724,22 @@ function buildSnapshotSync(opts) {
     });
   }
 
-  // Mill Onboarding: same as-of snapshot + dedupe as Mill Registry (reporting period).
-  // productView: main | waste — Monthly Report shows Main (CPO/PK) or Waste (POME/SHELL) only.
-  const mills = (_deps.getMillsForReportPeriod && periodYear)
-    ? _deps.getMillsForReportPeriod(periodYear, periodMonth, _productView)
-    : filterMillsByPeriod_(periodYear, periodMonth);
+  // Mill Onboarding: Main (CPO/PK) + Waste (POME/SHELL) always both — no product picker.
+  // Rows stay separate (not General-merged) so export/list show both product types.
+  let mills;
+  if (_deps.getMillsForReportPeriod && periodYear) {
+    const tagRows_ = function(rows, product) {
+      return (rows || []).map(function(r) {
+        const copy = Object.assign({}, r);
+        copy._mrdProduct = product;
+        return copy;
+      });
+    };
+    mills = tagRows_(_deps.getMillsForReportPeriod(periodYear, periodMonth, 'main'), 'main')
+      .concat(tagRows_(_deps.getMillsForReportPeriod(periodYear, periodMonth, 'waste'), 'waste'));
+  } else {
+    mills = filterMillsByPeriod_(periodYear, periodMonth);
+  }
   const millEffectiveYear = periodYear;
   const millEffectiveMonth = periodMonth;
 
@@ -796,10 +793,12 @@ function buildSnapshotSync(opts) {
   const emptyMillsSorted = mrdSortEmptyMillItems_(emptyMills);
 
   const millRows = mills.map(function(r) {
-    const cacheKey = [r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME']].join('|');
+    const product = mrdMillProductLabel_(r);
+    const cacheKey = [r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'], product].join('|');
     const cached = _nblByCache.get(cacheKey);
     return {
       row: r,
+      product: product,
       cacheKey: cacheKey,
       risk: _deps.millResolvedRiskLevel(r),
       nbl: r['BUYER NO BUY LIST'],
@@ -807,7 +806,7 @@ function buildSnapshotSync(opts) {
       nblMatches: cached ? cached.matches : null,
       search: [
         r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'], r['PROVINCE'],
-        r['RESULT RISK LEVEL'], r['BUYER NO BUY LIST'],
+        product, r['RESULT RISK LEVEL'], r['BUYER NO BUY LIST'],
         r['CERTIFICATION'], r['SUPPLIER STATUS'],
       ].join(' ').toLowerCase(),
     };
@@ -963,6 +962,11 @@ function renderHighRiskSection(rows) {
   });
   const visible = mrdSortMillItems_(filtered).slice(0, MRD_ROW_LIMIT);
   const cols = [
+    { label: 'Product', title: 'Main = CPO/PK · Waste = POME/SHELL', thCls: 'mrd-th-wrap', always: true, render: function(row) {
+      const p = mrdMillProductLabel_(row._data);
+      const cls = p === 'Waste' ? 'mrd-pill mrd-pill--waste' : 'mrd-pill mrd-pill--main';
+      return '<span class="' + cls + '">' + esc(p) + '</span>';
+    }},
     { label: 'Result Risk Level', title: 'Result Risk Level', thCls: 'mrd-th-wrap', hasData: function(row) { return hasCellValue(row._data.risk); }, render: function(row) { return riskPill(row._data.risk); } },
     { label: 'Group Name', title: 'Group Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['GROUP NAME']; } },
     { label: 'Company Name', title: 'Company Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['COMPANY NAME']; } },
@@ -1010,6 +1014,11 @@ function renderMillSection(rows) {
         return '<button type="button" class="mrd-expand-btn' + (d.isExp ? ' is-open' : '') + '" data-mrd-expand-btn="' + esc(d.expId) + '" data-mrd-mill-key="' + esc(d.item.cacheKey) + '">›</button>';
       },
     },
+    { label: 'Product', title: 'Main = CPO/PK · Waste = POME/SHELL', thCls: 'mrd-th-wrap', always: true, render: function(row) {
+      const p = mrdMillProductLabel_(row._render.item);
+      const cls = p === 'Waste' ? 'mrd-pill mrd-pill--waste' : 'mrd-pill mrd-pill--main';
+      return '<span class="' + cls + '">' + esc(p) + '</span>';
+    }},
     { label: 'Result Risk Level', title: 'Result Risk Level', thCls: 'mrd-th-wrap', hasData: function(row) { return hasCellValue(row._render.item.risk); }, render: function(row) { return riskPill(row._render.item.risk); } },
     { label: 'Group Name', title: 'Group Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['GROUP NAME']; } },
     { label: 'Company Name', title: 'Company Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._render.r['COMPANY NAME']; } },
@@ -1104,7 +1113,9 @@ function renderNblSection(millRows) {
       const r = item.row;
       return '<div class="mrd-nbl-item">'
         + '<span class="mrd-nbl-item-grp">' + esc(r['GROUP NAME'] || '—') + '</span>'
-        + '<span class="mrd-nbl-item-co">' + esc(r['COMPANY NAME'] || '—') + '</span>'
+        + '<span class="mrd-nbl-item-co">' + esc(r['COMPANY NAME'] || '—')
+        + ' <span class="' + (mrdMillProductLabel_(item) === 'Waste' ? 'mrd-pill mrd-pill--waste' : 'mrd-pill mrd-pill--main') + '">'
+        + esc(mrdMillProductLabel_(item)) + '</span></span>'
         + '<span class="mrd-nbl-item-riser">' + esc(mrdFormatNblRisers_(item)) + '</span>'
         + '</div>';
     }).join('');
@@ -1288,8 +1299,7 @@ function updateScopeText(extra) {
   const report = getReportPeriod_();
   const meta = mrdReportHeaderMeta_(report.year, report.month);
   let txt = meta.periodLine + ' · ' + meta.dataPeriodLine + ' · ' + meta.cutoffLine;
-  const productLabel = _productView === 'waste' ? 'Waste' : 'Main';
-  txt += ' · Product: ' + productLabel;
+  txt += ' · Product: Main + Waste';
   if (_snapshot) {
     txt += ' · ' + _snapshot.stats.totalMills + ' mills · ' + _snapshot.stats.sddSubmitted + ' SDD submitted';
   }
@@ -1684,13 +1694,12 @@ function bindOnce() {
     });
   }
 
-  document.querySelectorAll('[data-mrd-product-view]').forEach(function(btn) {
-    if (btn._mrdBound) return;
-    btn._mrdBound = true;
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      setMrdProductView_(btn.getAttribute('data-mrd-product-view'));
-    });
+  document.getElementById('mrdBtnRefresh')?.addEventListener('click', function() {
+    _nblByCache.clear();
+    _facilityBundles = [];
+    _facilityBundlesPeriodKey = '';
+    if (_deps.clearEudrCache) _deps.clearEudrCache();
+    loadAndRender({ force: true });
   });
 
   if (searchEl && !searchEl._mrdBound) {
@@ -1704,14 +1713,6 @@ function bindOnce() {
       }, 150);
     });
   }
-
-  document.getElementById('mrdBtnRefresh')?.addEventListener('click', function() {
-    _nblByCache.clear();
-    _facilityBundles = [];
-    _facilityBundlesPeriodKey = '';
-    if (_deps.clearEudrCache) _deps.clearEudrCache();
-    loadAndRender({ force: true });
-  });
 
   document.getElementById('mrdBtnExport')?.addEventListener('click', mrdOpenExportModal_);
   mrdBindExportModalOnce_();
