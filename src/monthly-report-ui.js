@@ -185,7 +185,7 @@ function mrdSyncProductViewUi_() {
 
 function setMrdProductView_(mode) {
   const m = String(mode || '').trim().toLowerCase();
-  _productView = (m === 'waste' || m === 'general') ? m : 'main';
+  _productView = m === 'waste' ? 'waste' : 'main';
   mrdSyncProductViewUi_();
   _nblByCache.clear();
   loadAndRender();
@@ -739,7 +739,7 @@ function buildSnapshotSync(opts) {
   }
 
   // Mill Onboarding: same as-of snapshot + dedupe as Mill Registry (reporting period).
-  // productView: main | waste | general — mirrors Mill Registry product selector.
+  // productView: main | waste — Monthly Report shows Main (CPO/PK) or Waste (POME/SHELL) only.
   const mills = (_deps.getMillsForReportPeriod && periodYear)
     ? _deps.getMillsForReportPeriod(periodYear, periodMonth, _productView)
     : filterMillsByPeriod_(periodYear, periodMonth);
@@ -1288,7 +1288,7 @@ function updateScopeText(extra) {
   const report = getReportPeriod_();
   const meta = mrdReportHeaderMeta_(report.year, report.month);
   let txt = meta.periodLine + ' · ' + meta.dataPeriodLine + ' · ' + meta.cutoffLine;
-  const productLabel = _productView === 'waste' ? 'Waste' : (_productView === 'general' ? 'General' : 'Main');
+  const productLabel = _productView === 'waste' ? 'Waste' : 'Main';
   txt += ' · Product: ' + productLabel;
   if (_snapshot) {
     txt += ' · ' + _snapshot.stats.totalMills + ' mills · ' + _snapshot.stats.sddSubmitted + ' SDD submitted';
