@@ -970,6 +970,13 @@ var MILL_FORMULA_HEADERS_ = {
   'PERCENTAGE SUPPLY INS': true,
   'PERCENTAGE SUPPLY SHELL': true,
   'DECLARATION MONITORING': true,
+  // Mill Onboarding Waste — user-added formula columns (do not overwrite)
+  'TOTAL POME SUPPLY': true,
+  'MAX SUPPLY POME': true,
+  'MAX SUPPLY SHELL': true,
+  'MAX SUPPLY POME/SHELL': true,
+  'TOTAL SCORE SUPPLY': true,
+  'TOTAL RISK LEVEL': true,
 };
 
 function millIsFormulaColumnGs_(header) {
@@ -3998,9 +4005,10 @@ function mirrorTtpFieldsByPosition_(obj, row, headers) {
 
 /** SUPPLY CPO/PK/waste qty: use stored numeric value (getValues), not display string. */
 function millSupplyUsesRawNumber_(header) {
-  var u = String(header || '').trim().toUpperCase();
+  var u = String(header || '').trim().toUpperCase().replace(/\s+/g, ' ');
   return u === 'SUPPLY CPO' || u === 'SUPPLY PK'
     || u === 'SUPPLY ISCC' || u === 'SUPPLY INS' || u === 'SUPPLY SHELL'
+    || u === 'SUPPLY POME ISCC' || u === 'SUPPLY POME INS' || u === 'SUPPLY POME SHELL'
     || u === 'DEFORESTATION WIDTH' || u === 'BURN AREA WIDTH' || u === 'PEAT WIDTH';
 }
 
@@ -4116,6 +4124,7 @@ function getData(sheetKey) {
     if (isMillLikeSheetKey_(sheetKey)) mirrorMillQuarterYearOnRead_(obj);
     if (isMillLikeSheetKey_(sheetKey)) mirrorMillGroupNameOnRead_(obj);
     if (isMillLikeSheetKey_(sheetKey)) mirrorMillCompanyNameOnRead_(obj);
+    if (sheetKey === 'millWaste') millNormalizeWasteQtyAliasesOnObjGs_(obj);
     if (sheetKey === 'ttp') {
       mirrorGroupNameOnRead_(obj);
       if (looksLikeTtpYearOrQuarterValue_(obj['GROUP NAME'])) delete obj['GROUP NAME'];
@@ -5330,7 +5339,7 @@ function millRowToObjectGs_(rowArr, headers) {
     var h = String(headers[i] || '').trim();
     if (h) obj[h] = rowArr[i];
   }
-  return obj;
+  return millNormalizeWasteQtyAliasesOnObjGs_(obj);
 }
 
 function millFieldHasValueGs_(obj, field) {
@@ -5563,6 +5572,79 @@ function resolveMillCapacityKeyOnPatch_(patch, headers) {
   }
 }
 
+/**
+ * Waste qty headers on live sheet may be renamed by users:
+ *   SUPPLY ISCC → SUPPLY POME ISCC
+ *   SUPPLY INS  → SUPPLY POME INS
+ * Canonical keys stay SUPPLY ISCC / SUPPLY INS / SUPPLY SHELL in app payloads.
+ */
+function millWasteQtyHeaderAliasesGs_(canonical) {
+  var c = String(canonical || '').trim().toUpperCase();
+  if (c === 'SUPPLY ISCC') {
+    return ['SUPPLY ISCC', 'SUPPLY POME ISCC', 'Supply ISCC', 'Supply POME ISCC'];
+  }
+  if (c === 'SUPPLY INS') {
+    return ['SUPPLY INS', 'SUPPLY POME INS', 'Supply INS', 'Supply POME INS'];
+  }
+  if (c === 'SUPPLY SHELL') {
+    return ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply SHELL', 'Supply POME SHELL'];
+  }
+  return canonical ? [canonical] : [];
+}
+
+function millFindWasteQtyHeaderGs_(headers, canonical) {
+  var list = (headers || []).map(function(x) { return String(x || '').trim(); });
+  var aliases = millWasteQtyHeaderAliasesGs_(canonical);
+  var a;
+  for (a = 0; a < aliases.length; a++) {
+    if (list.indexOf(aliases[a]) >= 0) return aliases[a];
+  }
+  var want = String(canonical || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i].toLowerCase().replace(/\s+/g, ' ');
+    if (n === want) return list[i];
+    if (want === 'supply iscc' && (n === 'supply pome iscc' || n === 'supply iscc pome')) return list[i];
+    if (want === 'supply ins' && (n === 'supply pome ins' || n === 'supply ins pome')) return list[i];
+  }
+  return null;
+}
+
+function millWasteQtyFromObjGs_(obj, canonical) {
+  if (!obj) return '';
+  var aliases = millWasteQtyHeaderAliasesGs_(canonical);
+  var i;
+  for (i = 0; i < aliases.length; i++) {
+    var v = obj[aliases[i]];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  return '';
+}
+
+/** Remap canonical waste qty keys onto the exact sheet header before write. */
+function resolveMillWasteQtyKeysOnPatch_(patch, headers) {
+  if (!patch || !headers) return;
+  ['SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL'].forEach(function(canonical) {
+    var sheetCol = millFindWasteQtyHeaderGs_(headers, canonical);
+    var qty = millWasteQtyFromObjGs_(patch, canonical);
+    if (qty === undefined || qty === null || String(qty).trim() === '') return;
+    if (sheetCol) {
+      patch[sheetCol] = qty;
+      if (sheetCol !== canonical && patch[canonical] !== undefined) delete patch[canonical];
+    }
+  });
+}
+
+/** Normalize waste qty aliases onto canonical keys when reading sheet rows. */
+function millNormalizeWasteQtyAliasesOnObjGs_(obj) {
+  if (!obj) return obj;
+  ['SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL'].forEach(function(canonical) {
+    if (millFieldHasValueGs_(obj, canonical)) return;
+    var v = millWasteQtyFromObjGs_(obj, canonical);
+    if (v !== undefined && v !== null && String(v).trim() !== '') obj[canonical] = v;
+  });
+  return obj;
+}
+
 function mergeReferenceIdentityIntoPatchGs_(patch, refObj) {
   if (!refObj) return patch || {};
   var out = {};
@@ -5611,6 +5693,7 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   supplyFillAllGrievanceFromRefsGs_(patch, row, ref);
   resolveMillQuarterYearKeys_(patch, millHeaders);
   resolveMillCapacityKeyOnPatch_(patch, millHeaders);
+  resolveMillWasteQtyKeysOnPatch_(patch, millHeaders);
   resolveGrievanceKeysOnPatchGs_(patch, millHeaders);
   patch = millStripFormulaFromPatchGs_(patch);
   if (!Object.keys(patch).length) return 0;
@@ -6427,6 +6510,8 @@ function submitSupplyDraft_(batchId, rows, meta) {
           Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
           findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex, millState.mainMillFallback)
         );
+        resolveMillCapacityKeyOnPatch_(identityPatch, millHeaders);
+        resolveMillWasteQtyKeysOnPatch_(identityPatch, millHeaders);
         resolveGrievanceKeysOnPatchGs_(identityPatch, millHeaders);
         identityPatch = millStripFormulaFromPatchGs_(identityPatch);
         millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetSheetRow, identityPatch);

@@ -6683,6 +6683,7 @@ function initDashboardApp() {
     [
       'PRODUCT SUPPLY',
       'SUPPLY CPO', 'SUPPLY PK', 'SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL',
+      'SUPPLY POME ISCC', 'SUPPLY POME INS', 'SUPPLY POME SHELL',
       'FACILITY NAME CPO', 'FACILITY NAME PK',
       'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL',
       'PERCENTAGE SUPPLY CPO', 'PERCENTAGE SUPPLY PK',
@@ -6691,6 +6692,7 @@ function initDashboardApp() {
       if (!millIsBlankSupplyCell_(target[k]) ) return;
       if (!millIsBlankSupplyCell_(source[k])) target[k] = source[k];
     });
+    millNormalizeWasteQtyAliasesOnRow_(target);
     return target;
   }
 
@@ -6962,7 +6964,27 @@ function initDashboardApp() {
     const province = millPickField_(o, ['PROVINCE', 'Province']);
     if (province) o['PROVINCE'] = province;
 
+    // Waste sheet may use SUPPLY POME ISCC / SUPPLY POME INS (user-renamed headers).
+    millNormalizeWasteQtyAliasesOnRow_(o);
+
     return o;
+  }
+
+  /** Canonicalize waste qty aliases onto SUPPLY ISCC / INS / SHELL for registry + supply UI. */
+  function millNormalizeWasteQtyAliasesOnRow_(row) {
+    if (!row || typeof row !== 'object') return row;
+    function fillCanonical_(canonical, aliases) {
+      const cur = millPickRawField_(row, [canonical]);
+      if (cur != null && String(cur).trim() !== '' && String(cur).trim() !== '—') return;
+      const raw = millPickRawField_(row, aliases);
+      if (raw != null && String(raw).trim() !== '' && String(raw).trim() !== '—') {
+        row[canonical] = raw;
+      }
+    }
+    fillCanonical_('SUPPLY ISCC', ['SUPPLY POME ISCC', 'Supply POME ISCC', 'SUPPLY ISCC POME']);
+    fillCanonical_('SUPPLY INS', ['SUPPLY POME INS', 'Supply POME INS', 'SUPPLY INS POME']);
+    fillCanonical_('SUPPLY SHELL', ['SUPPLY POME SHELL', 'Supply POME SHELL']);
+    return row;
   }
 
   /** Mill registry: tampilkan semua baris yang punya Company Name (UML ID tidak wajib). */
@@ -8178,9 +8200,9 @@ function initDashboardApp() {
     }
     if (!isWasteRow && qtyOf_(['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']) > 0) add('CPO');
     if (!isWasteRow && qtyOf_(['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']) > 0) add('PK');
-    if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC']) > 0) add('POME ISCC');
-    if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS']) > 0) add('POME INS');
-    if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL']) > 0) add('SHELL GGL');
+    if (qtyOf_(['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']) > 0) add('POME ISCC');
+    if (qtyOf_(['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']) > 0) add('POME INS');
+    if (qtyOf_(['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']) > 0) add('SHELL GGL');
     return out;
   }
 
@@ -8213,9 +8235,9 @@ function initDashboardApp() {
       push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
       push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC']);
-    push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS']);
-    push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL']);
+    push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']);
+    push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']);
+    push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']);
     return parts.join('; ');
   }
 
@@ -25639,6 +25661,7 @@ function initDashboardApp() {
   /** Legacy drafts: single SUPPLY_QTY → typed SUPPLY CPO / SUPPLY PK (strict dari supply_type). */
   function supplyNormalizeDraftQtyFields_(row) {
     if (!row) return;
+    millNormalizeWasteQtyAliasesOnRow_(row);
     const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
     const hasPkQty = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
     const hasIsccQty = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
@@ -26425,6 +26448,7 @@ function initDashboardApp() {
   /** Qty + plant → kolom SUPPLY/FACILITY yang sesuai tipe import (CPO atau PK). */
   function supplyApplyTypedQtyAndFacility_(payload, draftRow, batch) {
     const out = payload || {};
+    if (draftRow) millNormalizeWasteQtyAliasesOnRow_(draftRow);
     const kind = supplyResolveKindFromDraft_(draftRow, batch);
     const plant = supplyNormalizePlantValue_(
       (draftRow && draftRow.PLANT) || out.PLANT

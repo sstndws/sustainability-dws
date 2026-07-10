@@ -269,6 +269,41 @@ assert(ghgPatch['GHG VALUE'] === '0.42', 'GHG VALUE in identity patch');
 assert(!ghgPatch['RISK REDUCTION FACTOR'], 'no RISK REDUCTION FACTOR in patch');
 assert(!ghgPatch['SUPPLY INS'], 'qty stays in supply patch not identity');
 
+// Waste sheet may rename qty headers → remap canonical keys before write
+function millWasteQtyHeaderAliasesGs_(canonical) {
+  const c = String(canonical || '').trim().toUpperCase();
+  if (c === 'SUPPLY ISCC') return ['SUPPLY ISCC', 'SUPPLY POME ISCC', 'Supply ISCC', 'Supply POME ISCC'];
+  if (c === 'SUPPLY INS') return ['SUPPLY INS', 'SUPPLY POME INS', 'Supply INS', 'Supply POME INS'];
+  if (c === 'SUPPLY SHELL') return ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply SHELL', 'Supply POME SHELL'];
+  return canonical ? [canonical] : [];
+}
+function millFindWasteQtyHeaderGs_(headers, canonical) {
+  const list = (headers || []).map(function(x) { return String(x || '').trim(); });
+  const aliases = millWasteQtyHeaderAliasesGs_(canonical);
+  for (let a = 0; a < aliases.length; a++) {
+    if (list.indexOf(aliases[a]) >= 0) return aliases[a];
+  }
+  return null;
+}
+function resolveMillWasteQtyKeysOnPatch_(patch, headers) {
+  ['SUPPLY ISCC', 'SUPPLY INS', 'SUPPLY SHELL'].forEach(function(canonical) {
+    const sheetCol = millFindWasteQtyHeaderGs_(headers, canonical);
+    const qty = patch[canonical];
+    if (qty === undefined || qty === null || String(qty).trim() === '') return;
+    if (sheetCol) {
+      patch[sheetCol] = qty;
+      if (sheetCol !== canonical && patch[canonical] !== undefined) delete patch[canonical];
+    }
+  });
+}
+const wasteHeaders = ['COMPANY NAME', 'SUPPLY POME ISCC', 'SUPPLY POME INS', 'TOTAL POME SUPPLY'];
+const wastePatch = { 'SUPPLY ISCC': 1200, 'SUPPLY INS': 300 };
+resolveMillWasteQtyKeysOnPatch_(wastePatch, wasteHeaders);
+assert(wastePatch['SUPPLY POME ISCC'] === 1200, 'write remaps to SUPPLY POME ISCC');
+assert(wastePatch['SUPPLY POME INS'] === 300, 'write remaps to SUPPLY POME INS');
+assert(wastePatch['SUPPLY ISCC'] === undefined, 'canonical SUPPLY ISCC removed after remap');
+assert(wastePatch['SUPPLY INS'] === undefined, 'canonical SUPPLY INS removed after remap');
+
 console.log('\nSupply routing tests:', passed, 'passed,', failed, 'failed');
 
 async function pingGas_() {

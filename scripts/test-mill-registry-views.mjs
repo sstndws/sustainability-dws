@@ -48,7 +48,27 @@ function millNormalizeProductSupply_(row) {
   return String(raw).trim().toUpperCase().replace(/\s+/g, '').replace(/[;&/+]+/g, ',').replace(/,+/g, ',').replace(/^,|,$/g, '');
 }
 
+function millNormalizeWasteQtyAliasesOnRow_(row) {
+  if (!row || typeof row !== 'object') return row;
+  function fillCanonical_(canonical, aliases) {
+    const cur = row[canonical];
+    if (cur != null && String(cur).trim() !== '' && String(cur).trim() !== '—') return;
+    for (let i = 0; i < aliases.length; i++) {
+      const raw = row[aliases[i]];
+      if (raw != null && String(raw).trim() !== '' && String(raw).trim() !== '—') {
+        row[canonical] = raw;
+        return;
+      }
+    }
+  }
+  fillCanonical_('SUPPLY ISCC', ['SUPPLY POME ISCC', 'Supply POME ISCC', 'SUPPLY ISCC POME']);
+  fillCanonical_('SUPPLY INS', ['SUPPLY POME INS', 'Supply POME INS', 'SUPPLY INS POME']);
+  fillCanonical_('SUPPLY SHELL', ['SUPPLY POME SHELL', 'Supply POME SHELL']);
+  return row;
+}
+
 function millCollectProductSupplyTokens_(row) {
+  millNormalizeWasteQtyAliasesOnRow_(row);
   const seen = new Set();
   const out = [];
   function add(tok) {
@@ -85,6 +105,7 @@ function millJoinProductSupplyTokens_(rows) {
 
 function millBuildQtySummaryFromRow_(row) {
   if (!row) return '';
+  millNormalizeWasteQtyAliasesOnRow_(row);
   const parts = [];
   function push(label, field) {
     const raw = row[field];
@@ -192,6 +213,13 @@ const wasteOnly = [{ 'COMPANY NAME': 'WASTE ONLY CO', MONTH: '3', YEAR: '2026', 
 const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
 assert(merged3.length === 1, 'waste-only row kept');
 assert(merged3[0]['PRODUCT SUPPLY'].indexOf('POME ISCC') >= 0, 'waste-only product');
+
+// renamed waste qty headers (SUPPLY POME ISCC / INS) still drive product + qty display
+const pomeAliasRow = { 'COMPANY NAME': 'POME ALIAS CO', MONTH: '4', YEAR: '2026', 'SUPPLY POME ISCC': 777, 'SUPPLY POME INS': 88 };
+assert(millCollectProductSupplyTokens_(pomeAliasRow).indexOf('POME ISCC') >= 0, 'POME ISCC from SUPPLY POME ISCC');
+assert(millCollectProductSupplyTokens_(pomeAliasRow).indexOf('POME INS') >= 0, 'POME INS from SUPPLY POME INS');
+assert(String(pomeAliasRow['SUPPLY ISCC']) === '777', 'canonical SUPPLY ISCC filled from alias');
+assert(millBuildQtySummaryFromRow_(pomeAliasRow).indexOf('POME ISCC:') >= 0, 'qty summary from POME alias');
 
 // supply CPO/PK display helpers
 function millSupplyCpoCellText_(row) {
