@@ -82,9 +82,24 @@ function getFacilityPeriod_() {
   return getDataPeriod_();
 }
 
+/** Monthly Report facility build: supply sheets use data period; mill rows use as-of report period. */
+function getFacilityReportContext_() {
+  const report = getReportPeriod_();
+  const data = getFacilityPeriod_();
+  return {
+    year: data.year,
+    month: data.month,
+    reportYear: report.year,
+    reportMonth: report.month,
+    millPickMode: 'as-of',
+  };
+}
+
 function mrdFacilityPeriodKey_(facilityPeriod) {
-  const dp = facilityPeriod || getFacilityPeriod_();
-  return String(dp.year || '') + '|' + String(dp.month || '');
+  const report = getReportPeriod_();
+  const dp = facilityPeriod && facilityPeriod.year != null ? facilityPeriod : getFacilityPeriod_();
+  return String(report.year || '') + '|' + String(report.month || '')
+    + '|data:' + String(dp.year || '') + '|' + String(dp.month || '');
 }
 
 function scheduleRenderAll() {
@@ -528,7 +543,7 @@ async function exportMonthlyReport_(exportOpts) {
   try {
     syncPeriodFromUi_();
     const pageDataPeriod = getReportPeriod_();
-    const facilityPeriod = getFacilityPeriod_();
+    const facilityPeriod = getFacilityReportContext_();
 
     if (sections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
       try {
@@ -1291,7 +1306,7 @@ function setUiLoading(show) {
 
 async function loadFacilityInBackground(gen, opts) {
   opts = opts || {};
-  const facilityPeriod = getFacilityPeriod_();
+  const facilityPeriod = getFacilityReportContext_();
   const periodKey = mrdFacilityPeriodKey_(facilityPeriod);
   if (_facilityPending || (!_deps.loadFacilityBundlesForReport && !_deps.getFacilityBundles)) return;
   if (!opts.force && _facilityBundles.length && _facilityBundlesPeriodKey === periodKey) {

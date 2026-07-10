@@ -20685,6 +20685,9 @@ function initDashboardApp() {
       });
     }
 
+    /** Set during Monthly Report facility build — mill rows use as-of, supply sheets use data period. */
+    let _pfMrdBuildCtx = null;
+
     function pfMonthMatchesFilter_(rowM, filterM) {
       if (!filterM) return true;
       const rowN = parseMillMonthSort(rowM);
@@ -20769,6 +20772,21 @@ function initDashboardApp() {
      */
     function pfMillRowsForBuild_() {
       const rows = (allData || []).slice();
+      const ctx = _pfMrdBuildCtx;
+      if (ctx && ctx.millPickMode === 'as-of') {
+        const y = parseInt(String(ctx.reportYear || ''), 10);
+        const m = parseInt(String(ctx.reportMonth || ''), 10);
+        const pf = {
+          hasYear: !!y,
+          hasMonth: m >= 1 && m <= 12,
+          years: y ? new Set([y]) : new Set(),
+          maxMonth: m >= 1 && m <= 12 ? m : 0,
+          hasEmptyMonth: false,
+        };
+        if (!pf.hasYear && !pf.hasMonth) return pfDedupeMillRowsLatest_(rows);
+        return millPickLatestPerCompany_(rows, pf);
+      }
+
       const mFilter = pfGetPeriodFilters_().m;
       const yFilter = pfGetPeriodFilters_().y;
 
@@ -21851,6 +21869,7 @@ function initDashboardApp() {
       const mFilter = mSel ? mSel.value : '';
       const yFilter = ySel ? ySel.value : '';
       const searchQ = String((document.getElementById('pfSearch') || {}).value || '').toLowerCase().trim();
+      const skipPeriodFilter = _pfMrdBuildCtx && _pfMrdBuildCtx.millPickMode === 'as-of';
 
       function mapGroup_(g, companies) {
         return {
@@ -21866,11 +21885,13 @@ function initDashboardApp() {
       }
 
       return groups.map(function(g) {
-        let companies = g.companies.filter(function(c) {
-          if (!pfMonthMatchesFilter_(c.monthRaw, mFilter)) return false;
-          if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
-          return true;
-        });
+        let companies = skipPeriodFilter
+          ? (g.companies || []).slice()
+          : g.companies.filter(function(c) {
+            if (!pfMonthMatchesFilter_(c.monthRaw, mFilter)) return false;
+            if (!pfYearMatchesFilter_(c.yearRaw != null ? c.yearRaw : c.year, yFilter)) return false;
+            return true;
+          });
         if (searchQ) {
           if (g.facility.toLowerCase().includes(searchQ)) return mapGroup_(g, companies);
           companies = companies.filter(function(c) {
@@ -23279,14 +23300,16 @@ function initDashboardApp() {
     }
 
     function pfNormalizeMrdPeriodFilter_(arg) {
-      if (arg && typeof arg === 'object' && (arg.year != null || arg.month != null)) {
-        return {
-          year: arg.year != null ? String(arg.year) : '',
-          month: arg.month != null ? String(arg.month) : '',
-        };
+      if (arg && typeof arg === 'object' && (arg.year != null || arg.month != null || arg.reportYear != null || arg.reportMonth != null)) {
+        const year = arg.year != null ? String(arg.year) : '';
+        const month = arg.month != null ? String(arg.month) : '';
+        const reportYear = arg.reportYear != null ? String(arg.reportYear) : year;
+        const reportMonth = arg.reportMonth != null ? String(arg.reportMonth) : month;
+        const millPickMode = String(arg.millPickMode || '').toLowerCase() === 'as-of' ? 'as-of' : 'exact';
+        return { year: year, month: month, reportYear: reportYear, reportMonth: reportMonth, millPickMode: millPickMode };
       }
       const y = arg != null && arg !== '' ? String(arg) : '';
-      return { year: y, month: '' };
+      return { year: y, month: '', reportYear: y, reportMonth: '', millPickMode: 'exact' };
     }
 
     function pfWithReportPeriodOverride_(period, fn) {
@@ -23299,12 +23322,20 @@ function initDashboardApp() {
         pkKey: _pfSuppliedPkPeriodKey,
         cpoData: _pfSuppliedCpoData,
         pkData: _pfSuppliedPkData,
+        mrdCtx: _pfMrdBuildCtx,
       };
       try {
         if (ySel) ySel.value = period.year || '';
         if (mSel) mSel.value = period.month || '';
         _pfSuppliedCpoPeriodKey = '';
         _pfSuppliedPkPeriodKey = '';
+        _pfMrdBuildCtx = period.millPickMode === 'as-of'
+          ? {
+            millPickMode: 'as-of',
+            reportYear: period.reportYear || period.year || '',
+            reportMonth: period.reportMonth || period.month || '',
+          }
+          : null;
         return fn();
       } finally {
         if (ySel) ySel.value = saved.y;
@@ -23313,6 +23344,7 @@ function initDashboardApp() {
         _pfSuppliedPkPeriodKey = saved.pkKey;
         _pfSuppliedCpoData = saved.cpoData;
         _pfSuppliedPkData = saved.pkData;
+        _pfMrdBuildCtx = saved.mrdCtx;
       }
     }
 
@@ -23326,12 +23358,20 @@ function initDashboardApp() {
         pkKey: _pfSuppliedPkPeriodKey,
         cpoData: _pfSuppliedCpoData,
         pkData: _pfSuppliedPkData,
+        mrdCtx: _pfMrdBuildCtx,
       };
       try {
         if (ySel) ySel.value = period.year || '';
         if (mSel) mSel.value = period.month || '';
         _pfSuppliedCpoPeriodKey = '';
         _pfSuppliedPkPeriodKey = '';
+        _pfMrdBuildCtx = period.millPickMode === 'as-of'
+          ? {
+            millPickMode: 'as-of',
+            reportYear: period.reportYear || period.year || '',
+            reportMonth: period.reportMonth || period.month || '',
+          }
+          : null;
         return await fn();
       } finally {
         if (ySel) ySel.value = saved.y;
@@ -23340,6 +23380,7 @@ function initDashboardApp() {
         _pfSuppliedPkPeriodKey = saved.pkKey;
         _pfSuppliedCpoData = saved.cpoData;
         _pfSuppliedPkData = saved.pkData;
+        _pfMrdBuildCtx = saved.mrdCtx;
       }
     }
 
