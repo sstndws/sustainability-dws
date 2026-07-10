@@ -5542,8 +5542,11 @@ function initDashboardApp() {
       {
         title: 'Legality',
         fields: [
-          ['HGU/HGB', 'HGU/HGB'], ['IZIN LOKASI', 'Izin Lokasi'], ['IUP', 'IUP'], ['IZIN LINGKUNGAN', 'Izin Lingkungan'],
-          ['LEGALITY SCORE', 'Legality Score'], ['MILL LOC', 'Mill Location'], ['COMPLIMENT/NOT COMPLIMENT', 'Compliment / Not Compliment'],
+          // Permit Yes/No (HGU/HGB, Izin Lokasi, IUP, Izin Lingkungan) stay on Task List form only.
+          // Profile shows Legality Score (Complete / Not Complete) from sheet formula.
+          ['LEGALITY SCORE', 'Legality Score'],
+          ['MILL LOC', 'Mill Location'],
+          ['COMPLIMENT/NOT COMPLIMENT', 'Compliment / Not Compliment'],
         ],
       },
       {
@@ -9130,32 +9133,11 @@ function initDashboardApp() {
 
   function millProfileProductSupplyHeaderHtml_(row) {
     const supplyRow = millProfileHeaderSupplyRow_(row);
-    const raw = millPickField_(supplyRow, ['PRODUCT SUPPLY', 'Product Supply']);
-    const trimmed = String(raw || '').trim();
-    if (!trimmed || /^no\s*data$/i.test(trimmed)) {
-      const tokens = millCollectProductSupplyTokens_(supplyRow);
-      if (!tokens.length) {
-        return '<span class="mp-head-product-supply mp-head-product-supply--empty">' + (trimmed ? escHtml(trimmed) : '—') + '</span>';
-      }
-    }
-    const tokens = millCollectProductSupplyTokens_(supplyRow);
-    if (!tokens.length && trimmed) {
-      return '<span class="mp-head-product-supply">' + escHtml(trimmed) + '</span>';
-    }
-    if (!tokens.length) {
+    const pills = millProductSupplyPillsHtml_(supplyRow);
+    if (pills.indexOf('cert-pill-empty') >= 0) {
       return '<span class="mp-head-product-supply mp-head-product-supply--empty">—</span>';
     }
-    const parts = [];
-    tokens.forEach(function(tok) {
-      const u = tok.toUpperCase().replace(/\s+/g, ' ');
-      if (u === 'CPO') parts.push('<span class="supply-pill supply-pill--cpo">CPO</span>');
-      else if (u === 'PK') parts.push('<span class="supply-pill supply-pill--pk">PK</span>');
-      else if (u.indexOf('ISCC') >= 0) parts.push('<span class="supply-pill supply-pill--waste">POME ISCC</span>');
-      else if (u.indexOf('INS') >= 0) parts.push('<span class="supply-pill supply-pill--waste">POME INS</span>');
-      else if (u.indexOf('SHELL') >= 0 || u.indexOf('GGL') >= 0) parts.push('<span class="supply-pill supply-pill--waste">SHELL GGL</span>');
-      else parts.push('<span class="supply-pill supply-pill--neutral">' + escHtml(tok) + '</span>');
-    });
-    return '<span class="mp-head-product-supply supply-row-pills">' + parts.join('') + '</span>';
+    return '<span class="mp-head-product-supply supply-row-pills">' + pills + '</span>';
   }
 
   function millProfileUpdateHeaderFromRow_(row) {
