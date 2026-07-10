@@ -301,6 +301,39 @@ assert(millFormatComplimentLabel_('NC') === 'Not Compliment', 'NC → Not Compli
 assert(millFormatComplimentLabel_('compliment') === 'Compliment', 'compliment passthrough');
 assert(millFormatComplimentLabel_('') === '', 'empty compliment');
 
+// Waste qty is split across SUPPLY POME ISCC / INS / SHELL
+function millWasteSupplyQtyAliases_(kind) {
+  const k = String(kind || '').trim().toUpperCase();
+  if (k === 'ISCC') return ['SUPPLY ISCC', 'SUPPLY POME ISCC'];
+  if (k === 'INS') return ['SUPPLY INS', 'SUPPLY POME INS'];
+  if (k === 'SHELL') return ['SUPPLY SHELL', 'SUPPLY POME SHELL'];
+  return [];
+}
+function millParseSupplyQtyLocal_(raw) {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number') return isFinite(raw) ? raw : 0;
+  const s = String(raw).trim().replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function millWasteSupplyCellText_(row, kind) {
+  const aliases = millWasteSupplyQtyAliases_(kind);
+  let raw = null;
+  for (let i = 0; i < aliases.length; i++) {
+    if (row[aliases[i]] != null && String(row[aliases[i]]).trim() !== '') {
+      raw = row[aliases[i]];
+      break;
+    }
+  }
+  const q = millParseSupplyQtyLocal_(raw);
+  if (q <= 0) return '—';
+  return String(raw);
+}
+assert(millWasteSupplyCellText_({ 'SUPPLY POME ISCC': 100 }, 'ISCC') === '100', 'ISCC from POME col');
+assert(millWasteSupplyCellText_({ 'SUPPLY POME INS': 50 }, 'INS') === '50', 'INS from POME col');
+assert(millWasteSupplyCellText_({ 'SUPPLY SHELL': 9 }, 'SHELL') === '9', 'SHELL qty');
+assert(millWasteSupplyCellText_({}, 'ISCC') === '—', 'empty ISCC dash');
+
 // parametric: 50 merge scenarios
 for (let i = 0; i < 50; i++) {
   const co = 'COMPANY ' + (i % 10);

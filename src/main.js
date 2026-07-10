@@ -8479,7 +8479,7 @@ function initDashboardApp() {
       if (millRegistryProductView === 'main') {
         hint.textContent = 'CPO & PK dari Mill Onboarding';
       } else if (millRegistryProductView === 'waste') {
-        hint.textContent = 'POME ISCC, INS, Shell GGL — Waste sheet';
+        hint.textContent = 'POME ISCC, INS, Shell — qty terpisah per kolom (Waste sheet)';
       } else {
         hint.textContent = 'Gabungan main + waste per company & periode';
       }
@@ -8510,6 +8510,30 @@ function initDashboardApp() {
     const q = millSupplyPkQty_(row);
     if (q <= 0) return '—';
     const raw = millPickRawField_(row, ['SUPPLY PK', 'Supply PK']);
+    return millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q);
+  }
+
+  /** Waste sheet qty is split: SUPPLY POME ISCC / INS / SHELL (not one combined column). */
+  function millWasteSupplyQtyAliases_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    if (k === 'ISCC' || k === 'POME_ISCC' || k === 'POME ISCC') {
+      return ['SUPPLY ISCC', 'SUPPLY POME ISCC', 'Supply ISCC', 'Supply POME ISCC'];
+    }
+    if (k === 'INS' || k === 'POME_INS' || k === 'POME INS') {
+      return ['SUPPLY INS', 'SUPPLY POME INS', 'Supply INS', 'Supply POME INS'];
+    }
+    if (k === 'SHELL' || k === 'SHELL_GGL' || k === 'SHELL GGL') {
+      return ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply SHELL', 'Supply POME SHELL'];
+    }
+    return [];
+  }
+
+  function millWasteSupplyCellText_(row, kind) {
+    const aliases = millWasteSupplyQtyAliases_(kind);
+    const raw = millPickRawField_(row, aliases);
+    const q = millParseSupplyQty_(raw);
+    if (q <= 0 && (raw == null || String(raw).trim() === '' || String(raw).trim() === '—')) return '—';
+    if (q <= 0) return '—';
     return millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q);
   }
 
@@ -8582,7 +8606,7 @@ function initDashboardApp() {
     updateMillPdfExportScope();
     updateMillStatsCards_();
 
-    const colCount = millRegistryProductView === 'waste' ? 16 : 15;
+    const colCount = millRegistryProductView === 'waste' ? 18 : 15;
     const theadRow = document.querySelector('#millTable thead tr');
     if (millSortKey && theadRow && !theadRow.querySelector('[data-mill-sort="' + millSortKey + '"]')) {
       millSortKey = null;
@@ -8628,10 +8652,13 @@ function initDashboardApp() {
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
           <td class="mill-td mill-td--province">${millTableCellText_(d['PROVINCE'])}</td>
-          <td class="mill-td mill-td--product">${millTableCellText_(millRegistryProductSupplyCellText_(d), { wrap: true })}</td>
+          <td class="mill-td mill-td--product" data-mill-col="product-supply">${millTableCellText_(millRegistryProductSupplyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--qty" data-mill-col="quantity">${millTableCellText_(millRegistryQtyCellText_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--supply-cpo" data-mill-col="supply-cpo">${millTableCellText_(millSupplyCpoCellText_(d))}</td>
           <td class="mill-td mill-td--supply-pk" data-mill-col="supply-pk">${millTableCellText_(millSupplyPkCellText_(d))}</td>
+          <td class="mill-td mill-td--supply-iscc" data-mill-col="waste-supply-iscc">${millTableCellText_(millWasteSupplyCellText_(d, 'ISCC'))}</td>
+          <td class="mill-td mill-td--supply-ins" data-mill-col="waste-supply-ins">${millTableCellText_(millWasteSupplyCellText_(d, 'INS'))}</td>
+          <td class="mill-td mill-td--supply-shell" data-mill-col="waste-supply-shell">${millTableCellText_(millWasteSupplyCellText_(d, 'SHELL'))}</td>
           <td class="mill-td mill-td--sterilizer" data-mill-col="waste-sterilizer">${millTableCellText_(sterilizer)}</td>
           <td class="mill-td mill-td--ghg" data-mill-col="waste-ghg">${millTableCellText_(ghg)}</td>
           <td class="mill-td mill-td--priority" data-mill-col="main-priority">${millTableCellText_(d['PRIORITY ENGAGEMENT'] || d['SIGN'], { wrap: true })}</td>
