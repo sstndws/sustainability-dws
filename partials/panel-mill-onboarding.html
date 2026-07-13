@@ -52,7 +52,7 @@
     <div class="mill-registry-filters__row">
       <div class="mill-registry-filters__meta">
         <span class="mill-registry-filters__label">Period</span>
-        <span class="mill-registry-filters__hint" id="millPeriodHint">Semua company — versi terbaru masing-masing</span>
+        <span class="mill-registry-filters__hint" id="millPeriodHint">All companies — latest version each</span>
       </div>
       <div class="mill-registry-filters__controls">
         <div class="ttp-toolbar mill-period-toolbar" id="millPeriodToolbar">
@@ -101,7 +101,7 @@
     <div class="mill-registry-filters__row">
       <div class="mill-registry-filters__meta">
         <span class="mill-registry-filters__label">Product</span>
-        <span class="mill-registry-filters__hint" id="millProductViewHint">Gabungan main + waste per company &amp; periode</span>
+        <span class="mill-registry-filters__hint" id="millProductViewHint">Combined main + waste per company &amp; period</span>
       </div>
       <div class="mill-registry-filters__controls">
         <div class="mill-period-mode" role="group" aria-label="Product view mode">
@@ -145,9 +145,9 @@
         <div class="supply-empty__icon" aria-hidden="true">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
-        <p class="supply-empty__title">Belum ada draft import</p>
-        <p class="supply-empty__steps">1. Pilih jenis product (Main / Waste)<br>2. Tentukan month &amp; year<br>3. Upload Excel → review di Task List</p>
-        <button type="button" class="supply-btn supply-btn--primary supply-empty__btn" data-action="open-supply-import">Mulai Import</button>
+        <p class="supply-empty__title">No import drafts yet</p>
+        <p class="supply-empty__steps">1. Select product type (Main / Waste)<br>2. Set month &amp; year<br>3. Upload Excel → review in Task List</p>
+        <button type="button" class="supply-btn supply-btn--primary supply-empty__btn" data-action="open-supply-import">Start Import</button>
       </div>
     </section>
   </div>
@@ -158,17 +158,17 @@
       <header class="supply-import-modal__header">
         <div>
           <h2 id="supply-import-modal-title" class="supply-import-modal__title">Import Supply Data</h2>
-          <p class="supply-import-modal__subtitle">Upload per jenis product. Month &amp; year yang sama akan diproses per <strong>Company Name</strong>.</p>
+          <p class="supply-import-modal__subtitle">Upload by product type. The same month &amp; year are processed per <strong>Company Name</strong>.</p>
         </div>
-        <button type="button" id="btn-supply-import-close" class="supply-import-modal__close" aria-label="Tutup">
+        <button type="button" id="btn-supply-import-close" class="supply-import-modal__close" aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </header>
 
       <div class="supply-import-modal__body">
         <div class="supply-import-step">
-          <div class="supply-import-step__label"><span class="supply-import-step__num">1</span> Jenis Product</div>
-          <div id="supply-import-type-wrap" class="supply-type-flow" aria-label="Jenis supply">
+          <div class="supply-import-step__label"><span class="supply-import-step__num">1</span> Product Type</div>
+          <div id="supply-import-type-wrap" class="supply-type-flow" aria-label="Supply type">
             <div class="supply-type-flow__cats">
               <button type="button" class="supply-type-cat" data-supply-cat="main" id="supply-cat-main">
                 <span class="supply-type-cat__title">Main Product</span>
@@ -182,7 +182,7 @@
 
             <div id="supply-type-flow-panel" class="supply-type-flow__panel" hidden>
               <div id="supply-sub-main" class="supply-type-flow__sub" data-flow-step="main" hidden>
-                <span class="supply-type-flow__sub-label">Pilih jenis main product</span>
+                <span class="supply-type-flow__sub-label">Select main product type</span>
                 <div class="supply-type-flow__opts">
                   <button type="button" class="supply-type-opt supply-type-opt--cpo" data-supply-value="CPO">
                     <span class="supply-type-opt__tag supply-type-opt__tag--cpo">CPO</span>
@@ -196,7 +196,7 @@
               </div>
 
               <div id="supply-sub-waste" class="supply-type-flow__sub" data-flow-step="waste" hidden>
-                <span class="supply-type-flow__sub-label">Pilih jenis waste product</span>
+                <span class="supply-type-flow__sub-label">Select waste product type</span>
                 <div class="supply-type-flow__opts">
                   <button type="button" class="supply-type-opt supply-type-opt--waste" data-waste-tier="pome">
                     <span class="supply-type-opt__tag supply-type-opt__tag--waste">POME</span>
@@ -212,9 +212,9 @@
               <div id="supply-sub-pome" class="supply-type-flow__sub" data-flow-step="pome" hidden>
                 <button type="button" class="supply-type-flow__back" data-supply-back="waste">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-                  Kembali
+                  Back
                 </button>
-                <span class="supply-type-flow__sub-label">Pilih sertifikasi POME</span>
+                <span class="supply-type-flow__sub-label">Select POME certification</span>
                 <div class="supply-type-flow__opts">
                   <button type="button" class="supply-type-opt supply-type-opt--waste" data-supply-value="POME_ISCC">
                     <span class="supply-type-opt__tag supply-type-opt__tag--waste">ISCC</span>
@@ -231,7 +231,7 @@
             <div id="supply-type-selected" class="supply-type-selected" hidden>
               <span class="supply-type-selected__dot" aria-hidden="true"></span>
               <span id="supply-type-selected-label" class="supply-type-selected__label"></span>
-              <button type="button" id="supply-type-change" class="supply-type-selected__change">Ubah</button>
+              <button type="button" id="supply-type-change" class="supply-type-selected__change">Change</button>
             </div>
 
             <input type="hidden" id="supply-import-type-value" value="">
@@ -239,29 +239,29 @@
         </div>
 
         <div class="supply-import-step">
-          <div class="supply-import-step__label"><span class="supply-import-step__num">2</span> Periode</div>
+          <div class="supply-import-step__label"><span class="supply-import-step__num">2</span> Period</div>
           <div class="supply-import-period">
             <div class="supply-import-field">
               <label class="supply-import-field__label" for="supply-import-month">Month</label>
               <select id="supply-import-month" class="supply-import-select">
-                <option value="">— Pilih Month —</option>
-                <option value="1">1 · Januari</option>
-                <option value="2">2 · Februari</option>
-                <option value="3">3 · Maret</option>
+                <option value="">— Select Month —</option>
+                <option value="1">1 · January</option>
+                <option value="2">2 · February</option>
+                <option value="3">3 · March</option>
                 <option value="4">4 · April</option>
-                <option value="5">5 · Mei</option>
-                <option value="6">6 · Juni</option>
-                <option value="7">7 · Juli</option>
-                <option value="8">8 · Agustus</option>
+                <option value="5">5 · May</option>
+                <option value="6">6 · June</option>
+                <option value="7">7 · July</option>
+                <option value="8">8 · August</option>
                 <option value="9">9 · September</option>
-                <option value="10">10 · Oktober</option>
+                <option value="10">10 · October</option>
                 <option value="11">11 · November</option>
-                <option value="12">12 · Desember</option>
+                <option value="12">12 · December</option>
               </select>
             </div>
             <div class="supply-import-field">
               <label class="supply-import-field__label" for="supply-import-year">Year</label>
-              <input type="number" id="supply-import-year" class="supply-import-select" inputmode="numeric" min="2000" max="9999" step="1" placeholder="cth. 2029">
+              <input type="number" id="supply-import-year" class="supply-import-select" inputmode="numeric" min="2000" max="9999" step="1" placeholder="e.g. 2029">
             </div>
           </div>
           <div id="supply-import-period-hint" class="supply-import-period-hint" hidden></div>
@@ -273,7 +273,7 @@
             <span class="supply-import-drop-zone__icon" aria-hidden="true">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </span>
-            <span class="supply-import-drop-zone__title">Drag &amp; drop atau klik untuk pilih file</span>
+            <span class="supply-import-drop-zone__title">Drag &amp; drop or click to select a file</span>
             <span class="supply-import-drop-zone__hint">.xlsx · header: PLANT, CATEGORY, COMPANY GROUP NAME, COMPANY NAME, MILL NAME, QTY SUPPLY</span>
             <input type="file" id="supply-import-file-input" accept=".xlsx,.xls" class="supply-import-file-input">
           </label>
@@ -300,11 +300,11 @@
       </div>
 
       <footer class="supply-import-modal__footer">
-        <p id="supply-import-footer-hint" class="supply-import-modal__footer-hint">Lengkapi periode dan upload file untuk melanjutkan.</p>
+        <p id="supply-import-footer-hint" class="supply-import-modal__footer-hint">Complete the period and upload a file to continue.</p>
         <div class="supply-import-modal__footer-actions">
-          <button type="button" id="btn-supply-import-cancel" class="supply-btn supply-btn--ghost">Batal</button>
+          <button type="button" id="btn-supply-import-cancel" class="supply-btn supply-btn--ghost">Cancel</button>
           <button type="button" id="btn-supply-import-proceed" class="supply-btn supply-btn--primary supply-btn--proceed" disabled>
-            Lanjut ke Task List
+            Continue to Task List
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
         </div>
@@ -327,21 +327,21 @@
       </button>
     </div>
     <!-- Export / column filters (same component language as Monitoring TTM/TTP) -->
-    <div class="ttp-toolbar mill-export-toolbar" id="millExportToolbar" aria-label="Saring dan export Mill Registry">
+    <div class="ttp-toolbar mill-export-toolbar" id="millExportToolbar" aria-label="Filter and export Mill Registry">
       <div class="ttp-dropdown-wrap" id="millPdfFilterWrap">
         <button type="button" class="ttp-btn-select" id="millPdfBtnFilterDims" aria-expanded="false" aria-controls="millPdfFilterDimsPanel">
           <span class="ttp-btn-icon"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span>
           Filter registry
           <span class="ttp-btn-icon" style="opacity:0.5;"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
-        <div class="ttp-dropdown-panel mill-pdf-filter-panel mill-dim-filter-surface" id="millPdfFilterDimsPanel" role="region" aria-label="Filter Group dan Province">
+        <div class="ttp-dropdown-panel mill-pdf-filter-panel mill-dim-filter-surface" id="millPdfFilterDimsPanel" role="region" aria-label="Filter Group and Province">
           <div class="ttp-dropdown-head">
             <span class="ttp-dropdown-title">Group &amp; Province</span>
             <div class="ttp-dropdown-actions">
               <button type="button" id="millPdfDimResetAll">Reset all</button>
             </div>
           </div>
-          <p class="mill-pdf-toolbar-hint">Kosongkan semua checkbox = tidak ada batas pada dimensi itu. Berlaku untuk tabel registry dan export PDF.</p>
+          <p class="mill-pdf-toolbar-hint">Leave all checkboxes empty = no filter on that dimension. Applies to the registry table and PDF export.</p>
           <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="group">
             <div class="mill-pdf-dim-head">
               <span>Group</span>
@@ -349,7 +349,7 @@
                 <button type="button" data-mill-pdf-dim-reset="group">Reset</button>
               </div>
             </div>
-            <div class="ttp-dropdown-search"><input type="text" id="millPdfGroupSearch" placeholder="Cari group…" autocomplete="off" /></div>
+            <div class="ttp-dropdown-search"><input type="text" id="millPdfGroupSearch" placeholder="Search group…" autocomplete="off" /></div>
             <div class="ttp-dropdown-list mill-pdf-dim-list" id="millPdfDimListGroup"></div>
           </div>
           <div class="mill-pdf-dim-block" data-mill-pdf-dim-block="province">
@@ -373,7 +373,7 @@
           <div class="ttp-dropdown-head">
             <span class="ttp-dropdown-title">PDF columns</span>
             <div class="ttp-dropdown-actions">
-              <button type="button" id="millPdfColAll">Semua</button>
+              <button type="button" id="millPdfColAll">All</button>
               <button type="button" id="millPdfColDefault">Default</button>
             </div>
           </div>

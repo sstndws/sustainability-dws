@@ -45,7 +45,7 @@ window.openViewScreeningPopup = async function() {
   if (!mills.length && !ffbRows.length && sid) {
     try {
       var fetchFn = typeof window.apiGetSubmissionById === 'function' ? window.apiGetSubmissionById : null;
-      if (!fetchFn) throw new Error('apiGetSubmissionById tidak tersedia');
+      if (!fetchFn) throw new Error('apiGetSubmissionById is not available');
       var res = await fetchFn(sid);
       mills   = (res && res.mills) ? res.mills : [];
       ffbRows = (res && res.ffb_rows) ? res.ffb_rows : [];

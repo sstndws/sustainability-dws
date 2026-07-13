@@ -1,29 +1,30 @@
-      <!-- ── BL MONITORING PANEL ── -->
+      <!-- ── DECLARATION MONITORING PANEL (Shipping / Declaration / SD) ── -->
       <div class="panel" id="panel-bl-monitoring">
-        <div class="breadcrumb">Dashboard <span>/ BL Monitoring</span></div>
+        <div class="breadcrumb">Dashboard <span>/ Declaration Monitoring</span></div>
         <div class="page-header">
-          <h1>BL Monitoring</h1>
-          <p>Track Bill of Lading shipments and traceability declarations with linked TTM / TTP data</p>
+          <h1>Declaration Monitoring</h1>
+          <p>Track shipping BLs, declarations, and SD monitoring records with linked traceability data</p>
         </div>
 
-        <div class="stats-row bl-stats-row">
-          <div class="stat-card"><div class="stat-card-num" id="bl-stat-total">—</div><div class="stat-card-label" id="bl-stat-total-label">Total records</div></div>
-          <div class="stat-card"><div class="stat-card-num" id="bl-stat-active">—</div><div class="stat-card-label">Onprogress</div></div>
-          <div class="stat-card"><div class="stat-card-num" id="bl-stat-done">—</div><div class="stat-card-label">Done</div></div>
-          <div class="stat-card"><div class="stat-card-num" id="bl-stat-ttm">—</div><div class="stat-card-label">Linked Mills</div></div>
+        <div class="stats-row bl-stats-row" id="bl-stats-row" aria-live="polite">
+          <div class="stat-card"><div class="stat-card-num" id="bl-stat-1">—</div><div class="stat-card-label" id="bl-stat-1-label">Total records</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="bl-stat-2">—</div><div class="stat-card-label" id="bl-stat-2-label">Onprogress</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="bl-stat-3">—</div><div class="stat-card-label" id="bl-stat-3-label">Done</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="bl-stat-4">—</div><div class="stat-card-label" id="bl-stat-4-label">Linked Mills</div></div>
         </div>
 
         <div class="table-card bl-list-card">
           <div class="table-header bl-table-header">
             <div class="bl-table-header-left">
               <h3 id="bl-table-title">Shipping registry</h3>
-              <div class="bl-source-tabs" role="tablist" aria-label="BL record type">
+              <div class="bl-source-tabs" role="tablist" aria-label="Declaration monitoring views">
                 <button type="button" class="bl-source-tab active" data-bl-type="shipping" role="tab" aria-selected="true">Shipping</button>
                 <button type="button" class="bl-source-tab" data-bl-type="declaration" role="tab" aria-selected="false">Declaration</button>
+                <button type="button" class="bl-source-tab" data-bl-type="sd" role="tab" aria-selected="false">SD Monitoring</button>
               </div>
             </div>
             <div class="table-actions">
-              <button class="btn-sm btn-outline" type="button" id="btn-export-bl">Export</button>
+              <button class="btn-sm btn-outline" type="button" id="btn-export-bl">Export Excel</button>
               <button class="btn-sm btn-filled" type="button" id="btn-add-bl">+ Add Shipping</button>
             </div>
           </div>

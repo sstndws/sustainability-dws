@@ -2,6 +2,7 @@ import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
+import { createSdMonitoringController_ } from './sd-monitoring-ui.js';
 import {
   mrdBuildTtpByMillMaps_,
   mrdTtpRowsForMill_,
@@ -3947,7 +3948,7 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzFydN5wOjsXbjMYjf88uhThltDeZXsV02oU8oPhYoh3ZYdZw9PGj9z0DInGgXqaL-PJg/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzoJzN32_L0HCOJQpo6dTAhE4HmwBm4QPv7El8ws2TWK-rr6Us_GhW7s6epyfauysUulg/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ';
 
 function normalizeSddWebAppUrl_(raw) {
@@ -5518,7 +5519,7 @@ function initDashboardApp() {
       ? [wasteCfg.facility, wasteCfg.qty]
       : ['FACILITY NAME ISCC', 'SUPPLY ISCC', 'FACILITY NAME INS', 'SUPPLY INS', 'FACILITY NAME SHELL', 'SUPPLY SHELL'];
     return [
-      { title: 'Identitas Mill', fields: ['MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'TYPE OF STERILIZER'] },
+      { title: 'Mill Identity', fields: ['MONTH', 'YEAR', 'COMPANY CODE', 'SOURCE TYPE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'ADDRESS', 'PROVINCE', 'COORDINATES', 'MILL CATEGORY', 'MILL CAPACITY', 'TYPE OF STERILIZER'] },
       { title: 'Legalitas', fields: ['HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN', 'MILL LOC'] },
       { title: 'Sertifikasi', fields: ['CERTIFICATION'] },
       { title: supplyTitle, fields: supplyFields },
@@ -5830,7 +5831,7 @@ function initDashboardApp() {
   }
 
   const FIELD_SECTIONS = [
-    { title: 'Identitas Mill', fields: ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
+    { title: 'Mill Identity', fields: ['MONTH','YEAR','COMPANY CODE','SOURCE TYPE','GROUP NAME','COMPANY NAME','MILL NAME','UML ID','ADDRESS','PROVINCE','COORDINATES','MILL CATEGORY','MILL CAPACITY (TON/HOUR)'] },
     { title: 'Legalitas', fields: ['HGU/HGB','IZIN LOKASI','IUP','IZIN LINGKUNGAN'] },
     { title: 'Spatial & Peat', fields: ['DEFORESTATION WIDTH','BURN AREA WIDTH','PEAT WIDTH','MILL LOC'] },
     { title: 'Grievances', fields: MILL_GRIEVANCE_FLAG_FIELDS_.slice() },
@@ -5886,7 +5887,7 @@ function initDashboardApp() {
       + buildCustomSelect(field, ['Yes', 'No'], yn, true, isFull, displayLabel)
       + '<div class="form-field full supply-grv-note' + noteHidden + '" data-note-for="' + escHtml(field) + '">'
       + '<label>Note (' + escHtml(displayLabel || field) + ')</label>'
-      + '<textarea data-field="' + escHtml(noteField) + '" rows="2" placeholder="Catatan untuk jawaban Yes (opsional)">' + escHtml(note) + '</textarea>'
+      + '<textarea data-field="' + escHtml(noteField) + '" rows="2" placeholder="Note for Yes answer (optional)">' + escHtml(note) + '</textarea>'
       + '</div>'
       + '</div>';
   }
@@ -5997,15 +5998,15 @@ function initDashboardApp() {
     let html = '';
     if (data && window._supplyModalContext && data._supplyProfilePeriod) {
       html += '<div class="supply-modal-period-hint" style="margin-bottom:12px;padding:12px 14px;background:#eef6fc;border:1px solid #b8d9f0;border-radius:10px;font-size:13px;line-height:1.55;color:#1a4a6e;">'
-        + '<div><strong>Data profil Mill Onboarding:</strong> ' + escHtml(data._supplyProfilePeriod) + '</div>'
+        + '<div><strong>Mill Onboarding profile data:</strong> ' + escHtml(data._supplyProfilePeriod) + '</div>'
         + (data._supplyImportPeriod
-          ? '<div style="margin-top:6px;font-size:12px;color:#3d6a8a;"><strong>Periode import Task List (disubmit):</strong> ' + escHtml(data._supplyImportPeriod) + '</div>'
+          ? '<div style="margin-top:6px;font-size:12px;color:#3d6a8a;"><strong>Task List import period (submitted):</strong> ' + escHtml(data._supplyImportPeriod) + '</div>'
           : '')
         + (isWasteSupply
-          ? '<div style="margin-top:6px;font-size:12px;color:#6b1a2a;"><strong>Submit target:</strong> Mill Onboarding Waste — hanya kolom waste (bukan form Mill Onboarding utama).</div>'
+          ? '<div style="margin-top:6px;font-size:12px;color:#6b1a2a;"><strong>Submit target:</strong> Mill Onboarding Waste — waste columns only (not the main Mill Onboarding form).</div>'
           : '')
         + (data._supplyCompanyDraftShared
-          ? '<div style="margin-top:6px;font-size:12px;color:#1565c0;"><strong>Data perusahaan</strong> diisi dari baris lain dengan COMPANY NAME sama — hanya supply/facility per baris yang berbeda.</div>'
+          ? '<div style="margin-top:6px;font-size:12px;color:#1565c0;"><strong>Company data</strong> is filled from other rows with the same COMPANY NAME — only supply/facility differ per row.</div>'
           : '')
         + '</div>';
     }
@@ -6129,7 +6130,7 @@ function initDashboardApp() {
   function syncSupplyModalChrome_(isSupplyImport) {
     const saveBtn = document.getElementById('modalSave');
     const submitBtn = document.getElementById('modalSubmit');
-    if (saveBtn) saveBtn.textContent = isSupplyImport ? 'Simpan draft' : 'Save';
+    if (saveBtn) saveBtn.textContent = isSupplyImport ? 'Save draft' : 'Save';
     if (submitBtn) {
       submitBtn.hidden = !isSupplyImport;
       submitBtn.style.display = isSupplyImport ? '' : 'none';
@@ -6467,7 +6468,7 @@ function initDashboardApp() {
     if (!pendingDelete) return;
     this.textContent = 'Deleting...';
     try {
-      var delOpts = pendingDelete.sheet === 'blMonitoring'
+      var delOpts = (pendingDelete.sheet === 'blMonitoring' || pendingDelete.sheet === 'sdMonitoring')
         ? { baseUrl: SDD_DEFAULT_WEBAPP_URL }
         : undefined;
       await apiPost({ action: 'delete', sheet: pendingDelete.sheet, row: pendingDelete.row }, delOpts);
@@ -6480,6 +6481,10 @@ function initDashboardApp() {
         await reloadGrvDataSoft_();
       } else if (pendingDelete.sheet === 'blMonitoring') {
         await reloadBlDataSoft_();
+      } else if (pendingDelete.sheet === 'sdMonitoring') {
+        if (window._sdMonitoring && typeof window._sdMonitoring.reloadSoft === 'function') {
+          await window._sdMonitoring.reloadSoft();
+        }
       } else if (pendingDelete.sheet === 'nbl') {
         nblInvalidateListsCache_();
         await reloadNblDataSoft_();
@@ -6876,17 +6881,17 @@ function initDashboardApp() {
   function millPeriodFilterHintText_() {
     const pf = millSelectedPeriodFilter_();
     if (!pf.hasYear && !pf.hasMonth) {
-      return 'Pilih month & year untuk snapshot as-of';
+      return 'Select month & year for as-of snapshot';
     }
     const parts = [];
     if (pf.hasMonth && pf.maxMonth > 0) {
-      parts.push('s/d ' + millMonthLabel_(pf.maxMonth));
+      parts.push('through ' + millMonthLabel_(pf.maxMonth));
     }
     if (pf.hasYear && pf.years.size) {
       const yrs = Array.from(pf.years).sort(function(a, b) { return a - b; });
       parts.push(yrs.join(', '));
     }
-    return parts.length ? ('Snapshot as-of · ' + parts.join(' · ')) : 'Pilih month & year untuk snapshot as-of';
+    return parts.length ? ('Snapshot as-of · ' + parts.join(' · ')) : 'Select month & year for as-of snapshot';
   }
 
   function millSyncRegistryFiltersVisibility_() {
@@ -6906,7 +6911,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Versi terbaru per company'
+        ? 'Latest version per company'
         : millPeriodFilterHintText_();
     }
   }
@@ -7201,7 +7206,7 @@ function initDashboardApp() {
   }
 
   function millPdfLabelForToken(tok) {
-    if (tok === '__EMPTY__') return '(kosong)';
+    if (tok === '__EMPTY__') return '(empty)';
     const n = parseInt(String(tok).trim(), 10);
     if (n >= 1 && n <= 12) return millMonthLabel_(n);
     return tok;
@@ -7421,8 +7426,8 @@ function initDashboardApp() {
         + '<div class="ttp-dropdown-search"><input type="text" class="mill-col-filter-search" placeholder="Search values…" autocomplete="off"></div>'
         + '<div class="mill-col-filter-list ttp-dropdown-list"></div>'
         + '<div class="mill-col-filter-foot">'
-        + '<button type="button" data-act="cancel">Batal</button>'
-        + '<button type="button" data-act="ok" class="is-primary">Terapkan</button>'
+        + '<button type="button" data-act="cancel">Cancel</button>'
+        + '<button type="button" data-act="ok" class="is-primary">Apply</button>'
         + '</div>';
       document.body.appendChild(menu);
       millPositionColFilterMenu_(btn, menu);
@@ -7666,7 +7671,7 @@ function initDashboardApp() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor.apply(doc, GRY);
-      const stamp = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       doc.text('Exported: ' + stamp + ' · ' + rows.length + ' rows', 14, 20);
 
       const body = rows.map(function(row) {
@@ -7956,7 +7961,7 @@ function initDashboardApp() {
         const millId  = d['Mill ID']  || d['UML ID'] || d['MILL ID'] || '';
         const rawDate = d['Date Imported'] || d['DATE IMPORTED'] || d['Last Updated'] || d['LAST UPDATED'] || d['Timestamp'] || d['TIMESTAMP'] || '';
         const dObj = new Date(String(rawDate).trim());
-        const dateStr = isNaN(dObj.getTime()) ? rawDate : dObj.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
+        const dateStr = isNaN(dObj.getTime()) ? rawDate : dObj.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
         return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:' + (i===0?'rgba(139,26,26,0.05)':'rgba(74,28,28,0.02)') + ';border:1px solid ' + (i===0?'rgba(139,26,26,0.15)':'rgba(74,28,28,0.06)') + ';">'
           + '<div style="width:24px;height:24px;border-radius:50%;background:' + rankColors[i] + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
           + '<span style="font-size:11px;font-weight:700;color:white;">' + (i+1) + '</span></div>'
@@ -8008,7 +8013,7 @@ function initDashboardApp() {
       table.style.display = 'table';
       scheduleRenderMillTable();
       if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Menampilkan data cache — memuat versi terbaru di background…', 'info');
+        window.showSddToast('Showing cached data — loading the latest version in the background…', 'info');
       }
     }
 
@@ -8059,17 +8064,17 @@ function initDashboardApp() {
           table.style.display = 'table';
           scheduleRenderMillTable();
           if (typeof window.showSddToast === 'function') {
-            window.showSddToast('Gagal refresh — menampilkan data cache. Coba lagi nanti.', 'warning');
+            window.showSddToast('Refresh failed — showing cached data. Try again later.', 'warning');
           }
         } else {
           loading.style.display = 'none';
           errorEl.style.display = 'block';
-          errorEl.textContent = 'Gagal memuat data mill: ' + err.message;
+          errorEl.textContent = 'Failed to load mill data: ' + err.message;
         }
       } else if (!millDataLoaded) {
         loading.style.display = 'none';
         errorEl.style.display = 'block';
-        errorEl.textContent = 'Gagal memuat data mill: ' + err.message;
+        errorEl.textContent = 'Failed to load mill data: ' + err.message;
       } else {
         console.warn('[Mill] Background refresh failed:', err && err.message ? err.message : err);
       }
@@ -8124,7 +8129,7 @@ function initDashboardApp() {
         console.warn('[Mill] Soft reload failed:', err && err.message ? err.message : err);
         scheduleRenderMillTable();
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Daftar mill belum terbarui — klik Refresh atau tunggu sebentar lalu buka ulang.', 'warning');
+          window.showSddToast('Mill list not updated yet — click Refresh or wait a moment and reopen.', 'warning');
         }
       }
     })();
@@ -8553,11 +8558,11 @@ function initDashboardApp() {
     const hint = document.getElementById('millProductViewHint');
     if (hint) {
       if (millRegistryProductView === 'main') {
-        hint.textContent = 'CPO & PK dari Mill Onboarding';
+        hint.textContent = 'CPO & PK from Mill Onboarding';
       } else if (millRegistryProductView === 'waste') {
-        hint.textContent = 'Product Supply = jenis produk saat import (POME ISCC / INS / Shell)';
+        hint.textContent = 'Product Supply = product type at import (POME ISCC / INS / Shell)';
       } else {
-        hint.textContent = 'Gabungan main + waste per company & periode';
+        hint.textContent = 'Combined main + waste per company & period';
       }
     }
     const table = document.getElementById('millTable');
@@ -8710,14 +8715,14 @@ function initDashboardApp() {
         const millName = millPickField_(d, ['MILL NAME', 'Mill Name']);
         const umlId = millPickField_(d, ['UML ID', 'UML Id', 'UML_ID']);
         const mergeBadge = d._millGeneralMerged
-          ? '<span class="mill-merge-badge" title="Gabungan main + waste (' + d._millGeneralMergeCount + ' baris)">General ×' + d._millGeneralMergeCount + '</span>'
+          ? '<span class="mill-merge-badge" title="Combined main + waste (' + d._millGeneralMergeCount + ' rows)">General ×' + d._millGeneralMergeCount + '</span>'
           : (d._millTableMerged
-            ? '<span class="mill-merge-badge" title="Gabungan ' + d._millTableMergeCount + ' baris di sheet (company, mill, bulan, tahun sama)">Gabungan ×' + d._millTableMergeCount + '</span>'
+            ? '<span class="mill-merge-badge" title="Combined ' + d._millTableMergeCount + ' sheet rows (same company, mill, month, year)">Combined ×' + d._millTableMergeCount + '</span>'
             : '');
         const rowTitle = d._millGeneralMerged
-          ? 'Gabungan main + waste — klik untuk detail'
+          ? 'Combined main + waste — click for details'
           : (d._millTableMerged
-            ? 'Gabungan ' + d._millTableMergeCount + ' baris sheet — klik untuk detail'
+            ? 'Combined ' + d._millTableMergeCount + ' sheet rows — click for details'
             : 'Click to view full details');
         const sterilizer = millPickField_(d, ['TYPE OF STERILIZER', 'Type of Sterilizer']);
         const ghg = millPickRawField_(d, ['GHG VALUE', 'GHG Value']);
@@ -9546,7 +9551,7 @@ function initDashboardApp() {
       if (group) { doc.text(group, 14, y); y += 5; }
       if (periodText) { doc.text(periodText, 14, y); y += 5; }
       if (nblByInfo && nblByInfo.label) { doc.text(nblByInfo.label, 14, y); y += 5; }
-      doc.text('Exported: ' + new Date().toLocaleString('id-ID'), 14, y);
+      doc.text('Exported: ' + new Date().toLocaleString('en-GB'), 14, y);
       y += 4;
 
       y += 4;
@@ -10607,7 +10612,7 @@ function initDashboardApp() {
           + '\nNO DATA   : ' + ttpFormatTtpTon_(ttmCpo.supplyNoData) + ' ton (' + ttmCpo.rowsNoData + ' rows)'
           + '\nTotal pool: ' + ttpFormatTtpTon_(ttmCpo.supplyTotal) + ' ton (' + ttmCpo.rowsTotal + ' rows)'
           + ttpFormatTtmNodataBreakdown_(ttmCpo, 'cpo')
-          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO (atau SUPPLY CPO > 0 jika PRODUCT SUPPLY kosong)'
+          + '\nPool: SOURCE TYPE = MILL / TRADER / REFINERY · PRODUCT SUPPLY contains CPO (or SUPPLY CPO > 0 if PRODUCT SUPPLY is empty)'
           + '\nYear ' + (ttpPeriodYear || '—') + ' · all quarters';
       } else {
         ttmCpoEl.title = 'No CPO data (MILL/TRADER/REFINERY) in Mill Onboarding for this year';
@@ -11009,7 +11014,7 @@ function initDashboardApp() {
       + '<label>Village</label>'
       + '<p class="ttp-dealer-villages-desc" id="ttpDealerVillagesDesc">Type village name.</p>'
       + '<div class="ttp-dealer-villages-list" id="ttpDealerVillagesList">' + rowsHtml + '</div>'
-      + '<button type="button" class="btn-sm btn-outline-warm" id="ttpDealerAddVillage" hidden>+ Tambah village</button>'
+      + '<button type="button" class="btn-sm btn-outline-warm" id="ttpDealerAddVillage" hidden>+ Add village</button>'
       + '</div>';
   }
 
@@ -11017,7 +11022,7 @@ function initDashboardApp() {
     return ''
       + '<div class="ttp-dealer-village-row">'
       + '<input type="text" class="ttp-dealer-village-inp" value="' + escHtml(String(value || '')) + '"'
-      + ' placeholder="Nama village" autocomplete="off">'
+      + ' placeholder="Village name" autocomplete="off">'
       + '<button type="button" class="ttp-dealer-village-rm" title="Remove">×</button>'
       + '</div>';
   }
@@ -11061,8 +11066,8 @@ function initDashboardApp() {
       } else {
         const filled = ttpCollectDealerVillages_().length;
         desc.textContent = filled
-          ? (filled + ' village → ' + filled + ' baris TTP baru (1 Save). Lat/Long hanya baris pertama.')
-          : ('1 village = 1 baris. Klik + Tambah village sebanyak yang perlu — 3, 10, 20, dst. Lat/Long hanya baris pertama.');
+          ? (filled + ' villages → ' + filled + ' new TTP rows (1 Save). Lat/Long on the first row only.')
+          : ('1 village = 1 row. Click + Add village as needed — 3, 10, 20, etc. Lat/Long on the first row only.');
       }
     }
     panel.querySelectorAll('.ttp-dealer-village-rm').forEach(function(btn) {
@@ -11143,7 +11148,7 @@ function initDashboardApp() {
     const villages = ttpCollectDealerVillages_();
     if (!ttpIsDealerCategory_(category)) return null;
     if (!villages.length) {
-      throw new Error('Dealer: isi minimal 1 village (1 village = 1 baris TTP).');
+      throw new Error('Dealer: enter at least 1 village (1 village = 1 TTP row).');
     }
     if (villageCol) data[villageCol] = villages[0];
 
@@ -14456,8 +14461,13 @@ function initDashboardApp() {
   }
 
   function updateBlStats_() {
-    const totalEl = document.getElementById('bl-stat-total');
-    if (!totalEl) return;
+    if (blActiveType === 'sd') return;
+    const setPair = function(n, value, label) {
+      const numEl = document.getElementById('bl-stat-' + n);
+      const labelEl = document.getElementById('bl-stat-' + n + '-label');
+      if (numEl) numEl.textContent = value;
+      if (labelEl) labelEl.textContent = label;
+    };
     const rows = blFilteredData_();
     let ttmSum = 0;
     let onprogress = 0;
@@ -14468,21 +14478,15 @@ function initDashboardApp() {
       if (st.includes('done')) done++;
       else if (st.includes('onprogress') || st.includes('progress')) onprogress++;
     });
-    totalEl.textContent = rows.length;
-    const totalLabel = document.getElementById('bl-stat-total-label');
-    if (totalLabel) {
-      totalLabel.textContent = blActiveType === 'declaration' ? 'Total declarations' : 'Total shipping BL';
-    }
-    const activeEl = document.getElementById('bl-stat-active');
-    const doneEl = document.getElementById('bl-stat-done');
-    const ttmEl = document.getElementById('bl-stat-ttm');
-    if (activeEl) activeEl.textContent = onprogress || '0';
-    if (doneEl) doneEl.textContent = done || '0';
-    if (ttmEl) ttmEl.textContent = ttmSum || '0';
+    setPair(1, rows.length || '0', blActiveType === 'declaration' ? 'Total declarations' : 'Total shipping BL');
+    setPair(2, onprogress || '0', 'Onprogress');
+    setPair(3, done || '0', 'Done');
+    setPair(4, ttmSum || '0', 'Linked Mills');
   }
 
   function setBlActiveType_(type) {
-    blActiveType = type === 'declaration' ? 'declaration' : 'shipping';
+    const t = String(type || '').toLowerCase();
+    blActiveType = t === 'declaration' ? 'declaration' : (t === 'sd' ? 'sd' : 'shipping');
     document.querySelectorAll('#panel-bl-monitoring .bl-source-tab').forEach(function(btn) {
       const on = btn.getAttribute('data-bl-type') === blActiveType;
       btn.classList.toggle('active', on);
@@ -14490,17 +14494,29 @@ function initDashboardApp() {
     });
     const titleEl = document.getElementById('bl-table-title');
     if (titleEl) {
-      titleEl.textContent = blActiveType === 'declaration' ? 'Declaration registry' : 'Shipping registry';
+      titleEl.textContent = blActiveType === 'declaration'
+        ? 'Declaration registry'
+        : (blActiveType === 'sd' ? 'SD Monitoring registry' : 'Shipping registry');
     }
     const btnAdd = document.getElementById('btn-add-bl');
     if (btnAdd) {
-      btnAdd.textContent = blActiveType === 'declaration' ? '+ Add Declaration' : '+ Add Shipping';
+      btnAdd.textContent = blActiveType === 'declaration'
+        ? '+ Add Declaration'
+        : (blActiveType === 'sd' ? '+ Add SD Record' : '+ Add Shipping');
     }
     const searchEl = document.getElementById('blSearch');
     if (searchEl) {
       searchEl.placeholder = blActiveType === 'declaration'
         ? 'Search buyer, period, commodity, status...'
-        : 'Search BL no., vessel, buyer, port, status...';
+        : (blActiveType === 'sd'
+          ? 'Search company, DO, contract, SD no., category, status...'
+          : 'Search BL no., vessel, buyer, port, status...');
+    }
+    if (window._sdMonitoring) {
+      window._sdMonitoring.setActive(blActiveType === 'sd');
+    }
+    if (blActiveType === 'sd') {
+      return;
     }
     updateBlStats_();
     scheduleRenderBlTable();
@@ -14557,6 +14573,7 @@ function initDashboardApp() {
   }
 
   function renderBlTable() {
+    if (blActiveType === 'sd') return;
     const body = document.getElementById('blTableBody');
     if (!body) return;
     bindBlTableDelegationOnce_();
@@ -14590,6 +14607,7 @@ function initDashboardApp() {
     if (!body) return;
     blTableDelegationBound = true;
     body.addEventListener('click', function(e) {
+      if (blActiveType === 'sd') return;
       const editBtn = e.target.closest('.bl-row-edit');
       if (editBtn && body.contains(editBtn)) {
         e.stopPropagation();
@@ -15419,19 +15437,49 @@ function initDashboardApp() {
       return;
     }
 
+    window._sdMonitoring = createSdMonitoringController_({
+      apiGet: apiGet,
+      apiPost: apiPost,
+      escHtml: escHtml,
+      dashDateFieldHtml: dashDateFieldHtml,
+      dashDateCollectValues: dashDateCollectValues,
+      getJsPDF: getJsPDF,
+      openConfirm: openConfirm,
+      showToast: typeof window.showSddToast === 'function' ? window.showSddToast.bind(window) : null,
+      gasOpts: { baseUrl: SDD_DEFAULT_WEBAPP_URL },
+      mountOverlay: mountBlOverlay_,
+      lockScroll: lockBlOverlayScroll_,
+      unlockScroll: unlockBlOverlayScroll_,
+      resetOverlayScroll: resetBlOverlayScroll_,
+    });
+
     const debouncedRenderBl = debounce(function() {
+      if (blActiveType === 'sd') {
+        if (window._sdMonitoring) window._sdMonitoring.render();
+        return;
+      }
       scheduleRenderBlTable();
     }, 120);
 
     searchEl.addEventListener('input', function() {
-      blSearch = this.value.toLowerCase().trim();
+      const q = this.value.toLowerCase().trim();
       clearEl.classList.toggle('show', !!this.value);
+      if (blActiveType === 'sd') {
+        if (window._sdMonitoring) window._sdMonitoring.setSearch(q);
+        return;
+      }
+      blSearch = q;
       debouncedRenderBl();
     });
     clearEl.addEventListener('click', function() {
       searchEl.value = '';
       blSearch = '';
       this.classList.remove('show');
+      if (blActiveType === 'sd') {
+        if (window._sdMonitoring) window._sdMonitoring.setSearch('');
+        searchEl.focus();
+        return;
+      }
       debouncedRenderBl.cancel();
       scheduleRenderBlTable.flush();
       searchEl.focus();
@@ -15443,8 +15491,20 @@ function initDashboardApp() {
       });
     });
 
-    btnAdd.addEventListener('click', function() { openBlFormModal_('add', null, blActiveType); });
-    btnExport.addEventListener('click', function() { openBlExportModal_(null); });
+    btnAdd.addEventListener('click', function() {
+      if (blActiveType === 'sd') {
+        if (window._sdMonitoring) window._sdMonitoring.openAdd();
+        return;
+      }
+      openBlFormModal_('add', null, blActiveType);
+    });
+    btnExport.addEventListener('click', function() {
+      if (blActiveType === 'sd') {
+        if (window._sdMonitoring) window._sdMonitoring.exportExcel();
+        return;
+      }
+      openBlExportModal_(null);
+    });
 
     const formOverlay = mountBlOverlay_('blFormOverlay');
     const detailOverlay = mountBlOverlay_('blDetailOverlay');
@@ -17688,7 +17748,7 @@ function initDashboardApp() {
       + '<div class="eudr-ffb-panel-title">1. Check categories to include in the total</div>'
       + '<div class="eudr-ffb-cat-rows">' + combinedRows + '</div>'
       + '<div class="eudr-ffb-combined-threshold' + combDisabled + '">'
-      + '<div class="eudr-ffb-panel-title">2. Threshold total gabungan</div>'
+      + '<div class="eudr-ffb-panel-title">2. Combined total threshold</div>'
       + '<div class="eudr-ffb-row eudr-ffb-row--settings">'
       + '<div class="eudr-ffb-setting">'
       + '<span class="eudr-ffb-label">Compare</span>'
@@ -21648,7 +21708,7 @@ function initDashboardApp() {
       });
       const pct = (ispoQty / supEntry.totalQty) * 100;
       const fmtTon = function(kg) {
-        return (kg / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+        return (kg / 1000).toLocaleString('en-GB', { maximumFractionDigits: 1 });
       };
       return {
         ispoQty: ispoQty,
@@ -22077,7 +22137,7 @@ function initDashboardApp() {
       if (g.traceCalc) {
         avgCpo = g.traceCalc.formatted;
         if (g.traceCalc.totalQty > 0) {
-          supQtyFmt = (g.traceCalc.totalQty / 1000).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' ton';
+          supQtyFmt = (g.traceCalc.totalQty / 1000).toLocaleString('en-GB', { maximumFractionDigits: 0 }) + ' ton';
         }
         if (src === 'supply-partial') {
           traceNote = g.traceCalc.sellersWithTtp + ' of ' + g.traceCalc.sellerCount
@@ -24947,7 +25007,7 @@ function initDashboardApp() {
           try {
             var dChk = new Date(checkedLine);
             if (!isNaN(dChk.getTime())) {
-              checkedLine = dChk.toLocaleString('id-ID', {
+              checkedLine = dChk.toLocaleString('en-GB', {
                 day: '2-digit', month: 'short', year: 'numeric',
                 hour: '2-digit', minute: '2-digit'
               });
@@ -25471,7 +25531,7 @@ function initDashboardApp() {
     return meta;
   }
 
-  const SUPPLY_MONTH_ID_ = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const SUPPLY_MONTH_ID_ = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   function supplyMonthLabelId_(n) {
     return (n >= 1 && n <= 12) ? SUPPLY_MONTH_ID_[n - 1] : String(n || '');
@@ -25502,9 +25562,9 @@ function initDashboardApp() {
     if (!label) return '';
     const isWaste = supplyImportIsWaste_(supplyResolveKindFromDraft_(draftRow, batch));
     const title = isWaste
-      ? 'Data profil disalin dari Mill Onboarding. Sesuaikan field waste sebelum submit ke Mill Onboarding Waste.'
-      : 'Periode data profil di Mill Onboarding';
-    return '<span class="supply-match-pill supply-match-pill--profile-period" title="' + escHtml(title) + '">Profil: ' + escHtml(label) + '</span>';
+      ? 'Profile data copied from Mill Onboarding. Adjust waste fields before submitting to Mill Onboarding Waste.'
+      : 'Profile data period in Mill Onboarding';
+    return '<span class="supply-match-pill supply-match-pill--profile-period" title="' + escHtml(title) + '">Profile: ' + escHtml(label) + '</span>';
   }
 
   function supplyImportMatchCellHtml_(excelRow, kind) {
@@ -25515,7 +25575,7 @@ function initDashboardApp() {
       const profile = supplyPickLatestMillProfileForCompany_(names.company) || match.row;
       const label = supplyMillProfilePeriodFromRow_(profile);
       if (label) {
-        html += '<span class="supply-match-pill supply-match-pill--profile-period" title="Data akan disalin dari profil Mill Onboarding periode ini">Profil: ' + escHtml(label) + '</span>';
+        html += '<span class="supply-match-pill supply-match-pill--profile-period" title="Data will be copied from the Mill Onboarding profile for this period">Profile: ' + escHtml(label) + '</span>';
       }
     }
     return html;
@@ -25706,7 +25766,7 @@ function initDashboardApp() {
   }
 
   async function supplyPersistDraftBatch_(batch) {
-    if (!batch) throw new Error('Draft batch tidak ditemukan.');
+    if (!batch) throw new Error('Draft batch not found.');
     supplyEnsureDraftIdsOnRows_(batch.rows || [], batch.batch_id);
     supplyEnsureDraftPeriodOnRows_(batch.rows || [], batch);
     (batch.rows || []).forEach(supplyNormalizeHaWidthFieldsOnRow_);
@@ -25848,7 +25908,7 @@ function initDashboardApp() {
     });
     if (cpoN) parts.push('<span class="supply-badge supply-badge--cpo">' + cpoN + ' CPO</span>');
     if (pkN) parts.push('<span class="supply-badge supply-badge--pk">' + pkN + ' PK</span>');
-    if (dualN) parts.push('<span class="supply-badge supply-badge--cpopk">' + dualN + ' gabung</span>');
+    if (dualN) parts.push('<span class="supply-badge supply-badge--cpopk">' + dualN + ' merged</span>');
     return parts.length ? parts.join(' ') : supplyTypeBadgeHtml_('CPO');
   }
 
@@ -27152,7 +27212,7 @@ function initDashboardApp() {
 
   async function supplySubmitAllPendingRows_(batch, bId, rowsOptional, progressCb) {
     if (batch && batch._submitInFlight) {
-      throw new Error('Submit sedang berjalan — tunggu sebentar.');
+      throw new Error('Submit already in progress — please wait.');
     }
     if (batch) batch._submitInFlight = true;
     try {
@@ -27160,7 +27220,7 @@ function initDashboardApp() {
     const pending = (rowsOptional && rowsOptional.length)
       ? rowsOptional.filter(supplyRowCheckedForSubmit_)
       : (batch.rows || []).filter(supplyRowCheckedForSubmit_);
-    if (!pending.length) throw new Error('Tidak ada baris tercentang untuk di-submit.');
+    if (!pending.length) throw new Error('No checked rows to submit.');
 
     pending.forEach(function(r) { supplyHydrateRowForSubmit_(r, batch); });
 
@@ -27168,12 +27228,12 @@ function initDashboardApp() {
     const errors = [];
     pending.forEach(function(r) {
       if (!String(r['COMPANY NAME'] || '').trim()) {
-        errors.push((r['MILL NAME'] || 'baris') + ': COMPANY NAME kosong');
+        errors.push((r['MILL NAME'] || 'row') + ': COMPANY NAME is empty');
         return;
       }
       valid.push(r);
     });
-    if (!valid.length) throw new Error(errors.slice(0, 5).join('; ') || 'Tidak ada baris valid untuk di-submit.');
+    if (!valid.length) throw new Error(errors.slice(0, 5).join('; ') || 'No valid rows to submit.');
 
     const toSubmit = supplyCoalesceSubmitRowsByCompanyPeriod_(valid, batch);
     const submitPayloads = toSubmit.map(function(r) { return supplyRowPayloadForSubmit_(r, batch); });
@@ -27221,7 +27281,7 @@ function initDashboardApp() {
       try {
         await supplyPersistDraftBatch_(batch);
       } catch (persistErr) {
-        errors.push('Status draft tidak tersimpan ke server: ' + (persistErr && persistErr.message ? persistErr.message : persistErr));
+        errors.push('Draft status was not saved to the server: ' + (persistErr && persistErr.message ? persistErr.message : persistErr));
       }
     }
 
@@ -27318,7 +27378,7 @@ function initDashboardApp() {
       return !String(data[k] || '').trim();
     });
     if (missing.length) {
-      throw new Error('Lengkapi ' + missing.join(', ') + ' sebelum Submit.');
+      throw new Error('Complete ' + missing.join(', ') + ' before Submit.');
     }
   }
 
@@ -27377,13 +27437,13 @@ function initDashboardApp() {
     const checkedN = supplyCountCheckedRows_(batchId);
     const busy = window._supplyBulkSubmitInFlight === batchId;
     btn.dataset.action = 'submit-selected';
-    btn.textContent = busy ? btn.textContent : ('Submit Terpilih (' + checkedN + ')');
+    btn.textContent = busy ? btn.textContent : ('Submit Selected (' + checkedN + ')');
     btn.removeAttribute('disabled');
     btn.classList.toggle('is-busy', busy);
     btn.setAttribute('aria-disabled', checkedN === 0 ? 'true' : 'false');
     btn.title = checkedN === 0
-      ? 'Centang baris yang akan di-submit'
-      : ('Submit ' + checkedN + ' baris tercentang ke ' + supplyBatchTargetSheetLabel_(batch));
+      ? 'Check the rows to submit'
+      : ('Submit ' + checkedN + ' checked rows to ' + supplyBatchTargetSheetLabel_(batch));
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
@@ -27503,14 +27563,14 @@ function initDashboardApp() {
     supplyRestoreTaskListScroll_(scrollSnap);
     if (typeof window.showSddToast === 'function') {
       if (activeFilter === 'matched' || activeFilter === 'new') {
-        window.showSddToast('Draft tersimpan — lihat di filter «Draft saved».', 'success');
+        window.showSddToast('Draft saved — see the «Draft saved» filter.', 'success');
       } else if (siblingRows.length) {
         window.showSddToast(
-          'Draft disimpan — ' + siblingRows.length + ' baris lain (COMPANY NAME sama) ikut terisi.',
+          'Draft saved — ' + siblingRows.length + ' other rows (same COMPANY NAME) were also filled.',
           'success'
         );
       } else {
-        window.showSddToast('Draft tersimpan ke sheet.', 'success');
+        window.showSddToast('Draft saved to sheet.', 'success');
       }
     }
   }
@@ -27564,14 +27624,14 @@ function initDashboardApp() {
 
     const company = String(draftRow['COMPANY NAME'] || '').trim();
     if (!supplyFindMillReferenceProfile_(company) && draftRow.match_status !== 'new') {
-      throw new Error('Profil mill tidak ditemukan. Re-match batch dulu.');
+      throw new Error('Mill profile not found. Re-match the batch first.');
     }
 
     if (String(draftRow.match_status || '').toLowerCase() !== 'matched') {
       if (supplyDraftSavedFlag_(draftRow) && supplyRowReadyForSubmit_(draftRow)) {
         draftRow.match_status = 'matched';
       } else {
-        throw new Error('Baris belum siap submit — lengkapi profil dulu.');
+        throw new Error('Row not ready to submit — complete the profile first.');
       }
     }
 
@@ -27607,7 +27667,7 @@ function initDashboardApp() {
     }
     const profile = supplyGetDraftProfileRow_(draftRow, batch);
     if (!profile) {
-      throw new Error('Profil mill tidak ditemukan di Mill Onboarding.');
+      throw new Error('Mill profile not found in Mill Onboarding.');
     }
     openMillProfile(profile);
   }
@@ -27643,19 +27703,19 @@ function initDashboardApp() {
     if (isMatched || draftSaved) {
       const viewBtn = isMatched
         ? '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="view-profile-row" data-batch="'
-          + escHtml(batch.batch_id) + '" data-row="' + i + '">Lihat</button>'
+          + escHtml(batch.batch_id) + '" data-row="' + i + '">View</button>'
         : '';
       return '<div class="supply-row-actions">'
         + viewBtn
         + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="open-modal-row" data-batch="'
-        + escHtml(batch.batch_id) + '" data-row="' + i + '">' + (draftSaved && !isMatched ? 'Lanjutkan' : 'Edit') + '</button>'
+        + escHtml(batch.batch_id) + '" data-row="' + i + '">' + (draftSaved && !isMatched ? 'Continue' : 'Edit') + '</button>'
         + '<button type="button" class="supply-btn supply-btn--primary supply-btn--row" data-action="submit-row" data-batch="'
         + escHtml(batch.batch_id) + '" data-row="' + i + '">Submit</button>'
         + '</div>';
     }
     return '<div class="supply-row-actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--row" data-action="open-modal-row" data-batch="'
-      + escHtml(batch.batch_id) + '" data-row="' + i + '">Lengkapi</button>'
+      + escHtml(batch.batch_id) + '" data-row="' + i + '">Complete</button>'
       + '<button type="button" class="supply-btn supply-btn--primary supply-btn--row" data-action="submit-row" data-batch="'
       + escHtml(batch.batch_id) + '" data-row="' + i + '">Submit</button>'
       + '</div>';
@@ -27792,7 +27852,7 @@ function initDashboardApp() {
 
   function supplyParseExcelRows_(ws) {
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-    if (!rows.length) return { error: 'Sheet kosong.' };
+    if (!rows.length) return { error: 'Sheet is empty.' };
 
     let headerRowIdx = 0;
     let headers = supplyHeaderRowNorm_(rows[0]);
@@ -27898,7 +27958,7 @@ function initDashboardApp() {
       const extra = hint ? (' → ' + escHtml(hint)) : '';
       return '<span class="supply-match-pill supply-match-pill--warn">⚠ Group' + extra + '</span>';
     }
-    return '<span class="supply-match-pill supply-match-pill--new">Baru</span>';
+    return '<span class="supply-match-pill supply-match-pill--new">New</span>';
   }
 
   function supplyFindOpenPeriodBatch_(month, year, supplyType) {
@@ -27921,8 +27981,8 @@ function initDashboardApp() {
     if (proceedBtn) proceedBtn.disabled = !ready;
     if (footerHint) {
       footerHint.textContent = ready
-        ? 'Siap ditambahkan ke Task List draft.'
-        : 'Lengkapi periode dan upload file untuk melanjutkan.';
+        ? 'Ready to add to the Task List draft.'
+        : 'Complete the period and upload a file to continue.';
     }
   }
 
@@ -27949,13 +28009,13 @@ function initDashboardApp() {
     const rowCount = (batch.rows || []).length;
     const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
     if (supplyImportIsWaste_(kind) || supplyImportIsWaste_(importKind)) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + supplyKindLabel_(kind) + '). Import akan menambah atau update baris waste sesuai company+periode.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import will add or update waste rows by company+period.';
     } else if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris, CPO+PK). Import ini menambah baris baru (tidak mengganti baris yang sudah ada).';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' rows, CPO+PK). This import adds new rows (does not replace existing rows).';
     } else if ((kind === 'CPO' && importKind === 'PK') || (kind === 'PK' && importKind === 'CPO')) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris ' + kind + '). Import ' + importKind + ' akan <strong>menggabung</strong> ke baris company yang sama (isi SUPPLY/FACILITY ' + importKind + ').';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + kind + ' rows). Import ' + importKind + ' will <strong>merge</strong> into the same company row (fill SUPPLY/FACILITY ' + importKind + ').';
     } else {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' sudah ada (' + rowCount + ' baris). Baris baru akan ditambahkan atau diperbarui.';
+      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' rows). New rows will be added or updated.';
     }
     hintEl.hidden = false;
   }
@@ -28182,7 +28242,7 @@ function initDashboardApp() {
     if (fileError) fileError.hidden = true;
 
     if (!supplyImportType_()) {
-      showErr('Pilih jenis product dulu sebelum upload Excel.');
+      showErr('Select product type before uploading Excel.');
       return;
     }
 
@@ -28215,7 +28275,7 @@ function initDashboardApp() {
           window._supplyImportSheetName = sheetName;
 
           if (fileName) fileName.textContent = f.name + ' · ' + sheetName;
-          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' baris';
+          if (rowCount) rowCount.textContent = window._supplyImportParsedRows.length + ' rows';
           if (fileInfo) fileInfo.hidden = false;
 
           buildImportPreview_(window._supplyImportParsedRows, supplyType);
@@ -28273,15 +28333,15 @@ function initDashboardApp() {
           }).join('') + '</tr>';
     }).join('');
     if (parsedRows.length > 8) {
-      tBody.innerHTML += '<tr><td colspan="8" class="supply-import-preview-more">… +' + (parsedRows.length - 8) + ' baris lainnya</td></tr>';
+      tBody.innerHTML += '<tr><td colspan="8" class="supply-import-preview-more">… +' + (parsedRows.length - 8) + ' more rows</td></tr>';
     }
     if (stats) {
-      let statTxt = parsedRows.length + ' baris · ' + matchedN + ' matched · ' + newN + ' baru';
+      let statTxt = parsedRows.length + ' rows · ' + matchedN + ' matched · ' + newN + ' new';
       if (wasteCfg && matchedN > 0) {
-        statTxt += ' · profil disalin dari Mill Onboarding (lihat kolom Match)';
+        statTxt += ' · profile copied from Mill Onboarding (see Match column)';
       }
       if (!wasteCfg && mergeableN > 0) {
-        statTxt += ' · ' + mergeableN + ' akan digabung ke baris yang sudah ada (company + periode sama)';
+        statTxt += ' · ' + mergeableN + ' will be merged into existing rows (same company + period)';
       }
       stats.textContent = statTxt;
     }
@@ -28394,7 +28454,7 @@ function initDashboardApp() {
     (batch.rows || []).forEach(supplyNormalizeDraftQtyFields_);
     window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
     batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
-    if (!batch) throw new Error('Gagal menyimpan draft supply untuk periode ini.');
+    if (!batch) throw new Error('Failed to save supply draft for this period.');
     renderSupplyDraftList_({ expandBatchIds: [batch.batch_id], scrollToBatchId: batch.batch_id });
 
     try {
@@ -28402,7 +28462,7 @@ function initDashboardApp() {
     } catch (err) {
       const msg = err && err.message ? err.message : String(err);
       console.error('[supplyDraft] Auto-save failed:', msg);
-      throw new Error('Draft tampil di layar tapi gagal disimpan ke server: ' + msg + '. Klik «Simpan Draft» di batch atau cek redeploy GAS.');
+      throw new Error('Draft is shown on screen but failed to save to the server: ' + msg + '. Click «Save Draft» on the batch or check GAS redeploy.');
     }
   }
 
@@ -28463,13 +28523,13 @@ function initDashboardApp() {
     const active = supplyGetBatchRowFilter_(batchId);
     const counts = supplyBatchFilterCounts_(batch);
     const chips = [
-      { id: 'all', label: 'Semua', count: counts.all },
-      { id: 'matched', label: 'Match profil lama', count: counts.matched },
+      { id: 'all', label: 'All', count: counts.all },
+      { id: 'matched', label: 'Match existing profile', count: counts.matched },
       { id: 'draft', label: 'Draft saved', count: counts.draft },
-      { id: 'new', label: 'Baru', count: counts.new },
+      { id: 'new', label: 'New', count: counts.new },
     ];
-    return '<div class="supply-batch-filter-bar" role="toolbar" aria-label="Filter baris task list">'
-      + '<span class="supply-batch-filter-label">Filter baris</span>'
+    return '<div class="supply-batch-filter-bar" role="toolbar" aria-label="Filter task list rows">'
+      + '<span class="supply-batch-filter-label">Filter rows</span>'
       + chips.map(function(c) {
           return '<button type="button" class="supply-batch-filter-chip'
             + (active === c.id ? ' supply-batch-filter-chip--active' : '')
@@ -28581,7 +28641,7 @@ function initDashboardApp() {
     if (!batches.length) {
       container.innerHTML = loadErr
         ? '<div class="supply-draft-load-error" style="padding:12px 14px;margin-bottom:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;color:#991b1b;font-size:13px;line-height:1.45;">'
-          + '<strong>Gagal memuat draft dari server.</strong> ' + escHtml(loadErr)
+          + '<strong>Failed to load draft from server.</strong> ' + escHtml(loadErr)
           + '</div>'
         : '';
       if (empty) empty.style.display = 'block';
@@ -28590,7 +28650,7 @@ function initDashboardApp() {
     if (empty) empty.style.display = 'none';
 
     const syncBar = '<div class="supply-draft-sync-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#f8f4f2;border:1px solid #e8ddd8;border-radius:10px;font-size:12px;color:#6a4a4a;">'
-      + '<span>Tidak auto-refresh saat mengisi. Klik Refresh untuk ambil perubahan dari server atau user lain.</span>'
+      + '<span>No auto-refresh while editing. Click Refresh to pull changes from the server or other users.</span>'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="sync-drafts">↻ Refresh</button>'
       + '</div>';
 
@@ -28609,7 +28669,7 @@ function initDashboardApp() {
         : (isPartial
           ? '<span class="supply-badge supply-badge--partial">In progress</span>'
           : '<span class="supply-badge supply-badge--draft">Draft</span>');
-      const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+      const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
       const dualCount = b.rows ? b.rows.filter(function(r) { return supplyRowHasCpo_(r) && supplyRowHasPk_(r); }).length : 0;
 
       return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
@@ -28619,20 +28679,20 @@ function initDashboardApp() {
         + typeBadge
         + statusBadge
         + '<div class="supply-batch-stats">'
-        + '<span class="supply-stat-chip">' + rowCount + ' baris</span>'
+        + '<span class="supply-stat-chip">' + rowCount + ' rows</span>'
         + (matched ? '<span class="supply-stat-chip supply-stat-chip--ok">' + matched + ' matched</span>' : '')
         + (warnCount ? '<span class="supply-stat-chip supply-stat-chip--warn">' + warnCount + ' group</span>' : '')
-        + (newCount ? '<span class="supply-stat-chip supply-stat-chip--new">' + newCount + ' baru</span>' : '')
+        + (newCount ? '<span class="supply-stat-chip supply-stat-chip--new">' + newCount + ' new</span>' : '')
         + (dualCount ? '<span class="supply-stat-chip"><span class="supply-pill supply-pill--cpopk">CPO+PK</span> ' + dualCount + '</span>' : '')
         + (doneCount > 0 ? '<span class="supply-stat-chip supply-stat-chip--ok">' + doneCount + '/' + rowCount + ' submitted</span>' : '')
         + '</div>'
         + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
         + '</div>'
         + '<div class="supply-batch-actions">'
-        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="toggle-batch" data-batch="' + escHtml(b.batch_id) + '" aria-expanded="false">Lihat / Edit</button>' : '')
-        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '" title="Ambil ulang data mill dari Mill Onboarding (width, grievance, dll.)">↻ Pulihkan profil</button>' : '')
-        + (!isSubmitted && mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(b.batch_id) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
-        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Hapus</button>'
+        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="toggle-batch" data-batch="' + escHtml(b.batch_id) + '" aria-expanded="false">View / Edit</button>' : '')
+        + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '" title="Reload mill data from Mill Onboarding (width, grievance, etc.)">↻ Restore profile</button>' : '')
+        + (!isSubmitted && mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(b.batch_id) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+        + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Delete</button>'
         + '</div>'
         + '</div>'
         + '<div class="supply-batch-table-wrap" id="supply-batch-table-' + escHtml(b.batch_id) + '" hidden>'
@@ -28645,7 +28705,7 @@ function initDashboardApp() {
       const batchId = btn.dataset.batch;
       const wrap = document.getElementById('supply-batch-table-' + batchId);
       const isOpen = wrap && !wrap.hidden;
-      btn.textContent = isOpen ? 'Tutup' : 'Lihat / Edit';
+      btn.textContent = isOpen ? 'Close' : 'View / Edit';
       btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
 
@@ -28654,7 +28714,7 @@ function initDashboardApp() {
       const btn = container.querySelector('[data-action="toggle-batch"][data-batch="' + batchId + '"]');
       if (wrap) wrap.hidden = false;
       if (btn) {
-        btn.textContent = 'Tutup';
+        btn.textContent = 'Close';
         btn.setAttribute('aria-expanded', 'true');
       }
     });
@@ -28776,7 +28836,7 @@ function initDashboardApp() {
     const SHOW_COLS = supplyBatchTableColumns_(batch);
 
     const head = '<tr>'
-      + (isSubmitted ? '' : '<th class="supply-batch-th--check"><input type="checkbox" class="supply-batch-check-all" data-batch="' + escHtml(batch.batch_id) + '" checked aria-label="Pilih semua baris"></th>')
+      + (isSubmitted ? '' : '<th class="supply-batch-th--check"><input type="checkbox" class="supply-batch-check-all" data-batch="' + escHtml(batch.batch_id) + '" checked aria-label="Select all rows"></th>')
       + SHOW_COLS.map(function(c) {
           return '<th>' + escHtml(c[1]) + '</th>';
         }).join('')
@@ -28826,7 +28886,7 @@ function initDashboardApp() {
         + '<td class="supply-batch-td--action">' + rowAction + '</td>'
         + '</tr>';
     }).join('')
-      : '<tr class="supply-batch-filter-empty-row"><td colspan="' + (SHOW_COLS.length + (isSubmitted ? 0 : 1) + 1) + '">Tidak ada baris untuk filter ini.</td></tr>';
+      : '<tr class="supply-batch-filter-empty-row"><td colspan="' + (SHOW_COLS.length + (isSubmitted ? 0 : 1) + 1) + '">No rows for this filter.</td></tr>';
 
     return supplyBatchFilterBarHtml_(batch)
       + '<div class="supply-batch-table-scroll"><table class="supply-batch-table">'
@@ -28841,19 +28901,19 @@ function initDashboardApp() {
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
     const targetSheet = supplyBatchTargetSheetLabel_(batch);
     const btnTitle = checkedN === 0
-      ? 'Centang baris yang akan di-submit'
-      : ('Submit ' + checkedN + ' baris tercentang ke ' + targetSheet);
+      ? 'Check the rows to submit'
+      : ('Submit ' + checkedN + ' checked rows to ' + targetSheet);
     const hintWaste = supplyImportIsWaste_(batch && batch.supply_type)
-      ? ' Baris matched menyalin data profil dari <strong>Mill Onboarding</strong> (lihat badge Profil: bulan/tahun). Submit mengirim ke <strong>Mill Onboarding Waste</strong>.'
+      ? ' Matched rows copy profile data from <strong>Mill Onboarding</strong> (see Profile: month/year badge). Submit sends to <strong>Mill Onboarding Waste</strong>.'
       : '';
     return '<div class="supply-batch-footer">'
-      + '<p class="supply-batch-footer__hint"><strong>Lengkapi</strong> opsional — untuk edit profil manual. '
-      + '<strong>Submit Terpilih</strong> langsung mengirim baris tercentang ke <strong>' + escHtml(targetSheet) + '</strong> '
-      + '(data import + profil Mill Onboarding otomatis jika matched, tanpa perlu buka form).' + hintWaste + '</p>'
+      + '<p class="supply-batch-footer__hint"><strong>Complete</strong> is optional — for manual profile edit. '
+      + '<strong>Submit Selected</strong> sends checked rows to <strong>' + escHtml(targetSheet) + '</strong> '
+      + '(import data + Mill Onboarding profile automatically if matched, without opening the form).' + hintWaste + '</p>'
       + '<div class="supply-batch-footer__actions">'
-      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Simpan Draft</button>'
-      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Gabung CPO+PK (' + mergeableN + ')</button>' : '')
-      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Terpilih (' + checkedN + ')</button>' : '')
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
+      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Selected (' + checkedN + ')</button>' : '')
       + '</div>'
       + '</div>';
   }
@@ -28892,11 +28952,11 @@ function initDashboardApp() {
       loadSupplyDraftsFromServer_({ preserveUi: true })
         .then(function() {
           if (typeof window.showSddToast === 'function') {
-            window.showSddToast('Task List diperbarui dari server.', 'info');
+            window.showSddToast('Task List updated from the server.', 'info');
           }
         })
         .catch(function(err) {
-          alert('Gagal refresh draft: ' + (err && err.message ? err.message : err));
+          alert('Failed to refresh draft: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
           btn.disabled = false;
@@ -28911,7 +28971,7 @@ function initDashboardApp() {
       if (!wrap) return;
       const isOpen = !wrap.hidden;
       wrap.hidden = isOpen;
-      btn.textContent = isOpen ? 'Lihat / Edit' : 'Tutup';
+      btn.textContent = isOpen ? 'View / Edit' : 'Close';
       btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
       if (!isOpen) {
         requestAnimationFrame(function() {
@@ -28944,23 +29004,23 @@ function initDashboardApp() {
       };
       const done = function() {
         btn.disabled = false;
-        btn.textContent = '↻ Pulihkan profil';
+        btn.textContent = '↻ Restore profile';
         if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Data mill dipulihkan dari Mill Onboarding ke draft.', 'success');
+          window.showSddToast('Mill data restored from Mill Onboarding to the draft.', 'success');
         }
       };
       if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
         loadMillData().then(rematchWork).then(done).catch(function(err) {
-          alert('Gagal pulihkan profil: ' + err.message);
+          alert('Failed to restore profile: ' + err.message);
         }).finally(function() {
           btn.disabled = false;
-          btn.textContent = '↻ Pulihkan profil';
+          btn.textContent = '↻ Restore profile';
         });
       } else {
         rematchWork().then(done).catch(function(err) {
-          alert('Gagal pulihkan profil: ' + err.message);
+          alert('Failed to restore profile: ' + err.message);
           btn.disabled = false;
-          btn.textContent = '↻ Pulihkan profil';
+          btn.textContent = '↻ Restore profile';
         });
       }
       return;
@@ -28969,21 +29029,21 @@ function initDashboardApp() {
     if (action === 'merge-cpo-pk') {
       const pairs = supplyFindMergeableCpoPkPairs_(batch);
       if (!pairs.length) {
-        alert('Tidak ada pasangan CPO + PK (company sama) yang bisa digabung.');
+        alert('No CPO + PK pairs (same company) available to merge.');
         return;
       }
-      if (!confirm('Gabungkan ' + pairs.length + ' pasangan baris (1 CPO + 1 PK per company) jadi satu baris CPO+PK? Baris PK terpisah akan dihapus dari draft.')) return;
+      if (!confirm('Merge ' + pairs.length + ' row pairs (1 CPO + 1 PK per company) into one CPO+PK row? Separate PK rows will be removed from the draft.')) return;
       btn.textContent = '…'; btn.disabled = true;
       const merged = supplyMergeCpoPkPairsInBatch_(batch);
       renderSupplyDraftList_({ expandBatchIds: [bId] });
       apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: (batch.rows || []).map(supplyNormalizeDraftRowForApi_), meta: supplyBatchMetaForApi_(batch) })
         .then(function() {
           btn.disabled = false;
-          alert('✓ ' + merged + ' pasangan digabung. Submit baris gabungan akan isi SUPPLY CPO dan SUPPLY PK sekaligus.');
+          alert('✓ ' + merged + ' pairs merged. Submitting the merged row will fill both SUPPLY CPO and SUPPLY PK.');
         })
         .catch(function(err) {
           btn.disabled = false;
-          alert('Gagal simpan: ' + err.message);
+          alert('Save failed: ' + err.message);
         });
       return;
     }
@@ -29006,10 +29066,10 @@ function initDashboardApp() {
       supplyPersistDraftBatch_(batch)
         .then(function() {
           btn.textContent = '✓ Saved';
-          setTimeout(function() { btn.textContent = 'Simpan Draft'; btn.disabled = false; }, 2000);
+          setTimeout(function() { btn.textContent = 'Save Draft'; btn.disabled = false; }, 2000);
         })
         .catch(function(err) {
-          btn.textContent = 'Simpan Draft'; btn.disabled = false;
+          btn.textContent = 'Save Draft'; btn.disabled = false;
           alert('Failed to save: ' + err.message);
         });
       return;
@@ -29020,17 +29080,17 @@ function initDashboardApp() {
       collectInlineEdits_(bId);
       const checkedIndexes = supplyGetCheckedRowIndexes_(bId);
       if (!checkedIndexes.length) {
-        alert('Centang minimal satu baris yang akan di-submit.');
+        alert('Check at least one row to submit.');
         return;
       }
       const checkedRows = supplyRowsFromIndexes_(batch, checkedIndexes);
       const pending = checkedRows.filter(supplyRowCheckedForSubmit_);
       if (!pending.length) {
-        alert('Baris tercentang sudah di-submit semua, atau tidak ada baris valid.');
+        alert('Checked rows are already submitted, or there are no valid rows.');
         return;
       }
-      const confirmMsg = 'Tambah ' + pending.length + ' baris tercentang ke paling bawah '
-        + supplyBatchTargetSheetLabel_(batch) + '?\n(Data lama tidak diubah; matched = profil otomatis, baru = data import saja)';
+      const confirmMsg = 'Add ' + pending.length + ' checked rows to the bottom of '
+        + supplyBatchTargetSheetLabel_(batch) + '?\n(Existing data is unchanged; matched = auto profile, new = import data only)';
       if (!confirm(confirmMsg)) return;
       supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       let bulkSubmittedN = 0;
@@ -29044,23 +29104,23 @@ function initDashboardApp() {
           supplyRestoreTaskListScroll_(snap);
           supplyPatchBatchFooterSubmitCount_(bId);
           const errNote = result.errors.length
-            ? (' Beberapa gagal: ' + result.errors.slice(0, 5).join('; '))
+            ? (' Some failed: ' + result.errors.slice(0, 5).join('; '))
             : '';
           if (typeof window.showSddToast === 'function') {
             const sheetLabel = supplyBatchTargetSheetLabel_(batch);
             window.showSddToast(
-              '✓ ' + result.submittedN + ' baris ditambahkan ke ' + sheetLabel + '.' + errNote,
+              '✓ ' + result.submittedN + ' rows added to ' + sheetLabel + '.' + errNote,
               result.errors.length ? 'warning' : 'success'
             );
           } else {
-            alert('✓ ' + result.submittedN + ' baris ditambahkan ke Mill Onboarding.' + errNote);
+            alert('✓ ' + result.submittedN + ' rows added to Mill Onboarding.' + errNote);
           }
           if (result && result.allDone && typeof window.showSddToast === 'function') {
-            window.showSddToast('Batch selesai — semua baris sudah di-submit.', 'success');
+            window.showSddToast('Batch complete — all rows have been submitted.', 'success');
           }
         })
         .catch(function(err) {
-          alert('Submit gagal: ' + (err && err.message ? err.message : err));
+          alert('Submit failed: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
           supplySetSubmitBtnBusy_(bId, false);
@@ -29079,12 +29139,12 @@ function initDashboardApp() {
       supplyEnsureDraftPeriodOnRows_([row], batch);
       supplyHydrateRowForSubmit_(row, batch);
       if (!String(row['COMPANY NAME'] || '').trim()) {
-        alert('COMPANY NAME kosong — tidak bisa submit.');
+        alert('COMPANY NAME is empty — cannot submit.');
         btn.textContent = 'Submit'; btn.disabled = false;
         return;
       }
       if (!supplyRowHasSupplyQty_(row, batch)) {
-        alert('QTY supply kosong — tidak bisa submit.');
+        alert('QTY supply is empty — cannot submit.');
         btn.textContent = 'Submit'; btn.disabled = false;
         return;
       }

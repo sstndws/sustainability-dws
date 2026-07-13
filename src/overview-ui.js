@@ -43,8 +43,8 @@ const CARDS = [
   },
   {
     panel: 'bl-monitoring',
-    title: 'BL Monitoring',
-    desc: 'Stay updated on the latest shipment and bill of lading activities.',
+    title: 'Declaration Monitoring',
+    desc: 'Shipping BLs, declarations, and SD monitoring with linked TTM / TTP data.',
     icon: 'bl',
   },
   {

@@ -56,6 +56,7 @@ const SHEETS = {
   supplyDraft     : 'Supply Import Draft',
   blMonitoring    : 'BL Monitoring',
   blReference     : 'BL Reference',
+  sdMonitoring    : 'SD Monitoring',
   questionnaireMonitoring : 'Questionnaire Monitoring',
   eudrPotential           : 'EUDR Potential',
   eudrStatusFormula       : 'EUDR Status Formula',
@@ -64,6 +65,8 @@ const SHEETS = {
 
 /** Tab name for BL Monitoring (must match spreadsheet tab exactly). */
 const BL_MONITORING_TAB = 'BL Monitoring';
+/** Tab name for SD Monitoring (must match spreadsheet tab exactly). */
+const SD_MONITORING_TAB = 'SD Monitoring';
 
 /** API sheet keys → spreadsheet tab names (includes aliases). */
 const SHEET_TAB_ALIASES = {
@@ -72,6 +75,9 @@ const SHEET_TAB_ALIASES = {
   'BL Monitoring': BL_MONITORING_TAB,
   blReference: 'BL Reference',
   'BL Reference': 'BL Reference',
+  sdMonitoring: SD_MONITORING_TAB,
+  sd: SD_MONITORING_TAB,
+  'SD Monitoring': SD_MONITORING_TAB,
 };
 
 /**
@@ -144,6 +150,119 @@ const BL_REFERENCE_DEFAULTS = [
   ['Buyer', 'HDPC BANK Ltd'],
   ['Buyer', 'STA GRUP'],
 ];
+
+/** SD Monitoring — canonical headers (match spreadsheet tab "SD Monitoring"). */
+const SD_MONITORING_HEADERS = [
+  'MONTH', 'YEAR', 'CATEGORY', 'COMPANY NAME', 'DO NUMBER', 'CONTRACT NUMBER',
+  'LOADING START DATE', 'LOADING END DATE', 'MILL NETTO',
+  'UNLOADING START DATE', 'UNLOADING END DATE', 'Netto Bulking',
+  'LAST SD DATE', 'DAY LEFT', 'Status', 'SD NUMBER', 'SD DATE', 'Result', 'Risk Number',
+];
+
+/** Formula columns — never overwritten from the web app. */
+const SD_FORMULA_HEADERS_ = [
+  'LAST SD DATE', 'DAY LEFT', 'Status', 'Result', 'Risk Number',
+];
+
+function sdNormHeaderKey_(h) {
+  return String(h || '').replace(/\s+/g, ' ').trim().toUpperCase();
+}
+
+function sdIsFormulaColumnGs_(header) {
+  const key = sdNormHeaderKey_(header);
+  for (var i = 0; i < SD_FORMULA_HEADERS_.length; i++) {
+    if (sdNormHeaderKey_(SD_FORMULA_HEADERS_[i]) === key) return true;
+  }
+  return false;
+}
+
+function sdResolveHeaderName_(headers, wanted) {
+  const want = sdNormHeaderKey_(wanted);
+  for (var i = 0; i < headers.length; i++) {
+    if (sdNormHeaderKey_(headers[i]) === want) return headers[i];
+  }
+  // Netto Bulking alias
+  if (want === 'NETTO BULKING') {
+    for (var j = 0; j < headers.length; j++) {
+      if (sdNormHeaderKey_(headers[j]) === 'NETTO BULKING') return headers[j];
+    }
+  }
+  return wanted;
+}
+
+function sdPickValue_(data, headers, wanted) {
+  if (!data) return undefined;
+  const real = sdResolveHeaderName_(headers, wanted);
+  if (data[real] !== undefined) return data[real];
+  const want = sdNormHeaderKey_(wanted);
+  const keys = Object.keys(data);
+  for (var i = 0; i < keys.length; i++) {
+    if (sdNormHeaderKey_(keys[i]) === want) return data[keys[i]];
+  }
+  return undefined;
+}
+
+function sdStripFormulaFromPatchGs_(patch) {
+  const out = {};
+  Object.keys(patch || {}).forEach(function(k) {
+    if (!k || k.charAt(0) === '_' || sdIsFormulaColumnGs_(k)) return;
+    out[k] = patch[k];
+  });
+  return out;
+}
+
+function sdRowHasContent_(obj) {
+  if (!obj) return false;
+  const keys = ['COMPANY NAME', 'DO NUMBER', 'CONTRACT NUMBER', 'SD NUMBER', 'CATEGORY', 'MONTH', 'YEAR'];
+  for (var i = 0; i < keys.length; i++) {
+    const v = sdPickValue_(obj, SD_MONITORING_HEADERS, keys[i]);
+    if (v != null && String(v).trim() !== '' && String(v).trim() !== '—') return true;
+  }
+  return false;
+}
+
+/** Copy formula cells from the row above onto a newly inserted SD row. */
+function sdRestoreFormulaColumnsGs_(sheet, headers, targetRow) {
+  if (!sheet || targetRow < 3) return;
+  const srcRow = targetRow - 1;
+  headers.forEach(function(h, colIdx) {
+    if (!sdIsFormulaColumnGs_(h)) return;
+    const col = colIdx + 1;
+    try {
+      const src = sheet.getRange(srcRow, col);
+      const f = String(src.getFormula() || '').trim();
+      if (!f) return;
+      const dst = sheet.getRange(targetRow, col);
+      if (String(dst.getFormula() || '').trim()) return;
+      // Adjust relative formula by copying the cell (Sheets shifts refs).
+      src.copyTo(dst, { contentsOnly: false });
+    } catch (e) { /* ignore */ }
+  });
+}
+
+function ensureSdMonitoringHeaders_() {
+  const sheet = getSheet('sdMonitoring');
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  let headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || '').replace(/\s+/g, ' ').trim();
+  });
+  if (!headers.some(function(h) { return !!h; })) {
+    sheet.getRange(1, 1, 1, SD_MONITORING_HEADERS.length).setValues([SD_MONITORING_HEADERS]);
+    return SD_MONITORING_HEADERS.slice();
+  }
+  const existing = {};
+  headers.forEach(function(h) { if (h) existing[sdNormHeaderKey_(h)] = true; });
+  const missing = [];
+  SD_MONITORING_HEADERS.forEach(function(h) {
+    if (!existing[sdNormHeaderKey_(h)]) missing.push(h);
+  });
+  if (missing.length) {
+    const start = headers.length + 1;
+    sheet.getRange(1, start, 1, start + missing.length - 1).setValues([missing]);
+    headers = headers.concat(missing);
+  }
+  return headers.filter(Boolean);
+}
 
 /** Columns appended to existing BL Monitoring tabs when missing. */
 const BL_MONITORING_ENSURE_HEADERS = [
@@ -639,6 +758,7 @@ function doGet(e) {
       if (sheetKey === 'eudrStatusFormula') ensureEudrStatusFormulaHeaders_();
       if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
       if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
+      if (sheetKey === 'sdMonitoring') ensureSdMonitoringHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
@@ -654,6 +774,7 @@ function doGet(e) {
         message: 'Apps Script is alive',
         version: 'v3-ttp-row3-restore',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
+        sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
         eudrStatusFormula: !!resolveSheetTabName_('eudrStatusFormula'),
@@ -1143,7 +1264,7 @@ function millSheetTailReport_() {
     archiveCopyRows: archiveRows,
     hint: archiveRows > 0
       ? 'Archive copy di bawah aman. Input web masuk ke row ' + nextWebInsert + '.'
-      : 'Tidak ada archive copy terpisah; input web masuk ke row ' + nextWebInsert + '.',
+      : 'No separate archive copy; web input goes to row ' + nextWebInsert + '.',
   };
 }
 
@@ -4093,8 +4214,8 @@ function getData(sheetKey) {
     headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
   }
 
-  // Preserve display formatting (Mill, BL Monitoring, TTP %/volume cells).
-  const dispRows = (isMillLikeSheetKey_(sheetKey) || sheetKey === 'blMonitoring' || sheetKey === 'ttp')
+  // Preserve display formatting (Mill, BL Monitoring, SD Monitoring, TTP %/volume cells).
+  const dispRows = (isMillLikeSheetKey_(sheetKey) || sheetKey === 'blMonitoring' || sheetKey === 'sdMonitoring' || sheetKey === 'ttp')
     ? range.getDisplayValues()
     : null;
   const dispDataRows = dispRows ? dispRows.slice(headerRowNum) : null;
@@ -4149,6 +4270,7 @@ function getData(sheetKey) {
     if (isMillLikeSheetKey_(sheetKey)) return millRowHasContent_(obj);
     // TTP: drop KPI/summary rows and header echo; detail filter on dashboard (ttpIsDataRow_).
     if (sheetKey === 'ttp') return !ttpRowLooksLikeKpiData_(obj) && !ttpRowLooksLikeHeaderEcho_(obj);
+    if (sheetKey === 'sdMonitoring') return sdRowHasContent_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });
@@ -4171,6 +4293,19 @@ function addRow(sheetKey, data, insertAfter) {
     const targetRow = Math.max(sheet.getLastRow(), hdr.headerRow) + 1;
     sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
     return { success: true };
+  }
+  if (sheetKey === 'sdMonitoring') {
+    headers = ensureSdMonitoringHeaders_();
+    const patch = sdStripFormulaFromPatchGs_(data || {});
+    const newRow = headers.map(function(h) {
+      if (sdIsFormulaColumnGs_(h)) return '';
+      var v = sdPickValue_(patch, headers, h);
+      return coerceSheetDateValue_(v !== undefined ? v : '');
+    });
+    const targetRow = Math.max(sheet.getLastRow(), 1) + 1;
+    sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
+    sdRestoreFormulaColumnsGs_(sheet, headers, targetRow);
+    return { success: true, row: targetRow };
   }
   if (sheetKey === 'contactSupplier') {
     const now = nowIso_();
@@ -4250,6 +4385,18 @@ function updateRow(sheetKey, rowNum, data) {
     const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
     const updated = blExpandCanonicalToRow_(headers, data || {}, current);
     sheet.getRange(r, 1, 1, updated.length).setValues([updated]);
+    return { success: true };
+  }
+  if (sheetKey === 'sdMonitoring') {
+    headers = ensureSdMonitoringHeaders_();
+    const patch = sdStripFormulaFromPatchGs_(data || {});
+    // Cell-by-cell — never overwrite formula columns.
+    headers.forEach(function(h, j) {
+      if (sdIsFormulaColumnGs_(h)) return;
+      var v = sdPickValue_(patch, headers, h);
+      if (v === undefined) return;
+      sheet.getRange(r, j + 1).setValue(coerceSheetDateValue_(v));
+    });
     return { success: true };
   }
   if (sheetKey === 'contactSupplier') {
@@ -4341,7 +4488,7 @@ function getSheet(sheetKey) {
   }
   let sheet = ss.getSheetByName(name) || findSheetTabFuzzy_(ss, name);
   if (!sheet) {
-    throw new Error('Tab not found: "' + name + '". Buat tab dengan nama persis: ' + BL_MONITORING_TAB);
+    throw new Error('Tab not found: "' + name + '". Create a tab with the exact name: ' + BL_MONITORING_TAB);
   }
   return sheet;
 }
@@ -5689,7 +5836,7 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   state = state || {};
   var ref = findMillReferenceForSupplyGs_(millData, millHeaders, row, state.companyIndex, state.mainMillFallback);
   if (!ref && !String(row['COMPANY NAME'] || '').trim()) {
-    throw new Error('profil mill tidak ditemukan');
+    throw new Error('mill profile not found');
   }
   var patch = mergeReferenceIdentityIntoPatchGs_(
     Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
@@ -6493,14 +6640,14 @@ function submitSupplyDraft_(batchId, rows, meta) {
 
     var matchStatus = String(row.match_status || '').trim().toLowerCase();
     if (matchStatus !== 'matched' && matchStatus !== 'new') {
-      errors.push((row['COMPANY NAME'] || 'row') + ': status tidak valid untuk submit');
+      errors.push((row['COMPANY NAME'] || 'row') + ': invalid status for submit');
       return;
     }
 
     try {
       if (!findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex, millState.mainMillFallback)
           && !String(row['COMPANY NAME'] || '').trim()) {
-        throw new Error('profil mill tidak ditemukan — match dulu');
+        throw new Error('mill profile not found — match first');
       }
       var dupSheetRow = millFindDuplicateSupplyRowGs_(millData, millHeaders, row);
       var periodSheetRow = millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row);
@@ -6508,7 +6655,7 @@ function submitSupplyDraft_(batchId, rows, meta) {
       if (!targetSheetRow) {
         var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
         if (!newSheetRow) {
-          throw new Error('tidak ada data untuk ditulis');
+          throw new Error('no data to write');
         }
         targetSheetRow = newSheetRow;
       } else if (!dupSheetRow) {
