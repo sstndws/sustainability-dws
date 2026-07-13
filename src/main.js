@@ -9389,8 +9389,8 @@ function initDashboardApp() {
             const isWide = key === 'ADDRESS';
             const isLong = key === 'COORDINATES' || (sec.title === 'Certification' && key === 'CERTIFICATION');
             const isComputed = millIsSheetComputedField_(key);
-            // Compliment is formula-backed but shown as the main legality status — no "auto" badge.
-            const showAutoTag = isComputed && key !== 'COMPLIMENT/NOT COMPLIMENT';
+            // Waste profile: never show "auto" badges — user finds them noisy.
+            const showAutoTag = isComputed && !isWasteProfile;
             return `<div class="mp-field${isWide ? ' wide' : ''}${isLong ? ' full' : ''}${isComputed ? ' mp-field--computed' : ''}">
               <div class="mp-label">${label}${showAutoTag ? ' <span class="mp-computed-tag">auto</span>' : ''}</div>
               <div class="mp-val">${val || '—'}</div>
