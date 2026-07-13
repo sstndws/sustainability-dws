@@ -15,6 +15,7 @@ import {
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
+import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
 import {
   dashDateFieldHtml,
   dashDateTableCellHtml,
@@ -12594,61 +12595,13 @@ function initDashboardApp() {
     const mode = colMode === 'ttp' ? 'ttp' : 'ttm';
     const sheetName = mode === 'ttp' ? 'TTP' : 'TTM';
     const filePrefix = mode === 'ttp' ? 'monitoring_ttp' : 'monitoring_ttm';
-    const wsData = [cols, ...rows.map(d => cols.map(f => d[f] !== undefined ? d[f] : ''))];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    // column widths
-    ws['!cols'] = cols.map(f => ({ wch: Math.min(Math.max(f.length + 4, 14), 36) }));
-
-    // Define border style
-    const borderStyle = {
-      top: { style: 'thin', color: { rgb: '000000' } },
-      bottom: { style: 'thin', color: { rgb: '000000' } },
-      left: { style: 'thin', color: { rgb: '000000' } },
-      right: { style: 'thin', color: { rgb: '000000' } }
-    };
-
-    // Style header (row 0) - Blue background, white text, bold, centered
-    cols.forEach((_, ci) => {
-      const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
-      ws[cellAddr].s = {
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-        fill: { fgColor: { rgb: '4472C4' } },  // Blue color
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: borderStyle
-      };
+    const bodyRows = rows.map(function(d) {
+      return cols.map(function(f) { return d[f] !== undefined ? d[f] : ''; });
     });
-
-    // Style data cells (rows 1 onwards) - Add borders and alignment
-    rows.forEach((row, ri) => {
-      cols.forEach((_, ci) => {
-        const cellAddr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-        if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
-        if (!ws[cellAddr].s) ws[cellAddr].s = {};
-        ws[cellAddr].s = {
-          ...ws[cellAddr].s,
-          border: borderStyle,
-          alignment: { vertical: 'top', wrapText: false }
-        };
-      });
-    });
-
-    // Set row height for header
-    if (!ws['!rows']) ws['!rows'] = [];
-    ws['!rows'][0] = { hpt: 25, hpx: 25 };
-
-    // Add autofilter to header row
-    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ 
-      s: { r: 0, c: 0 }, 
-      e: { r: rows.length, c: cols.length - 1 } 
-    })};
-
+    const ws = buildBrandedExcelSheet_(XLSX, cols, bodyRows, { headerFill: '8B1A1A' });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-
-    const now = new Date();
-    const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     XLSX.writeFile(wb, `${filePrefix}_${stamp}.xlsx`, { cellStyles: true });
   }
 
@@ -13222,6 +13175,9 @@ function initDashboardApp() {
   let blScrollToRowNum_ = 0;
   let blFormMode = 'add';
   let blFormRow = null;
+  /** Sheet row number captured when opening Edit — survives async NBL checks before save. */
+  let blFormEditRowNum_ = 0;
+  let blFormSaving_ = false;
   let blSelectedTtm = [];
   let blSelectedTtp = [];
   let blTtmRowsWithTtp_ = new Set();
@@ -14612,7 +14568,7 @@ function initDashboardApp() {
       if (editBtn && body.contains(editBtn)) {
         e.stopPropagation();
         const rowNum = parseInt(editBtn.dataset.row, 10);
-        const row = blData.find(function(d) { return d._row === rowNum; });
+        const row = blData.find(function(d) { return Number(d._row) === rowNum; });
         if (row) openBlFormModal_('edit', row);
         return;
       }
@@ -14625,7 +14581,7 @@ function initDashboardApp() {
       const mainRow = e.target.closest('.bl-main-row');
       if (mainRow && body.contains(mainRow) && !e.target.closest('.row-actions')) {
         const rowNum = parseInt(mainRow.dataset.row, 10);
-        const row = blData.find(function(d) { return d._row === rowNum; });
+        const row = blData.find(function(d) { return Number(d._row) === rowNum; });
         if (row) openBlDetailModal_(row);
       }
     });
@@ -14741,44 +14697,7 @@ function initDashboardApp() {
   }
 
   function blCreateStyledExcelSheet_(headers, rows) {
-    const wsData = [headers].concat(rows || []);
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const bodyRows = rows || [];
-
-    ws['!cols'] = headers.map(function(h, ci) {
-      let maxLen = String(h).length;
-      bodyRows.forEach(function(row) {
-        const cell = row && row[ci] != null ? String(row[ci]) : '';
-        if (cell.length > maxLen) maxLen = cell.length;
-      });
-      return { wch: Math.min(Math.max(maxLen + 2, 12), 48) };
-    });
-
-    const headerFill = '8B1A1A';
-    const headerFont = 'FFFFFF';
-    headers.forEach(function(h, ci) {
-      const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: h };
-      ws[cellAddr].s = {
-        font: { bold: true, color: { rgb: headerFont }, sz: 11 },
-        fill: { fgColor: { rgb: headerFill } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      };
-    });
-
-    if (!ws['!rows']) ws['!rows'] = [];
-    ws['!rows'][0] = { hpt: 24 };
-
-    if (bodyRows.length) {
-      ws['!autofilter'] = {
-        ref: XLSX.utils.encode_range({
-          s: { r: 0, c: 0 },
-          e: { r: bodyRows.length, c: headers.length - 1 },
-        }),
-      };
-    }
-
-    return ws;
+    return buildBrandedExcelSheet_(XLSX, headers, rows || [], { headerFill: '8B1A1A' });
   }
 
   function writeBlExcelWorkbook_(sheets, filename) {
@@ -15016,7 +14935,7 @@ function initDashboardApp() {
         return ''
           + '<div class="form-field">'
           + '<label>' + escHtml(label) + '</label>'
-          + '<input type="text" data-field="TOTAL BL" value="' + escHtml(totalVal) + '" placeholder="Auto" readonly>'
+          + '<input type="text" data-field="TOTAL BL" value="' + escHtml(totalVal) + '" placeholder="e.g. 1" inputmode="numeric" autocomplete="off">'
           + '</div>';
       }
       if (f === 'BUYER') {
@@ -15151,6 +15070,7 @@ function initDashboardApp() {
     unlockBlOverlayScroll_();
     blFormMode = 'add';
     blFormRow = null;
+    blSyncEditRowDom_(0);
     blSelectedTtm = [];
     blSelectedTtp = [];
     blTtmRowsWithTtp_ = new Set();
@@ -15162,12 +15082,81 @@ function initDashboardApp() {
     blFormRecordType = 'shipping';
   }
 
+  function blDismissFormOverlays_() {
+    const overlay = document.getElementById('blFormOverlay');
+    if (overlay) {
+      overlay.querySelectorAll('.custom-select-wrap.open').forEach(function(w) {
+        w.classList.remove('open');
+      });
+      overlay.querySelectorAll('.dash-date-popover:not([hidden])').forEach(function(p) {
+        p.hidden = true;
+      });
+      document.getElementById('blTtmResults')?.classList.remove('open');
+    }
+  }
+
+  function blSyncEditRowDom_(rowNum) {
+    const n = Number(rowNum) >= 2 ? Number(rowNum) : 0;
+    blFormEditRowNum_ = n;
+    const saveBtn = document.getElementById('blFormSave');
+    if (saveBtn) {
+      if (n >= 2) saveBtn.dataset.editRow = String(n);
+      else delete saveBtn.dataset.editRow;
+    }
+    let hidden = document.getElementById('blFormEditRow');
+    const box = document.querySelector('#blFormOverlay .bl-form-box');
+    if (!hidden && box) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.id = 'blFormEditRow';
+      box.insertBefore(hidden, box.firstChild);
+    }
+    if (hidden) hidden.value = n >= 2 ? String(n) : '';
+  }
+
+  function blReadEditRowFromDom_() {
+    const saveBtn = document.getElementById('blFormSave');
+    const fromBtn = saveBtn ? Number(saveBtn.dataset.editRow) : 0;
+    if (fromBtn >= 2) return fromBtn;
+    const hidden = document.getElementById('blFormEditRow');
+    const fromHidden = hidden ? Number(hidden.value) : 0;
+    if (fromHidden >= 2) return fromHidden;
+    if (blFormEditRowNum_ >= 2) return blFormEditRowNum_;
+    if (blFormMode === 'edit' && blFormRow && blFormRow._row != null) {
+      const n = Number(blFormRow._row);
+      if (n >= 2) return n;
+    }
+    return 0;
+  }
+
+  /** Prefer explicit edit row; otherwise reuse existing Shipping row with same BL NO. */
+  function blResolveShippingSaveRowNum_(fields, intendedRow) {
+    if (intendedRow >= 2) return intendedRow;
+    const blNo = String(fields && fields['BL NO.'] || '').trim().toLowerCase();
+    if (!blNo) return 0;
+    const hits = (blData || []).filter(function(d) {
+      if (blIsDeclarationRow_(d)) return false;
+      return String(d['BL NO.'] || '').trim().toLowerCase() === blNo;
+    });
+    if (!hits.length) return 0;
+    hits.sort(function(a, b) { return Number(a._row) - Number(b._row); });
+    const n = Number(hits[0]._row);
+    return n >= 2 ? n : 0;
+  }
+
   async function openBlFormModal_(mode, row, recordType) {
     const overlay = mountBlOverlay_('blFormOverlay');
     if (!overlay) return;
     await loadBlReferenceData_();
     blFormMode = mode || 'add';
     blFormRow = row || null;
+    var editRow = (blFormMode === 'edit' && row && row._row != null) ? Number(row._row) : 0;
+    if (blFormMode === 'edit' && !(editRow >= 2)) {
+      console.warn('[BL] Edit opened without a valid sheet row number', row);
+      blFormMode = 'add';
+      editRow = 0;
+    }
+    blSyncEditRowDom_(editRow);
     blFormRecordType = row
       ? (blIsDeclarationRow_(row) ? 'declaration' : 'shipping')
       : (recordType || blActiveType || 'shipping');
@@ -15184,7 +15173,7 @@ function initDashboardApp() {
     const sectionEl = document.getElementById('blFormSectionTitle');
     const saveBtn = document.getElementById('blFormSave');
     if (titleEl) {
-      titleEl.textContent = mode === 'edit'
+      titleEl.textContent = blFormMode === 'edit'
         ? (isDecl ? 'Edit Declaration' : 'Edit Shipping')
         : (isDecl ? 'Add Declaration' : 'Add Shipping');
     }
@@ -15237,46 +15226,90 @@ function initDashboardApp() {
   }
 
   async function saveBlForm_() {
+    if (blFormSaving_) return;
     const btn = document.getElementById('blFormSave');
-    const fields = readBlFormFields_();
+    if (btn && btn.disabled) return;
+    blFormSaving_ = true;
+    blDismissFormOverlays_();
+
+    const intendedEditRow = blReadEditRowFromDom_();
     const isDecl = blFormRecordType === 'declaration';
+    const saveLabel = isDecl ? 'Save Declaration' : 'Save Shipping';
+
+    const fields = readBlFormFields_();
     if (!isDecl && !String(fields['BL NO.'] || '').trim()) {
+      blFormSaving_ = false;
       alert('BL No. is required.');
       return;
     }
     if (!String(fields['BUYER'] || '').trim()) {
+      blFormSaving_ = false;
       alert('Buyer is required.');
       return;
     }
-    await blValidateBuyerField_();
-    await ensureNblListsForCheck_();
-    const nblViolations = blGetSelectedMonitoringNblViolations_();
-    if (nblViolations.length) {
-      alert(
-        'Cannot save this record.\n\n'
-        + 'The following linked TTM/TTP is on the No Buy List (NBL / suspended):\n\n'
-        + nblViolations.map(function(l) { return '• ' + l; }).join('\n')
-        + '\n\nRemove the suspended supplier before saving.'
-      );
-      return;
-    }
-    const payload = Object.assign({}, fields);
-    payload[BL_RECORD_TYPE_FIELD] = isDecl ? BL_TYPE_DECLARATION : BL_TYPE_SHIPPING;
-    if (!isDecl) {
-      if (!payload['TOTAL BL']) payload['TOTAL BL'] = blNextTotalBl_();
-      payload['NO'] = payload['TOTAL BL'];
-    }
-    payload[BL_JSON_TTM] = JSON.stringify(blSelectedTtm);
-    payload[BL_JSON_TTP] = JSON.stringify(blSelectedTtp);
-    payload['TTM'] = blTtmCountLabel_(blUniqueMillCount_(blSelectedTtm));
-    payload['TTP'] = blTtpCountLabel_(blSelectedTtp.length);
 
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+    // Resolve target sheet row BEFORE awaits — and never add a duplicate BL NO.
+    let editRowNum = intendedEditRow;
+    if (!isDecl) {
+      editRowNum = blResolveShippingSaveRowNum_(fields, intendedEditRow);
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+    }
+
     try {
-      if (blFormMode === 'edit' && blFormRow && blFormRow._row) {
-        await apiPost({ action: 'update', sheet: 'blMonitoring', row: blFormRow._row, data: payload }, { baseUrl: SDD_DEFAULT_WEBAPP_URL });
-        blScrollToRowNum_ = blFormRow._row;
+      try {
+        await Promise.race([
+          blValidateBuyerField_(),
+          new Promise(function(resolve) { setTimeout(resolve, 8000); }),
+        ]);
+      } catch (e) {
+        console.warn('[BL] Buyer NBL check skipped:', e);
+      }
+      try {
+        await Promise.race([
+          ensureNblListsForCheck_(),
+          new Promise(function(_, reject) {
+            setTimeout(function() { reject(new Error('NBL lists timeout')); }, 12000);
+          }),
+        ]);
+      } catch (e) {
+        console.warn('[BL] NBL lists check soft-failed:', e);
+      }
+      const nblViolations = blGetSelectedMonitoringNblViolations_();
+      if (nblViolations.length) {
+        alert(
+          'Cannot save this record.\n\n'
+          + 'The following linked TTM/TTP is on the No Buy List (NBL / suspended):\n\n'
+          + nblViolations.map(function(l) { return '• ' + l; }).join('\n')
+          + '\n\nRemove the suspended supplier before saving.'
+        );
+        return;
+      }
+      const payload = Object.assign({}, fields);
+      payload[BL_RECORD_TYPE_FIELD] = isDecl ? BL_TYPE_DECLARATION : BL_TYPE_SHIPPING;
+      if (!isDecl) {
+        if (!payload['TOTAL BL']) payload['TOTAL BL'] = blNextTotalBl_();
+        payload['NO'] = payload['TOTAL BL'];
+      }
+      payload[BL_JSON_TTM] = JSON.stringify(blSelectedTtm);
+      payload[BL_JSON_TTP] = JSON.stringify(blSelectedTtp);
+      payload['TTM'] = blTtmCountLabel_(blUniqueMillCount_(blSelectedTtm));
+      payload['TTP'] = blTtpCountLabel_(blSelectedTtp.length);
+
+      // Re-check identity after awaits in case blData refreshed mid-flight.
+      if (!isDecl && !(editRowNum >= 2)) {
+        editRowNum = blResolveShippingSaveRowNum_(fields, intendedEditRow);
+      }
+
+      if (editRowNum >= 2) {
+        console.log('[BL] update row', editRowNum, payload['STATUS'] || '', payload['BL NO.'] || '');
+        await apiPost({ action: 'update', sheet: 'blMonitoring', row: editRowNum, data: payload }, { baseUrl: SDD_DEFAULT_WEBAPP_URL });
+        blScrollToRowNum_ = editRowNum;
       } else {
+        console.log('[BL] add row', payload['STATUS'] || '', payload['BL NO.'] || '');
         await apiPost({ action: 'add', sheet: 'blMonitoring', data: payload }, { baseUrl: SDD_DEFAULT_WEBAPP_URL });
         blScrollToBlNo_ = isDecl
           ? String(fields['BUYER'] || '').trim()
@@ -15289,9 +15322,10 @@ function initDashboardApp() {
     } catch (err) {
       alert('Error saving record: ' + err.message);
     } finally {
+      blFormSaving_ = false;
       if (btn) {
         btn.disabled = false;
-        btn.textContent = isDecl ? 'Save Declaration' : 'Save Shipping';
+        btn.textContent = saveLabel;
       }
     }
   }
@@ -15428,6 +15462,7 @@ function initDashboardApp() {
   }
 
   (function bindBlMonitoringUi_() {
+    if (window.__sddBlUiBound) return;
     const searchEl = document.getElementById('blSearch');
     const clearEl = document.getElementById('blSearchClear');
     const btnAdd = document.getElementById('btn-add-bl');
@@ -15436,6 +15471,7 @@ function initDashboardApp() {
       console.warn('[dashboard] BL panel toolbar incomplete; BL controls skipped.');
       return;
     }
+    window.__sddBlUiBound = true;
 
     window._sdMonitoring = createSdMonitoringController_({
       apiGet: apiGet,
@@ -15512,6 +15548,8 @@ function initDashboardApp() {
     document.getElementById('blFormCancel')?.addEventListener('click', closeBlFormModal_);
     document.getElementById('blFormSave')?.addEventListener('click', saveBlForm_);
     formOverlay?.addEventListener('click', function(e) {
+      const saveBusy = document.getElementById('blFormSave');
+      if (saveBusy && saveBusy.disabled) return;
       if (e.target === formOverlay) closeBlFormModal_();
     });
 
@@ -15632,6 +15670,9 @@ function initDashboardApp() {
       window.__sddBlEscBound = true;
       document.addEventListener('keydown', function(e) {
         if (e.key !== 'Escape') return;
+        const saveBusy = document.getElementById('blFormSave');
+        const sdBusy = document.getElementById('sdFormSave');
+        if ((saveBusy && saveBusy.disabled) || (sdBusy && sdBusy.disabled)) return;
         if (formOverlay && formOverlay.classList.contains('active')) closeBlFormModal_();
         if (detailOverlay && detailOverlay.classList.contains('active')) closeBlDetailModal_();
       });
@@ -16424,60 +16465,7 @@ function initDashboardApp() {
     }
     const headers = defs.map(function(c) { return c.header; });
     const rows = (dataRows || []).map(function(d) { return qmRowToExport_(d, defs); });
-    const wsData = [headers].concat(rows);
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    ws['!cols'] = headers.map(function(h) {
-      return { wch: Math.min(Math.max(String(h).length + 4, 14), 42) };
-    });
-
-    const headerFill = '8B1A1A';
-    const headerFont = 'FFFFFF';
-    const borderThin = {
-      top: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      bottom: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      left: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      right: { style: 'thin', color: { rgb: 'D4C4C4' } },
-    };
-
-    headers.forEach(function(h, ci) {
-      const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: h };
-      ws[cellAddr].s = {
-        font: { bold: true, color: { rgb: headerFont }, sz: 11, name: 'Calibri' },
-        fill: { fgColor: { rgb: headerFill } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: borderThin,
-      };
-    });
-
-    if (!ws['!rows']) ws['!rows'] = [];
-    ws['!rows'][0] = { hpt: 28 };
-
-    rows.forEach(function(rowVals, ri) {
-      rowVals.forEach(function(val, ci) {
-        const cellAddr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-        if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: val != null ? String(val) : '' };
-        const isEven = ri % 2 === 0;
-        ws[cellAddr].s = {
-          font: { sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
-          fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'FBF7F7' } },
-          alignment: { vertical: 'center', wrapText: true },
-          border: borderThin,
-        };
-      });
-    });
-
-    if (rows.length) {
-      ws['!autofilter'] = {
-        ref: XLSX.utils.encode_range({
-          s: { r: 0, c: 0 },
-          e: { r: rows.length, c: headers.length - 1 },
-        }),
-      };
-      ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    }
-
+    const ws = buildBrandedExcelSheet_(XLSX, headers, rows, { headerFill: '8B1A1A' });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Questionnaire Monitoring');
     XLSX.writeFile(wb, filename || ('questionnaire_monitoring_' + qmExcelStamp_() + '.xlsx'), { cellStyles: true });
@@ -18864,75 +18852,33 @@ function initDashboardApp() {
     }
     const headers = defs.map(function(c) { return c.header; });
     const rows = (dataRows || []).map(function(d) { return eudrRowToExport_(d, defs); });
-    const wsData = [headers].concat(rows);
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const ws = buildBrandedExcelSheet_(XLSX, headers, rows, { headerFill: '8B1A1A' });
 
-    ws['!cols'] = headers.map(function(h, ci) {
-      let maxLen = String(h).length;
-      rows.forEach(function(r) {
-        maxLen = Math.max(maxLen, String(r[ci] || '').length);
-      });
-      return { wch: Math.min(Math.max(maxLen + 3, 12), 44) };
-    });
-
-    const headerFill = '8B1A1A';
-    const headerFont = 'FFFFFF';
-    const borderThin = {
-      top: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      bottom: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      left: { style: 'thin', color: { rgb: 'D4C4C4' } },
-      right: { style: 'thin', color: { rgb: 'D4C4C4' } },
-    };
+    // Re-color STATUS column cells after brand header.
+    const headerRow = excelBrandPreambleRowCount_();
     const statusColIdx = defs.findIndex(function(c) { return c.format === 'status'; });
-
-    headers.forEach(function(h, ci) {
-      const cellAddr = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: h };
-      ws[cellAddr].s = {
-        font: { bold: true, color: { rgb: headerFont }, sz: 11, name: 'Calibri' },
-        fill: { fgColor: { rgb: headerFill } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: borderThin,
-      };
-    });
-
-    if (!ws['!rows']) ws['!rows'] = [];
-    ws['!rows'][0] = { hpt: 30 };
-
-    rows.forEach(function(rowVals, ri) {
-      rowVals.forEach(function(val, ci) {
-        const cellAddr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-        if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: val != null ? String(val) : '' };
-        const isEven = ri % 2 === 0;
-        let fillRgb = isEven ? 'FFFFFF' : 'FBF7F7';
-        let fontRgb = '3D2020';
-        if (ci === statusColIdx) {
-          const sl = String(val || '').trim().toLowerCase();
-          if (sl === 'potential') {
-            fillRgb = 'E8F5E9';
-            fontRgb = '1B5E20';
-          } else if (sl === 'not potential') {
-            fillRgb = 'FFEBEE';
-            fontRgb = 'B71C1C';
-          }
+    if (statusColIdx >= 0) {
+      rows.forEach(function(rowVals, ri) {
+        const val = rowVals[statusColIdx];
+        const cellAddr = XLSX.utils.encode_cell({ r: headerRow + 1 + ri, c: statusColIdx });
+        if (!ws[cellAddr] || !ws[cellAddr].s) return;
+        const sl = String(val || '').trim().toLowerCase();
+        let fillRgb = null;
+        let fontRgb = null;
+        if (sl === 'potential') {
+          fillRgb = 'E8F5E9';
+          fontRgb = '1B5E20';
+        } else if (sl === 'not potential') {
+          fillRgb = 'FFEBEE';
+          fontRgb = 'B71C1C';
         }
-        ws[cellAddr].s = {
-          font: { sz: 10, name: 'Calibri', color: { rgb: fontRgb }, bold: ci === statusColIdx },
-          fill: { fgColor: { rgb: fillRgb } },
-          alignment: { vertical: 'center', wrapText: true },
-          border: borderThin,
-        };
+        if (!fillRgb) return;
+        ws[cellAddr].s.fill = { fgColor: { rgb: fillRgb } };
+        ws[cellAddr].s.font = Object.assign({}, ws[cellAddr].s.font || {}, {
+          color: { rgb: fontRgb },
+          bold: true,
+        });
       });
-    });
-
-    if (rows.length) {
-      ws['!autofilter'] = {
-        ref: XLSX.utils.encode_range({
-          s: { r: 0, c: 0 },
-          e: { r: rows.length, c: headers.length - 1 },
-        }),
-      };
-      ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
     }
 
     const wb = XLSX.utils.book_new();

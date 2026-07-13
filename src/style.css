@@ -7505,6 +7505,7 @@ body.bl-detail-open { overflow: hidden; }
   padding: 16px 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 .bl-form-section { margin-bottom: 20px; }
 .bl-form-section:last-child { margin-bottom: 0; }
@@ -7784,6 +7785,10 @@ body.bl-detail-open { overflow: hidden; }
   gap: 10px;
   padding: 14px 24px;
   border-top: 1px solid rgba(74, 28, 28, 0.08);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+  background: #fff;
 }
 .bl-detail-foot-danger { color: #C0392B !important; border-color: rgba(192, 57, 43, 0.25) !important; }
 .bl-detail-foot-danger:hover { background: rgba(192, 57, 43, 0.06) !important; }

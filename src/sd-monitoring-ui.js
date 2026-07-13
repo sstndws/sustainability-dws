@@ -3,6 +3,8 @@
  * Sheet: "SD Monitoring". Formula columns are display-only (never written from web).
  */
 
+import { buildBrandedExcelSheet_ } from './excel-brand-header.js';
+
 const SD_SHEET_KEY = 'sdMonitoring';
 
 const SD_EDITABLE_FIELDS = [
@@ -103,6 +105,7 @@ export function createSdMonitoringController_(deps) {
   let sdSearch = '';
   let sdFormMode = 'add';
   let sdFormRow = null;
+  let sdFormEditRowNum_ = 0;
   let sdDetailCurrent = null;
   let sdTableDelegationBound = false;
   let sdActive = false;
@@ -252,7 +255,7 @@ export function createSdMonitoringController_(deps) {
       if (editBtn && body.contains(editBtn)) {
         e.stopPropagation();
         const rowNum = parseInt(editBtn.dataset.row, 10);
-        const row = sdData.find(function(d) { return d._row === rowNum; });
+        const row = sdData.find(function(d) { return Number(d._row) === rowNum; });
         if (row) openSdFormModal_('edit', row);
         return;
       }
@@ -265,7 +268,7 @@ export function createSdMonitoringController_(deps) {
       const tr = e.target.closest('tr.sd-main-row');
       if (tr && body.contains(tr) && !e.target.closest('.row-actions')) {
         const rowNum = parseInt(tr.dataset.row, 10);
-        const row = sdData.find(function(d) { return d._row === rowNum; });
+        const row = sdData.find(function(d) { return Number(d._row) === rowNum; });
         if (row) openSdDetailModal_(row);
       }
     });
@@ -386,9 +389,17 @@ export function createSdMonitoringController_(deps) {
     if (!overlay) return;
     sdFormMode = mode || 'add';
     sdFormRow = row || null;
+    sdFormEditRowNum_ = (sdFormMode === 'edit' && row && row._row != null)
+      ? Number(row._row)
+      : 0;
+    if (sdFormMode === 'edit' && !(sdFormEditRowNum_ >= 2)) {
+      console.warn('[SD] Edit opened without a valid sheet row number', row);
+      sdFormMode = 'add';
+      sdFormEditRowNum_ = 0;
+    }
     const titleEl = document.getElementById('sdFormTitle');
     const saveBtn = document.getElementById('sdFormSave');
-    if (titleEl) titleEl.textContent = mode === 'edit' ? 'Edit SD Record' : 'Add SD Record';
+    if (titleEl) titleEl.textContent = sdFormMode === 'edit' ? 'Edit SD Record' : 'Add SD Record';
     if (saveBtn) saveBtn.textContent = 'Save SD';
     buildSdFormFields_(row);
     if (typeof lockScroll === 'function') lockScroll();
@@ -405,10 +416,18 @@ export function createSdMonitoringController_(deps) {
     document.body.classList.remove('bl-form-open');
     if (typeof unlockScroll === 'function') unlockScroll();
     sdFormRow = null;
+    sdFormEditRowNum_ = 0;
+    sdFormMode = 'add';
   }
 
   async function saveSdForm_() {
     const saveBtn = document.getElementById('sdFormSave');
+    if (saveBtn && saveBtn.disabled) return;
+    const editRowNum = (sdFormEditRowNum_ >= 2)
+      ? sdFormEditRowNum_
+      : (sdFormMode === 'edit' && sdFormRow && sdFormRow._row != null
+        ? Number(sdFormRow._row)
+        : 0);
     const payload = collectSdFormData_();
     if (!String(payload['COMPANY NAME'] || '').trim() && !String(payload['DO NUMBER'] || '').trim()) {
       alert('Enter at least Company Name or DO Number.');
@@ -420,11 +439,11 @@ export function createSdMonitoringController_(deps) {
     }
     try {
       const opts = gasOpts ? { baseUrl: gasOpts.baseUrl } : undefined;
-      if (sdFormMode === 'edit' && sdFormRow && sdFormRow._row) {
+      if (editRowNum >= 2) {
         await apiPost({
           action: 'update',
           sheet: SD_SHEET_KEY,
-          row: sdFormRow._row,
+          row: editRowNum,
           data: payload,
         }, opts);
       } else {
@@ -511,20 +530,16 @@ export function createSdMonitoringController_(deps) {
       return;
     }
     const headers = SD_ALL_FIELDS.map(sdLabel_);
-    const aoa = [headers];
-    (rows || []).forEach(function(r) {
-      aoa.push(SD_ALL_FIELDS.map(function(f) {
+    const bodyRows = (rows || []).map(function(r) {
+      return SD_ALL_FIELDS.map(function(f) {
         const v = sdPick_(r, f);
         return v == null ? '' : String(v);
-      }));
+      });
     });
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = headers.map(function(h) {
-      return { wch: Math.min(28, Math.max(10, String(h).length + 2)) };
-    });
+    const ws = buildBrandedExcelSheet_(XLSX, headers, bodyRows, { headerFill: '8B1A1A' });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SD Monitoring');
-    XLSX.writeFile(wb, filename || 'SD-Monitoring.xlsx');
+    XLSX.writeFile(wb, filename || 'SD-Monitoring.xlsx', { cellStyles: true });
   }
 
   function exportSdExcelList_() {

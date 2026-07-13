@@ -4278,6 +4278,31 @@ function getData(sheetKey) {
   return result;
 }
 
+function blFindSheetRowByBlNo_(sheet, headers, headerRow, blNo) {
+  const needle = String(blNo || '').trim().toLowerCase();
+  if (!needle) return 0;
+  const blCol = headers.findIndex(function(h) {
+    return String(h || '').replace(/\s+/g, ' ').trim().toUpperCase() === 'BL NO.';
+  });
+  if (blCol < 0) return 0;
+  const typeCol = headers.findIndex(function(h) {
+    return String(h || '').replace(/\s+/g, ' ').trim().toUpperCase() === 'RECORD TYPE';
+  });
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= headerRow) return 0;
+  const values = sheet.getRange(headerRow + 1, 1, lastRow - headerRow, headers.length).getDisplayValues();
+  for (var i = 0; i < values.length; i++) {
+    const rowBl = String(values[i][blCol] || '').trim().toLowerCase();
+    if (rowBl !== needle) continue;
+    if (typeCol >= 0) {
+      const rt = String(values[i][typeCol] || '').trim().toLowerCase();
+      if (rt === 'declaration') continue;
+    }
+    return headerRow + 1 + i;
+  }
+  return 0;
+}
+
 function addRow(sheetKey, data, insertAfter) {
   const sheet   = getSheet(sheetKey);
   let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -4289,10 +4314,20 @@ function addRow(sheetKey, data, insertAfter) {
     ensureBlMonitoringHeaders_();
     const hdr = getBlHeaderInfo_(sheet);
     headers = hdr.headers;
-    const newRow = blExpandCanonicalToRow_(headers, data || {}, null);
+    const payload = data || {};
+    const recordType = String(payload['RECORD TYPE'] || '').trim().toLowerCase();
+    const blNo = String(payload['BL NO.'] || '').trim();
+    // Safety: editing Shipping must never create a duplicate BL NO. row.
+    if (blNo && recordType !== 'declaration') {
+      const existingRow = blFindSheetRowByBlNo_(sheet, headers, hdr.headerRow, blNo);
+      if (existingRow >= 2) {
+        return updateRow('blMonitoring', existingRow, payload);
+      }
+    }
+    const newRow = blExpandCanonicalToRow_(headers, payload, null);
     const targetRow = Math.max(sheet.getLastRow(), hdr.headerRow) + 1;
     sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
-    return { success: true };
+    return { success: true, row: targetRow, mode: 'add' };
   }
   if (sheetKey === 'sdMonitoring') {
     headers = ensureSdMonitoringHeaders_();
