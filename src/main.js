@@ -3949,7 +3949,7 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzoJzN32_L0HCOJQpo6dTAhE4HmwBm4QPv7El8ws2TWK-rr6Us_GhW7s6epyfauysUulg/exec';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyN-QA_V3sgjyk14_S6NBx_hZRPByLzfJHsvlkRNhWEGf6XxPBSP5tBktaIwyGFptvlXg/exec';
 var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ';
 
 function normalizeSddWebAppUrl_(raw) {
