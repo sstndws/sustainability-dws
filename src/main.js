@@ -8987,6 +8987,9 @@ function initDashboardApp() {
   }
 
   function millNblByInfoFromMatches_(matches) {
+    if (!matches || !matches.length) {
+      return { label: '', risers: [], hasUnilever: false };
+    }
     var risers = [];
     var seen = {};
     var hasUnilever = false;
@@ -9040,40 +9043,45 @@ function initDashboardApp() {
   }
 
   async function millResolveNblByInfo_(row) {
-    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
-      return { label: '', risers: [], hasUnilever: false, matches: [] };
-    }
+    // Always live-match against NBL sheets by group/company.
+    // Waste Onboarding has no BUYER NO BUY LIST column — sheet field alone is not enough.
     var lists = await ensureNblListsForCheck_();
     var matches = millNblSourceMatchesForRow_(row || {}, lists);
     var info = millNblByInfoFromMatches_(matches);
     info.matches = matches;
+    if ((!matches || !matches.length) && millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
+      return { label: 'Yes (source unresolved)', risers: [], hasUnilever: false, matches: [] };
+    }
     return info;
   }
 
   let millProfileNblInfoReqSeq_ = 0;
   async function millProfileUpdateNblSourceInfo_(row) {
     var infoEl = document.getElementById('mp-mill-nbl-source');
-    if (!infoEl) return;
+    var nblEl = document.getElementById('mp-mill-nbl');
+    if (!infoEl && !nblEl) return;
     var reqId = ++millProfileNblInfoReqSeq_;
 
-    if (!millIsNblYes_(row && row['BUYER NO BUY LIST'])) {
-      infoEl.innerHTML = '';
-      return;
-    }
-
-    infoEl.innerHTML = 'Checking NBL source…';
+    if (infoEl) infoEl.innerHTML = 'Checking NBL…';
     try {
       if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
       var info = await millResolveNblByInfo_(row || {});
       if (reqId !== millProfileNblInfoReqSeq_) return; // stale request
-      if (!info.label) {
+      var sheetYes = millIsNblYes_(row && row['BUYER NO BUY LIST']);
+      var liveYes = !!(info && ((info.matches && info.matches.length) || info.label));
+      var isYes = sheetYes || liveYes;
+      if (nblEl) nblEl.innerHTML = nblBadge(isYes ? 'Yes' : 'No');
+      if (!infoEl) return;
+      if (!isYes || !info.label) {
         infoEl.innerHTML = '';
         return;
       }
       infoEl.innerHTML = '<strong>' + escHtml(info.label) + '</strong>';
     } catch (err) {
       if (reqId !== millProfileNblInfoReqSeq_) return;
-      infoEl.innerHTML = '<strong>Yes (source unresolved)</strong>';
+      var sheetYesErr = millIsNblYes_(row && row['BUYER NO BUY LIST']);
+      if (nblEl) nblEl.innerHTML = nblBadge(sheetYesErr ? 'Yes' : (row && row['BUYER NO BUY LIST'] != null && String(row['BUYER NO BUY LIST']).trim() !== '' ? row['BUYER NO BUY LIST'] : '—'));
+      if (infoEl) infoEl.innerHTML = sheetYesErr ? '<strong>Yes (source unresolved)</strong>' : '';
     }
   }
 
