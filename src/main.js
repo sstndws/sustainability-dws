@@ -13104,7 +13104,21 @@ function initDashboardApp() {
     { id: 'ttm', label: 'TTM', header: 'TTM', kind: 'ttm' },
     { id: 'ttp', label: 'TTP', header: 'TTP', kind: 'ttp' },
   ];
+  const BL_EXPORT_SHIPPING_DEFAULT_COL_IDS = [
+    'loading_port', 'nation_loading', 'buyer', 'nation_buyer',
+    'bl_no', 'bl_date', 'vessel', 'comodity', 'volume',
+  ];
+  const BL_EXPORT_DECL_DEFAULT_COL_IDS = [
+    'buyer', 'received_date', 'sent_requester', 'period',
+    'commodity_supply', 'volume', 'request_type', 'status', 'ttm', 'ttp',
+  ];
   const BL_EXPORT_DEFAULT_COL_IDS = BL_EXPORT_COLUMN_DEFS.map(function(c) { return c.id; });
+
+  function blDefaultExportColIds_() {
+    return blActiveType === 'declaration'
+      ? BL_EXPORT_DECL_DEFAULT_COL_IDS.slice()
+      : BL_EXPORT_SHIPPING_DEFAULT_COL_IDS.slice();
+  }
   const BL_REGISTRY_COLUMNS = [
     { label: 'Loading Port', minWidth: 120, cell: function(d) { return escHtml(d['LOADING PORT'] || '—'); } },
     { label: 'Nation (Port)', minWidth: 100, cell: function(d) { return escHtml(d['NATION'] || '—'); } },
@@ -13187,7 +13201,7 @@ function initDashboardApp() {
   let blDetailCurrent = null;
   let blTableDelegationBound = false;
   let blExportTargetRow = null;
-  let blExportSelectedColIds = BL_EXPORT_DEFAULT_COL_IDS.slice();
+  let blExportSelectedColIds = BL_EXPORT_SHIPPING_DEFAULT_COL_IDS.slice();
   let blExportSelectedRowNums = null;
   let blExportSelectedTtmColKeys = null;
   let blExportSelectedTtpColKeys = null;
@@ -14854,6 +14868,8 @@ function initDashboardApp() {
     if (!blExportTargetRow) {
       blExportSelectedRowNums = new Set(blRowsForExportPicker_().map(function(d) { return d._row; }));
     }
+    // Keep shipping export neat — start from the template column set.
+    blExportSelectedColIds = blDefaultExportColIds_();
     const titleEl = document.getElementById('blExportModalTitle');
     if (titleEl) {
       titleEl.textContent = targetRow
@@ -15582,7 +15598,7 @@ function initDashboardApp() {
       blRefreshExportColList_();
     });
     document.getElementById('blExportColDefault')?.addEventListener('click', function() {
-      blExportSelectedColIds = BL_EXPORT_DEFAULT_COL_IDS.slice();
+      blExportSelectedColIds = blDefaultExportColIds_();
       blRefreshExportColList_();
     });
     document.getElementById('blExportColNone')?.addEventListener('click', function() {

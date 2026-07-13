@@ -18,69 +18,93 @@ export function excelBrandPreambleRowCount_() {
   return 9;
 }
 
-function padRow_(row, colCount) {
-  const out = Array.isArray(row) ? row.slice() : [];
-  while (out.length < colCount) out.push('');
-  return out;
-}
-
-export function excelBrandPreambleAoa_(colCount) {
-  const n = Math.max(2, Number(colCount) || 2);
+function companyLines_() {
   const info = EXCEL_COMPANY_INFO;
   return [
-    padRow_([EXCEL_REPORT_TITLE], n),
-    padRow_([], n),
-    padRow_(['COMPANY INFORMATION'], n),
-    padRow_(['NAME:', info.name], n),
-    padRow_(['COUNTRY:', info.country], n),
-    padRow_(['ADDRESS:', info.address], n),
-    padRow_(['LATITUDE:', info.latitude], n),
-    padRow_(['LONGITUDE:', info.longitude], n),
-    padRow_([], n),
+    'NAME: ' + info.name,
+    'COUNTRY: ' + info.country,
+    'ADDRESS: ' + info.address,
+    'LATITUDE: ' + info.latitude,
+    'LONGITUDE: ' + info.longitude,
   ];
 }
 
 /**
  * Build a SheetJS worksheet with company header + maroon table header + data.
+ * Layout (0-based rows):
+ *   0 title (merged across all columns, centered, bordered)
+ *   1 blank
+ *   2 COMPANY INFORMATION
+ *   3–7 NAME / COUNTRY / ADDRESS / LATITUDE / LONGITUDE (single cells in col A)
+ *   8 blank
+ *   9 table headers
+ *   10+ data
+ *
  * @param {typeof window.XLSX} XLSX
  * @param {string[]} headers
  * @param {Array<Array<string|number|null|undefined>>} bodyRows
- * @param {{ headerFill?: string, zebra?: boolean, freeze?: boolean, sheetTitleStyle?: boolean }=} opts
+ * @param {{ headerFill?: string, zebra?: boolean, freeze?: boolean }=} opts
  */
 export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
   opts = opts || {};
   const cols = Array.isArray(headers) ? headers : [];
   const rows = Array.isArray(bodyRows) ? bodyRows : [];
-  const colCount = Math.max(cols.length, 2);
-  const preamble = excelBrandPreambleAoa_(colCount);
-  const headerRow = preamble.length;
-  const wsData = preamble.concat([cols]).concat(rows);
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const colCount = Math.max(cols.length, 1);
+  const headerRow = excelBrandPreambleRowCount_();
 
-  ws['!merges'] = (ws['!merges'] || []).concat([
-    { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-  ]);
+  // Build AOA without stuffing empty strings into every preamble column
+  // (empty cells in a merge range make the title look broken / off-center).
+  const wsData = [];
+  wsData[0] = [EXCEL_REPORT_TITLE];
+  wsData[1] = [];
+  wsData[2] = ['COMPANY INFORMATION'];
+  companyLines_().forEach(function(line, i) {
+    wsData[3 + i] = [line];
+  });
+  wsData[8] = [];
+  wsData[headerRow] = cols.slice();
+  rows.forEach(function(row, i) {
+    const out = [];
+    for (let c = 0; c < colCount; c++) {
+      const v = row && row[c] != null ? row[c] : '';
+      out[c] = v;
+    }
+    wsData[headerRow + 1 + i] = out;
+  });
 
+  const ws = XLSX.utils.aoa_to_sheet(wsData, { skipHidden: false });
+
+  // Drop phantom empty cells inside the title merge range (B1…Zn).
+  for (let c = 1; c < colCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: c });
+    if (ws[addr] && (ws[addr].v === '' || ws[addr].v == null)) delete ws[addr];
+  }
+
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(colCount - 1, 0) } },
+  ];
+
+  // Column widths from data — keep A readable for company lines.
+  const companyMax = companyLines_().reduce(function(m, line) {
+    return Math.max(m, line.length);
+  }, 'COMPANY INFORMATION'.length);
   ws['!cols'] = Array.from({ length: colCount }, function(_, ci) {
     let maxLen = cols[ci] != null ? String(cols[ci]).length : 10;
-    if (ci === 0) maxLen = Math.max(maxLen, 14);
-    if (ci === 1) maxLen = Math.max(maxLen, 28);
     rows.forEach(function(row) {
       const cell = row && row[ci] != null ? String(row[ci]) : '';
       if (cell.length > maxLen) maxLen = cell.length;
     });
-    // Keep address readable in the brand block.
-    if (ci === 1) maxLen = Math.max(maxLen, String(EXCEL_COMPANY_INFO.address).length);
-    return { wch: Math.min(Math.max(maxLen + 2, 12), 56) };
+    if (ci === 0) maxLen = Math.max(maxLen, Math.min(companyMax, 42));
+    return { wch: Math.min(Math.max(maxLen + 2, 12), 48) };
   });
 
   const headerFill = opts.headerFill || '8B1A1A';
   const headerFont = 'FFFFFF';
   const borderThin = {
-    top: { style: 'thin', color: { rgb: 'D4C4C4' } },
-    bottom: { style: 'thin', color: { rgb: 'D4C4C4' } },
-    left: { style: 'thin', color: { rgb: 'D4C4C4' } },
-    right: { style: 'thin', color: { rgb: 'D4C4C4' } },
+    top: { style: 'thin', color: { rgb: 'BFA8A8' } },
+    bottom: { style: 'thin', color: { rgb: 'BFA8A8' } },
+    left: { style: 'thin', color: { rgb: 'BFA8A8' } },
+    right: { style: 'thin', color: { rgb: 'BFA8A8' } },
   };
   const borderTitle = {
     top: { style: 'thin', color: { rgb: '000000' } },
@@ -90,53 +114,54 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
   };
 
   if (!ws['!rows']) ws['!rows'] = [];
-  ws['!rows'][0] = { hpt: 28 };
-  ws['!rows'][headerRow] = { hpt: 24 };
+  ws['!rows'][0] = { hpt: 26 };
+  ws['!rows'][headerRow] = { hpt: 22 };
 
-  // Title
+  // Title — only top-left of merge gets the value + style.
   const titleAddr = XLSX.utils.encode_cell({ r: 0, c: 0 });
-  if (!ws[titleAddr]) ws[titleAddr] = { t: 's', v: EXCEL_REPORT_TITLE };
-  ws[titleAddr].s = {
-    font: { bold: true, sz: 14, name: 'Calibri', color: { rgb: '1A0A0A' } },
-    alignment: { horizontal: 'center', vertical: 'center' },
-    border: borderTitle,
+  ws[titleAddr] = {
+    t: 's',
+    v: EXCEL_REPORT_TITLE,
+    s: {
+      font: { bold: true, sz: 14, name: 'Calibri', color: { rgb: '1A0A0A' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: borderTitle,
+    },
   };
 
-  // COMPANY INFORMATION label
+  // COMPANY INFORMATION
   const infoAddr = XLSX.utils.encode_cell({ r: 2, c: 0 });
-  if (!ws[infoAddr]) ws[infoAddr] = { t: 's', v: 'COMPANY INFORMATION' };
-  ws[infoAddr].s = {
-    font: { bold: true, sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
-    alignment: { horizontal: 'left', vertical: 'center' },
+  ws[infoAddr] = {
+    t: 's',
+    v: 'COMPANY INFORMATION',
+    s: {
+      font: { bold: true, sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+    },
   };
 
-  // Company field labels + values
+  // Company detail lines (single cell each — matches template)
   for (let r = 3; r <= 7; r++) {
-    const labelAddr = XLSX.utils.encode_cell({ r: r, c: 0 });
-    const valueAddr = XLSX.utils.encode_cell({ r: r, c: 1 });
-    if (ws[labelAddr]) {
-      ws[labelAddr].s = {
-        font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
-        alignment: { horizontal: 'left', vertical: 'center' },
-      };
-    }
-    if (ws[valueAddr]) {
-      ws[valueAddr].s = {
-        font: { sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-      };
-    }
+    const addr = XLSX.utils.encode_cell({ r: r, c: 0 });
+    if (!ws[addr]) continue;
+    ws[addr].s = {
+      font: { sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+    };
   }
 
   // Table header row
   cols.forEach(function(h, ci) {
     const cellAddr = XLSX.utils.encode_cell({ r: headerRow, c: ci });
-    if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: h };
-    ws[cellAddr].s = {
-      font: { bold: true, color: { rgb: headerFont }, sz: 11, name: 'Calibri' },
-      fill: { fgColor: { rgb: headerFill } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      border: borderThin,
+    ws[cellAddr] = {
+      t: 's',
+      v: h,
+      s: {
+        font: { bold: true, color: { rgb: headerFont }, sz: 11, name: 'Calibri' },
+        fill: { patternType: 'solid', fgColor: { rgb: headerFill } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: borderThin,
+      },
     };
   });
 
@@ -146,26 +171,36 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
     const sheetRow = headerRow + 1 + ri;
     for (let ci = 0; ci < colCount; ci++) {
       const cellAddr = XLSX.utils.encode_cell({ r: sheetRow, c: ci });
-      if (!ws[cellAddr]) {
-        const v = rowVals && rowVals[ci] != null ? rowVals[ci] : '';
-        ws[cellAddr] = { t: 's', v: String(v) };
-      }
+      const raw = rowVals && rowVals[ci] != null ? rowVals[ci] : '';
       const isEven = ri % 2 === 0;
-      ws[cellAddr].s = {
-        font: { sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
-        fill: zebra ? { fgColor: { rgb: isEven ? 'FFFFFF' : 'FBF7F7' } } : undefined,
-        alignment: { vertical: 'center', wrapText: true },
-        border: borderThin,
+      ws[cellAddr] = {
+        t: typeof raw === 'number' ? 'n' : 's',
+        v: typeof raw === 'number' ? raw : String(raw),
+        s: {
+          font: { sz: 10, name: 'Calibri', color: { rgb: '3D2020' } },
+          fill: zebra
+            ? { patternType: 'solid', fgColor: { rgb: isEven ? 'FFFFFF' : 'FBF7F7' } }
+            : undefined,
+          alignment: { vertical: 'center', wrapText: false },
+          border: borderThin,
+        },
       };
     }
   });
 
+  // Ensure sheet range covers preamble + table.
+  const lastRow = headerRow + Math.max(rows.length, 0);
+  const lastCol = Math.max(colCount - 1, 0);
+  ws['!ref'] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: Math.max(lastRow, headerRow), c: lastCol },
+  });
+
   if (cols.length) {
-    const lastDataRow = headerRow + rows.length;
     ws['!autofilter'] = {
       ref: XLSX.utils.encode_range({
         s: { r: headerRow, c: 0 },
-        e: { r: Math.max(headerRow, lastDataRow), c: cols.length - 1 },
+        e: { r: Math.max(headerRow, lastRow), c: lastCol },
       }),
     };
     if (opts.freeze !== false) {
