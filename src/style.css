@@ -4767,6 +4767,9 @@
      align-items: center;
      gap: 5px;
      min-height: 24px;
+     min-width: 0;
+     max-width: 100%;
+     overflow: hidden;
    }
    .mp-metric-sub {
      margin-top: 6px;
@@ -4795,6 +4798,7 @@
      font-size: 12px;
      font-weight: 600;
      color: #2a1818;
+     max-width: 100%;
    }
    .mp-head-product-supply--empty,
    .mp-head-qty--empty {
@@ -4810,6 +4814,9 @@
      font-weight: 600;
      color: #2a1818;
      line-height: 1.35;
+     min-width: 0;
+     max-width: 100%;
+     overflow: hidden;
    }
    .mp-qty-seg {
      display: block;
@@ -4817,6 +4824,7 @@
      overflow: hidden;
      text-overflow: ellipsis;
      max-width: 100%;
+     min-width: 0;
    }
    #millProfileOverlay .mp-head-product-supply .supply-pill {
      font-size: 10.5px;

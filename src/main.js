@@ -9120,12 +9120,15 @@ function initDashboardApp() {
     if (!text || text === '—') {
       return '<span class="mp-head-qty mp-head-qty--empty">—</span>';
     }
-    const segments = text.split(/\s*·\s*/).filter(Boolean);
-    if (segments.length <= 1) {
-      return '<span class="mp-head-qty">' + escHtml(text) + '</span>';
+    // Split "PK: 200; POME ISCC: 50 · …" into one line per product so the metric card doesn't overflow.
+    const segments = text.split(/\s*[·;]\s*/).map(function(part) {
+      return part.trim();
+    }).filter(Boolean);
+    if (!segments.length) {
+      return '<span class="mp-head-qty mp-head-qty--empty">—</span>';
     }
     return '<span class="mp-head-qty">' + segments.map(function(part) {
-      return '<span class="mp-qty-seg">' + escHtml(part.trim()) + '</span>';
+      return '<span class="mp-qty-seg" title="' + escHtml(part) + '">' + escHtml(part) + '</span>';
     }).join('') + '</span>';
   }
 
