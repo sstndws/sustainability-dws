@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-period-delete',
+        version: 'v3-supply-delete-month-priority',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -6907,22 +6907,26 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   var headers = data[0].map(function(h) { return String(h || '').trim(); });
   var draftIdCol = headers.indexOf('draft_id');
   var batchIdCol = headers.indexOf('batch_id');
-  // Sheet has BOTH lowercase meta (month/year) and mill-mirror MONTH/YEAR — check all.
+  // Prefer real month/MONTH over legacy quarter (quarter must not win first).
   var monthCols = [];
+  var quarterCols = [];
   var yearCols = [];
   headers.forEach(function(h, i) {
     var t = String(h || '').trim();
-    if (/^month$/i.test(t) || /^bulan$/i.test(t) || /^quarter$/i.test(t)) monthCols.push(i);
+    if (/^month$/i.test(t) || /^bulan$/i.test(t)) monthCols.push(i);
+    else if (/^quarter$/i.test(t)) quarterCols.push(i);
     if (/^year$/i.test(t) || /^tahun$/i.test(t)) yearCols.push(i);
   });
   var typeCol = headers.indexOf('supply_type');
   if (typeCol < 0) typeCol = headers.indexOf('SUPPLY_TYPE');
+  var companyCol = headers.indexOf('COMPANY NAME');
+  if (companyCol < 0) companyCol = headers.indexOf('COMPANY_NAME');
 
   var draftIds = {};
   var batchIds = {};
   function addId_(map, raw) {
     var s = String(raw || '').trim();
-    if (s) map[s] = 1;
+    if (s && s.toLowerCase() !== 'unknown') map[s] = 1;
   }
   addId_(draftIds, draftId);
   addId_(batchIds, batchId);
@@ -6945,9 +6949,14 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   }
 
   function rowPeriodMonth_(rowArr) {
-    for (var i = 0; i < monthCols.length; i++) {
+    var i;
+    for (i = 0; i < monthCols.length; i++) {
       var m = supplyNormalizeMonthTokGs_(rowArr[monthCols[i]]);
       if (m) return m;
+    }
+    for (i = 0; i < quarterCols.length; i++) {
+      var q = supplyNormalizeMonthTokGs_(rowArr[quarterCols[i]]);
+      if (q) return q;
     }
     return '';
   }
@@ -6959,32 +6968,49 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
     return '';
   }
 
+  function periodTypeHit_(rowArr) {
+    var rowMonth = rowPeriodMonth_(rowArr);
+    var rowYear = rowPeriodYear_(rowArr);
+    if (!wantMonth || rowMonth !== wantMonth) return false;
+    // Sheet junk rows sometimes set month without year — still wipe them
+    // when FE is deleting that month for the given year.
+    if (wantYear && rowYear && rowYear !== wantYear) return false;
+    if (wantYear && !rowYear) {
+      // Only allow blank-year wipe for incomplete rows (no ids / no company).
+      var d = draftIdCol >= 0 ? String(rowArr[draftIdCol] || '').trim() : '';
+      var b = batchIdCol >= 0 ? String(rowArr[batchIdCol] || '').trim() : '';
+      var co = companyCol >= 0 ? String(rowArr[companyCol] || '').trim() : '';
+      if (d || b || co) return false;
+    } else if (!wantYear && rowYear) {
+      return false;
+    }
+    var rowType = typeCol >= 0 ? String(rowArr[typeCol] || '').trim().toUpperCase() : '';
+    if (!wantType) return true;
+    if (wantWaste) return isWasteType_(rowType);
+    return !isWasteType_(rowType);
+  }
+
   var keep = [data[0]];
   var deleted = 0;
-  var deletedBy = { id: 0, period: 0 };
+  var deletedBy = { id: 0, period: 0, junk: 0 };
   for (var r = 1; r < data.length; r++) {
     var rowDId = draftIdCol >= 0 ? String(data[r][draftIdCol] || '').trim() : '';
     var rowBId = batchIdCol >= 0 ? String(data[r][batchIdCol] || '').trim() : '';
+    var rowCompany = companyCol >= 0 ? String(data[r][companyCol] || '').trim() : '';
     // Cross-match: FE often stores draft_id as the card batch_id after consolidate.
     var hit = (rowDId && (draftIds[rowDId] || batchIds[rowDId]))
       || (rowBId && (batchIds[rowBId] || draftIds[rowBId]));
     var by = hit ? 'id' : '';
 
-    if (!hit && wantMonth && wantYear) {
-      var rowMonth = rowPeriodMonth_(data[r]);
-      var rowYear = rowPeriodYear_(data[r]);
-      if (rowMonth === wantMonth && rowYear === wantYear) {
-        var rowType = typeCol >= 0 ? String(data[r][typeCol] || '').trim().toUpperCase() : '';
-        if (!wantType) {
-          hit = true;
-        } else if (wantWaste) {
-          hit = isWasteType_(rowType);
-        } else {
-          // Main product cards: delete CPO/PK/CPO+PK and blank type — keep waste separate.
-          hit = !isWasteType_(rowType);
-        }
-        if (hit) by = 'period';
-      }
+    if (!hit && wantMonth && wantYear && periodTypeHit_(data[r])) {
+      hit = true;
+      by = 'period';
+    }
+
+    // Incomplete blank-ish junk (no ids / no company) — drop on any period delete.
+    if (!hit && wantMonth && wantYear && !rowDId && !rowBId && !rowCompany) {
+      hit = true;
+      by = 'junk';
     }
 
     if (hit) {
@@ -7010,6 +7036,7 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
     by_period: !!(wantMonth && wantYear),
     deleted_by_id: deletedBy.id,
     deleted_by_period: deletedBy.period,
+    deleted_by_junk: deletedBy.junk,
     want_month: wantMonth,
     want_year: wantYear,
   };

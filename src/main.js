@@ -26028,6 +26028,67 @@ function initDashboardApp() {
     return low;
   }
 
+  function supplyNormalizeYearTok_(raw) {
+    var s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    var n = parseInt(s, 10);
+    if (!isNaN(n) && n >= 1990 && n <= 2100) return String(n);
+    return s;
+  }
+
+  /** Prefer month/MONTH fields — do not let empty quarter win over real month. */
+  function supplyRowMonthRaw_(row) {
+    if (!row) return '';
+    return String(row.month || row.MONTH || row.Month || row.quarter || row.QUARTER || '').trim();
+  }
+
+  function supplyRowYearRaw_(row) {
+    if (!row) return '';
+    return String(row.year || row.YEAR || row.Year || '').trim();
+  }
+
+  function supplyDraftRowIsComplete_(row) {
+    if (!row || typeof row !== 'object') return false;
+    var did = String(row.draft_id || row.DRAFT_ID || '').trim();
+    var bid = String(row.batch_id || row.BATCH_ID || '').trim();
+    if (did || (bid && bid.toLowerCase() !== 'unknown')) return true;
+    var company = String(row['COMPANY NAME'] || row.COMPANY_NAME || '').trim();
+    return !!company;
+  }
+
+  /** Vote month/year from actual draft rows (guards junk first-row month=1). */
+  function supplyMajorityPeriodFromRows_(rows, fallbackMonth, fallbackYear) {
+    var monthCounts = {};
+    var yearCounts = {};
+    (rows || []).forEach(function(r) {
+      if (!supplyDraftRowIsComplete_(r)) return;
+      var m = supplyNormalizeMonthTok_(supplyRowMonthRaw_(r));
+      var y = supplyNormalizeYearTok_(supplyRowYearRaw_(r));
+      if (m) monthCounts[m] = (monthCounts[m] || 0) + 1;
+      if (y) yearCounts[y] = (yearCounts[y] || 0) + 1;
+    });
+    var monthWin = '';
+    var monthBest = -1;
+    Object.keys(monthCounts).forEach(function(k) {
+      if (monthCounts[k] > monthBest) {
+        monthWin = k;
+        monthBest = monthCounts[k];
+      }
+    });
+    var yearWin = '';
+    var yearBest = -1;
+    Object.keys(yearCounts).forEach(function(k) {
+      if (yearCounts[k] > yearBest) {
+        yearWin = k;
+        yearBest = yearCounts[k];
+      }
+    });
+    return {
+      month: monthWin || supplyNormalizeMonthTok_(fallbackMonth) || '',
+      year: yearWin || supplyNormalizeYearTok_(fallbackYear) || '',
+    };
+  }
+
   function supplyDraftPeriodTokens_(row, batch) {
     var month = String(
       (row && (row.MONTH || row.month || row.quarter || row.QUARTER))
@@ -29823,21 +29884,17 @@ function initDashboardApp() {
         const bid = supplyBatchIdKey_(r.batch_id || r.draft_id);
         if (bid) batchIds[bid] = 1;
       });
-      // Same-period sibling cards (pre-consolidate leftovers) must go too.
-      const delMonth = supplyNormalizeMonthTok_(batch.month || batch.quarter || '');
-      const delYearRaw = String(batch.year || '').trim();
-      const delYearNum = parseInt(delYearRaw, 10);
-      const delYear = (!isNaN(delYearNum) && delYearNum >= 1990 && delYearNum <= 2100)
-        ? String(delYearNum)
-        : delYearRaw;
+      // Period + ids from row majority (not a junk first-row month like 1 with blank year).
+      const maj = supplyMajorityPeriodFromRows_(batch.rows, batch.month || batch.quarter, batch.year);
+      const delMonth = maj.month || supplyNormalizeMonthTok_(batch.month || batch.quarter || '');
+      const delYear = maj.year || supplyNormalizeYearTok_(batch.year || '');
       const delType = String(batch.supply_type || '').trim().toUpperCase();
       const delWaste = supplyImportIsWaste_(delType);
       function matchesDeletePeriod_(sib) {
         if (!sib) return false;
-        const bm = supplyNormalizeMonthTok_(sib.month || sib.quarter || '');
-        const byRaw = String(sib.year || '').trim();
-        const byNum = parseInt(byRaw, 10);
-        const by = (!isNaN(byNum) && byNum >= 1990 && byNum <= 2100) ? String(byNum) : byRaw;
+        const sibMaj = supplyMajorityPeriodFromRows_(sib.rows, sib.month || sib.quarter, sib.year);
+        const bm = sibMaj.month || supplyNormalizeMonthTok_(sib.month || sib.quarter || '');
+        const by = sibMaj.year || supplyNormalizeYearTok_(sib.year || '');
         if (bm !== delMonth || by !== delYear) return false;
         return delWaste === supplyImportIsWaste_(sib.supply_type);
       }
@@ -29848,8 +29905,11 @@ function initDashboardApp() {
           pushDraftId_(r.draft_id || r.DRAFT_ID);
           pushDraftId_(r.batch_id);
           const bid = supplyBatchIdKey_(r.batch_id || r.draft_id);
-          if (bid) batchIds[bid] = 1;
+          if (bid && bid.toLowerCase() !== 'unknown') batchIds[bid] = 1;
         });
+      });
+      Object.keys(batchIds).forEach(function(k) {
+        if (!k || k.toLowerCase() === 'unknown') delete batchIds[k];
       });
       const batchIdList = Object.keys(batchIds);
       const periodKey = supplyPeriodKey_(delMonth, delYear) + (delWaste ? '|WASTE' : '|MAIN');
@@ -29913,9 +29973,12 @@ function initDashboardApp() {
           if (rowCount > 0 && deleted === 0) {
             throw new Error(
               'Server deleted 0 rows for period ' + delMonth + '/' + delYear + '. '
-              + 'Update Vercel GAS_WEBAPP_URL to the latest /exec, then Redeploy Apps Script '
-              + 'from GoogleAppsScript-backend-v3-full.gs. '
-              + '(sent draft_ids=' + draftIds.length + ', batch_ids=' + batchIdList.length + ')'
+              + 'Paste latest GoogleAppsScript-backend-v3-full.gs and Deploy → New version. '
+              + 'Also confirm Vercel GAS_WEBAPP_URL. '
+              + '(sent draft_ids=' + draftIds.length + ', batch_ids=' + batchIdList.length
+              + ', want=' + String(res && res.want_month || delMonth) + '/' + String(res && res.want_year || delYear)
+              + ', by_id=' + String(res && res.deleted_by_id != null ? res.deleted_by_id : '?')
+              + ', by_period=' + String(res && res.deleted_by_period != null ? res.deleted_by_period : '?') + ')'
             );
           }
           if (!window._supplyDeletedPeriodKeys) window._supplyDeletedPeriodKeys = {};
@@ -30243,13 +30306,16 @@ function initDashboardApp() {
           renderSupplyDraftList_(renderOpts);
           return;
         }
-        // Group by batch_id
+        // Group by batch_id — skip incomplete junk rows (no id / no company).
+        // Those used to create a ghost "unknown" card with wrong month (e.g. 1/2026).
         const batches = {};
         data.forEach(function(row) {
-          const bid = supplyBatchIdKey_(row.batch_id || row.draft_id || 'unknown');
+          if (!supplyDraftRowIsComplete_(row)) return;
+          const bid = supplyBatchIdKey_(row.batch_id || row.draft_id || '');
+          if (!bid || bid.toLowerCase() === 'unknown') return;
           row.batch_id = bid;
-          const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
-          const rowYear = String(row.year || row.YEAR || '').trim();
+          const rowMonth = supplyRowMonthRaw_(row);
+          const rowYear = supplyRowYearRaw_(row);
           if (!batches[bid]) {
             batches[bid] = {
               batch_id:   bid,
@@ -30261,8 +30327,9 @@ function initDashboardApp() {
               created_at: row.created_at || '',
               rows:       [],
             };
-          } else if (!batches[bid].month && rowMonth) {
-            batches[bid].month = rowMonth;
+          } else {
+            if (!batches[bid].month && rowMonth) batches[bid].month = rowMonth;
+            if (!batches[bid].year && rowYear) batches[bid].year = rowYear;
           }
           if (row.supply_type || row.SUPPLY_TYPE) {
             batches[bid].supply_type = row.supply_type || row.SUPPLY_TYPE;
@@ -30275,6 +30342,9 @@ function initDashboardApp() {
             || row._profile_draft_saved === true;
         });
         window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(Object.values(batches).map(function(b) {
+          const maj = supplyMajorityPeriodFromRows_(b.rows, b.month, b.year);
+          if (maj.month) b.month = maj.month;
+          if (maj.year) b.year = maj.year;
           supplyNormalizeBatchPeriod_(b);
           let batchType = 'CPO';
           (b.rows || []).forEach(function(row) {
