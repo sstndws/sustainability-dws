@@ -7184,7 +7184,7 @@ function initDashboardApp() {
     { key: 'FACILITY NAME PK', label: 'Facility PK' },
     { key: 'PRODUCT SUPPLY', label: 'Product Supply' },
   ];
-  const MILL_PDF_COL_DEFAULT_KEYS = ['MONTH', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
+  const MILL_PDF_COL_DEFAULT_KEYS = ['MONTH', 'YEAR', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'PROVINCE', 'SUPPLIER STATUS', 'RESULT RISK LEVEL', 'BUYER NO BUY LIST', '__NBL_BY__', 'CERTIFICATION'];
   let millPdfColSelected = new Set(MILL_PDF_COL_DEFAULT_KEYS);
   let millPdfDimFilters = {
     month: new Set(),
@@ -7508,7 +7508,13 @@ function initDashboardApp() {
   }
 
   function getMillRowsForPdfExport() {
-    return sortMillRowsForDisplay(millRowsAfterRegistryDimFilters());
+    // Same base dims as the table (period / group / province / search).
+    // Collapse matches Main/Waste table cards — without applying column filters
+    // (those stay table-only, as before).
+    const base = millRowsAfterRegistryDimFilters();
+    const sorted = sortMillRowsForDisplay(base);
+    if (millRegistryProductView === 'general') return sorted;
+    return millCollapseRowsForTableDisplay_(sorted);
   }
 
   function updateMillPdfExportScope() {
@@ -7519,7 +7525,7 @@ function initDashboardApp() {
       return;
     }
     const pdfN = getMillRowsForPdfExport().length;
-    const tableN = sortMillRowsForDisplay(millRowsAfterRegistryDimFilters().filter(millRowMatchesColumnFilters)).length;
+    const tableN = (millFilteredRows && millFilteredRows.length) ? millFilteredRows.length : 0;
     if (tableN === pdfN) {
       el.textContent = pdfN + ' rows · table view matches export';
     } else {
@@ -7645,7 +7651,7 @@ function initDashboardApp() {
     };
     const rows = getMillRowsForPdfExport();
     if (!rows.length) {
-      toastErr('No rows to export. Adjust chips, search, registry filters, or column filters.');
+      toastErr('No rows to export. Adjust chips, search, or registry / period filters.');
       return;
     }
     const cols = MILL_PDF_EXPORT_COLS.filter(function(c) { return millPdfColSelected.has(c.key); });
@@ -12895,8 +12901,11 @@ function initDashboardApp() {
 
   function statusBadgeGrv(val) {
     if (!val) return '—';
-    const cls = val.toLowerCase().includes('open') ? 'grv-open' : 'grv-closed';
-    return `<span class="status-badge ${cls}"><span class="s-dot"></span>${val}</span>`;
+    const v = String(val).toLowerCase();
+    let cls = 'grv-closed';
+    if (v.includes('open')) cls = 'grv-open';
+    else if (v.includes('invalid')) cls = 'grv-invalid';
+    return `<span class="status-badge ${cls}"><span class="s-dot"></span>${escHtml(val)}</span>`;
   }
 
   function grvExpandFieldHtml_(f, raw, row) {
