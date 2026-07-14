@@ -6114,12 +6114,9 @@ body.supply-import-open {
   position: relative;
   z-index: 2;
 }
-.supply-batch-table-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+.supply-batch-table-wrap,
+.supply-batch-panel {
   padding: 0 12px 12px;
-  max-height: min(72vh, 700px);
   position: relative;
   z-index: 1;
 }
@@ -6131,7 +6128,6 @@ body.supply-import-open {
   padding: 10px 4px 12px;
   border-bottom: 1px solid rgba(139, 26, 26, 0.06);
   margin-bottom: 4px;
-  flex-shrink: 0;
 }
 .supply-batch-filter-label {
   font-size: 11px;
@@ -6190,14 +6186,14 @@ body.supply-import-open {
   font-style: italic;
 }
 .supply-batch-table-scroll {
-  flex: 1 1 auto;
-  min-height: 140px;
   overflow: auto;
-  max-height: none;
+  max-height: min(52vh, 520px);
   -webkit-overflow-scrolling: touch;
   border-radius: 0;
   position: relative;
   z-index: 1;
+  /* Keep scroll painting inside this box — never over the footer below */
+  isolation: isolate;
 }
 .supply-batch-table {
   width: 100%;
@@ -6345,31 +6341,26 @@ body.supply-import-open {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  padding: 12px 4px 4px;
-  margin-top: 4px;
+  padding: 14px 4px 8px;
+  margin-top: 0;
   border-top: 1px solid rgba(139, 26, 26, 0.07);
-  flex-shrink: 0;
   position: relative;
-  z-index: 80;
-  isolation: isolate;
+  z-index: 20;
   background: #fff;
   pointer-events: auto;
-  box-shadow: 0 -6px 16px rgba(26, 10, 10, 0.06);
 }
 .supply-batch-footer__row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 .supply-batch-footer__hint {
   margin: 0;
-  flex: 1 1 220px;
-  min-width: 0;
   font-size: 11.5px;
   line-height: 1.5;
   color: #9C8080;
+  pointer-events: none; /* text must never steal clicks from buttons below */
 }
 .supply-batch-footer__actions {
   display: flex;
@@ -6377,17 +6368,18 @@ body.supply-import-open {
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  flex: 0 0 auto;
   position: relative;
-  z-index: 81;
+  z-index: 21;
   pointer-events: auto;
 }
-/* Force hit-target — cached CSS / overlay bugs previously made this look dead */
+/* Force hit-target — table scroll previously painted over the button center */
 .supply-batch-footer__actions .supply-btn {
   position: relative;
-  z-index: 82;
+  z-index: 22;
   pointer-events: auto !important;
   cursor: pointer !important;
+  min-height: 36px;
+  padding: 8px 16px;
 }
 .supply-batch-footer__actions .supply-btn.is-busy {
   cursor: wait !important;

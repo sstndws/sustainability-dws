@@ -29290,10 +29290,14 @@ function initDashboardApp() {
     }
 
     const expandedBatchIds = new Set(Array.isArray(opts.expandBatchIds) ? opts.expandBatchIds : []);
-    container.querySelectorAll('.supply-batch-table-wrap:not([hidden])').forEach(function(wrap) {
-      const batchId = String(wrap.id || '').replace(/^supply-batch-table-/, '');
-      if (batchId) expandedBatchIds.add(batchId);
-    });
+    // Only keep previously-open cards when explicitly preserving UI (after submit/edit).
+    // Fresh Task List opens stay collapsed until the user clicks View / Edit.
+    if (opts.preserveScroll || opts.preserveUi || opts.preserveExpanded) {
+      container.querySelectorAll('.supply-batch-table-wrap:not([hidden])').forEach(function(wrap) {
+        const batchId = String(wrap.id || '').replace(/^supply-batch-table-/, '');
+        if (batchId) expandedBatchIds.add(batchId);
+      });
+    }
 
     const batches = window._supplyDraftBatches || [];
     if ((allDataRaw && allDataRaw.length) || (allData && allData.length)) {
@@ -29572,17 +29576,15 @@ function initDashboardApp() {
     const hintWaste = supplyImportIsWaste_(batch && batch.supply_type)
       ? ' Matched rows copy profile data from <strong>Mill Onboarding</strong> (see Profile: month/year badge). Submit sends to <strong>Mill Onboarding Waste</strong>.'
       : '';
-    return '<div class="supply-batch-footer">'
+    return '<div class="supply-batch-footer" data-batch-footer="' + escHtml(batchId) + '">'
       + supplyFailuresBannerHtml_(batch)
-      + '<div class="supply-batch-footer__row">'
       + '<p class="supply-batch-footer__hint"><strong>Complete</strong> is optional — for manual profile edit. '
       + '<strong>Submit Selected</strong> sends checked eligible rows to <strong>' + escHtml(targetSheet) + '</strong> '
       + '(matched / new / draft-saved only; group-mismatch is blocked until rematch).' + hintWaste + '</p>'
       + '<div class="supply-batch-footer__actions">'
-      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Save Draft</button>'
-      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Merge CPO+PK (' + mergeableN + ')</button>' : '')
-      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Submit Selected (' + checkedN + ')</button>' : '')
-      + '</div>'
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
+      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Selected (' + checkedN + ')</button>' : '')
       + '</div>'
       + '</div>';
   }
@@ -30076,7 +30078,9 @@ function initDashboardApp() {
 
   function loadSupplyDraftsFromServer_(opts) {
     opts = opts || {};
-    const renderOpts = opts.preserveUi ? { preserveScroll: true } : {};
+    const renderOpts = opts.preserveUi
+      ? { preserveScroll: true, preserveUi: true, preserveExpanded: true }
+      : {};
     // Server sheet status is source of truth on refresh — do not re-apply local
     // "submitted" overlays (that caused false Submitted after partial submit).
     if (_supplyBuildTaskInFlight) {
