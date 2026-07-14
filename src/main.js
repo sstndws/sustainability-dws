@@ -26445,6 +26445,8 @@ function initDashboardApp() {
       if (!target.batch_id && b.batch_id) target.batch_id = b.batch_id;
       (b.rows || []).forEach(function(srcRow) {
         if (!target.rows) target.rows = [];
+        // Keep card + sheet identity aligned after period merge.
+        if (target.batch_id) srcRow.batch_id = target.batch_id;
         target.rows.push(srcRow);
       });
       target.supply_type = supplyCombineSupplyTypes_(target.supply_type, b.supply_type);
@@ -29549,11 +29551,65 @@ function initDashboardApp() {
 
     if (action === 'delete-batch') {
       const batchPeriodLabel = (batch.month ? (millMonthLabel_(parseInt(batch.month, 10)) + ' ' + batch.month) : (batch.quarter || '')) + ' ' + (batch.year || '');
-      if (!confirm('Delete draft batch ' + batchPeriodLabel + '? This cannot be undone.')) return;
-      window._supplyDraftBatches = window._supplyDraftBatches.filter(function(b) { return b.batch_id !== bId; });
-      renderSupplyDraftList_();
-      apiPost({ action: 'deleteSupplyDraft', batch_id: bId })
-        .catch(function(err) { console.warn('[supplyDraft] Delete failed:', err.message); });
+      const rowCount = (batch.rows || []).length;
+      const confirmMsg = 'Delete this Task List batch (' + batchPeriodLabel.trim() + ', ' + rowCount + ' rows)?\n\n'
+        + '• Removes rows from Supply Import Draft sheet\n'
+        + '• Does NOT delete Mill Onboarding data already submitted\n\n'
+        + 'This cannot be undone.';
+      if (!confirm(confirmMsg)) return;
+
+      const draftIds = [];
+      const batchIds = {};
+      if (bId) batchIds[String(bId).trim()] = 1;
+      (batch.rows || []).forEach(function(r) {
+        const did = String(r.draft_id || '').trim();
+        if (did) draftIds.push(did);
+        const bid = String(r.batch_id || '').trim();
+        if (bid) batchIds[bid] = 1;
+      });
+      const batchIdList = Object.keys(batchIds);
+
+      const prevLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+
+      apiPost({
+        action: 'deleteSupplyDraft',
+        batch_id: bId,
+        batch_ids: batchIdList,
+        draft_ids: draftIds,
+        timeoutMs: 120000,
+      })
+        .then(function(res) {
+          const deleted = Number(res && res.deleted) || 0;
+          window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
+            return b.batch_id !== bId;
+          });
+          supplyClearDraftCacheIds_(draftIds);
+          renderSupplyDraftList_();
+          const msg = deleted
+            ? ('Deleted ' + deleted + ' draft row(s) from Supply Import Draft. Mill Onboarding data was kept.')
+            : 'No matching draft rows on the sheet (already gone).';
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast(msg, 'success');
+          } else {
+            alert(msg);
+          }
+          // Pull server truth in case consolidate left sibling batch_ids behind.
+          if (typeof loadSupplyDraftsFromServer_ === 'function') {
+            return loadSupplyDraftsFromServer_({ preserveUi: true });
+          }
+        })
+        .catch(function(err) {
+          alert('Delete failed: ' + ((err && err.message) || err) + '\n\nBatch was NOT removed. Redeploy Apps Script if this persists.');
+          if (typeof loadSupplyDraftsFromServer_ === 'function') {
+            loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
+          }
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.textContent = prevLabel || 'Delete';
+        });
       return;
     }
 

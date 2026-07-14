@@ -846,7 +846,12 @@ function doPost(e) {
     if (action === 'saveSupplyDraft')   return respond(saveSupplyDraft_(body.rows || [], body.batch_id || '', body.meta || {}));
     if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || [], body.meta || {}));
     if (action === 'reconcileSupplyDraft') return respond(reconcileSupplyDraft_(body.batch_id || ''));
-    if (action === 'deleteSupplyDraft') return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || ''));
+    if (action === 'deleteSupplyDraft') {
+      return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || '', {
+        draft_ids: body.draft_ids || [],
+        batch_ids: body.batch_ids || [],
+      }));
+    }
 
     return respond({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -6872,23 +6877,62 @@ function reconcileSupplyDraft_(batchId) {
   };
 }
 
-function deleteSupplyDraft_(draftId, batchId) {
+/**
+ * Delete Supply Import Draft rows.
+ * Accepts a single draft_id / batch_id and/or arrays (draft_ids / batch_ids).
+ * Rewrites the sheet in one pass — safe for large submitted batches (hundreds of rows).
+ * Does NOT touch Mill Onboarding — only the Task List draft sheet.
+ */
+function deleteSupplyDraft_(draftId, batchId, opts) {
   ensureSupplyDraftHeaders_();
-  var sheet   = getSheet('supplyDraft');
-  var data    = sheet.getDataRange().getValues();
+  opts = opts || {};
+  var sheet = getSheet('supplyDraft');
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) {
+    return { success: true, deleted: 0 };
+  }
   var headers = data[0].map(function(h) { return String(h || '').trim(); });
   var draftIdCol = headers.indexOf('draft_id');
   var batchIdCol = headers.indexOf('batch_id');
-  var toDelete = [];
-  for (var r = data.length - 1; r >= 1; r--) {
-    var rowDId = String(data[r][draftIdCol] || '').trim();
-    var rowBId = String(data[r][batchIdCol] || '').trim();
-    if ((draftId && rowDId === draftId) || (batchId && !draftId && rowBId === batchId)) {
-      toDelete.push(r + 1);
+
+  var draftIds = {};
+  var batchIds = {};
+  function addId_(map, raw) {
+    var s = String(raw || '').trim();
+    if (s) map[s] = 1;
+  }
+  addId_(draftIds, draftId);
+  addId_(batchIds, batchId);
+  (opts.draft_ids || []).forEach(function(id) { addId_(draftIds, id); });
+  (opts.batch_ids || []).forEach(function(id) { addId_(batchIds, id); });
+
+  if (!Object.keys(draftIds).length && !Object.keys(batchIds).length) {
+    throw new Error('draft_id or batch_id required');
+  }
+
+  var keep = [data[0]];
+  var deleted = 0;
+  for (var r = 1; r < data.length; r++) {
+    var rowDId = draftIdCol >= 0 ? String(data[r][draftIdCol] || '').trim() : '';
+    var rowBId = batchIdCol >= 0 ? String(data[r][batchIdCol] || '').trim() : '';
+    var hit = (rowDId && draftIds[rowDId]) || (rowBId && batchIds[rowBId]);
+    if (hit) {
+      deleted++;
+      continue;
+    }
+    keep.push(data[r]);
+  }
+
+  if (deleted > 0) {
+    var colCount = headers.length;
+    // Clear then rewrite so leftover tail rows don't ghost after shorter write.
+    sheet.clearContents();
+    if (keep.length) {
+      sheet.getRange(1, 1, keep.length, colCount).setValues(keep);
     }
   }
-  toDelete.forEach(function(sheetRow) { sheet.deleteRow(sheetRow); });
-  return { success: true, deleted: toDelete.length };
+
+  return { success: true, deleted: deleted, kept: keep.length - 1 };
 }
 
 // ═══════════════════════════════════════════════════════════
