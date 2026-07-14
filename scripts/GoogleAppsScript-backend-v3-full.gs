@@ -6557,12 +6557,17 @@ function millFindDuplicateSupplyRowGs_(millData, millHeaders, row) {
   return 0;
 }
 
-/** Tandai draft submitted — by draft_id + semua baris company & periode sama di batch. */
+/**
+ * Mark draft rows submitted — by draft_id + sibling company/period rows in the same batch.
+ * Returns { dirty:boolean, marked_ids:string[] }.
+ */
 function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now) {
   var statusCol = draftHeaders.indexOf('status');
   var updCol = draftHeaders.indexOf('updated_at');
   var batchCol = draftHeaders.indexOf('batch_id');
-  if (statusCol < 0) return false;
+  var draftIdCol = draftHeaders.indexOf('draft_id');
+  var markedIds = [];
+  if (statusCol < 0) return { dirty: false, marked_ids: markedIds };
   var per = supplyReadPeriodFromRowGs_(row);
   var coKey = supplyNormKey_(row['COMPANY NAME']);
   var submitKind = supplySubmitKindFromDraftGs_(row);
@@ -6574,10 +6579,15 @@ function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, 
     draftData[dri][statusCol] = 'submitted';
     if (updCol >= 0) draftData[dri][updCol] = now;
     dirty = true;
+    if (draftIdCol >= 0) {
+      var mid = String(draftData[dri][draftIdCol] || '').trim();
+      if (mid && markedIds.indexOf(mid) < 0) markedIds.push(mid);
+    }
   }
 
   var draftId = String(row.draft_id || '').trim();
   if (draftId && draftIdIndex[draftId] != null) markIdx(draftIdIndex[draftId]);
+  else if (draftId) markedIds.push(draftId);
 
   for (var di = 1; di < draftData.length; di++) {
     if (draftId && draftIdIndex[draftId] === di) continue;
@@ -6592,7 +6602,7 @@ function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, 
     if (st === 'submitted') continue;
     markIdx(di);
   }
-  return dirty;
+  return { dirty: dirty, marked_ids: markedIds };
 }
 
 function submitSupplyDraft_(batchId, rows, meta) {
@@ -6663,7 +6673,11 @@ function submitSupplyDraft_(batchId, rows, meta) {
     };
   }
 
+  var results = [];
+
   rows.forEach(function(row) {
+    var draftId = String(row.draft_id || '').trim();
+    var company = String(row['COMPANY NAME'] || '').trim() || 'row';
     var rp = supplyReadPeriodFromRowGs_(row);
     if ((!rp.month || !rp.year) && batchPeriod) {
       supplyStampPeriodOnRowGs_(row, batchPeriod.month, batchPeriod.year);
@@ -6675,10 +6689,19 @@ function submitSupplyDraft_(batchId, rows, meta) {
 
     var matchStatus = String(row.match_status || '').trim().toLowerCase();
     if (matchStatus !== 'matched' && matchStatus !== 'new') {
-      errors.push((row['COMPANY NAME'] || 'row') + ': invalid status for submit');
+      var statusErr = company + ': invalid status for submit (' + (matchStatus || 'empty') + ')';
+      errors.push(statusErr);
+      results.push({
+        draft_id: draftId,
+        company: company,
+        ok: false,
+        error: statusErr,
+      });
       return;
     }
 
+    var targetSheetRow = 0;
+    var mode = 'add';
     try {
       if (!findMillReferenceForSupplyGs_(millData, millHeaders, row, millState.companyIndex, millState.mainMillFallback)
           && !String(row['COMPANY NAME'] || '').trim()) {
@@ -6686,13 +6709,14 @@ function submitSupplyDraft_(batchId, rows, meta) {
       }
       var dupSheetRow = millFindDuplicateSupplyRowGs_(millData, millHeaders, row);
       var periodSheetRow = millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row);
-      var targetSheetRow = dupSheetRow || periodSheetRow;
+      targetSheetRow = dupSheetRow || periodSheetRow;
       if (!targetSheetRow) {
         var newSheetRow = millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, millState);
         if (!newSheetRow) {
           throw new Error('no data to write');
         }
         targetSheetRow = newSheetRow;
+        mode = 'add';
       } else if (!dupSheetRow) {
         var identityPatch = mergeReferenceIdentityIntoPatchGs_(
           Object.assign({}, buildSupplyIdentityPatchFromDraftGs_(row), buildSupplyPatchFromDraftGs_(row)),
@@ -6703,18 +6727,37 @@ function submitSupplyDraft_(batchId, rows, meta) {
         resolveGrievanceKeysOnPatchGs_(identityPatch, millHeaders);
         identityPatch = millStripFormulaFromPatchGs_(identityPatch);
         millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetSheetRow, identityPatch);
+        mode = 'update';
+      } else {
+        mode = 'exists';
       }
       if (targetSheetRow) {
         millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetSheetRow, row);
       }
     } catch (err) {
-      errors.push((row['COMPANY NAME'] || '') + ': ' + err.message);
+      var failMsg = company + ': ' + err.message;
+      errors.push(failMsg);
+      results.push({
+        draft_id: draftId,
+        company: company,
+        ok: false,
+        error: failMsg,
+      });
       return;
     }
 
-    if (markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now)) {
-      draftDirty = true;
-    }
+    var markRes = markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now);
+    if (markRes && markRes.dirty) draftDirty = true;
+    var markedIds = (markRes && Array.isArray(markRes.marked_ids)) ? markRes.marked_ids.slice() : [];
+    if (draftId && markedIds.indexOf(draftId) < 0) markedIds.unshift(draftId);
+    results.push({
+      draft_id: draftId,
+      company: company,
+      ok: true,
+      mill_row: targetSheetRow || 0,
+      mode: mode,
+      marked_draft_ids: markedIds,
+    });
     submitted++;
   });
 
@@ -6725,7 +6768,14 @@ function submitSupplyDraft_(batchId, rows, meta) {
   if (errors.length && !submitted) {
     throw new Error(errors.slice(0, 5).join('; '));
   }
-  return { success: true, submitted: submitted, batch_id: batchId, errors: errors };
+  return {
+    success: true,
+    submitted: submitted,
+    failed: results.filter(function(r) { return !r.ok; }).length,
+    batch_id: batchId,
+    errors: errors,
+    results: results,
+  };
 }
 
 function deleteSupplyDraft_(draftId, batchId) {

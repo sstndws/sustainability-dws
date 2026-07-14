@@ -6329,12 +6329,11 @@ body.supply-import-open {
 }
 .supply-batch-footer {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
   padding: 14px 10px 10px;
   border-top: 1px solid rgba(139, 26, 26, 0.07);
-  flex-wrap: wrap;
   position: sticky;
   bottom: 0;
   z-index: 3;
@@ -6342,8 +6341,6 @@ body.supply-import-open {
   box-shadow: 0 -6px 16px rgba(26, 10, 10, 0.06);
 }
 .supply-batch-footer__hint {
-  flex: 1;
-  min-width: 200px;
   margin: 0;
   font-size: 11.5px;
   line-height: 1.5;
@@ -6353,8 +6350,38 @@ body.supply-import-open {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
   position: relative;
   z-index: 4;
+}
+.supply-submit-failures {
+  border: 1px solid rgba(192, 57, 43, 0.28);
+  background: #fff8f7;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.supply-submit-failures__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: #8B1A1A;
+  font-size: 12.5px;
+}
+.supply-submit-failures__list {
+  margin: 0;
+  padding-left: 18px;
+  color: #5c3030;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.supply-btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 .supply-inline-input {
   width: 100%;

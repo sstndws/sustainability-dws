@@ -26985,16 +26985,35 @@ function initDashboardApp() {
     return String(row && row.match_status || '').trim().toLowerCase();
   }
 
-  function supplyRowReadyForSubmit_(row, batch) {
+  /** Shared eligibility for bulk + single-row submit. */
+  function supplyRowEligibleForSubmit_(row, batch) {
     if (!row || supplyRowIsSubmitted_(row)) return false;
     if (!String(row['COMPANY NAME'] || '').trim()) return false;
+    const ms = supplyNormMatchStatus_(row);
+    if (ms === 'group_mismatch') return false;
+    if (ms === 'matched' || ms === 'new') return true;
     if (supplyDraftSavedFlag_(row)) return true;
-    if (supplyNormMatchStatus_(row) === 'matched') return true;
     return supplyRowHasSupplyQty_(row, batch);
   }
 
-  function supplyRowCheckedForSubmit_(row) {
-    return !!(row && !supplyRowIsSubmitted_(row));
+  function supplyRowBlockReason_(row, batch) {
+    if (!row) return 'missing row';
+    if (supplyRowIsSubmitted_(row)) return 'already submitted';
+    const company = String(row['COMPANY NAME'] || '').trim();
+    if (!company) return 'COMPANY NAME is empty';
+    const ms = supplyNormMatchStatus_(row);
+    if (ms === 'group_mismatch') return company + ': group mismatch — rematch or edit first';
+    if (ms === 'matched' || ms === 'new' || supplyDraftSavedFlag_(row)) return '';
+    if (!supplyRowHasSupplyQty_(row, batch)) return company + ': supply qty is empty';
+    return '';
+  }
+
+  function supplyRowReadyForSubmit_(row, batch) {
+    return supplyRowEligibleForSubmit_(row, batch);
+  }
+
+  function supplyRowCheckedForSubmit_(row, batch) {
+    return supplyRowEligibleForSubmit_(row, batch);
   }
 
   function supplyHydrateRowForSubmit_(row, batch) {
@@ -27039,9 +27058,19 @@ function initDashboardApp() {
     if (!supplyImportIsWaste_(batch && batch.supply_type)) {
       row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
     }
+
+    // Normalize status so backend accepts draft-saved rows consistently.
+    const ms = supplyNormMatchStatus_(row);
+    if (ms !== 'matched' && ms !== 'new') {
+      if (supplyDraftSavedFlag_(row) || prefill['COMPANY NAME'] || row.target_mill_row) {
+        row.match_status = 'matched';
+      } else if (String(row['COMPANY NAME'] || '').trim()) {
+        row.match_status = 'new';
+      }
+    }
   }
 
-  const SUPPLY_SUBMIT_CHUNK_SIZE_ = 40;
+  const SUPPLY_SUBMIT_CHUNK_SIZE_ = 20;
 
   function supplyPrepareRowForBulkSubmit_(row, batch) {
     supplyHydrateRowForSubmit_(row, batch);
@@ -27053,7 +27082,62 @@ function initDashboardApp() {
       r.status = 'submitted';
       r._profile_draft_saved = false;
       r.profile_draft_saved = '';
+      r._submitError = '';
     });
+  }
+
+  function supplyMarkRowsByDraftIds_(batchRows, idSet) {
+    if (!idSet || !idSet.size) return [];
+    const marked = [];
+    (batchRows || []).forEach(function(r) {
+      const id = String(r.draft_id || '').trim();
+      if (!id || !idSet.has(id)) return;
+      if (supplyRowIsSubmitted_(r)) return;
+      r._submitted = true;
+      r.status = 'submitted';
+      r._profile_draft_saved = false;
+      r.profile_draft_saved = '';
+      r._submitError = '';
+      marked.push(r);
+    });
+    return marked;
+  }
+
+  function supplyStoreSubmitFailures_(batch, failures) {
+    if (!batch) return;
+    batch._submitFailures = (failures || []).map(function(f) {
+      return {
+        draft_id: String(f.draft_id || '').trim(),
+        company: String(f.company || '').trim(),
+        error: String(f.error || '').trim(),
+      };
+    }).filter(function(f) { return f.company || f.draft_id || f.error; });
+  }
+
+  function supplyClearSubmitFailures_(batch) {
+    if (batch) batch._submitFailures = [];
+  }
+
+  function supplyFailuresBannerHtml_(batch) {
+    const fails = (batch && batch._submitFailures) || [];
+    if (!fails.length) return '';
+    const items = fails.slice(0, 12).map(function(f) {
+      const label = escHtml(f.company || f.draft_id || 'row');
+      const err = escHtml(f.error || 'failed');
+      return '<li><strong>' + label + '</strong> — ' + err + '</li>';
+    }).join('');
+    const more = fails.length > 12
+      ? '<li>+' + (fails.length - 12) + ' more…</li>'
+      : '';
+    return ''
+      + '<div class="supply-submit-failures" role="status">'
+      + '<div class="supply-submit-failures__head">'
+      + '<strong>' + fails.length + ' not submitted</strong>'
+      + '<button type="button" class="supply-btn supply-btn--ghost supply-btn--sm" data-action="retry-failed" data-batch="'
+      + escHtml(batch.batch_id) + '">Retry failed</button>'
+      + '</div>'
+      + '<ul class="supply-submit-failures__list">' + items + more + '</ul>'
+      + '</div>';
   }
 
   function supplyRowsPendingSubmit_(batch) {
@@ -27178,76 +27262,142 @@ function initDashboardApp() {
     }
     if (batch) batch._submitInFlight = true;
     try {
-    collectInlineEdits_(bId);
-    const pending = (rowsOptional && rowsOptional.length)
-      ? rowsOptional.filter(supplyRowCheckedForSubmit_)
-      : (batch.rows || []).filter(supplyRowCheckedForSubmit_);
-    if (!pending.length) throw new Error('No checked rows to submit.');
+      collectInlineEdits_(bId);
+      const pending = (rowsOptional && rowsOptional.length)
+        ? rowsOptional.filter(function(r) { return supplyRowEligibleForSubmit_(r, batch); })
+        : (batch.rows || []).filter(function(r) { return supplyRowEligibleForSubmit_(r, batch); });
+      if (!pending.length) throw new Error('No eligible rows to submit.');
 
-    pending.forEach(function(r) { supplyHydrateRowForSubmit_(r, batch); });
+      pending.forEach(function(r) { supplyHydrateRowForSubmit_(r, batch); });
 
-    const valid = [];
-    const errors = [];
-    pending.forEach(function(r) {
-      if (!String(r['COMPANY NAME'] || '').trim()) {
-        errors.push((r['MILL NAME'] || 'row') + ': COMPANY NAME is empty');
-        return;
-      }
-      valid.push(r);
-    });
-    if (!valid.length) throw new Error(errors.slice(0, 5).join('; ') || 'No valid rows to submit.');
-
-    const toSubmit = supplyCoalesceSubmitRowsByCompanyPeriod_(valid, batch);
-    const submitPayloads = toSubmit.map(function(r) { return supplyRowPayloadForSubmit_(r, batch); });
-
-    let submittedN = 0;
-    const total = submitPayloads.length;
-    for (let i = 0; i < submitPayloads.length; i += SUPPLY_SUBMIT_CHUNK_SIZE_) {
-      const chunk = submitPayloads.slice(i, i + SUPPLY_SUBMIT_CHUNK_SIZE_);
-      if (typeof progressCb === 'function') {
-        progressCb(Math.min(i + chunk.length, total), total);
-      }
-      try {
-        const res = await apiPost({
-          action: 'submitSupplyDraft',
-          batch_id: bId,
-          rows: chunk,
-          meta: supplyBatchMetaForApi_(batch),
-        });
-        const okN = (res && typeof res.submitted === 'number') ? res.submitted : 0;
-        if (res && res.errors && res.errors.length) {
-          errors.push.apply(errors, res.errors);
+      const valid = [];
+      const failures = [];
+      const errors = [];
+      pending.forEach(function(r) {
+        const block = supplyRowBlockReason_(r, batch);
+        // Re-check after hydrate (status/qty may have resolved).
+        if (!supplyRowEligibleForSubmit_(r, batch)) {
+          const reason = block || ((String(r['COMPANY NAME'] || '').trim() || 'row') + ': not eligible after prepare');
+          failures.push({
+            draft_id: String(r.draft_id || '').trim(),
+            company: String(r['COMPANY NAME'] || r['MILL NAME'] || 'row').trim(),
+            error: reason,
+          });
+          errors.push(reason);
+          return;
         }
-        if (okN > 0) {
-          const submittedIds = new Set(chunk.map(function(p) {
-            return String(p.draft_id || '').trim();
-          }).filter(Boolean));
-          const submittedCos = new Set(chunk.map(function(p) {
-            return supplyCompanyKey_(p['COMPANY NAME']);
-          }));
-          supplyMarkRowsSubmitted_(valid.filter(function(r) {
-            const id = String(r.draft_id || '').trim();
-            if (id && submittedIds.has(id)) return true;
-            return submittedCos.has(supplyCompanyKey_(r['COMPANY NAME']));
-          }));
-          submittedN += okN;
+        valid.push(r);
+      });
+      if (!valid.length) {
+        supplyStoreSubmitFailures_(batch, failures);
+        throw new Error(errors.slice(0, 5).join('; ') || 'No valid rows to submit.');
+      }
+
+      const toSubmit = supplyCoalesceSubmitRowsByCompanyPeriod_(valid, batch);
+      const submitPayloads = toSubmit.map(function(r) { return supplyRowPayloadForSubmit_(r, batch); });
+
+      let submittedN = 0;
+      const okIdSet = new Set();
+      const total = submitPayloads.length;
+      for (let i = 0; i < submitPayloads.length; i += SUPPLY_SUBMIT_CHUNK_SIZE_) {
+        const chunk = submitPayloads.slice(i, i + SUPPLY_SUBMIT_CHUNK_SIZE_);
+        if (typeof progressCb === 'function') {
+          progressCb(Math.min(i + chunk.length, total), total);
         }
-      } catch (err) {
-        errors.push('Batch ' + (Math.floor(i / SUPPLY_SUBMIT_CHUNK_SIZE_) + 1) + ': ' + (err && err.message ? err.message : err));
+        try {
+          const res = await apiPost({
+            action: 'submitSupplyDraft',
+            batch_id: bId,
+            rows: chunk,
+            meta: supplyBatchMetaForApi_(batch),
+            timeoutMs: 90000,
+          });
+          const results = (res && Array.isArray(res.results)) ? res.results : [];
+          if (results.length) {
+            results.forEach(function(item) {
+              if (item && item.ok) {
+                submittedN += 1;
+                const ids = Array.isArray(item.marked_draft_ids) && item.marked_draft_ids.length
+                  ? item.marked_draft_ids
+                  : [item.draft_id];
+                ids.forEach(function(id) {
+                  const sid = String(id || '').trim();
+                  if (sid) okIdSet.add(sid);
+                });
+              } else if (item) {
+                const fail = {
+                  draft_id: String(item.draft_id || '').trim(),
+                  company: String(item.company || '').trim(),
+                  error: String(item.error || 'submit failed').trim(),
+                };
+                failures.push(fail);
+                errors.push(fail.error);
+              }
+            });
+          } else {
+            // Legacy backend (no results[]): mark only by submitted count is unsafe —
+            // fall back to draft_ids that backend would have marked only when zero errors.
+            const okN = (res && typeof res.submitted === 'number') ? res.submitted : 0;
+            if (res && res.errors && res.errors.length) {
+              errors.push.apply(errors, res.errors);
+              res.errors.forEach(function(msg) {
+                failures.push({ draft_id: '', company: '', error: String(msg || '') });
+              });
+            }
+            if (okN > 0 && !(res && res.errors && res.errors.length)) {
+              chunk.forEach(function(p) {
+                const id = String(p.draft_id || '').trim();
+                if (id) okIdSet.add(id);
+              });
+              submittedN += okN;
+            } else if (okN > 0) {
+              // Partial unknown — do not over-mark; keep as failures for retry.
+              errors.push('Partial submit on older backend — retry remaining rows.');
+            }
+          }
+        } catch (err) {
+          const chunkErr = 'Chunk ' + (Math.floor(i / SUPPLY_SUBMIT_CHUNK_SIZE_) + 1) + ': '
+            + (err && err.message ? err.message : err);
+          errors.push(chunkErr);
+          chunk.forEach(function(p) {
+            failures.push({
+              draft_id: String(p.draft_id || '').trim(),
+              company: String(p['COMPANY NAME'] || '').trim(),
+              error: chunkErr,
+            });
+          });
+        }
       }
-    }
 
-    supplyNormalizeBatchSubmittedState_(batch);
-
-    if (submittedN > 0) {
-      try {
-        await supplyPersistDraftBatch_(batch);
-      } catch (persistErr) {
-        errors.push('Draft status was not saved to the server: ' + (persistErr && persistErr.message ? persistErr.message : persistErr));
+      if (okIdSet.size) {
+        supplyMarkRowsByDraftIds_(batch.rows || [], okIdSet);
+        // Also mark valid payload rows whose draft_id was coalesced away but company siblings succeeded.
+        supplyMarkRowsByDraftIds_(valid, okIdSet);
       }
-    }
 
-    return { submittedN: submittedN, errors: errors, allDone: batch.status === 'submitted', skipped: pending.length - valid.length };
+      supplyNormalizeBatchSubmittedState_(batch);
+      supplyStoreSubmitFailures_(batch, failures.filter(function(f) {
+        const id = String(f.draft_id || '').trim();
+        return !id || !okIdSet.has(id);
+      }));
+
+      if (submittedN > 0 || okIdSet.size > 0) {
+        try {
+          await supplyPersistDraftBatch_(batch);
+        } catch (persistErr) {
+          errors.push('Draft status was not saved to the server: '
+            + (persistErr && persistErr.message ? persistErr.message : persistErr));
+        }
+      }
+
+      return {
+        submittedN: submittedN || okIdSet.size,
+        failedN: (batch._submitFailures || []).length,
+        errors: errors,
+        failures: batch._submitFailures || [],
+        allDone: batch.status === 'submitted',
+        skipped: pending.length - valid.length,
+      };
     } finally {
       if (batch) batch._submitInFlight = false;
     }
@@ -28870,8 +29020,9 @@ function initDashboardApp() {
       : '';
     return '<div class="supply-batch-footer">'
       + '<p class="supply-batch-footer__hint"><strong>Complete</strong> is optional — for manual profile edit. '
-      + '<strong>Submit Selected</strong> sends checked rows to <strong>' + escHtml(targetSheet) + '</strong> '
-      + '(import data + Mill Onboarding profile automatically if matched, without opening the form).' + hintWaste + '</p>'
+      + '<strong>Submit Selected</strong> sends checked eligible rows to <strong>' + escHtml(targetSheet) + '</strong> '
+      + '(matched / new / draft-saved only; group-mismatch is blocked until rematch).' + hintWaste + '</p>'
+      + supplyFailuresBannerHtml_(batch)
       + '<div class="supply-batch-footer__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
@@ -29046,14 +29197,29 @@ function initDashboardApp() {
         return;
       }
       const checkedRows = supplyRowsFromIndexes_(batch, checkedIndexes);
-      const pending = checkedRows.filter(supplyRowCheckedForSubmit_);
+      const blocked = [];
+      const pending = [];
+      checkedRows.forEach(function(r) {
+        if (supplyRowIsSubmitted_(r)) return;
+        if (supplyRowEligibleForSubmit_(r, batch)) pending.push(r);
+        else {
+          const reason = supplyRowBlockReason_(r, batch) || 'not eligible';
+          blocked.push(reason);
+        }
+      });
       if (!pending.length) {
-        alert('Checked rows are already submitted, or there are no valid rows.');
+        alert(
+          blocked.length
+            ? ('No eligible rows to submit.\n\n' + blocked.slice(0, 8).join('\n'))
+            : 'Checked rows are already submitted, or there are no valid rows.'
+        );
         return;
       }
-      const confirmMsg = 'Add ' + pending.length + ' checked rows to the bottom of '
-        + supplyBatchTargetSheetLabel_(batch) + '?\n(Existing data is unchanged; matched = auto profile, new = import data only)';
+      const confirmMsg = 'Submit ' + pending.length + ' eligible row(s) to '
+        + supplyBatchTargetSheetLabel_(batch) + '?'
+        + (blocked.length ? ('\n\n' + blocked.length + ' checked row(s) will be skipped (not eligible).') : '');
       if (!confirm(confirmMsg)) return;
+      supplyClearSubmitFailures_(batch);
       supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       let bulkSubmittedN = 0;
       supplySubmitAllPendingRows_(batch, bId, pending, function(done, total) {
@@ -29065,23 +29231,24 @@ function initDashboardApp() {
           renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
           supplyRestoreTaskListScroll_(snap);
           supplyPatchBatchFooterSubmitCount_(bId);
-          const errNote = result.errors.length
-            ? (' Some failed: ' + result.errors.slice(0, 5).join('; '))
-            : '';
+          const failedN = result && result.failedN ? result.failedN : 0;
+          const sheetLabel = supplyBatchTargetSheetLabel_(batch);
+          const msg = '✓ ' + bulkSubmittedN + ' submitted to ' + sheetLabel
+            + (failedN ? ('. ' + failedN + ' failed — use Retry failed.') : '.')
+            + (blocked.length ? (' ' + blocked.length + ' skipped.') : '');
           if (typeof window.showSddToast === 'function') {
-            const sheetLabel = supplyBatchTargetSheetLabel_(batch);
-            window.showSddToast(
-              '✓ ' + result.submittedN + ' rows added to ' + sheetLabel + '.' + errNote,
-              result.errors.length ? 'warning' : 'success'
-            );
+            window.showSddToast(msg, failedN ? 'warning' : 'success');
           } else {
-            alert('✓ ' + result.submittedN + ' rows added to Mill Onboarding.' + errNote);
+            alert(msg);
           }
           if (result && result.allDone && typeof window.showSddToast === 'function') {
             window.showSddToast('Batch complete — all rows have been submitted.', 'success');
           }
         })
         .catch(function(err) {
+          const snap = supplyCaptureTaskListScroll_();
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
+          supplyRestoreTaskListScroll_(snap);
           alert('Submit failed: ' + (err && err.message ? err.message : err));
         })
         .finally(function() {
@@ -29091,7 +29258,60 @@ function initDashboardApp() {
       return;
     }
 
-    // Submit a single row — same hydrate + bulk path as Submit Terpilih (Lengkapi tidak wajib)
+    if (action === 'retry-failed') {
+      if (window._supplyBulkSubmitInFlight === bId) return;
+      collectInlineEdits_(bId);
+      const fails = (batch._submitFailures || []).slice();
+      if (!fails.length) {
+        alert('No failed rows to retry.');
+        return;
+      }
+      const idSet = new Set(fails.map(function(f) { return String(f.draft_id || '').trim(); }).filter(Boolean));
+      const coSet = new Set(fails.map(function(f) { return supplyCompanyKey_(f.company); }).filter(Boolean));
+      const pending = (batch.rows || []).filter(function(r) {
+        if (supplyRowIsSubmitted_(r)) return false;
+        const id = String(r.draft_id || '').trim();
+        if (id && idSet.has(id)) return true;
+        if (!id && coSet.has(supplyCompanyKey_(r['COMPANY NAME']))) return true;
+        return false;
+      }).filter(function(r) { return supplyRowEligibleForSubmit_(r, batch); });
+      if (!pending.length) {
+        alert('Failed rows are no longer eligible (rematch/edit group-mismatch or fill qty first).');
+        return;
+      }
+      if (!confirm('Retry submit for ' + pending.length + ' failed row(s)?')) return;
+      supplyClearSubmitFailures_(batch);
+      supplySetSubmitBtnBusy_(bId, true, 'Retrying…');
+      let retrySubmittedN = 0;
+      supplySubmitAllPendingRows_(batch, bId, pending, function(done, total) {
+        supplySetSubmitBtnBusy_(bId, true, 'Retrying ' + done + '/' + total + '…');
+      })
+        .then(function(result) {
+          retrySubmittedN = result && result.submittedN ? result.submittedN : 0;
+          const snap = supplyCaptureTaskListScroll_();
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
+          supplyRestoreTaskListScroll_(snap);
+          const failedN = result && result.failedN ? result.failedN : 0;
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast(
+              'Retry: ' + retrySubmittedN + ' submitted'
+                + (failedN ? (', ' + failedN + ' still failing') : ''),
+              failedN ? 'warning' : 'success'
+            );
+          }
+        })
+        .catch(function(err) {
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
+          alert('Retry failed: ' + (err && err.message ? err.message : err));
+        })
+        .finally(function() {
+          supplySetSubmitBtnBusy_(bId, false);
+          supplyRefreshAfterSubmit_({ submittedN: retrySubmittedN });
+        });
+      return;
+    }
+
+    // Submit a single row — same hydrate + bulk path as Submit Selected
     if (action === 'submit-row') {
       collectInlineEdits_(bId);
       const rowIdx = parseInt(btn.dataset.row, 10);
@@ -29100,26 +29320,31 @@ function initDashboardApp() {
       btn.textContent = '…'; btn.disabled = true;
       supplyEnsureDraftPeriodOnRows_([row], batch);
       supplyHydrateRowForSubmit_(row, batch);
-      if (!String(row['COMPANY NAME'] || '').trim()) {
-        alert('COMPANY NAME is empty — cannot submit.');
-        btn.textContent = 'Submit'; btn.disabled = false;
-        return;
-      }
-      if (!supplyRowHasSupplyQty_(row, batch)) {
-        alert('QTY supply is empty — cannot submit.');
+      const block = supplyRowBlockReason_(row, batch);
+      if (block || !supplyRowEligibleForSubmit_(row, batch)) {
+        alert(block || 'Row is not eligible to submit.');
         btn.textContent = 'Submit'; btn.disabled = false;
         return;
       }
       supplySubmitAllPendingRows_(batch, bId, [row])
-        .then(function() {
+        .then(function(result) {
           const snap = supplyCaptureTaskListScroll_();
           renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
           supplyRestoreTaskListScroll_(snap);
           supplyPatchBatchFooterSubmitCount_(bId);
           btn.textContent = 'Submit'; btn.disabled = false;
-          supplyRefreshAfterSubmit_({ submittedN: 1 });
+          const okN = result && result.submittedN ? result.submittedN : 0;
+          const failN = result && result.failedN ? result.failedN : 0;
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast(
+              okN ? ('✓ Submitted (' + okN + ')') : 'Submit did not complete',
+              failN || !okN ? 'warning' : 'success'
+            );
+          }
+          supplyRefreshAfterSubmit_({ submittedN: okN });
         })
         .catch(function(err) {
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
           btn.textContent = 'Submit'; btn.disabled = false;
           alert('Submit failed: ' + (err && err.message ? err.message : err));
         });
