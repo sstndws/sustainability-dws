@@ -29792,14 +29792,32 @@ function initDashboardApp() {
 
       const draftIds = [];
       const batchIds = {};
-      if (bId) batchIds[String(bId).trim()] = 1;
+      if (bId) batchIds[supplyBatchIdKey_(bId)] = 1;
       (batch.rows || []).forEach(function(r) {
         const did = String(r.draft_id || '').trim();
         if (did) draftIds.push(did);
-        const bid = String(r.batch_id || '').trim();
+        const bid = supplyBatchIdKey_(r.batch_id);
         if (bid) batchIds[bid] = 1;
       });
+      // Same-period sibling cards (pre-consolidate leftovers) must go too.
+      const delMonth = supplyNormalizeMonthTok_(batch.month || batch.quarter || '');
+      const delYear = String(batch.year || '').trim();
+      const delType = String(batch.supply_type || '').trim().toUpperCase();
+      const delWaste = supplyImportIsWaste_(delType);
+      (window._supplyDraftBatches || []).forEach(function(sib) {
+        if (supplyNormalizeMonthTok_(sib.month || sib.quarter || '') !== delMonth) return;
+        if (String(sib.year || '').trim() !== delYear) return;
+        if (delWaste !== supplyImportIsWaste_(sib.supply_type)) return;
+        if (sib.batch_id) batchIds[supplyBatchIdKey_(sib.batch_id)] = 1;
+        (sib.rows || []).forEach(function(r) {
+          const did = String(r.draft_id || '').trim();
+          if (did) draftIds.push(did);
+          const bid = supplyBatchIdKey_(r.batch_id);
+          if (bid) batchIds[bid] = 1;
+        });
+      });
       const batchIdList = Object.keys(batchIds);
+      const periodKey = supplyPeriodKey_(delMonth, delYear) + (delWaste ? '|WASTE' : '|MAIN');
 
       const prevLabel = btn.textContent;
       btn.disabled = true;
@@ -29810,11 +29828,32 @@ function initDashboardApp() {
         batch_id: bId,
         batch_ids: batchIdList,
         draft_ids: draftIds,
+        month: delMonth,
+        year: delYear,
+        supply_type: delType,
+        meta: { month: delMonth, year: delYear, supply_type: delType },
       }, { timeoutMs: 120000 })
         .then(function(res) {
           const deleted = Number(res && res.deleted) || 0;
+          if (rowCount > 0 && deleted === 0) {
+            throw new Error(
+              'Server deleted 0 rows (redeploy Apps Script for period delete). '
+              + 'Sent ' + draftIds.length + ' draft_id(s), ' + batchIdList.length + ' batch_id(s), period '
+              + delMonth + '/' + delYear + '.'
+            );
+          }
+          if (!window._supplyDeletedPeriodKeys) window._supplyDeletedPeriodKeys = {};
+          window._supplyDeletedPeriodKeys[periodKey] = Date.now();
           window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
-            return supplyBatchIdKey_(b.batch_id) !== supplyBatchIdKey_(bId);
+            if (supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(bId)) return false;
+            if (batchIds[supplyBatchIdKey_(b.batch_id)]) return false;
+            const bm = supplyNormalizeMonthTok_(b.month || b.quarter || '');
+            const by = String(b.year || '').trim();
+            if (bm === delMonth && by === delYear
+              && delWaste === supplyImportIsWaste_(b.supply_type)) {
+              return false;
+            }
+            return true;
           });
           supplyClearDraftCacheIds_(draftIds);
           renderSupplyDraftList_();
@@ -29826,15 +29865,14 @@ function initDashboardApp() {
           } else {
             alert(msg);
           }
-          // Pull server truth in case consolidate left sibling batch_ids behind.
           if (typeof loadSupplyDraftsFromServer_ === 'function') {
-            return loadSupplyDraftsFromServer_({ preserveUi: true });
+            return loadSupplyDraftsFromServer_({ preserveUi: true, bustCache: true });
           }
         })
         .catch(function(err) {
           alert('Delete failed: ' + ((err && err.message) || err) + '\n\nBatch was NOT removed. Redeploy Apps Script if this persists.');
           if (typeof loadSupplyDraftsFromServer_ === 'function') {
-            loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
+            loadSupplyDraftsFromServer_({ preserveUi: true, bustCache: true }).catch(function() {});
           }
         })
         .finally(function() {
@@ -30108,12 +30146,14 @@ function initDashboardApp() {
         return loadSupplyDraftsFromServer_(opts);
       });
     }
-    return apiGet('supplyDraft')
+    return apiGet('supplyDraft', { bustCache: !!opts.bustCache })
       .then(function(data) {
         window._supplyDraftLoadError = '';
+        data = normalizeGetArray(data);
         supplyApplyLocalDraftMergeOnLoad_(data);
         if (!Array.isArray(data) || !data.length) {
-          window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches || []);
+          // Empty server sheet = empty Task List. Do not resurrect local memory.
+          window._supplyDraftBatches = [];
           renderSupplyDraftList_(renderOpts);
           return;
         }
@@ -30165,6 +30205,18 @@ function initDashboardApp() {
           supplyRefreshDraftProfilePointers_(b);
           return b;
         }));
+        // Drop periods the user just deleted (guards against brief stale GET).
+        const tomb = window._supplyDeletedPeriodKeys || {};
+        const now = Date.now();
+        window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
+          const m = supplyNormalizeMonthTok_(b.month || b.quarter || '');
+          const y = String(b.year || '').trim();
+          const pk = supplyPeriodKey_(m, y) + (supplyImportIsWaste_(b.supply_type) ? '|WASTE' : '|MAIN');
+          const ts = tomb[pk];
+          if (ts && (now - ts) < 120000) return false;
+          if (ts && (now - ts) >= 120000) delete tomb[pk];
+          return true;
+        });
         if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
           return loadMillData().then(function() {
             window._supplyDraftBatches.forEach(function(b) {

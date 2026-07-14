@@ -850,6 +850,9 @@ function doPost(e) {
       return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || '', {
         draft_ids: body.draft_ids || [],
         batch_ids: body.batch_ids || [],
+        month: body.month || (body.meta && body.meta.month) || '',
+        year: body.year || (body.meta && body.meta.year) || '',
+        supply_type: body.supply_type || (body.meta && body.meta.supply_type) || '',
       }));
     }
 
@@ -6887,9 +6890,9 @@ function reconcileSupplyDraft_(batchId) {
 
 /**
  * Delete Supply Import Draft rows.
- * Accepts a single draft_id / batch_id and/or arrays (draft_ids / batch_ids).
- * Rewrites the sheet in one pass — safe for large submitted batches (hundreds of rows).
- * Does NOT touch Mill Onboarding — only the Task List draft sheet.
+ * Accepts draft_id / batch_id (and arrays), and optionally month+year (+ supply_type)
+ * to wipe a whole Task List period card even when batch_ids drifted after consolidate.
+ * Rewrites the sheet in one pass. Does NOT touch Mill Onboarding.
  */
 function deleteSupplyDraft_(draftId, batchId, opts) {
   ensureSupplyDraftHeaders_();
@@ -6902,6 +6905,14 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   var headers = data[0].map(function(h) { return String(h || '').trim(); });
   var draftIdCol = headers.indexOf('draft_id');
   var batchIdCol = headers.indexOf('batch_id');
+  var monthCol = headers.indexOf('month');
+  if (monthCol < 0) monthCol = headers.indexOf('MONTH');
+  if (monthCol < 0) monthCol = headers.indexOf('quarter');
+  if (monthCol < 0) monthCol = headers.indexOf('QUARTER');
+  var yearCol = headers.indexOf('year');
+  if (yearCol < 0) yearCol = headers.indexOf('YEAR');
+  var typeCol = headers.indexOf('supply_type');
+  if (typeCol < 0) typeCol = headers.indexOf('SUPPLY_TYPE');
 
   var draftIds = {};
   var batchIds = {};
@@ -6914,8 +6925,17 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   (opts.draft_ids || []).forEach(function(id) { addId_(draftIds, id); });
   (opts.batch_ids || []).forEach(function(id) { addId_(batchIds, id); });
 
-  if (!Object.keys(draftIds).length && !Object.keys(batchIds).length) {
-    throw new Error('draft_id or batch_id required');
+  var wantMonth = supplyNormalizeMonthTokGs_(opts.month || opts.MONTH || '');
+  var wantYear = String(opts.year || opts.YEAR || '').trim();
+  var wantType = String(opts.supply_type || opts.SUPPLY_TYPE || '').trim().toUpperCase();
+  var wantWaste = wantType && /WASTE|SHELL|FIBER|ABOE|EMPTY|PALM\s*KERNEL\s*SHELL|PKS/i.test(wantType);
+
+  if (!Object.keys(draftIds).length && !Object.keys(batchIds).length && !(wantMonth && wantYear)) {
+    throw new Error('draft_id, batch_id, or month+year required');
+  }
+
+  function isWasteType_(t) {
+    return /WASTE|SHELL|FIBER|ABOE|EMPTY|PALM\s*KERNEL\s*SHELL|PKS/i.test(String(t || ''));
   }
 
   var keep = [data[0]];
@@ -6924,6 +6944,22 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
     var rowDId = draftIdCol >= 0 ? String(data[r][draftIdCol] || '').trim() : '';
     var rowBId = batchIdCol >= 0 ? String(data[r][batchIdCol] || '').trim() : '';
     var hit = (rowDId && draftIds[rowDId]) || (rowBId && batchIds[rowBId]);
+
+    if (!hit && wantMonth && wantYear) {
+      var rowMonth = monthCol >= 0 ? supplyNormalizeMonthTokGs_(data[r][monthCol]) : '';
+      var rowYear = yearCol >= 0 ? String(data[r][yearCol] || '').trim() : '';
+      if (rowMonth === wantMonth && rowYear === wantYear) {
+        var rowType = typeCol >= 0 ? String(data[r][typeCol] || '').trim().toUpperCase() : '';
+        if (!wantType) {
+          hit = true;
+        } else if (wantWaste) {
+          hit = isWasteType_(rowType);
+        } else {
+          hit = !isWasteType_(rowType);
+        }
+      }
+    }
+
     if (hit) {
       deleted++;
       continue;
@@ -6933,14 +6969,18 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
 
   if (deleted > 0) {
     var colCount = headers.length;
-    // Clear then rewrite so leftover tail rows don't ghost after shorter write.
     sheet.clearContents();
     if (keep.length) {
       sheet.getRange(1, 1, keep.length, colCount).setValues(keep);
     }
   }
 
-  return { success: true, deleted: deleted, kept: keep.length - 1 };
+  return {
+    success: true,
+    deleted: deleted,
+    kept: keep.length - 1,
+    by_period: !!(wantMonth && wantYear),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
