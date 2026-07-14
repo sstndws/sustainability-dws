@@ -6112,7 +6112,14 @@ body.supply-import-open {
   flex: 0 0 auto;
   margin-left: auto;
   position: relative;
-  z-index: 2;
+  z-index: 5;
+  pointer-events: auto;
+}
+.supply-batch-actions .supply-btn {
+  position: relative;
+  z-index: 6;
+  pointer-events: auto !important;
+  cursor: pointer;
 }
 .supply-batch-table-wrap,
 .supply-batch-panel {

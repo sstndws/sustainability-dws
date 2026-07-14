@@ -27719,13 +27719,23 @@ function initDashboardApp() {
     }, true);
   }
 
-  /** Direct binds so Submit Selected stays clickable even if overlay/hit-test glitches. */
+  /**
+   * Direct binds so Task List actions (Delete / Submit / Refresh / …) stay clickable
+   * even if overlay/hit-test or document-delegation glitches.
+   */
   function supplyBindFooterActionButtons_(root) {
     if (!root) return;
-    root.querySelectorAll('.supply-batch-toolbar [data-action], .supply-batch-footer [data-action]').forEach(function(btn) {
+    root.querySelectorAll(
+      '.supply-batch-actions [data-action],'
+      + ' .supply-batch-toolbar [data-action],'
+      + ' .supply-batch-footer [data-action],'
+      + ' .supply-draft-sync-bar [data-action]'
+    ).forEach(function(btn) {
       if (btn.dataset.supplyClickBound === '1') return;
       btn.dataset.supplyClickBound = '1';
       btn.style.pointerEvents = 'auto';
+      btn.style.position = 'relative';
+      btn.style.zIndex = '5';
       btn.style.cursor = btn.classList.contains('is-busy') ? 'wait' : 'pointer';
       btn.addEventListener('click', function(e) {
         e.preventDefault();
@@ -29442,6 +29452,8 @@ function initDashboardApp() {
 
     ensureSupplyTaskListActionDelegation_();
     ensureSupplyDraftCheckboxDelegation_();
+    // Bind card-head Delete/Repair/… AND footer Submit — not only table wraps.
+    supplyBindFooterActionButtons_(container);
     container.querySelectorAll('.supply-batch-table-wrap').forEach(function(wrap) {
       supplyBindFooterActionButtons_(wrap);
     });
@@ -29694,6 +29706,8 @@ function initDashboardApp() {
     if (!batch) {
       // Toggle doesn't need batch object; anything else does.
       if (action === 'toggle-batch' || action === 'sync-drafts') return;
+      // After optimistic delete the DOM click may re-fire on a detached button.
+      if (action === 'delete-batch') return;
       supplyNotifySubmitBlocked_('Batch not found (' + (bId || 'no id') + '). Click Refresh on Task List, then try again.');
       return;
     }
@@ -29782,6 +29796,9 @@ function initDashboardApp() {
     }
 
     if (action === 'delete-batch') {
+      if (!window._supplyDeletingBatches) window._supplyDeletingBatches = {};
+      if (bId && window._supplyDeletingBatches[supplyBatchIdKey_(bId)]) return;
+
       const batchPeriodLabel = (batch.month ? (millMonthLabel_(parseInt(batch.month, 10)) + ' ' + batch.month) : (batch.quarter || '')) + ' ' + (batch.year || '');
       const rowCount = (batch.rows || []).length;
       const confirmMsg = 'Delete this Task List batch (' + batchPeriodLabel.trim() + ', ' + rowCount + ' rows)?\n\n'
@@ -29789,6 +29806,8 @@ function initDashboardApp() {
         + '• Does NOT delete Mill Onboarding data already submitted\n\n'
         + 'This cannot be undone.';
       if (!confirm(confirmMsg)) return;
+
+      if (bId) window._supplyDeletingBatches[supplyBatchIdKey_(bId)] = 1;
 
       const draftIds = [];
       const batchIds = {};
@@ -29806,13 +29825,24 @@ function initDashboardApp() {
       });
       // Same-period sibling cards (pre-consolidate leftovers) must go too.
       const delMonth = supplyNormalizeMonthTok_(batch.month || batch.quarter || '');
-      const delYear = String(batch.year || '').trim();
+      const delYearRaw = String(batch.year || '').trim();
+      const delYearNum = parseInt(delYearRaw, 10);
+      const delYear = (!isNaN(delYearNum) && delYearNum >= 1990 && delYearNum <= 2100)
+        ? String(delYearNum)
+        : delYearRaw;
       const delType = String(batch.supply_type || '').trim().toUpperCase();
       const delWaste = supplyImportIsWaste_(delType);
+      function matchesDeletePeriod_(sib) {
+        if (!sib) return false;
+        const bm = supplyNormalizeMonthTok_(sib.month || sib.quarter || '');
+        const byRaw = String(sib.year || '').trim();
+        const byNum = parseInt(byRaw, 10);
+        const by = (!isNaN(byNum) && byNum >= 1990 && byNum <= 2100) ? String(byNum) : byRaw;
+        if (bm !== delMonth || by !== delYear) return false;
+        return delWaste === supplyImportIsWaste_(sib.supply_type);
+      }
       (window._supplyDraftBatches || []).forEach(function(sib) {
-        if (supplyNormalizeMonthTok_(sib.month || sib.quarter || '') !== delMonth) return;
-        if (String(sib.year || '').trim() !== delYear) return;
-        if (delWaste !== supplyImportIsWaste_(sib.supply_type)) return;
+        if (!matchesDeletePeriod_(sib)) return;
         if (sib.batch_id) batchIds[supplyBatchIdKey_(sib.batch_id)] = 1;
         (sib.rows || []).forEach(function(r) {
           pushDraftId_(r.draft_id || r.DRAFT_ID);
@@ -29823,10 +29853,48 @@ function initDashboardApp() {
       });
       const batchIdList = Object.keys(batchIds);
       const periodKey = supplyPeriodKey_(delMonth, delYear) + (delWaste ? '|WASTE' : '|MAIN');
+      if (window._supplyDeletingBatches[periodKey]) {
+        if (bId) delete window._supplyDeletingBatches[supplyBatchIdKey_(bId)];
+        return;
+      }
+      window._supplyDeletingBatches[periodKey] = 1;
 
-      const prevLabel = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Deleting…';
+      // Snapshot so we can restore the UI if the server delete fails.
+      const removedSnapshot = (window._supplyDraftBatches || []).filter(function(b) {
+        if (supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(bId)) return true;
+        if (batchIds[supplyBatchIdKey_(b.batch_id)]) return true;
+        return matchesDeletePeriod_(b);
+      });
+      const keepSnapshot = (window._supplyDraftBatches || []).filter(function(b) {
+        if (supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(bId)) return false;
+        if (batchIds[supplyBatchIdKey_(b.batch_id)]) return false;
+        return !matchesDeletePeriod_(b);
+      });
+
+      // Optimistic UI: card disappears immediately after Confirm.
+      if (!window._supplyDeletedPeriodKeys) window._supplyDeletedPeriodKeys = {};
+      window._supplyDeletedPeriodKeys[periodKey] = Date.now();
+      window._supplyDraftBatches = keepSnapshot;
+      removedSnapshot.forEach(function(b) {
+        (b.rows || []).forEach(function(r) {
+          pushDraftId_(r.draft_id || r.DRAFT_ID);
+          pushDraftId_(r.batch_id);
+        });
+      });
+      supplyClearDraftCacheIds_(draftIds);
+      renderSupplyDraftList_();
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Deleting draft from server…', 'info');
+      }
+
+      function clearDeleteLocks_() {
+        if (!window._supplyDeletingBatches) return;
+        if (bId) delete window._supplyDeletingBatches[supplyBatchIdKey_(bId)];
+        delete window._supplyDeletingBatches[periodKey];
+        Object.keys(batchIds).forEach(function(id) {
+          delete window._supplyDeletingBatches[id];
+        });
+      }
 
       apiPost({
         action: 'deleteSupplyDraft',
@@ -29838,7 +29906,7 @@ function initDashboardApp() {
         MONTH: delMonth,
         YEAR: delYear,
         supply_type: delType,
-        meta: { month: delMonth, year: delYear, supply_type: delType },
+        meta: { month: delMonth, year: delYear, supply_type: delType, MONTH: delMonth, YEAR: delYear },
       }, { timeoutMs: 120000 })
         .then(function(res) {
           const deleted = Number(res && res.deleted) || 0;
@@ -29852,16 +29920,11 @@ function initDashboardApp() {
           }
           if (!window._supplyDeletedPeriodKeys) window._supplyDeletedPeriodKeys = {};
           window._supplyDeletedPeriodKeys[periodKey] = Date.now();
+          // Keep local list free of the deleted period (reload may briefly return stale rows).
           window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
             if (supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(bId)) return false;
             if (batchIds[supplyBatchIdKey_(b.batch_id)]) return false;
-            const bm = supplyNormalizeMonthTok_(b.month || b.quarter || '');
-            const by = String(b.year || '').trim();
-            if (bm === delMonth && by === delYear
-              && delWaste === supplyImportIsWaste_(b.supply_type)) {
-              return false;
-            }
-            return true;
+            return !matchesDeletePeriod_(b);
           });
           supplyClearDraftCacheIds_(draftIds);
           renderSupplyDraftList_();
@@ -29878,14 +29941,29 @@ function initDashboardApp() {
           }
         })
         .catch(function(err) {
-          alert('Delete failed: ' + ((err && err.message) || err) + '\n\nBatch was NOT removed. Redeploy Apps Script if this persists.');
+          // Restore cards so the user is not stuck with a silent no-op.
+          if (window._supplyDeletedPeriodKeys) delete window._supplyDeletedPeriodKeys[periodKey];
+          const stillGone = {};
+          keepSnapshot.forEach(function(b) {
+            stillGone[supplyBatchIdKey_(b.batch_id)] = 1;
+          });
+          const restored = keepSnapshot.slice();
+          removedSnapshot.forEach(function(b) {
+            const key = supplyBatchIdKey_(b.batch_id);
+            if (!stillGone[key]) {
+              restored.push(b);
+              stillGone[key] = 1;
+            }
+          });
+          window._supplyDraftBatches = restored;
+          renderSupplyDraftList_();
+          alert('Delete failed: ' + ((err && err.message) || err) + '\n\nBatch was restored. Redeploy Apps Script if this persists.');
           if (typeof loadSupplyDraftsFromServer_ === 'function') {
             loadSupplyDraftsFromServer_({ preserveUi: true, bustCache: true }).catch(function() {});
           }
         })
         .finally(function() {
-          btn.disabled = false;
-          btn.textContent = prevLabel || 'Delete';
+          clearDeleteLocks_();
         });
       return;
     }
@@ -30218,7 +30296,9 @@ function initDashboardApp() {
         const now = Date.now();
         window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
           const m = supplyNormalizeMonthTok_(b.month || b.quarter || '');
-          const y = String(b.year || '').trim();
+          const yRaw = String(b.year || '').trim();
+          const yNum = parseInt(yRaw, 10);
+          const y = (!isNaN(yNum) && yNum >= 1990 && yNum <= 2100) ? String(yNum) : yRaw;
           const pk = supplyPeriodKey_(m, y) + (supplyImportIsWaste_(b.supply_type) ? '|WASTE' : '|MAIN');
           const ts = tomb[pk];
           if (ts && (now - ts) < 120000) return false;

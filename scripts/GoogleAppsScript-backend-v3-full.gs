@@ -850,9 +850,11 @@ function doPost(e) {
       return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || '', {
         draft_ids: body.draft_ids || [],
         batch_ids: body.batch_ids || [],
-        month: body.month || (body.meta && body.meta.month) || '',
-        year: body.year || (body.meta && body.meta.year) || '',
-        supply_type: body.supply_type || (body.meta && body.meta.supply_type) || '',
+        month: body.month || body.MONTH || (body.meta && (body.meta.month || body.meta.MONTH)) || '',
+        year: body.year || body.YEAR || (body.meta && (body.meta.year || body.meta.YEAR)) || '',
+        MONTH: body.MONTH || body.month || (body.meta && (body.meta.MONTH || body.meta.month)) || '',
+        YEAR: body.YEAR || body.year || (body.meta && (body.meta.YEAR || body.meta.year)) || '',
+        supply_type: body.supply_type || body.SUPPLY_TYPE || (body.meta && body.meta.supply_type) || '',
       }));
     }
 
@@ -6932,6 +6934,8 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   var wantType = String(opts.supply_type || opts.SUPPLY_TYPE || '').trim().toUpperCase();
   var wantWaste = wantType && /WASTE|SHELL|FIBER|ABOE|EMPTY|PALM\s*KERNEL\s*SHELL|PKS/i.test(wantType);
 
+  // When FE consolidates cards, draft_ids/batch_ids may be empty or stale —
+  // period delete must still work whenever month+year are present.
   if (!Object.keys(draftIds).length && !Object.keys(batchIds).length && !(wantMonth && wantYear)) {
     throw new Error('draft_id, batch_id, or month+year required');
   }
