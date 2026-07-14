@@ -3949,8 +3949,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzsDHvQryV_vdPZDqqfKpK0IISgCNpUf0mVqOHcYAOU4enx2FFHkrXWUbS7d5Cr1u459A/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzsDHvQryV_vdPZDqqfKpK0IISgCNpUf0mVqOHcYAOU4enx2FFHkrXWUbS7d5Cr1u459A';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwaamq4kVc5oB7p7i7vZsmnl0GGjYdXbJ3EE3vL7INOisA-xKVRUp5naG4gVfi2fofT/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbwaamq4kVc5oB7p7i7vZsmnl0GGjYdXbJ3EE3vL7INOisA-xKVRUp5naG4gVfi2fofT';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -29578,8 +29578,7 @@ function initDashboardApp() {
         batch_id: bId,
         batch_ids: batchIdList,
         draft_ids: draftIds,
-        timeoutMs: 120000,
-      })
+      }, { timeoutMs: 120000 })
         .then(function(res) {
           const deleted = Number(res && res.deleted) || 0;
           window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
