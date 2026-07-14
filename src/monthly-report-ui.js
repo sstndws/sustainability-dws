@@ -627,7 +627,7 @@ async function exportMonthlyReport_(exportOpts) {
         sdd: mrdSortSddRows_(filterForExport_(s.sdd, function(r) {
           return matchesSearch([
             r['SCR - Screening Status'], r['Group Name'], r['Grup Name'], r['Mill Name'],
-            r.supplier_type, r.updated_at,
+            r['Company Name'], r['Date Imported'], r.supplier_type, r.updated_at,
           ].join(' ').toLowerCase());
         })),
         mills: millsForPdf,

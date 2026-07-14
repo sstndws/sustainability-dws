@@ -12996,8 +12996,15 @@ function initDashboardApp() {
     });
     btnAddGrv.addEventListener('click', () => openModal('grievance', GRV_FIELDS, 'add', null));
     btnExportGrv.addEventListener('click', function() {
-      if (!grvData.length) return;
-      const csv = '\uFEFF' + [GRV_FIELDS, ...grvData.map(d => GRV_FIELDS.map(f => `"${(d[f]||'').toString().replace(/"/g,'""')}"`))]
+      const q = grvSearch;
+      const exportRows = grvSortByDateReceivedDesc_(grvData.filter(function(d) {
+        return !q || (d._sddSearchBlob || '').includes(q);
+      }));
+      if (!exportRows.length) {
+        alert(q ? 'No grievance rows match the current search.' : 'No grievance data to export.');
+        return;
+      }
+      const csv = '\uFEFF' + [GRV_FIELDS, ...exportRows.map(d => GRV_FIELDS.map(f => `"${(d[f]||'').toString().replace(/"/g,'""')}"`))]
         .map(r => r.join(',')).join('\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -14014,11 +14021,23 @@ function initDashboardApp() {
     }
     if (detected && detected.year) {
       blPeriodYear = detected.year;
-      blPeriodQuarter = detected.quarter || blPeriodQuarter || 'Q1';
+      // Keep empty quarter as year-wide (matches live link resolve). Do NOT invent Q1.
+      blPeriodQuarter = detected.quarter
+        ? (blPeriodQuarterToken_(detected.quarter) || detected.quarter)
+        : '';
       const yearSel = document.getElementById('blPickerYear');
       const quarterSel = document.getElementById('blPickerQuarter');
       if (yearSel) yearSel.value = blPeriodYear;
-      if (quarterSel && blPeriodQuarter) quarterSel.value = blPeriodQuarterToken_(blPeriodQuarter) || blPeriodQuarter;
+      if (quarterSel) {
+        if (blPeriodQuarter) quarterSel.value = blPeriodQuarter;
+        else if (quarterSel.options && quarterSel.options.length) {
+          // Prefer a blank/"All" option if present; otherwise leave previous.
+          const blank = Array.from(quarterSel.options).find(function(o) {
+            return !String(o.value || '').trim();
+          });
+          if (blank) quarterSel.value = '';
+        }
+      }
     } else {
       blApplyLatestPeriod_();
       const yearSel = document.getElementById('blPickerYear');
@@ -15478,18 +15497,22 @@ function initDashboardApp() {
 
   function blEffectiveTtmDisplayLabel_(blRow) {
     if (!blRow) return '';
-    const stored = String(blRow['TTM'] || '').trim();
-    if (stored && stored !== '—') return stored;
+    // Always derive from effective links so registry / Excel / detail stay aligned
+    // (never prefer a stale "N MILLS" text column over live/JSON links).
     const links = blEffectiveTtmLinks_(blRow);
     const unique = blUniqueMillCount_(links);
-    return blTtmCountLabel_(unique || links.length);
+    const computed = blTtmCountLabel_(unique || links.length);
+    if (computed) return computed;
+    const stored = String(blRow['TTM'] || '').trim();
+    return (stored && stored !== '—') ? stored : '';
   }
 
   function blEffectiveTtpDisplayLabel_(blRow) {
     if (!blRow) return '';
+    const computed = blTtpCountLabel_(blEffectiveTtpLinks_(blRow).length);
+    if (computed) return computed;
     const stored = String(blRow['TTP'] || '').trim();
-    if (stored && stored !== '—') return stored;
-    return blTtpCountLabel_(blEffectiveTtpLinks_(blRow).length);
+    return (stored && stored !== '—') ? stored : '';
   }
 
   function blCloneLinkList_(links) {
@@ -15988,11 +16011,22 @@ function initDashboardApp() {
     });
 
     btnExport.addEventListener('click', function() {
-      if (!contactListData.length) return;
+      const q = contactListSearch;
+      const exportRows = contactListData.filter(function(d) {
+        return !q || (d._clsSearchBlob || '').includes(q);
+      });
+      if (!exportRows.length) {
+        alert(q ? 'No contacts match the current search.' : 'No contacts to export.');
+        return;
+      }
       const csv = '\uFEFF' + [CLS_EXPORT_FIELDS].concat(
-        contactListData.map(function(d) {
+        exportRows.map(function(d) {
           return CLS_EXPORT_FIELDS.map(function(f) {
-            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
+            let v = d[f];
+            if (f === 'approved_at') {
+              v = formatClsApprovedAt_(d['approved_at']) || v;
+            }
+            return '"' + String(v || '').replace(/"/g, '""') + '"';
           });
         })
       ).map(function(r) { return r.join(','); }).join('\n');
@@ -20113,8 +20147,15 @@ function initDashboardApp() {
 
     btnExport.addEventListener('click', function() {
       var fields = nblActiveSource === 'unilever' ? UNILEVER_NBL_FIELDS : NBL_REGISTRY_FIELDS;
-      var rows = nblActiveSource === 'unilever' ? nblUnileverData : nblRegistryData;
-      if (!rows.length) return;
+      var q = nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
+      var allRows = nblActiveSource === 'unilever' ? nblUnileverData : nblRegistryData;
+      var rows = allRows.filter(function(d) {
+        return !q || (d._nblSearchBlob || '').includes(q);
+      });
+      if (!rows.length) {
+        alert(q ? 'No NBL rows match the current search.' : 'No NBL data to export.');
+        return;
+      }
       var csv = '\uFEFF' + [fields].concat(
         rows.map(function(d) {
           return fields.map(function(f) {
@@ -25768,9 +25809,15 @@ function initDashboardApp() {
       const id = String(row.draft_id || '').trim();
       const cached = id && cache[id];
       if (!cached || !supplyDraftSavedFlag_(cached)) return;
+      // Never revive a draft-saved profile onto a submitted (or draft-cleared) server row.
+      if (supplyRowIsSubmitted_(row) || !supplyDraftSavedFlag_(row)) {
+        delete cache[id];
+        return;
+      }
       const cacheTs = supplyDraftRowUpdatedTs_(cached);
       const serverTs = supplyDraftRowUpdatedTs_(row);
-      if (cacheTs >= serverTs || !supplyDraftSavedFlag_(row)) {
+      // Only overlay when local cache is strictly newer than server.
+      if (cacheTs > serverTs) {
         supplyMergeLocalDraftFieldsIntoRow_(row, cached);
       }
     });
@@ -25934,6 +25981,7 @@ function initDashboardApp() {
         row._profile_draft_saved = false;
         row.profile_draft_saved = '';
         row._submitError = '';
+        if (row.draft_id) supplyClearDraftCacheIds_([row.draft_id]);
         marked++;
         return;
       }
@@ -25941,6 +25989,7 @@ function initDashboardApp() {
         row._submitted = false;
         row.status = 'draft';
         row._submitError = 'Was marked submitted but missing on Mill Onboarding — reopened for retry';
+        if (row.draft_id) supplyClearDraftCacheIds_([row.draft_id]);
         reopened++;
         reopenedFails.push({
           draft_id: String(row.draft_id || '').trim(),
@@ -27364,6 +27413,15 @@ function initDashboardApp() {
     supplyHydrateRowForSubmit_(row, batch);
   }
 
+  function supplyClearDraftCacheIds_(ids) {
+    const cache = window._supplyDraftSaveCache;
+    if (!cache) return;
+    (ids || []).forEach(function(id) {
+      const key = String(id || '').trim();
+      if (key && cache[key]) delete cache[key];
+    });
+  }
+
   function supplyMarkRowsByDraftIds_(batchRows, idSet) {
     if (!idSet || !idSet.size) return [];
     const marked = [];
@@ -27378,6 +27436,9 @@ function initDashboardApp() {
       r._submitError = '';
       marked.push(r);
     });
+    if (marked.length) {
+      supplyClearDraftCacheIds_(marked.map(function(r) { return r.draft_id; }));
+    }
     return marked;
   }
 
