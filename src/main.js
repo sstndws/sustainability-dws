@@ -14962,7 +14962,7 @@ function initDashboardApp() {
       alert('Select at least one BL record.');
       return;
     }
-    // Live TTM/TTP fallback needs monitoring (+ mill) data — same as detail modal.
+    // Enrich export cells from monitoring when links already exist on the BL.
     try {
       if ((!ttpLoaded || !(ttpData && ttpData.length)) && typeof loadTTPData === 'function') {
         await loadTTPData();
@@ -15233,8 +15233,9 @@ function initDashboardApp() {
     blFormRecordType = row
       ? (blIsDeclarationRow_(row) ? 'declaration' : 'shipping')
       : (recordType || blActiveType || 'shipping');
-    blSelectedTtm = row ? blCloneLinkList_(blEffectiveTtmLinks_(row)) : [];
-    blSelectedTtp = row ? blCloneLinkList_(blEffectiveTtpLinks_(row)) : [];
+    // Hydrate chips from stored JSON only (never invent period-wide mills/TTPs).
+    blSelectedTtm = row ? blCloneLinkList_(row._ttmLinks || []) : [];
+    blSelectedTtp = row ? blCloneLinkList_(row._ttpLinks || []) : [];
     blTtmRowsWithTtp_ = new Set();
     (blSelectedTtp || []).forEach(function(t) {
       if (t && t._row) blTtmRowsWithTtp_.add(t._row);
@@ -15468,58 +15469,40 @@ function initDashboardApp() {
 
   /**
    * Single source of truth for BL ↔ TTM/TTP links.
-   * Prefer stored JSON; if empty, fall back to monitoring rows for the BL period
-   * (same data the detail modal shows). ALL UI / export / form paths must use these.
+   * ONLY stored JSON links on the BL row — never invent every mill/TTP in a period
+   * (that caused detail "236 MILLS" / Excel thousands of rows while the list showed 4 / 26).
    */
   function blResolveLiveTtmLinks_(blRow) {
-    const stored = (blRow && blRow._ttmLinks) || [];
-    if (stored.length) return stored;
-    const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
-    if (!period || !period.year) return [];
-    return (ttpData || []).filter(function(r) {
-      if (ttpYearToken_(r) !== period.year) return false;
-      if (period.quarter && ttpQuarterToken_(r) !== period.quarter) return false;
-      return true;
-    }).map(buildBlTtmCandidate_);
+    return ((blRow && blRow._ttmLinks) || []).slice();
   }
 
   function blResolveLiveTtpLinks_(blRow) {
-    const stored = (blRow && blRow._ttpLinks) || [];
-    if (stored.length) return stored;
-    const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
-    if (!period || !period.year) return [];
-    return (ttpData || []).filter(function(r) {
-      if (ttpYearToken_(r) !== period.year) return false;
-      if (period.quarter && ttpQuarterToken_(r) !== period.quarter) return false;
-      const candidate = buildBlTtpCandidate_(r);
-      return !!(candidate['FFB SUPPLIER NAME'] && candidate['FFB SUPPLIER NAME'] !== '—');
-    }).map(buildBlTtpCandidate_);
+    return ((blRow && blRow._ttpLinks) || []).slice();
   }
 
   function blEffectiveTtmLinks_(blRow) {
-    return blResolveLiveTtmLinks_(blRow) || [];
+    return blResolveLiveTtmLinks_(blRow);
   }
 
   function blEffectiveTtpLinks_(blRow) {
-    return blResolveLiveTtpLinks_(blRow) || [];
+    return blResolveLiveTtpLinks_(blRow);
   }
 
   function blEffectiveTtmDisplayLabel_(blRow) {
     if (!blRow) return '';
-    // Always derive from effective links so registry / Excel / detail stay aligned
-    // (never prefer a stale "N MILLS" text column over live/JSON links).
     const links = blEffectiveTtmLinks_(blRow);
-    const unique = blUniqueMillCount_(links);
-    const computed = blTtmCountLabel_(unique || links.length);
-    if (computed) return computed;
+    if (links.length) {
+      return blTtmCountLabel_(blUniqueMillCount_(links)) || blTtmCountLabel_(links.length);
+    }
+    // Fall back to sheet label text only when no link JSON (do not invent mills).
     const stored = String(blRow['TTM'] || '').trim();
     return (stored && stored !== '—') ? stored : '';
   }
 
   function blEffectiveTtpDisplayLabel_(blRow) {
     if (!blRow) return '';
-    const computed = blTtpCountLabel_(blEffectiveTtpLinks_(blRow).length);
-    if (computed) return computed;
+    const links = blEffectiveTtpLinks_(blRow);
+    if (links.length) return blTtpCountLabel_(links.length);
     const stored = String(blRow['TTP'] || '').trim();
     return (stored && stored !== '—') ? stored : '';
   }
