@@ -29792,11 +29792,16 @@ function initDashboardApp() {
 
       const draftIds = [];
       const batchIds = {};
+      function pushDraftId_(raw) {
+        const did = String(raw || '').trim();
+        if (did && draftIds.indexOf(did) < 0) draftIds.push(did);
+      }
       if (bId) batchIds[supplyBatchIdKey_(bId)] = 1;
       (batch.rows || []).forEach(function(r) {
-        const did = String(r.draft_id || '').trim();
-        if (did) draftIds.push(did);
-        const bid = supplyBatchIdKey_(r.batch_id);
+        pushDraftId_(r.draft_id || r.DRAFT_ID);
+        // Card batch_id may actually be a draft_id after consolidate — send both ways.
+        pushDraftId_(r.batch_id);
+        const bid = supplyBatchIdKey_(r.batch_id || r.draft_id);
         if (bid) batchIds[bid] = 1;
       });
       // Same-period sibling cards (pre-consolidate leftovers) must go too.
@@ -29810,9 +29815,9 @@ function initDashboardApp() {
         if (delWaste !== supplyImportIsWaste_(sib.supply_type)) return;
         if (sib.batch_id) batchIds[supplyBatchIdKey_(sib.batch_id)] = 1;
         (sib.rows || []).forEach(function(r) {
-          const did = String(r.draft_id || '').trim();
-          if (did) draftIds.push(did);
-          const bid = supplyBatchIdKey_(r.batch_id);
+          pushDraftId_(r.draft_id || r.DRAFT_ID);
+          pushDraftId_(r.batch_id);
+          const bid = supplyBatchIdKey_(r.batch_id || r.draft_id);
           if (bid) batchIds[bid] = 1;
         });
       });
@@ -29830,6 +29835,8 @@ function initDashboardApp() {
         draft_ids: draftIds,
         month: delMonth,
         year: delYear,
+        MONTH: delMonth,
+        YEAR: delYear,
         supply_type: delType,
         meta: { month: delMonth, year: delYear, supply_type: delType },
       }, { timeoutMs: 120000 })
@@ -29837,9 +29844,10 @@ function initDashboardApp() {
           const deleted = Number(res && res.deleted) || 0;
           if (rowCount > 0 && deleted === 0) {
             throw new Error(
-              'Server deleted 0 rows (redeploy Apps Script for period delete). '
-              + 'Sent ' + draftIds.length + ' draft_id(s), ' + batchIdList.length + ' batch_id(s), period '
-              + delMonth + '/' + delYear + '.'
+              'Server deleted 0 rows for period ' + delMonth + '/' + delYear + '. '
+              + 'Update Vercel GAS_WEBAPP_URL to the latest /exec, then Redeploy Apps Script '
+              + 'from GoogleAppsScript-backend-v3-full.gs. '
+              + '(sent draft_ids=' + draftIds.length + ', batch_ids=' + batchIdList.length + ')'
             );
           }
           if (!window._supplyDeletedPeriodKeys) window._supplyDeletedPeriodKeys = {};

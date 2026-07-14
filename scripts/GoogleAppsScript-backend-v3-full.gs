@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-ttp-row3-restore',
+        version: 'v3-supply-period-delete',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -6905,12 +6905,14 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   var headers = data[0].map(function(h) { return String(h || '').trim(); });
   var draftIdCol = headers.indexOf('draft_id');
   var batchIdCol = headers.indexOf('batch_id');
-  var monthCol = headers.indexOf('month');
-  if (monthCol < 0) monthCol = headers.indexOf('MONTH');
-  if (monthCol < 0) monthCol = headers.indexOf('quarter');
-  if (monthCol < 0) monthCol = headers.indexOf('QUARTER');
-  var yearCol = headers.indexOf('year');
-  if (yearCol < 0) yearCol = headers.indexOf('YEAR');
+  // Sheet has BOTH lowercase meta (month/year) and mill-mirror MONTH/YEAR — check all.
+  var monthCols = [];
+  var yearCols = [];
+  headers.forEach(function(h, i) {
+    var t = String(h || '').trim();
+    if (/^month$/i.test(t) || /^bulan$/i.test(t) || /^quarter$/i.test(t)) monthCols.push(i);
+    if (/^year$/i.test(t) || /^tahun$/i.test(t)) yearCols.push(i);
+  });
   var typeCol = headers.indexOf('supply_type');
   if (typeCol < 0) typeCol = headers.indexOf('SUPPLY_TYPE');
 
@@ -6925,8 +6927,8 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
   (opts.draft_ids || []).forEach(function(id) { addId_(draftIds, id); });
   (opts.batch_ids || []).forEach(function(id) { addId_(batchIds, id); });
 
-  var wantMonth = supplyNormalizeMonthTokGs_(opts.month || opts.MONTH || '');
-  var wantYear = String(opts.year || opts.YEAR || '').trim();
+  var wantMonth = supplyNormalizeMonthTokGs_(opts.month || opts.MONTH || opts.quarter || '');
+  var wantYear = supplyNormalizeYearTokGs_(opts.year || opts.YEAR || '');
   var wantType = String(opts.supply_type || opts.SUPPLY_TYPE || '').trim().toUpperCase();
   var wantWaste = wantType && /WASTE|SHELL|FIBER|ABOE|EMPTY|PALM\s*KERNEL\s*SHELL|PKS/i.test(wantType);
 
@@ -6938,16 +6940,35 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
     return /WASTE|SHELL|FIBER|ABOE|EMPTY|PALM\s*KERNEL\s*SHELL|PKS/i.test(String(t || ''));
   }
 
+  function rowPeriodMonth_(rowArr) {
+    for (var i = 0; i < monthCols.length; i++) {
+      var m = supplyNormalizeMonthTokGs_(rowArr[monthCols[i]]);
+      if (m) return m;
+    }
+    return '';
+  }
+  function rowPeriodYear_(rowArr) {
+    for (var i = 0; i < yearCols.length; i++) {
+      var y = supplyNormalizeYearTokGs_(rowArr[yearCols[i]]);
+      if (y) return y;
+    }
+    return '';
+  }
+
   var keep = [data[0]];
   var deleted = 0;
+  var deletedBy = { id: 0, period: 0 };
   for (var r = 1; r < data.length; r++) {
     var rowDId = draftIdCol >= 0 ? String(data[r][draftIdCol] || '').trim() : '';
     var rowBId = batchIdCol >= 0 ? String(data[r][batchIdCol] || '').trim() : '';
-    var hit = (rowDId && draftIds[rowDId]) || (rowBId && batchIds[rowBId]);
+    // Cross-match: FE often stores draft_id as the card batch_id after consolidate.
+    var hit = (rowDId && (draftIds[rowDId] || batchIds[rowDId]))
+      || (rowBId && (batchIds[rowBId] || draftIds[rowBId]));
+    var by = hit ? 'id' : '';
 
     if (!hit && wantMonth && wantYear) {
-      var rowMonth = monthCol >= 0 ? supplyNormalizeMonthTokGs_(data[r][monthCol]) : '';
-      var rowYear = yearCol >= 0 ? String(data[r][yearCol] || '').trim() : '';
+      var rowMonth = rowPeriodMonth_(data[r]);
+      var rowYear = rowPeriodYear_(data[r]);
       if (rowMonth === wantMonth && rowYear === wantYear) {
         var rowType = typeCol >= 0 ? String(data[r][typeCol] || '').trim().toUpperCase() : '';
         if (!wantType) {
@@ -6955,13 +6976,16 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
         } else if (wantWaste) {
           hit = isWasteType_(rowType);
         } else {
+          // Main product cards: delete CPO/PK/CPO+PK and blank type — keep waste separate.
           hit = !isWasteType_(rowType);
         }
+        if (hit) by = 'period';
       }
     }
 
     if (hit) {
       deleted++;
+      if (by && deletedBy[by] != null) deletedBy[by]++;
       continue;
     }
     keep.push(data[r]);
@@ -6980,7 +7004,23 @@ function deleteSupplyDraft_(draftId, batchId, opts) {
     deleted: deleted,
     kept: keep.length - 1,
     by_period: !!(wantMonth && wantYear),
+    deleted_by_id: deletedBy.id,
+    deleted_by_period: deletedBy.period,
+    want_month: wantMonth,
+    want_year: wantYear,
   };
+}
+
+/** Normalize year token from sheet cells (number / date / string). */
+function supplyNormalizeYearTokGs_(raw) {
+  if (Object.prototype.toString.call(raw) === '[object Date]' && !isNaN(raw.getTime())) {
+    return String(raw.getFullYear());
+  }
+  var s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  var n = parseInt(s, 10);
+  if (!isNaN(n) && n >= 1990 && n <= 2100) return String(n);
+  return s;
 }
 
 // ═══════════════════════════════════════════════════════════
