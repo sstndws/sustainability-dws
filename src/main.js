@@ -27719,6 +27719,28 @@ function initDashboardApp() {
     }, true);
   }
 
+  /** Direct footer binds so Submit Selected stays clickable even if overlay/hit-test glitches. */
+  function supplyBindFooterActionButtons_(root) {
+    if (!root) return;
+    root.querySelectorAll('.supply-batch-footer [data-action]').forEach(function(btn) {
+      if (btn.dataset.supplyClickBound === '1') return;
+      btn.dataset.supplyClickBound = '1';
+      btn.style.pointerEvents = 'auto';
+      btn.style.cursor = btn.classList.contains('is-busy') ? 'wait' : 'pointer';
+      btn.style.position = 'relative';
+      btn.style.zIndex = '90';
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSupplyBatchAction_({
+          currentTarget: btn,
+          preventDefault: function() {},
+          stopPropagation: function() {},
+        });
+      });
+    });
+  }
+
   function ensureSupplyDraftCheckboxDelegation_() {
     if (window._supplyCheckboxDelegationBound) return;
     window._supplyCheckboxDelegationBound = true;
@@ -28059,11 +28081,16 @@ function initDashboardApp() {
     btn.classList.toggle('is-busy', busy);
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     btn.setAttribute('aria-disabled', checkedN === 0 && !busy ? 'true' : 'false');
+    btn.style.pointerEvents = 'auto';
+    btn.style.cursor = busy ? 'wait' : 'pointer';
+    btn.style.position = 'relative';
+    btn.style.zIndex = '90';
     btn.title = busy
       ? 'Submit in progress…'
       : (checkedN === 0
         ? 'Check the rows to submit'
         : ('Submit ' + checkedN + ' checked rows to ' + supplyBatchTargetSheetLabel_(batch)));
+    supplyBindFooterActionButtons_(wrap);
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
@@ -29175,7 +29202,8 @@ function initDashboardApp() {
   }
 
   function supplyBindBatchTableActions_(_root) {
-    // Clicks delegated from #supply-draft-list in initSupplyImport().
+    // Clicks delegated from #supply-draft-list; footer also gets direct binds.
+    supplyBindFooterActionButtons_(_root);
   }
 
   function supplyCaptureTaskListScroll_() {
@@ -29396,6 +29424,9 @@ function initDashboardApp() {
 
     ensureSupplyTaskListActionDelegation_();
     ensureSupplyDraftCheckboxDelegation_();
+    container.querySelectorAll('.supply-batch-table-wrap').forEach(function(wrap) {
+      supplyBindFooterActionButtons_(wrap);
+    });
     (window._supplyDraftBatches || []).forEach(function(b) {
       supplyPatchBatchFooterSubmitCount_(b.batch_id);
     });
@@ -29542,14 +29573,16 @@ function initDashboardApp() {
       ? ' Matched rows copy profile data from <strong>Mill Onboarding</strong> (see Profile: month/year badge). Submit sends to <strong>Mill Onboarding Waste</strong>.'
       : '';
     return '<div class="supply-batch-footer">'
+      + supplyFailuresBannerHtml_(batch)
+      + '<div class="supply-batch-footer__row">'
       + '<p class="supply-batch-footer__hint"><strong>Complete</strong> is optional — for manual profile edit. '
       + '<strong>Submit Selected</strong> sends checked eligible rows to <strong>' + escHtml(targetSheet) + '</strong> '
       + '(matched / new / draft-saved only; group-mismatch is blocked until rematch).' + hintWaste + '</p>'
-      + supplyFailuresBannerHtml_(batch)
       + '<div class="supply-batch-footer__actions">'
-      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
-      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
-      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Selected (' + checkedN + ')</button>' : '')
+      + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Save Draft</button>'
+      + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+      + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '" style="pointer-events:auto;cursor:pointer;position:relative;z-index:90">Submit Selected (' + checkedN + ')</button>' : '')
+      + '</div>'
       + '</div>'
       + '</div>';
   }
@@ -29580,6 +29613,10 @@ function initDashboardApp() {
   function handleSupplyBatchAction_(e) {
     const btn    = e.currentTarget;
     const action = btn.dataset.action;
+    // Guard against document-delegation + direct footer bind both firing.
+    const now = Date.now();
+    if (btn._supplyActionAt && (now - btn._supplyActionAt) < 500) return;
+    btn._supplyActionAt = now;
 
     if (action === 'sync-drafts') {
       const prev = btn.textContent;
