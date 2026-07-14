@@ -27719,16 +27719,14 @@ function initDashboardApp() {
     }, true);
   }
 
-  /** Direct footer binds so Submit Selected stays clickable even if overlay/hit-test glitches. */
+  /** Direct binds so Submit Selected stays clickable even if overlay/hit-test glitches. */
   function supplyBindFooterActionButtons_(root) {
     if (!root) return;
-    root.querySelectorAll('.supply-batch-footer [data-action]').forEach(function(btn) {
+    root.querySelectorAll('.supply-batch-toolbar [data-action], .supply-batch-footer [data-action]').forEach(function(btn) {
       if (btn.dataset.supplyClickBound === '1') return;
       btn.dataset.supplyClickBound = '1';
       btn.style.pointerEvents = 'auto';
       btn.style.cursor = btn.classList.contains('is-busy') ? 'wait' : 'pointer';
-      btn.style.position = 'relative';
-      btn.style.zIndex = '90';
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -28067,7 +28065,12 @@ function initDashboardApp() {
     const key = supplyBatchIdKey_(batchId);
     const wrap = document.getElementById('supply-batch-table-' + key);
     if (!wrap) return;
-    const btn = wrap.querySelector('[data-action="submit-selected"], [data-action="submit-all-pending"], [data-action="submit-matched"]');
+    const btn = wrap.querySelector(
+      '.supply-batch-toolbar [data-action="submit-selected"], '
+      + '.supply-batch-toolbar [data-action="submit-all-pending"], '
+      + '.supply-batch-toolbar [data-action="submit-matched"], '
+      + '[data-action="submit-selected"], [data-action="submit-all-pending"], [data-action="submit-matched"]'
+    );
     if (!btn) return;
     const batch = supplyFindDraftBatch_(key);
     const checkedN = supplyCountCheckedRows_(key);
@@ -28083,8 +28086,6 @@ function initDashboardApp() {
     btn.setAttribute('aria-disabled', checkedN === 0 && !busy ? 'true' : 'false');
     btn.style.pointerEvents = 'auto';
     btn.style.cursor = busy ? 'wait' : 'pointer';
-    btn.style.position = 'relative';
-    btn.style.zIndex = '90';
     btn.title = busy
       ? 'Submit in progress…'
       : (checkedN === 0
@@ -28118,12 +28119,14 @@ function initDashboardApp() {
     }
     const wrap = document.getElementById('supply-batch-table-' + key);
     const btn = wrap && wrap.querySelector(
-      '[data-action="submit-selected"], [data-action="submit-all-pending"], [data-action="submit-matched"]'
+      '.supply-batch-toolbar [data-action="submit-selected"], [data-action="submit-selected"]'
     );
     if (!btn) return;
     btn.removeAttribute('disabled');
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     btn.classList.toggle('is-busy', !!busy);
+    btn.style.pointerEvents = 'auto';
+    btn.style.cursor = busy ? 'wait' : 'pointer';
     if (label) btn.textContent = label;
     else supplyPatchBatchFooterSubmitCount_(key);
   }
@@ -28167,15 +28170,26 @@ function initDashboardApp() {
   function supplyPatchBatchFooter_(batchId) {
     const wrap = document.getElementById('supply-batch-table-' + batchId);
     if (!wrap) return;
-    const footer = wrap.querySelector('.supply-batch-footer');
-    if (!footer) return;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = supplyBatchFooterHtml_(batchId);
-    const nextFooter = tmp.firstElementChild;
-    if (nextFooter) {
-      footer.replaceWith(nextFooter);
-      supplyBindBatchTableActions_(wrap);
+    const toolbar = wrap.querySelector('.supply-batch-toolbar');
+    if (toolbar) {
+      const tmpT = document.createElement('div');
+      tmpT.innerHTML = supplyBatchToolbarHtml_(batchId);
+      const nextT = tmpT.firstElementChild;
+      if (nextT) toolbar.replaceWith(nextT);
     }
+    const footer = wrap.querySelector('.supply-batch-footer');
+    const nextFooterHtml = supplyBatchFooterHtml_(batchId);
+    if (footer && nextFooterHtml) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = nextFooterHtml;
+      const nextFooter = tmp.firstElementChild;
+      if (nextFooter) footer.replaceWith(nextFooter);
+    } else if (footer && !nextFooterHtml) {
+      footer.remove();
+    } else if (!footer && nextFooterHtml) {
+      wrap.insertAdjacentHTML('beforeend', nextFooterHtml);
+    }
+    supplyBindBatchTableActions_(wrap);
   }
 
   function supplyRefreshDraftRowsAfterSave_(batchId, rowIndexes) {
@@ -29559,12 +29573,14 @@ function initDashboardApp() {
       : '<tr class="supply-batch-filter-empty-row"><td colspan="' + (SHOW_COLS.length + (isSubmitted ? 0 : 1) + 1) + '">No rows for this filter.</td></tr>';
 
     return supplyBatchFilterBarHtml_(batch)
+      + (!isSubmitted ? supplyBatchToolbarHtml_(batch.batch_id) : '')
       + '<div class="supply-batch-table-scroll"><table class="supply-batch-table">'
       + '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
       + (!isSubmitted ? supplyBatchFooterHtml_(batch.batch_id) : '');
   }
 
-  function supplyBatchFooterHtml_(batchId) {
+  /** Primary actions ABOVE the table — never covered by table scroll hit-testing. */
+  function supplyBatchToolbarHtml_(batchId) {
     const batch   = supplyFindDraftBatch_(batchId);
     const checkedN = supplyCountFooterSubmit_(batchId);
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
@@ -29573,19 +29589,23 @@ function initDashboardApp() {
     const btnTitle = checkedN === 0
       ? 'Check the rows to submit'
       : ('Submit ' + checkedN + ' checked rows to ' + targetSheet);
-    const hintWaste = supplyImportIsWaste_(batch && batch.supply_type)
-      ? ' Matched rows copy profile data from <strong>Mill Onboarding</strong> (see Profile: month/year badge). Submit sends to <strong>Mill Onboarding Waste</strong>.'
-      : '';
-    return '<div class="supply-batch-footer" data-batch-footer="' + escHtml(batchId) + '">'
-      + supplyFailuresBannerHtml_(batch)
-      + '<p class="supply-batch-footer__hint"><strong>Complete</strong> is optional — for manual profile edit. '
-      + '<strong>Submit Selected</strong> sends checked eligible rows to <strong>' + escHtml(targetSheet) + '</strong> '
-      + '(matched / new / draft-saved only; group-mismatch is blocked until rematch).' + hintWaste + '</p>'
-      + '<div class="supply-batch-footer__actions">'
+    return '<div class="supply-batch-toolbar" data-batch-toolbar="' + escHtml(batchId) + '">'
+      + '<p class="supply-batch-toolbar__hint">Check rows below, then submit to <strong>'
+      + escHtml(targetSheet) + '</strong>. Group-mismatch rows are skipped until rematch.</p>'
+      + '<div class="supply-batch-toolbar__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
       + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Selected (' + checkedN + ')</button>' : '')
       + '</div>'
+      + '</div>';
+  }
+
+  function supplyBatchFooterHtml_(batchId) {
+    const batch = supplyFindDraftBatch_(batchId);
+    const failures = supplyFailuresBannerHtml_(batch);
+    if (!failures) return '';
+    return '<div class="supply-batch-footer" data-batch-footer="' + escHtml(batchId) + '">'
+      + failures
       + '</div>';
   }
 
@@ -29650,8 +29670,8 @@ function initDashboardApp() {
       btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
       if (!isOpen) {
         requestAnimationFrame(function() {
-          const footer = wrap.querySelector('.supply-batch-footer');
-          if (footer) footer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          const toolbar = wrap.querySelector('.supply-batch-toolbar');
+          if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
       }
       return;
