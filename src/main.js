@@ -13820,12 +13820,123 @@ function initDashboardApp() {
   function parseBlLinksJson_(raw) {
     if (!raw) return [];
     if (Array.isArray(raw)) return raw;
-    try {
-      const parsed = JSON.parse(String(raw));
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
+    if (typeof raw === 'object') {
+      if (Array.isArray(raw.links)) return raw.links;
+      if (Array.isArray(raw.items)) return raw.items;
       return [];
     }
+    var s = String(raw).trim();
+    if (!s || s === '[]' || s === '—' || s === '-') return [];
+    // Sheets sometimes wraps the blob in quotes or double-encodes.
+    if ((s.charAt(0) === '"' && s.charAt(s.length - 1) === '"')
+      || (s.charAt(0) === "'" && s.charAt(s.length - 1) === "'")) {
+      try { s = JSON.parse(s); } catch (e1) { /* keep */ }
+      if (Array.isArray(s)) return s;
+      s = String(s || '').trim();
+    }
+    try {
+      var parsed = JSON.parse(s);
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch (e2) { /* keep string */ }
+      }
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.links)) return parsed.links;
+      return [];
+    } catch (e) {
+      return blRecoverTruncatedJsonArray_(s);
+    }
+  }
+
+  /** Pull complete {...} objects from a truncated JSON array string. */
+  function blRecoverTruncatedJsonArray_(s) {
+    var str = String(s || '');
+    if (str.indexOf('{') < 0) return [];
+    var out = [];
+    var depth = 0;
+    var start = -1;
+    var inStr = false;
+    var esc = false;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charAt(i);
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (c === '\\') { esc = true; continue; }
+        if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (c === '}') {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          try {
+            out.push(JSON.parse(str.slice(start, i + 1)));
+          } catch (err) { /* skip broken object */ }
+          start = -1;
+        }
+      }
+    }
+    return out;
+  }
+
+  function blPickLinksJsonRaw_(row, wantKey) {
+    if (!row) return '';
+    if (row[wantKey] != null && String(row[wantKey]).trim() !== '') return row[wantKey];
+    const want = String(wantKey || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    let found = '';
+    Object.keys(row).forEach(function(k) {
+      if (found || k === '_row' || k === '_ttmLinks' || k === '_ttpLinks') return;
+      if (String(k).replace(/\s+/g, ' ').trim().toUpperCase() === want) found = row[k];
+    });
+    return found;
+  }
+
+  function blCompactTtmLinkForStore_(item) {
+    if (!item || typeof item !== 'object') return item;
+    return {
+      _row: item._row || '',
+      'COMPANY NAME': blField_(item, ['COMPANY NAME']),
+      'GROUP NAME': blField_(item, ['GROUP NAME']),
+      'MILL NAME': blField_(item, ['MILL NAME']),
+      'UML ID': blField_(item, ['UML ID']),
+      'LAT': blField_(item, ['LAT', 'LATITUDE']),
+      'LONG': blField_(item, ['LONG', 'LONGITUDE']),
+    };
+  }
+
+  function blCompactTtpLinkForStore_(item) {
+    if (!item || typeof item !== 'object') return item;
+    return {
+      _row: item._row || '',
+      'FFB SUPPLIER NAME': blField_(item, ['FFB SUPPLIER NAME']),
+      'FFB SUPPLIER GROUP NAME': blField_(item, ['FFB SUPPLIER GROUP NAME', 'GROUP NAME']),
+      'CATEGORY': blField_(item, ['CATEGORY']),
+      'LAT': blField_(item, ['LAT', 'LATITUDE']),
+      'LONG': blField_(item, ['LONG', 'LONGITUDE']),
+      'VILLAGE ID': blField_(item, ['VILLAGE ID']),
+      'VILLAGE': blField_(item, ['VILLAGE']),
+      'SUBDISTRICT': blField_(item, ['SUBDISTRICT', 'SUB DISTRICT']),
+      'DISTRICT': blField_(item, ['DISTRICT']),
+      'PROVINCE': blField_(item, ['PROVINCE']),
+    };
+  }
+
+  function blEnrichStoredTtmLinks_(links) {
+    return (links || []).map(function(link) {
+      const live = blResolveLinkRowLive_(link);
+      if (!live || live === link) return link;
+      return Object.assign({}, buildBlTtmCandidate_(live), link);
+    });
+  }
+
+  function blEnrichStoredTtpLinks_(links) {
+    return (links || []).map(function(link) {
+      const live = blResolveLinkRowLive_(link);
+      if (!live || live === link) return link;
+      return Object.assign({}, buildBlTtpCandidate_(live), link);
+    });
   }
 
   function blTtmKey_(item) {
@@ -14431,8 +14542,8 @@ function initDashboardApp() {
     if (!row[BL_RECORD_TYPE_FIELD]) row[BL_RECORD_TYPE_FIELD] = BL_TYPE_SHIPPING;
     blNormalizeRowNation_(row);
     row._blRecordType = blResolveRecordType_(row);
-    row._ttmLinks = parseBlLinksJson_(row[BL_JSON_TTM]);
-    row._ttpLinks = parseBlLinksJson_(row[BL_JSON_TTP]);
+    row._ttmLinks = parseBlLinksJson_(blPickLinksJsonRaw_(row, BL_JSON_TTM));
+    row._ttpLinks = parseBlLinksJson_(blPickLinksJsonRaw_(row, BL_JSON_TTP));
     const searchFields = row._blRecordType === BL_TYPE_DECLARATION
       ? BL_DECL_FORM_FIELDS.concat(['TTM', 'TTP'])
       : BL_SHIPPING_FORM_FIELDS.concat(['TTM', 'TTP', 'BL NO.']);
@@ -15368,8 +15479,8 @@ function initDashboardApp() {
         if (!payload['TOTAL BL']) payload['TOTAL BL'] = blNextTotalBl_();
         payload['NO'] = payload['TOTAL BL'];
       }
-      payload[BL_JSON_TTM] = JSON.stringify(blSelectedTtm);
-      payload[BL_JSON_TTP] = JSON.stringify(blSelectedTtp);
+      payload[BL_JSON_TTM] = JSON.stringify((blSelectedTtm || []).map(blCompactTtmLinkForStore_));
+      payload[BL_JSON_TTP] = JSON.stringify((blSelectedTtp || []).map(blCompactTtpLinkForStore_));
       payload['TTM'] = blTtmCountLabel_(blUniqueMillCount_(blSelectedTtm));
       payload['TTP'] = blTtpCountLabel_(blSelectedTtp.length);
 
@@ -15481,11 +15592,11 @@ function initDashboardApp() {
   }
 
   function blEffectiveTtmLinks_(blRow) {
-    return blResolveLiveTtmLinks_(blRow);
+    return blEnrichStoredTtmLinks_(blResolveLiveTtmLinks_(blRow));
   }
 
   function blEffectiveTtpLinks_(blRow) {
-    return blResolveLiveTtpLinks_(blRow);
+    return blEnrichStoredTtpLinks_(blResolveLiveTtpLinks_(blRow));
   }
 
   function blEffectiveTtmDisplayLabel_(blRow) {
@@ -15514,9 +15625,9 @@ function initDashboardApp() {
     });
   }
 
-  function buildBlLinkedTableHtml_(cols, rows) {
+  function buildBlLinkedTableHtml_(cols, rows, emptyHint) {
     if (!rows || !rows.length) {
-      return '<div class="bl-linked-empty">No linked data</div>';
+      return '<div class="bl-linked-empty">' + escHtml(emptyHint || 'No linked data') + '</div>';
     }
     const head = cols.map(function(c) { return '<th>' + escHtml(c.label) + '</th>'; }).join('');
     const body = rows.map(function(row) {
@@ -15532,11 +15643,21 @@ function initDashboardApp() {
       + body + '</tbody></table></div>';
   }
 
-  function openBlDetailModal_(row) {
+  async function openBlDetailModal_(row) {
     if (!row) return;
     const overlay = mountBlOverlay_('blDetailOverlay');
     if (!overlay) return;
     blDetailCurrent = row;
+
+    try {
+      if ((!ttpLoaded || !(ttpData && ttpData.length)) && typeof loadTTPData === 'function') {
+        await loadTTPData();
+      }
+    } catch (err) {
+      console.warn('[BL] Monitoring load for detail links failed:', err);
+    }
+    // Re-parse link JSON in case row was prepared before robust parser existed.
+    prepareBlRow_(row);
 
     const titleEl = document.getElementById('blDetailTitle');
     const subEl = document.getElementById('blDetailSubtitle');
@@ -15566,13 +15687,19 @@ function initDashboardApp() {
 
     const ttmDisplayLinks = blEffectiveTtmLinks_(row);
     const ttpDisplayLinks = blEffectiveTtpLinks_(row);
+    const ttmEmptyHint = (!ttmDisplayLinks.length && String(row['TTM'] || '').trim())
+      ? 'Count says ' + String(row['TTM']).trim() + ' but link rows are missing. Click Edit BL → re-select TTM mills → Save.'
+      : 'No linked data';
+    const ttpEmptyHint = (!ttpDisplayLinks.length && String(row['TTP'] || '').trim())
+      ? 'Count says ' + String(row['TTP']).trim() + ' but link rows are missing. Click Edit BL → re-select TTP → Save.'
+      : 'No linked data';
 
     bodyEl.innerHTML = ''
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">' + (isDecl ? 'Declaration' : 'Shipping') + '</div><div class="bl-detail-grid">' + blGrid + '</div></div>'
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(blEffectiveTtmDisplayLabel_(row) || '—') + '</div>'
-      + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, ttmDisplayLinks) + '</div>'
+      + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, ttmDisplayLinks, ttmEmptyHint) + '</div>'
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(blEffectiveTtpDisplayLabel_(row) || '—') + '</div>'
-      + buildBlLinkedTableHtml_(BL_TTP_DETAIL_COLS, ttpDisplayLinks) + '</div>';
+      + buildBlLinkedTableHtml_(BL_TTP_DETAIL_COLS, ttpDisplayLinks, ttpEmptyHint) + '</div>';
 
     document.body.classList.add('bl-detail-open');
     lockBlOverlayScroll_();

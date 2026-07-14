@@ -4234,6 +4234,14 @@ function getData(sheetKey) {
     let obj;
     if (sheetKey === 'blMonitoring') {
       obj = blCanonicalizeRow_(headers, sourceRow);
+      // JSON link blobs must use RAW getValues() — display values can truncate/mangle large cells.
+      headers.forEach(function(h, j) {
+        var key = String(h || '').replace(/\s+/g, ' ').trim();
+        if (key !== 'TTM LINKS JSON' && key !== 'TTP LINKS JSON') return;
+        var raw = row[j];
+        if (raw == null || raw === '') return;
+        obj[key] = typeof raw === 'string' ? raw : String(raw);
+      });
       obj._row = headerRowNum + i + 1;
       return obj;
     }
