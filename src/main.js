@@ -14710,8 +14710,19 @@ function initDashboardApp() {
     return String(raw || 'BL').trim().replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 40) || 'BL';
   }
 
-  function blCreateStyledExcelSheet_(headers, rows) {
-    return buildBrandedExcelSheet_(XLSX, headers, rows || [], { headerFill: '8B1A1A' });
+  function blCreateStyledExcelSheet_(headers, rows, opts) {
+    opts = opts || {};
+    return buildBrandedExcelSheet_(XLSX, headers, rows || [], {
+      headerFill: '8B1A1A',
+      includeCompanyInfo: opts.includeCompanyInfo !== false,
+    });
+  }
+
+  function blSheetIncludeCompanyInfo_(sheetName) {
+    const n = String(sheetName || '').trim().toUpperCase();
+    // Only the main BL sheet — never TTM / TTP companion sheets.
+    if (n === 'TTM' || n === 'TTP') return false;
+    return n === 'BL' || n.indexOf('BL ') === 0 || n.indexOf('BL') === 0;
   }
 
   function writeBlExcelWorkbook_(sheets, filename) {
@@ -14719,8 +14730,10 @@ function initDashboardApp() {
     const wb = XLSX.utils.book_new();
     (sheets || []).forEach(function(sheet) {
       if (!sheet || !sheet.headers || !sheet.headers.length) return;
-      const ws = blCreateStyledExcelSheet_(sheet.headers, sheet.rows || []);
       const name = String(sheet.name || 'Sheet').slice(0, 31);
+      const ws = blCreateStyledExcelSheet_(sheet.headers, sheet.rows || [], {
+        includeCompanyInfo: blSheetIncludeCompanyInfo_(name),
+      });
       XLSX.utils.book_append_sheet(wb, ws, name);
     });
     if (!wb.SheetNames.length) return;
