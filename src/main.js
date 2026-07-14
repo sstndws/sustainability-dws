@@ -26557,15 +26557,16 @@ function initDashboardApp() {
       const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + (supplyImportIsWaste_(kindKey) ? ('|' + kindKey) : '');
       if (!openByPeriod[pk]) {
         openByPeriod[pk] = b;
+        if (b.batch_id != null) b.batch_id = supplyBatchIdKey_(b.batch_id);
         result.push(b);
         return;
       }
       const target = openByPeriod[pk];
-      if (!target.batch_id && b.batch_id) target.batch_id = b.batch_id;
+      if (!target.batch_id && b.batch_id) target.batch_id = supplyBatchIdKey_(b.batch_id);
       (b.rows || []).forEach(function(srcRow) {
         if (!target.rows) target.rows = [];
         // Keep card + sheet identity aligned after period merge.
-        if (target.batch_id) srcRow.batch_id = target.batch_id;
+        if (target.batch_id) srcRow.batch_id = supplyBatchIdKey_(target.batch_id);
         target.rows.push(srcRow);
       });
       target.supply_type = supplyCombineSupplyTypes_(target.supply_type, b.supply_type);
@@ -27643,11 +27644,11 @@ function initDashboardApp() {
   }
 
   function supplyCountFooterSubmit_(batchId) {
-    const wrap = document.getElementById('supply-batch-table-' + batchId);
+    const wrap = document.getElementById('supply-batch-table-' + supplyBatchIdKey_(batchId));
     if (wrap && wrap.querySelector('.supply-row-check')) {
       return supplyCountCheckedRows_(batchId);
     }
-    const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+    const batch = supplyFindDraftBatch_(batchId);
     return batch ? supplyCountPendingSubmit_(batch) : 0;
   }
 
@@ -27670,17 +27671,48 @@ function initDashboardApp() {
     supplyPatchBatchFooterSubmitCount_(batchId);
   }
 
+  /** Strict string match — dataset / Sheets can disagree on number vs string. */
+  function supplyBatchIdKey_(id) {
+    return String(id == null ? '' : id).trim();
+  }
+
+  function supplyFindDraftBatch_(batchId) {
+    const key = supplyBatchIdKey_(batchId);
+    if (!key) return null;
+    const list = window._supplyDraftBatches || [];
+    for (let i = 0; i < list.length; i++) {
+      if (supplyBatchIdKey_(list[i].batch_id) === key) return list[i];
+    }
+    // Fallback: card wraps rows from a merged period under a sibling batch_id.
+    for (let j = 0; j < list.length; j++) {
+      const b = list[j];
+      const rows = b.rows || [];
+      for (let r = 0; r < rows.length; r++) {
+        if (supplyBatchIdKey_(rows[r].batch_id) === key) return b;
+      }
+    }
+    return null;
+  }
+
+  function supplyNotifySubmitBlocked_(msg) {
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast(msg, 'warning');
+    } else {
+      alert(msg);
+    }
+  }
+
   function ensureSupplyTaskListActionDelegation_() {
     if (window._supplyTaskListActionBound) return;
     window._supplyTaskListActionBound = true;
     document.addEventListener('click', function(e) {
-      const btn = e.target && e.target.closest
-        ? e.target.closest('#supply-draft-list [data-action]')
-        : null;
-      if (!btn) return;
-      if (btn.classList.contains('is-busy')) return;
+      const list = document.getElementById('supply-draft-list');
+      if (!list) return;
+      const raw = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+      if (!raw || !list.contains(raw)) return;
+      // Never swallow clicks — busy state is handled inside the action with feedback.
       handleSupplyBatchAction_({
-        currentTarget: btn,
+        currentTarget: raw,
         preventDefault: function() { e.preventDefault(); },
         stopPropagation: function() { e.stopPropagation(); },
       });
@@ -28010,50 +28042,63 @@ function initDashboardApp() {
   }
 
   function supplyPatchBatchFooterSubmitCount_(batchId) {
-    const wrap = document.getElementById('supply-batch-table-' + batchId);
+    const key = supplyBatchIdKey_(batchId);
+    const wrap = document.getElementById('supply-batch-table-' + key);
     if (!wrap) return;
     const btn = wrap.querySelector('[data-action="submit-selected"], [data-action="submit-all-pending"], [data-action="submit-matched"]');
     if (!btn) return;
-    const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
-    const checkedN = supplyCountCheckedRows_(batchId);
-    const busy = window._supplyBulkSubmitInFlight === batchId;
+    const batch = supplyFindDraftBatch_(key);
+    const checkedN = supplyCountCheckedRows_(key);
+    const busy = supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key;
     btn.dataset.action = 'submit-selected';
-    btn.textContent = busy ? btn.textContent : ('Submit Selected (' + checkedN + ')');
+    btn.dataset.batch = key;
+    btn.textContent = busy
+      ? (btn.textContent && /Submitting|Retrying/i.test(btn.textContent) ? btn.textContent : ('Submitting…'))
+      : ('Submit Selected (' + checkedN + ')');
     btn.removeAttribute('disabled');
     btn.classList.toggle('is-busy', busy);
-    btn.setAttribute('aria-disabled', checkedN === 0 ? 'true' : 'false');
-    btn.title = checkedN === 0
-      ? 'Check the rows to submit'
-      : ('Submit ' + checkedN + ' checked rows to ' + supplyBatchTargetSheetLabel_(batch));
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    btn.setAttribute('aria-disabled', checkedN === 0 && !busy ? 'true' : 'false');
+    btn.title = busy
+      ? 'Submit in progress…'
+      : (checkedN === 0
+        ? 'Check the rows to submit'
+        : ('Submit ' + checkedN + ' checked rows to ' + supplyBatchTargetSheetLabel_(batch)));
   }
 
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
+    const key = supplyBatchIdKey_(batchId);
     if (busy) {
-      window._supplyBulkSubmitInFlight = batchId;
-      // Self-healing watchdog: never let the submit lock stick permanently
-      // (e.g. if a follow-up refresh hangs), so the button can't get "stuck".
+      window._supplyBulkSubmitInFlight = key;
+      // Self-healing watchdog: never let the submit lock stick permanently.
       if (window._supplyBulkSubmitWatchdog) clearTimeout(window._supplyBulkSubmitWatchdog);
       window._supplyBulkSubmitWatchdog = setTimeout(function() {
-        if (window._supplyBulkSubmitInFlight === batchId) {
-          const stuck = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+        if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
+          const stuck = supplyFindDraftBatch_(key);
           if (stuck) stuck._submitInFlight = false;
-          supplySetSubmitBtnBusy_(batchId, false);
+          supplySetSubmitBtnBusy_(key, false);
+          supplyNotifySubmitBlocked_('Submit took too long and was unlocked. You can try again.');
         }
-      }, 180000);
+      }, 90000);
     } else {
-      if (window._supplyBulkSubmitInFlight === batchId) window._supplyBulkSubmitInFlight = null;
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
+        window._supplyBulkSubmitInFlight = null;
+      }
       if (window._supplyBulkSubmitWatchdog) {
         clearTimeout(window._supplyBulkSubmitWatchdog);
         window._supplyBulkSubmitWatchdog = null;
       }
     }
-    const wrap = document.getElementById('supply-batch-table-' + batchId);
-    const btn = wrap && wrap.querySelector('[data-action="submit-selected"]');
+    const wrap = document.getElementById('supply-batch-table-' + key);
+    const btn = wrap && wrap.querySelector(
+      '[data-action="submit-selected"], [data-action="submit-all-pending"], [data-action="submit-matched"]'
+    );
     if (!btn) return;
     btn.removeAttribute('disabled');
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     btn.classList.toggle('is-busy', !!busy);
     if (label) btn.textContent = label;
-    else supplyPatchBatchFooterSubmitCount_(batchId);
+    else supplyPatchBatchFooterSubmitCount_(key);
   }
 
   /** Best-effort refresh after submit — debounced, coalesced, never blocks UI. */
@@ -29179,8 +29224,8 @@ function initDashboardApp() {
     opts = opts || {};
     const preserveScroll = opts.preserveScroll !== false;
     const snap = preserveScroll ? supplyCaptureTaskListScroll_() : null;
-    const batch = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
-    const wrap = document.getElementById('supply-batch-table-' + batchId);
+    const batch = supplyFindDraftBatch_(batchId);
+    const wrap = document.getElementById('supply-batch-table-' + supplyBatchIdKey_(batchId));
     if (!batch || !wrap) return;
     wrap.innerHTML = renderSupplyBatchTable_(batch);
     supplyBindBatchTableActions_(wrap);
@@ -29485,7 +29530,7 @@ function initDashboardApp() {
   }
 
   function supplyBatchFooterHtml_(batchId) {
-    const batch   = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+    const batch   = supplyFindDraftBatch_(batchId);
     const checkedN = supplyCountFooterSubmit_(batchId);
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
@@ -29557,7 +29602,7 @@ function initDashboardApp() {
     }
 
     if (action === 'toggle-batch') {
-      const batchId = btn.dataset.batch;
+      const batchId = supplyBatchIdKey_(btn.dataset.batch);
       const wrap = document.getElementById('supply-batch-table-' + batchId);
       if (!wrap) return;
       const isOpen = !wrap.hidden;
@@ -29573,17 +29618,26 @@ function initDashboardApp() {
       return;
     }
 
-    const bId    = btn.dataset.batch;
-    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === bId; });
+    const bIdRaw = btn.dataset.batch;
+    const bId    = supplyBatchIdKey_(bIdRaw);
+    const batch  = supplyFindDraftBatch_(bId);
 
     if (action === 'filter-rows') {
-      if (!batch) return;
+      if (!batch) {
+        supplyNotifySubmitBlocked_('Batch not found — click Refresh on Task List.');
+        return;
+      }
       supplySetBatchRowFilter_(bId, btn.dataset.filter || 'all');
       supplyRerenderBatchTable_(bId);
       return;
     }
 
-    if (!batch) return;
+    if (!batch) {
+      // Toggle doesn't need batch object; anything else does.
+      if (action === 'toggle-batch' || action === 'sync-drafts') return;
+      supplyNotifySubmitBlocked_('Batch not found (' + (bId || 'no id') + '). Click Refresh on Task List, then try again.');
+      return;
+    }
 
     if (action === 'rematch-batch') {
       btn.textContent = '…';
@@ -29701,7 +29755,7 @@ function initDashboardApp() {
         .then(function(res) {
           const deleted = Number(res && res.deleted) || 0;
           window._supplyDraftBatches = (window._supplyDraftBatches || []).filter(function(b) {
-            return b.batch_id !== bId;
+            return supplyBatchIdKey_(b.batch_id) !== supplyBatchIdKey_(bId);
           });
           supplyClearDraftCacheIds_(draftIds);
           renderSupplyDraftList_();
@@ -29749,7 +29803,10 @@ function initDashboardApp() {
     }
 
     if (action === 'submit-selected' || action === 'submit-all-pending' || action === 'submit-matched') {
-      if (window._supplyBulkSubmitInFlight === bId) return;
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === bId || batch._submitInFlight) {
+        supplyNotifySubmitBlocked_('Submit still in progress — please wait a moment.');
+        return;
+      }
       collectInlineEdits_(bId);
       const checkedIndexes = supplyGetCheckedRowIndexes_(bId);
       if (!checkedIndexes.length) {
@@ -29819,7 +29876,10 @@ function initDashboardApp() {
     }
 
     if (action === 'retry-failed') {
-      if (window._supplyBulkSubmitInFlight === bId) return;
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === bId || batch._submitInFlight) {
+        supplyNotifySubmitBlocked_('Submit still in progress — please wait a moment.');
+        return;
+      }
       collectInlineEdits_(bId);
       const fails = (batch._submitFailures || []).slice();
       if (!fails.length) {
@@ -29873,10 +29933,17 @@ function initDashboardApp() {
 
     // Submit a single row — same hydrate + bulk path as Submit Selected
     if (action === 'submit-row') {
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === bId || batch._submitInFlight) {
+        supplyNotifySubmitBlocked_('Submit still in progress — please wait a moment.');
+        return;
+      }
       collectInlineEdits_(bId);
       const rowIdx = parseInt(btn.dataset.row, 10);
       const row    = batch.rows && batch.rows[rowIdx];
-      if (!row) return;
+      if (!row) {
+        supplyNotifySubmitBlocked_('Row not found — click Refresh on Task List.');
+        return;
+      }
       btn.textContent = '…'; btn.disabled = true;
       supplyEnsureDraftPeriodOnRows_([row], batch);
       supplyHydrateRowForSubmit_(row, batch);
@@ -29886,13 +29953,13 @@ function initDashboardApp() {
         btn.textContent = 'Submit'; btn.disabled = false;
         return;
       }
+      supplySetSubmitBtnBusy_(bId, true, 'Submitting…');
       supplySubmitAllPendingRows_(batch, bId, [row])
         .then(function(result) {
           const snap = supplyCaptureTaskListScroll_();
           renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
           supplyRestoreTaskListScroll_(snap);
           supplyPatchBatchFooterSubmitCount_(bId);
-          btn.textContent = 'Submit'; btn.disabled = false;
           const okN = result && result.submittedN ? result.submittedN : 0;
           const failN = result && result.failedN ? result.failedN : 0;
           if (typeof window.showSddToast === 'function') {
@@ -29905,8 +29972,10 @@ function initDashboardApp() {
         })
         .catch(function(err) {
           renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
-          btn.textContent = 'Submit'; btn.disabled = false;
           alert('Submit failed: ' + (err && err.message ? err.message : err));
+        })
+        .finally(function() {
+          supplySetSubmitBtnBusy_(bId, false);
         });
       return;
     }
@@ -29953,8 +30022,8 @@ function initDashboardApp() {
   function collectInlineEdits_(batchId) {
     const container = document.getElementById('supply-draft-list');
     if (!container) return;
-    const inputs = container.querySelectorAll('.supply-inline-input[data-batch="' + batchId + '"]');
-    const batch  = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === batchId; });
+    const inputs = container.querySelectorAll('.supply-inline-input[data-batch="' + supplyBatchIdKey_(batchId) + '"]');
+    const batch  = supplyFindDraftBatch_(batchId);
     if (!batch) return;
     inputs.forEach(function(inp) {
       const rowIdx = parseInt(inp.dataset.row, 10);
@@ -29990,7 +30059,8 @@ function initDashboardApp() {
         // Group by batch_id
         const batches = {};
         data.forEach(function(row) {
-          const bid = row.batch_id || row.draft_id || 'unknown';
+          const bid = supplyBatchIdKey_(row.batch_id || row.draft_id || 'unknown');
+          row.batch_id = bid;
           const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
           const rowYear = String(row.year || row.YEAR || '').trim();
           if (!batches[bid]) {

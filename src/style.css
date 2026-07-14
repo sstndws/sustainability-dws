@@ -6223,8 +6223,7 @@ body.supply-import-open {
   opacity: 0.55;
 }
 .supply-btn--primary.is-busy {
-  opacity: 0.65;
-  pointer-events: none;
+  opacity: 0.72;
   cursor: wait;
 }
 .supply-btn--primary:disabled {
@@ -6335,9 +6334,8 @@ body.supply-import-open {
   gap: 10px;
   padding: 14px 10px 10px;
   border-top: 1px solid rgba(139, 26, 26, 0.07);
-  position: sticky;
-  bottom: 0;
-  z-index: 3;
+  position: relative;
+  z-index: 5;
   background: #fff;
   box-shadow: 0 -6px 16px rgba(26, 10, 10, 0.06);
 }
@@ -6353,7 +6351,8 @@ body.supply-import-open {
   flex-wrap: wrap;
   justify-content: flex-end;
   position: relative;
-  z-index: 4;
+  z-index: 6;
+  pointer-events: auto;
 }
 .supply-submit-failures {
   border: 1px solid rgba(192, 57, 43, 0.28);
