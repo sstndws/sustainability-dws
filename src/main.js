@@ -14353,7 +14353,9 @@ function initDashboardApp() {
     const rows = [];
     (blRows || []).forEach(function(d) {
       const parent = blExportParentRow_(d);
-      (d._ttmLinks || []).forEach(function(link) {
+      // Match detail modal: use stored links, else live TTM rows for the BL period.
+      const links = blResolveLiveTtmLinks_(d);
+      (links || []).forEach(function(link) {
         rows.push(parent.concat(keys.map(function(key) {
           return blExportLinkCell_(link, key);
         })));
@@ -14368,7 +14370,9 @@ function initDashboardApp() {
     const rows = [];
     (blRows || []).forEach(function(d) {
       const parent = blExportParentRow_(d);
-      (d._ttpLinks || []).forEach(function(link) {
+      // Match detail modal: use stored links, else live TTP rows for the BL period.
+      const links = blResolveLiveTtpLinks_(d);
+      (links || []).forEach(function(link) {
         rows.push(parent.concat(keys.map(function(key) {
           return blExportLinkCell_(link, key);
         })));
