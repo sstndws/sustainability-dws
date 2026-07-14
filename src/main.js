@@ -13136,12 +13136,10 @@ function initDashboardApp() {
     { label: 'Request', minWidth: 90, cell: function(d) { return blRequestBadge_(d['REQUEST TYPE']); } },
     { label: 'Status', minWidth: 100, cell: function(d) { return blStatusBadge_(d['STATUS']); } },
     { label: 'TTM', minWidth: 80, cell: function(d) {
-      const ttmCount = (d._ttmLinks || []).length;
-      return blLinkPill_(d['TTM'] || blTtmCountLabel_(ttmCount));
+      return blLinkPill_(blEffectiveTtmDisplayLabel_(d));
     } },
     { label: 'TTP', minWidth: 70, cell: function(d) {
-      const ttpCount = (d._ttpLinks || []).length;
-      return blLinkPill_(d['TTP'] || blTtpCountLabel_(ttpCount));
+      return blLinkPill_(blEffectiveTtpDisplayLabel_(d));
     } },
     { label: '', minWidth: 110, isActions: true, cell: function(d) {
       return ''
@@ -13161,12 +13159,10 @@ function initDashboardApp() {
     { label: 'Requested', minWidth: 90, cell: function(d) { return blRequestBadge_(d['REQUEST TYPE']); } },
     { label: 'Status', minWidth: 100, cell: function(d) { return blStatusBadge_(d['STATUS']); } },
     { label: 'TTM', minWidth: 80, cell: function(d) {
-      const ttmCount = (d._ttmLinks || []).length;
-      return blLinkPill_(d['TTM'] || blTtmCountLabel_(ttmCount));
+      return blLinkPill_(blEffectiveTtmDisplayLabel_(d));
     } },
     { label: 'TTP', minWidth: 70, cell: function(d) {
-      const ttpCount = (d._ttpLinks || []).length;
-      return blLinkPill_(d['TTP'] || blTtpCountLabel_(ttpCount));
+      return blLinkPill_(blEffectiveTtpDisplayLabel_(d));
     } },
     { label: '', minWidth: 110, isActions: true, cell: function(d) {
       return ''
@@ -14006,16 +14002,23 @@ function initDashboardApp() {
 
   function blInitPickerPeriod_(row) {
     blRenderPickerPeriodDropdowns_();
+    let detected = null;
     if (row && (row._ttmLinks || []).length) {
-      const detected = blDetectPeriodFromLinks_(row._ttmLinks);
-      if (detected) {
-        blPeriodYear = detected.year;
-        blPeriodQuarter = detected.quarter;
-        const yearSel = document.getElementById('blPickerYear');
-        const quarterSel = document.getElementById('blPickerQuarter');
-        if (yearSel) yearSel.value = blPeriodYear;
-        if (quarterSel) quarterSel.value = blPeriodQuarter;
-      }
+      detected = blDetectPeriodFromLinks_(row._ttmLinks);
+    }
+    if (!detected && row && (row._ttpLinks || []).length) {
+      detected = blDetectPeriodFromLinks_(row._ttpLinks);
+    }
+    if (!detected && row) {
+      detected = blDetectPeriodFromBlRow_(row);
+    }
+    if (detected && detected.year) {
+      blPeriodYear = detected.year;
+      blPeriodQuarter = detected.quarter || blPeriodQuarter || 'Q1';
+      const yearSel = document.getElementById('blPickerYear');
+      const quarterSel = document.getElementById('blPickerQuarter');
+      if (yearSel) yearSel.value = blPeriodYear;
+      if (quarterSel && blPeriodQuarter) quarterSel.value = blPeriodQuarterToken_(blPeriodQuarter) || blPeriodQuarter;
     } else {
       blApplyLatestPeriod_();
       const yearSel = document.getElementById('blPickerYear');
@@ -14232,12 +14235,10 @@ function initDashboardApp() {
   function blExportColValue_(d, colDef) {
     if (!d || !colDef) return '';
     if (colDef.kind === 'ttm') {
-      const ttmCount = (d._ttmLinks || []).length;
-      return d['TTM'] || blTtmCountLabel_(ttmCount) || '';
+      return blEffectiveTtmDisplayLabel_(d) || '';
     }
     if (colDef.kind === 'ttp') {
-      const ttpCount = (d._ttpLinks || []).length;
-      return d['TTP'] || blTtpCountLabel_(ttpCount) || '';
+      return blEffectiveTtpDisplayLabel_(d) || '';
     }
     if (colDef.field === 'TOTAL BL') return blTotalBlValue_(d);
     return d[colDef.field] != null ? String(d[colDef.field]) : '';
@@ -14354,7 +14355,7 @@ function initDashboardApp() {
     (blRows || []).forEach(function(d) {
       const parent = blExportParentRow_(d);
       // Match detail modal: use stored links, else live TTM rows for the BL period.
-      const links = blResolveLiveTtmLinks_(d);
+      const links = blEffectiveTtmLinks_(d);
       (links || []).forEach(function(link) {
         rows.push(parent.concat(keys.map(function(key) {
           return blExportLinkCell_(link, key);
@@ -14371,7 +14372,7 @@ function initDashboardApp() {
     (blRows || []).forEach(function(d) {
       const parent = blExportParentRow_(d);
       // Match detail modal: use stored links, else live TTP rows for the BL period.
-      const links = blResolveLiveTtpLinks_(d);
+      const links = blEffectiveTtpLinks_(d);
       (links || []).forEach(function(link) {
         rows.push(parent.concat(keys.map(function(key) {
           return blExportLinkCell_(link, key);
@@ -14447,7 +14448,7 @@ function initDashboardApp() {
     let onprogress = 0;
     let done = 0;
     rows.forEach(function(d) {
-      ttmSum += (d._ttmLinks || []).length;
+      ttmSum += blUniqueMillCount_(blEffectiveTtmLinks_(d));
       const st = String(d['STATUS'] || '').toLowerCase();
       if (st.includes('done')) done++;
       else if (st.includes('onprogress') || st.includes('progress')) onprogress++;
@@ -14916,7 +14917,7 @@ function initDashboardApp() {
     blExportSelectedTtpColKeys = null;
   }
 
-  function confirmBlExport_() {
+  async function confirmBlExport_() {
     const colDefs = blReadExportColSelection_();
     if (!colDefs.length) {
       alert('Select at least one BL column.');
@@ -14932,6 +14933,17 @@ function initDashboardApp() {
     if (!rows.length) {
       alert('Select at least one BL record.');
       return;
+    }
+    // Live TTM/TTP fallback needs monitoring (+ mill) data — same as detail modal.
+    try {
+      if ((!ttpLoaded || !(ttpData && ttpData.length)) && typeof loadTTPData === 'function') {
+        await loadTTPData();
+      }
+      if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
+        await loadMillData();
+      }
+    } catch (err) {
+      console.warn('[BL] Reference data load before export failed:', err);
     }
     if (blExportTargetRow) {
       exportBlExcelOne_(blExportTargetRow, colDefs, ttmColKeys, ttpColKeys);
@@ -15193,8 +15205,8 @@ function initDashboardApp() {
     blFormRecordType = row
       ? (blIsDeclarationRow_(row) ? 'declaration' : 'shipping')
       : (recordType || blActiveType || 'shipping');
-    blSelectedTtm = row ? (row._ttmLinks || []).slice() : [];
-    blSelectedTtp = row ? (row._ttpLinks || []).slice() : [];
+    blSelectedTtm = row ? blCloneLinkList_(blEffectiveTtmLinks_(row)) : [];
+    blSelectedTtp = row ? blCloneLinkList_(blEffectiveTtpLinks_(row)) : [];
     blTtmRowsWithTtp_ = new Set();
     (blSelectedTtp || []).forEach(function(t) {
       if (t && t._row) blTtmRowsWithTtp_.add(t._row);
@@ -15364,11 +15376,48 @@ function initDashboardApp() {
   }
 
   /**
-   * Detect year/quarter period from a BL row's date fields so we can
-   * fall back to live ttpData when stored JSON links are missing.
+   * Detect year/quarter from a BL row so live TTM/TTP fallback matches the
+   * period the user sees in detail / export (never invent a random period silently
+   * when the row itself carries a clear PERIOD / date).
    */
+  function blParsePeriodText_(raw) {
+    const s = String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!s || s === '—') return null;
+    let m = s.match(/Q\s*([1-4])\s*[\/\-]?\s*(20\d{2})/);
+    if (m) return { year: m[2], quarter: 'Q' + m[1] };
+    m = s.match(/(20\d{2})\s*[\/\-]?\s*Q\s*([1-4])/);
+    if (m) return { year: m[1], quarter: 'Q' + m[2] };
+    m = s.match(/^(20\d{2})$/);
+    if (m) return { year: m[1], quarter: '' };
+    return null;
+  }
+
   function blDetectPeriodFromBlRow_(blRow) {
-    const dateFields = ['BL DATE', 'RECEIVED DATE', 'SENT TO REVIEW (DATE)'];
+    if (!blRow) return null;
+
+    // Declarations store period as text (e.g. "Q4 2025").
+    const fromPeriod = blParsePeriodText_(blRow['PERIOD']);
+    if (fromPeriod && fromPeriod.year) {
+      if (!fromPeriod.quarter) {
+        if ((ttpData || []).some(function(r) { return ttpYearToken_(r) === fromPeriod.year; })) {
+          return fromPeriod;
+        }
+      } else if ((ttpData || []).some(function(r) {
+        return ttpYearToken_(r) === fromPeriod.year && ttpQuarterToken_(r) === fromPeriod.quarter;
+      })) {
+        return fromPeriod;
+      } else if ((ttpData || []).some(function(r) { return ttpYearToken_(r) === fromPeriod.year; })) {
+        return { year: fromPeriod.year, quarter: '' };
+      }
+    }
+
+    const dateFields = [
+      'BL DATE',
+      'RECEIVED DATE',
+      'SENT TO REVIEW (DATE)',
+      'SENT TO REQUESTER',
+      'SEND TO EXIM (DATE)',
+    ];
     for (let i = 0; i < dateFields.length; i++) {
       const raw = String(blRow[dateFields[i]] || '').trim();
       if (!raw || raw === '—') continue;
@@ -15389,9 +15438,14 @@ function initDashboardApp() {
     return null;
   }
 
-  /** Return live TTM link rows for display, falling back to ttpData by period when JSON is empty. */
+  /**
+   * Single source of truth for BL ↔ TTM/TTP links.
+   * Prefer stored JSON; if empty, fall back to monitoring rows for the BL period
+   * (same data the detail modal shows). ALL UI / export / form paths must use these.
+   */
   function blResolveLiveTtmLinks_(blRow) {
-    if ((blRow._ttmLinks || []).length) return blRow._ttmLinks;
+    const stored = (blRow && blRow._ttmLinks) || [];
+    if (stored.length) return stored;
     const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
     if (!period || !period.year) return [];
     return (ttpData || []).filter(function(r) {
@@ -15401,9 +15455,9 @@ function initDashboardApp() {
     }).map(buildBlTtmCandidate_);
   }
 
-  /** Return live TTP link rows for display, falling back to ttpData by period when JSON is empty. */
   function blResolveLiveTtpLinks_(blRow) {
-    if ((blRow._ttpLinks || []).length) return blRow._ttpLinks;
+    const stored = (blRow && blRow._ttpLinks) || [];
+    if (stored.length) return stored;
     const period = blDetectPeriodFromBlRow_(blRow) || blDetectLatestPeriod_();
     if (!period || !period.year) return [];
     return (ttpData || []).filter(function(r) {
@@ -15412,6 +15466,37 @@ function initDashboardApp() {
       const candidate = buildBlTtpCandidate_(r);
       return !!(candidate['FFB SUPPLIER NAME'] && candidate['FFB SUPPLIER NAME'] !== '—');
     }).map(buildBlTtpCandidate_);
+  }
+
+  function blEffectiveTtmLinks_(blRow) {
+    return blResolveLiveTtmLinks_(blRow) || [];
+  }
+
+  function blEffectiveTtpLinks_(blRow) {
+    return blResolveLiveTtpLinks_(blRow) || [];
+  }
+
+  function blEffectiveTtmDisplayLabel_(blRow) {
+    if (!blRow) return '';
+    const stored = String(blRow['TTM'] || '').trim();
+    if (stored && stored !== '—') return stored;
+    const links = blEffectiveTtmLinks_(blRow);
+    const unique = blUniqueMillCount_(links);
+    return blTtmCountLabel_(unique || links.length);
+  }
+
+  function blEffectiveTtpDisplayLabel_(blRow) {
+    if (!blRow) return '';
+    const stored = String(blRow['TTP'] || '').trim();
+    if (stored && stored !== '—') return stored;
+    return blTtpCountLabel_(blEffectiveTtpLinks_(blRow).length);
+  }
+
+  function blCloneLinkList_(links) {
+    return (links || []).map(function(item) {
+      if (!item || typeof item !== 'object') return item;
+      return Object.assign({}, item);
+    });
   }
 
   function buildBlLinkedTableHtml_(cols, rows) {
@@ -15464,14 +15549,14 @@ function initDashboardApp() {
         + '</div>';
     }).join('');
 
-    const ttmDisplayLinks = blResolveLiveTtmLinks_(row);
-    const ttpDisplayLinks = blResolveLiveTtpLinks_(row);
+    const ttmDisplayLinks = blEffectiveTtmLinks_(row);
+    const ttpDisplayLinks = blEffectiveTtpLinks_(row);
 
     bodyEl.innerHTML = ''
       + '<div class="bl-detail-section"><div class="bl-detail-section-title">' + (isDecl ? 'Declaration' : 'Shipping') + '</div><div class="bl-detail-grid">' + blGrid + '</div></div>'
-      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(row['TTM'] || blTtmCountLabel_(ttmDisplayLinks.length) || '—') + '</div>'
+      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTM — ' + escHtml(blEffectiveTtmDisplayLabel_(row) || '—') + '</div>'
       + buildBlLinkedTableHtml_(BL_TTM_DETAIL_COLS, ttmDisplayLinks) + '</div>'
-      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(row['TTP'] || blTtpCountLabel_(ttpDisplayLinks.length) || '—') + '</div>'
+      + '<div class="bl-detail-section"><div class="bl-detail-section-title">TTP — ' + escHtml(blEffectiveTtpDisplayLabel_(row) || '—') + '</div>'
       + buildBlLinkedTableHtml_(BL_TTP_DETAIL_COLS, ttpDisplayLinks) + '</div>';
 
     document.body.classList.add('bl-detail-open');
