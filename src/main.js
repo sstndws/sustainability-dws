@@ -3949,8 +3949,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyN-QA_V3sgjyk14_S6NBx_hZRPByLzfJHsvlkRNhWEGf6XxPBSP5tBktaIwyGFptvlXg/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbxDnks-siY3yNs-a0hdCpJmtC4uHd0SmG70BuX1THWgGEuqF5LrFNdLtlofYdHoGKHSEQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzsDHvQryV_vdPZDqqfKpK0IISgCNpUf0mVqOHcYAOU4enx2FFHkrXWUbS7d5Cr1u459A/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbzsDHvQryV_vdPZDqqfKpK0IISgCNpUf0mVqOHcYAOU4enx2FFHkrXWUbS7d5Cr1u459A';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -25740,6 +25740,192 @@ function initDashboardApp() {
     });
   }
 
+  function supplyNormalizeMonthTok_(raw) {
+    var s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    var n = parseInt(s, 10);
+    if (!isNaN(n) && n >= 1 && n <= 12) return String(n);
+    var low = s.toLowerCase().replace(/\s+/g, ' ');
+    var names = [
+      'january', 'february', 'march', 'april', 'may', 'june',
+      'july', 'august', 'september', 'october', 'november', 'december',
+      'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+      'juli', 'agustus', 'september', 'oktober', 'november', 'desember',
+    ];
+    for (var i = 0; i < names.length; i++) {
+      if (low === names[i] || low.indexOf(names[i].slice(0, 3)) === 0) return String((i % 12) + 1);
+    }
+    var qm = low.match(/^q\s*([1-4])$/);
+    if (qm) return String((parseInt(qm[1], 10) - 1) * 3 + 1);
+    return low;
+  }
+
+  function supplyDraftPeriodTokens_(row, batch) {
+    var month = String(
+      (row && (row.MONTH || row.month || row.quarter || row.QUARTER))
+      || (batch && (batch.month || batch.quarter))
+      || ''
+    ).trim();
+    var year = String(
+      (row && (row.YEAR || row.year))
+      || (batch && batch.year)
+      || ''
+    ).trim();
+    return { month: supplyNormalizeMonthTok_(month), year: year };
+  }
+
+  function supplyOnboardingPoolForBatch_(batch) {
+    if (supplyImportIsWaste_(batch && batch.supply_type)) {
+      return (typeof allDataWasteRaw !== 'undefined' && allDataWasteRaw && allDataWasteRaw.length)
+        ? allDataWasteRaw
+        : (allDataWaste || []);
+    }
+    return (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+  }
+
+  function supplyFindOnboardingHitForDraft_(draftRow, batch) {
+    if (!draftRow) return null;
+    var co = supplyCompanyKey_(draftRow['COMPANY NAME']);
+    if (!co) return null;
+    var per = supplyDraftPeriodTokens_(draftRow, batch);
+    var wantKind = supplyRowSupplyKindStrict_(draftRow);
+    var pool = supplyOnboardingPoolForBatch_(batch);
+    for (var i = 0; i < pool.length; i++) {
+      var m = pool[i];
+      if (supplyCompanyKey_(m['COMPANY NAME']) !== co) continue;
+      var mKind = supplyRowSupplyKindStrict_(m);
+      // CPO / PK / CPO+PK: allow flexible kind overlap for period presence.
+      if (supplyImportIsWaste_(wantKind) || supplyImportIsWaste_(mKind)) {
+        if (wantKind !== mKind) continue;
+      } else {
+        var draftHasCpo = wantKind === 'CPO' || wantKind === 'CPO+PK';
+        var draftHasPk = wantKind === 'PK' || wantKind === 'CPO+PK';
+        var millHasCpo = mKind === 'CPO' || mKind === 'CPO+PK' || (m['SUPPLY CPO'] != null && String(m['SUPPLY CPO']).trim() !== '');
+        var millHasPk = mKind === 'PK' || mKind === 'CPO+PK' || (m['SUPPLY PK'] != null && String(m['SUPPLY PK']).trim() !== '');
+        if (draftHasCpo && !millHasCpo && !(draftHasPk && millHasPk)) continue;
+        if (draftHasPk && !millHasPk && !(draftHasCpo && millHasCpo)) continue;
+        if (!draftHasCpo && !draftHasPk && wantKind !== mKind) continue;
+      }
+      var mp = supplyDraftPeriodTokens_(m, null);
+      if (per.month && mp.month && per.month !== mp.month) continue;
+      if (per.year && mp.year && per.year !== mp.year) continue;
+      return m;
+    }
+    return null;
+  }
+
+  /**
+   * Align Task List submitted flags with Mill Onboarding presence.
+   * Returns { marked, reopened, ok, failures[] }.
+   */
+  function supplyReconcileBatchLocal_(batch) {
+    var marked = 0;
+    var reopened = 0;
+    var ok = 0;
+    var reopenedFails = [];
+    (batch.rows || []).forEach(function(row) {
+      var hit = supplyFindOnboardingHitForDraft_(row, batch);
+      var submitted = supplyRowIsSubmitted_(row);
+      if (hit && !submitted) {
+        row._submitted = true;
+        row.status = 'submitted';
+        row._profile_draft_saved = false;
+        row.profile_draft_saved = '';
+        row._submitError = '';
+        marked++;
+        return;
+      }
+      if (!hit && submitted) {
+        row._submitted = false;
+        row.status = 'draft';
+        row._submitError = 'Was marked submitted but missing on Mill Onboarding — reopened for retry';
+        reopened++;
+        reopenedFails.push({
+          draft_id: String(row.draft_id || '').trim(),
+          company: String(row['COMPANY NAME'] || '').trim(),
+          error: 'Missing on Mill Onboarding — reopened; click Submit / Retry',
+        });
+        return;
+      }
+      ok++;
+    });
+    supplyNormalizeBatchSubmittedState_(batch);
+    if (reopenedFails.length) {
+      var existing = (batch._submitFailures || []).slice();
+      reopenedFails.forEach(function(f) {
+        var id = f.draft_id;
+        var already = existing.some(function(e) {
+          return (id && e.draft_id === id) || (!id && supplyCompanyKey_(e.company) === supplyCompanyKey_(f.company));
+        });
+        if (!already) existing.push(f);
+      });
+      supplyStoreSubmitFailures_(batch, existing);
+    }
+    return { marked: marked, reopened: reopened, ok: ok };
+  }
+
+  async function supplyReconcileBatchStatus_(batch, bId) {
+    if (!batch) throw new Error('batch not found');
+    if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
+      await loadMillData();
+    }
+    var local = supplyReconcileBatchLocal_(batch);
+    var server = null;
+    try {
+      server = await apiPost({
+        action: 'reconcileSupplyDraft',
+        batch_id: bId,
+        timeoutMs: 90000,
+      });
+      // Prefer server counts when available; re-apply local from refreshed drafts next.
+      if (server && (server.marked_submitted || server.reopened)) {
+        // Apply same mapping locally again after server write (if values differ).
+        if ((server.marked_submitted || 0) !== local.marked || (server.reopened || 0) !== local.reopened) {
+          // Reload drafts to pick server truth.
+          if (typeof loadSupplyDraftsFromServer_ === 'function') {
+            await loadSupplyDraftsFromServer_({ preserveUi: true });
+            var refreshed = (window._supplyDraftBatches || []).find(function(b) { return b.batch_id === bId; });
+            if (refreshed) {
+              // Keep failure list for reopened rows if server reopened them.
+              if ((server.reopened || 0) > 0) {
+                var fails = (server.details || []).filter(function(d) { return d.action === 'reopen_draft'; })
+                  .map(function(d) {
+                    return {
+                      draft_id: String(d.draft_id || '').trim(),
+                      company: String(d.company || '').trim(),
+                      error: String(d.reason || 'Missing on Mill — reopened').trim(),
+                    };
+                  });
+                supplyStoreSubmitFailures_(refreshed, fails);
+              }
+              batch = refreshed;
+            }
+          }
+        } else {
+          await supplyPersistDraftBatch_(batch);
+        }
+      } else {
+        await supplyPersistDraftBatch_(batch);
+      }
+    } catch (err) {
+      // Old GAS deploy / network — local repair already applied; keep going.
+      await supplyPersistDraftBatch_(batch);
+      return {
+        marked: local.marked,
+        reopened: local.reopened,
+        ok: local.ok,
+        server: null,
+        server_error: String((err && err.message) || err || ''),
+      };
+    }
+    return {
+      marked: (server && server.marked_submitted != null) ? server.marked_submitted : local.marked,
+      reopened: (server && server.reopened != null) ? server.reopened : local.reopened,
+      ok: (server && server.already_ok != null) ? server.already_ok : local.ok,
+      server: server,
+    };
+  }
+
   function supplyCompanyKey_(company) {
     return supplyNormKey_(company);
   }
@@ -27076,16 +27262,6 @@ function initDashboardApp() {
     supplyHydrateRowForSubmit_(row, batch);
   }
 
-  function supplyMarkRowsSubmitted_(rows) {
-    (rows || []).forEach(function(r) {
-      r._submitted = true;
-      r.status = 'submitted';
-      r._profile_draft_saved = false;
-      r.profile_draft_saved = '';
-      r._submitError = '';
-    });
-  }
-
   function supplyMarkRowsByDraftIds_(batchRows, idSet) {
     if (!idSet || !idSet.size) return [];
     const marked = [];
@@ -27335,24 +27511,33 @@ function initDashboardApp() {
               }
             });
           } else {
-            // Legacy backend (no results[]): mark only by submitted count is unsafe —
-            // fall back to draft_ids that backend would have marked only when zero errors.
+            // Legacy backend (no results[]): never mark the whole chunk on partial success.
+            // Only mark all when every payload row succeeded and the API reported zero errors.
             const okN = (res && typeof res.submitted === 'number') ? res.submitted : 0;
-            if (res && res.errors && res.errors.length) {
-              errors.push.apply(errors, res.errors);
-              res.errors.forEach(function(msg) {
+            const errList = (res && Array.isArray(res.errors)) ? res.errors : [];
+            if (errList.length) {
+              errors.push.apply(errors, errList);
+              errList.forEach(function(msg) {
                 failures.push({ draft_id: '', company: '', error: String(msg || '') });
               });
             }
-            if (okN > 0 && !(res && res.errors && res.errors.length)) {
+            if (okN > 0 && okN === chunk.length && !errList.length) {
               chunk.forEach(function(p) {
                 const id = String(p.draft_id || '').trim();
                 if (id) okIdSet.add(id);
               });
               submittedN += okN;
             } else if (okN > 0) {
-              // Partial unknown — do not over-mark; keep as failures for retry.
-              errors.push('Partial submit on older backend — retry remaining rows.');
+              errors.push(
+                'Partial submit without per-row results — none marked Submitted. Redeploy GAS, then Retry failed.'
+              );
+              chunk.forEach(function(p) {
+                failures.push({
+                  draft_id: String(p.draft_id || '').trim(),
+                  company: String(p['COMPANY NAME'] || '').trim(),
+                  error: 'Needs retry (legacy/partial response)',
+                });
+              });
             }
           }
         } catch (err) {
@@ -27753,8 +27938,16 @@ function initDashboardApp() {
       rows: [supplyRowPayloadForSubmit_(draftRow, batch)],
       meta: supplyBatchMetaForApi_(batch),
     });
-    if (res && res.errors && res.errors.length && !res.submitted) {
+    const results = (res && Array.isArray(res.results)) ? res.results : [];
+    if (results.length) {
+      const one = results[0];
+      if (!one || !one.ok) {
+        throw new Error((one && one.error) || (res.errors && res.errors[0]) || 'Submit failed');
+      }
+    } else if (res && res.errors && res.errors.length && !res.submitted) {
       throw new Error(res.errors.slice(0, 3).join('; '));
+    } else if (!(res && res.submitted > 0)) {
+      throw new Error((res && res.errors && res.errors[0]) || 'Submit failed');
     }
     draftRow.match_status = draftRow.match_status || 'matched';
     draftRow._submitted = true;
@@ -28803,6 +28996,7 @@ function initDashboardApp() {
         + '<div class="supply-batch-actions">'
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="toggle-batch" data-batch="' + escHtml(b.batch_id) + '" aria-expanded="false">View / Edit</button>' : '')
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '" title="Reload mill data from Mill Onboarding (width, grievance, etc.)">↻ Restore profile</button>' : '')
+        + '<button type="button" class="supply-btn supply-btn--ghost" data-action="reconcile-batch" data-batch="' + escHtml(b.batch_id) + '" title="Sync Task List status with Mill Onboarding (fix Submitted vs missing)">Repair status</button>'
         + (!isSubmitted && mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(b.batch_id) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
         + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Delete</button>'
         + '</div>'
@@ -29139,6 +29333,35 @@ function initDashboardApp() {
       return;
     }
 
+    if (action === 'reconcile-batch') {
+      const prevLabel = btn.textContent;
+      btn.textContent = 'Repairing…';
+      btn.disabled = true;
+      supplyReconcileBatchStatus_(batch, bId)
+        .then(function(result) {
+          renderSupplyDraftList_({ expandBatchIds: [bId], preserveScroll: true });
+          const marked = Number(result && result.marked) || 0;
+          const reopened = Number(result && result.reopened) || 0;
+          const ok = Number(result && result.ok) || 0;
+          let msg = 'Repair: ' + marked + ' → Submitted, ' + reopened + ' reopened to draft, ' + ok + ' already OK.';
+          if (reopened > 0) msg += ' Submit / Retry the reopened rows.';
+          if (result && result.server_error) msg += ' (Server sync skipped — redeploy GAS for sheet sync.)';
+          if (typeof window.showSddToast === 'function') {
+            window.showSddToast(msg, (marked || reopened) ? 'success' : 'info');
+          } else {
+            alert(msg);
+          }
+        })
+        .catch(function(err) {
+          alert('Repair failed: ' + ((err && err.message) || err));
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.textContent = prevLabel || 'Repair status';
+        });
+      return;
+    }
+
     if (action === 'merge-cpo-pk') {
       const pairs = supplyFindMergeableCpoPkPairs_(batch);
       if (!pairs.length) {
@@ -29411,14 +29634,8 @@ function initDashboardApp() {
   function loadSupplyDraftsFromServer_(opts) {
     opts = opts || {};
     const renderOpts = opts.preserveUi ? { preserveScroll: true } : {};
-    const prevSubmittedIds = {};
-    (window._supplyDraftBatches || []).forEach(function(b) {
-      (b.rows || []).forEach(function(r) {
-        if (!supplyRowIsSubmitted_(r)) return;
-        const id = String(r.draft_id || '').trim();
-        if (id) prevSubmittedIds[id] = true;
-      });
-    });
+    // Server sheet status is source of truth on refresh — do not re-apply local
+    // "submitted" overlays (that caused false Submitted after partial submit).
     if (_supplyBuildTaskInFlight) {
       return _supplyBuildTaskInFlight.finally(function() {
         return loadSupplyDraftsFromServer_(opts);
@@ -29437,11 +29654,6 @@ function initDashboardApp() {
         const batches = {};
         data.forEach(function(row) {
           const bid = row.batch_id || row.draft_id || 'unknown';
-          const rowId = String(row.draft_id || '').trim();
-          if (rowId && prevSubmittedIds[rowId] && String(row.status || '').toLowerCase() !== 'submitted') {
-            row.status = 'submitted';
-            row._submitted = true;
-          }
           const rowMonth = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
           const rowYear = String(row.year || row.YEAR || '').trim();
           if (!batches[bid]) {

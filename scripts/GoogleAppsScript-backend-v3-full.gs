@@ -702,7 +702,7 @@ var MRD_WRITE_ACTIONS_ = {
   add: 1, update: 1, delete: 1, bulkDelete: 1, bulkUpsertSDD: 1,
   insertSDD: 1, updateSDD: 1, upsertSDD: 1,
   createSubmission: 1, updateSubmission: 1, setSubmissionStatus: 1, deleteSubmission: 1,
-  saveSupplyDraft: 1, submitSupplyDraft: 1, deleteSupplyDraft: 1,
+  saveSupplyDraft: 1, submitSupplyDraft: 1, reconcileSupplyDraft: 1, deleteSupplyDraft: 1,
   addTtpBatch: 1, upsertQuestionnaire: 1, syncEudrPotential: 1, upsertEudr: 1,
   saveEudrStatusFormula: 1,
 };
@@ -845,6 +845,7 @@ function doPost(e) {
     if (action === 'deleteSubmission')    return respond(deleteSubmission(body.payload    || {}));
     if (action === 'saveSupplyDraft')   return respond(saveSupplyDraft_(body.rows || [], body.batch_id || '', body.meta || {}));
     if (action === 'submitSupplyDraft') return respond(submitSupplyDraft_(body.batch_id || '', body.rows || [], body.meta || {}));
+    if (action === 'reconcileSupplyDraft') return respond(reconcileSupplyDraft_(body.batch_id || ''));
     if (action === 'deleteSupplyDraft') return respond(deleteSupplyDraft_(body.draft_id || '', body.batch_id || ''));
 
     return respond({ success: false, error: 'Unknown action: ' + action });
@@ -5415,6 +5416,8 @@ function saveSupplyDraft_(rows, batchId, meta) {
       if (h === 'status') {
         var incoming = String(row[h] || '').trim().toLowerCase();
         if (incoming === 'submitted') return 'submitted';
+        // Explicit draft allows reconcile/reopen after false "submitted" marks.
+        if (incoming === 'draft' || incoming === 'reopened') return 'draft';
         if (existingIdx != null && statusCol >= 0) {
           var existingSt = String(data[existingIdx][statusCol] || '').trim().toLowerCase();
           if (existingSt === 'submitted') return 'submitted';
@@ -6775,6 +6778,97 @@ function submitSupplyDraft_(batchId, rows, meta) {
     batch_id: batchId,
     errors: errors,
     results: results,
+  };
+}
+
+/**
+ * Repair Task List vs Mill Onboarding drift:
+ * - draft exists on Mill but status != submitted → mark submitted
+ * - status submitted but missing on Mill → reopen as draft (so user can submit again)
+ */
+function reconcileSupplyDraft_(batchId) {
+  if (!batchId) throw new Error('batch_id required');
+  ensureSupplyDraftHeaders_();
+  var draftSheet = getSheet('supplyDraft');
+  var draftData = draftSheet.getDataRange().getValues();
+  var draftHeaders = draftData[0].map(function(h) { return String(h || '').trim(); });
+  var batchCol = draftHeaders.indexOf('batch_id');
+  var statusCol = draftHeaders.indexOf('status');
+  var draftIdCol = draftHeaders.indexOf('draft_id');
+  var updCol = draftHeaders.indexOf('updated_at');
+  if (batchCol < 0 || statusCol < 0) throw new Error('Supply draft sheet missing batch_id/status');
+  var now = nowIso_();
+  var bid = String(batchId).trim();
+
+  var draftRows = [];
+  for (var di = 1; di < draftData.length; di++) {
+    if (String(draftData[di][batchCol] || '').trim() !== bid) continue;
+    var obj = millRowToObjectGs_(draftData[di], draftHeaders);
+    obj._draftSheetIdx = di;
+    draftRows.push(obj);
+  }
+  if (!draftRows.length) {
+    return { success: true, batch_id: bid, marked_submitted: 0, reopened: 0, already_ok: 0, details: [] };
+  }
+
+  var firstKind = 'CPO';
+  for (var rk = 0; rk < draftRows.length; rk++) {
+    var k = supplySubmitKindFromDraftGs_(draftRows[rk] || {});
+    if (k) { firstKind = k; break; }
+  }
+  var targetSheetKey = supplyIsWasteSubmitKind_(firstKind) ? 'millWaste' : 'mill';
+  var millSheet = getSheet(targetSheetKey);
+  var millData = millSheet.getDataRange().getValues();
+  var millHeaders = millData[0].map(function(h) { return String(h || '').trim(); });
+
+  var marked = 0;
+  var reopened = 0;
+  var alreadyOk = 0;
+  var details = [];
+  var dirty = false;
+
+  draftRows.forEach(function(row) {
+    var company = String(row['COMPANY NAME'] || '').trim() || 'row';
+    var draftId = String(row.draft_id || '').trim();
+    var st = String(row.status || '').trim().toLowerCase();
+    var isSubmitted = st === 'submitted';
+    var onMill = !!(
+      millFindDuplicateSupplyRowGs_(millData, millHeaders, row)
+      || millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row)
+    );
+    var idx = row._draftSheetIdx;
+
+    if (onMill && !isSubmitted) {
+      draftData[idx][statusCol] = 'submitted';
+      if (updCol >= 0) draftData[idx][updCol] = now;
+      dirty = true;
+      marked++;
+      details.push({ draft_id: draftId, company: company, action: 'mark_submitted', reason: 'found on Mill Onboarding' });
+      return;
+    }
+    if (!onMill && isSubmitted) {
+      draftData[idx][statusCol] = 'draft';
+      if (updCol >= 0) draftData[idx][updCol] = now;
+      dirty = true;
+      reopened++;
+      details.push({ draft_id: draftId, company: company, action: 'reopen_draft', reason: 'marked submitted but missing on Mill' });
+      return;
+    }
+    alreadyOk++;
+  });
+
+  if (dirty) {
+    draftSheet.getRange(1, 1, draftData.length, draftHeaders.length).setValues(draftData);
+  }
+
+  return {
+    success: true,
+    batch_id: bid,
+    sheet: targetSheetKey,
+    marked_submitted: marked,
+    reopened: reopened,
+    already_ok: alreadyOk,
+    details: details.slice(0, 80),
   };
 }
 
