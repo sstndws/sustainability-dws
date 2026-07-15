@@ -8043,6 +8043,8 @@ function initDashboardApp() {
       soft = true;
       loading.style.display = 'none';
       table.style.display = 'table';
+      millPdfRebuildDimPanels();
+      millSyncPeriodModeUi_();
       scheduleRenderMillTable();
       if (typeof window.showSddToast === 'function') {
         window.showSddToast('Showing cached data — loading the latest version in the background…', 'info');
@@ -8097,6 +8099,8 @@ function initDashboardApp() {
         if (!millDataLoaded && millHydrateFromSessionCache_()) {
           loading.style.display = 'none';
           table.style.display = 'table';
+          millPdfRebuildDimPanels();
+          millSyncPeriodModeUi_();
           scheduleRenderMillTable();
           if (typeof window.showSddToast === 'function') {
             window.showSddToast('Refresh failed — showing cached data. Try again later.', 'warning');
