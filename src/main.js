@@ -12858,6 +12858,7 @@ function initDashboardApp() {
     const loading = document.getElementById('grv-loading');
     const errorEl = document.getElementById('grv-error');
     const table = document.getElementById('grvTable');
+    if (!loading || !errorEl || !table) return;
     try {
       if (!soft) {
         loading.style.display = 'block';
@@ -16392,6 +16393,7 @@ function initDashboardApp() {
       cplLoaded = true;
       cplPopulateFilters_();
       loading.style.display = 'none';
+      table.style.display = 'table';
       scheduleRenderCompanyProfileListTable_();
     } catch (err) {
       loading.style.display = 'none';
@@ -22693,6 +22695,8 @@ function initDashboardApp() {
       } catch (err) {
         if (loading) loading.style.display = 'none';
         if (pkLoading) pkLoading.style.display = 'none';
+        if (tbl) tbl.style.display = 'none';
+        if (pkTbl) pkTbl.style.display = 'none';
         if (errEl) {
           errEl.style.display = 'block';
           errEl.textContent = 'Failed to load data: ' + (err && err.message ? err.message : err);
