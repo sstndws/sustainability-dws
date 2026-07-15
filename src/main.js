@@ -8057,11 +8057,14 @@ function initDashboardApp() {
         table.style.display = 'table';
         millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
         millPeriodMode = 'newest';
-        millPdfRebuildDimPanels();
-        millSyncPeriodModeUi_();
         millSyncProductViewUi_();
         millSyncRegistryFiltersVisibility_();
+      } else {
+        if (loading) loading.style.display = 'none';
+        if (table) table.style.display = 'table';
       }
+      millPdfRebuildDimPanels();
+      millSyncPeriodModeUi_();
       scheduleRenderMillTable();
       if (soft) millRestoreUiAfterRender_();
     } catch(err) {
