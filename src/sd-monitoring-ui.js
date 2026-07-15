@@ -287,6 +287,7 @@ export function createSdMonitoringController_(deps) {
     const table = document.getElementById('blTable');
     if (loading && !opts.soft) loading.style.display = '';
     if (errEl) errEl.style.display = 'none';
+    if (table && !opts.soft) table.style.display = 'none';
     sdLoadPromise = fetchSdRows_()
       .then(function(rows) {
         sdData = rows;
@@ -642,6 +643,8 @@ export function createSdMonitoringController_(deps) {
   function setSdActive_(on) {
     sdActive = !!on;
     if (sdActive) {
+      const body = document.getElementById('blTableBody');
+      if (body && !sdLoaded) body.innerHTML = '';
       updateSdStats_();
       if (sdLoaded) renderSdTable_();
       else loadSdData_();

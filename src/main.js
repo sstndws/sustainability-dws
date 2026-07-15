@@ -14632,6 +14632,10 @@ function initDashboardApp() {
     if (blActiveType === 'sd') {
       return;
     }
+    const blLoading = document.getElementById('bl-loading');
+    const blTableEl = document.getElementById('blTable');
+    if (blLoading) blLoading.style.display = 'none';
+    if (blTableEl && blLoaded) blTableEl.style.display = '';
     updateBlStats_();
     scheduleRenderBlTable();
   }
