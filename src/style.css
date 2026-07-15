@@ -2771,26 +2771,29 @@
    #panel-mill-onboarding #millTable tbody tr.mill-row-clickable:hover td {
      background: #fdf8f8;
    }
-   #panel-mill-onboarding .mill-registry-filters {
-     margin: 0 0 18px;
-     padding: 0;
-     background: #fff;
-     border: 1px solid rgba(139, 26, 26, 0.09);
-     border-radius: 14px;
-     box-shadow: 0 1px 3px rgba(74, 28, 28, 0.04);
-     overflow: hidden;
-   }
+  #panel-mill-onboarding .mill-registry-filters {
+    margin: 0 0 18px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid rgba(139, 26, 26, 0.09);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(74, 28, 28, 0.04);
+    overflow: visible;
+    position: relative;
+    z-index: 30;
+  }
    #panel-mill-onboarding .mill-registry-filters[hidden] {
      display: none !important;
    }
-   #panel-mill-onboarding .mill-registry-filters__row {
-     display: flex;
-     align-items: center;
-     justify-content: space-between;
-     gap: 16px 24px;
-     padding: 14px 18px;
-     min-height: 56px;
-   }
+  #panel-mill-onboarding .mill-registry-filters__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 24px;
+    padding: 14px 18px;
+    min-height: 56px;
+    overflow: visible;
+  }
    #panel-mill-onboarding .mill-registry-filters__divider {
      height: 1px;
      margin: 0 18px;
@@ -2952,9 +2955,16 @@
      opacity: 1;
      pointer-events: auto;
    }
-   #panel-mill-onboarding .mill-period-toolbar .ttp-dropdown-panel {
-     z-index: 12050;
-   }
+  #panel-mill-onboarding .mill-period-toolbar .ttp-dropdown-panel {
+    z-index: 12050;
+  }
+  #panel-mill-onboarding .mill-period-filter-panel .mill-pdf-dim-list {
+    max-height: min(240px, 45vh);
+    overflow-y: auto;
+  }
+  #panel-mill-onboarding .mill-period-filter-wrap:has(.ttp-dropdown-panel.open) {
+    z-index: 12060;
+  }
   .mill-th-head-wrap {
     display: inline-flex;
     align-items: center;

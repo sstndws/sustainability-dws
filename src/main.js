@@ -7744,6 +7744,78 @@ function initDashboardApp() {
     }
   }
 
+  function millClearPeriodDropdownPosition_(panel) {
+    if (!panel) return;
+    if (typeof ttpClearDropdownPanelPosition_ === 'function') {
+      ttpClearDropdownPanelPosition_(panel);
+      return;
+    }
+    panel.classList.remove('ttp-dropdown-panel--fixed');
+    panel.style.position = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    panel.style.left = '';
+    panel.style.right = '';
+    panel.style.width = '';
+    panel.style.minWidth = '';
+    panel.style.maxWidth = '';
+    panel.style.maxHeight = '';
+    panel.style.zIndex = '';
+    panel.style.transform = '';
+    panel.style.margin = '';
+  }
+
+  function millPositionPeriodDropdownPanel_(btn, panel) {
+    if (!btn || !panel || !panel.classList.contains('open')) return;
+    if (typeof ttpAnchorPanelToBody_ === 'function') ttpAnchorPanelToBody_(panel);
+    if (typeof ttpPositionDropdownPanel_ === 'function') {
+      ttpPositionDropdownPanel_(btn, panel);
+      return;
+    }
+    const rect = btn.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    const minW = 220;
+    const maxW = 280;
+    const width = Math.min(Math.max(rect.width, minW), maxW, window.innerWidth - 24);
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+    const gap = 8;
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - 12);
+    const spaceAbove = Math.max(0, rect.top - gap - 12);
+    const openUp = spaceBelow < 220 && spaceAbove >= 120;
+    const maxH = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    panel.classList.add('ttp-dropdown-panel--fixed');
+    panel.style.position = 'fixed';
+    panel.style.left = left + 'px';
+    panel.style.width = width + 'px';
+    panel.style.minWidth = minW + 'px';
+    panel.style.maxWidth = maxW + 'px';
+    panel.style.maxHeight = maxH + 'px';
+    panel.style.zIndex = '12050';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.margin = '0';
+    if (openUp) {
+      panel.style.top = Math.max(12, rect.top - gap) + 'px';
+      panel.style.transform = 'translateY(-100%)';
+    } else {
+      panel.style.top = (rect.bottom + gap) + 'px';
+      panel.style.transform = 'none';
+    }
+  }
+
+  function millRepositionOpenPeriodDropdowns_() {
+    [
+      ['millBtnFilterMonth', 'millMonthFilterPanel'],
+      ['millBtnFilterYear', 'millYearFilterPanel'],
+    ].forEach(function(pair) {
+      const btn = document.getElementById(pair[0]);
+      const panel = document.getElementById(pair[1]);
+      if (panel && panel.classList.contains('open')) {
+        millPositionPeriodDropdownPanel_(btn, panel);
+      }
+    });
+  }
+
   function closeMillToolbarDropdowns_(exceptPanelId) {
     const pairs = [
       ['millPdfBtnFilterDims', 'millPdfFilterDimsPanel'],
@@ -7755,7 +7827,12 @@ function initDashboardApp() {
       if (exceptPanelId && pair[1] === exceptPanelId) return;
       const btn = document.getElementById(pair[0]);
       const panel = document.getElementById(pair[1]);
-      if (panel) panel.classList.remove('open');
+      if (panel) {
+        panel.classList.remove('open');
+        if (panel.id === 'millMonthFilterPanel' || panel.id === 'millYearFilterPanel') {
+          millClearPeriodDropdownPosition_(panel);
+        }
+      }
       if (btn) btn.classList.remove('active');
     });
   }
@@ -7774,7 +7851,7 @@ function initDashboardApp() {
     const gSearch = document.getElementById('millPdfGroupSearch');
     if (!btnPdf || !bFilter || !bCols || !pFilter || !pCols) return;
 
-    function bindMillDimDropdown_(btnId, panelId) {
+    function bindMillDimDropdown_(btnId, panelId, useFixedPosition) {
       const btn = document.getElementById(btnId);
       const panel = document.getElementById(panelId);
       if (!btn || !panel) return;
@@ -7783,15 +7860,22 @@ function initDashboardApp() {
         const isOpen = panel.classList.contains('open');
         closeMillToolbarDropdowns_();
         if (!isOpen) {
+          millClearPeriodDropdownPosition_(panel);
           panel.classList.add('open');
           btn.classList.add('active');
+          if (useFixedPosition) {
+            millPositionPeriodDropdownPanel_(btn, panel);
+            requestAnimationFrame(function() {
+              millPositionPeriodDropdownPanel_(btn, panel);
+            });
+          }
         }
       });
     }
 
     bindMillDimDropdown_('millPdfBtnFilterDims', 'millPdfFilterDimsPanel');
-    if (bMonth && pMonth) bindMillDimDropdown_('millBtnFilterMonth', 'millMonthFilterPanel');
-    if (bYear && pYear) bindMillDimDropdown_('millBtnFilterYear', 'millYearFilterPanel');
+    if (bMonth && pMonth) bindMillDimDropdown_('millBtnFilterMonth', 'millMonthFilterPanel', true);
+    if (bYear && pYear) bindMillDimDropdown_('millBtnFilterYear', 'millYearFilterPanel', true);
     bCols.addEventListener('click', function(e) {
       e.stopPropagation();
       const isOpen = pCols.classList.contains('open');
@@ -7811,9 +7895,22 @@ function initDashboardApp() {
           document.getElementById('millYearFilterWrap'),
           document.getElementById('millPdfColWrap'),
         ];
+        const panels = [
+          document.getElementById('millMonthFilterPanel'),
+          document.getElementById('millYearFilterPanel'),
+        ];
         if (wraps.some(function(w) { return w && w.contains(e.target); })) return;
+        if (panels.some(function(p) { return p && p.classList.contains('open') && p.contains(e.target); })) return;
         closeMillToolbarDropdowns_();
       });
+    }
+
+    if (!window.__sddMillPeriodDropdownScrollBound) {
+      window.__sddMillPeriodDropdownScrollBound = true;
+      window.addEventListener('scroll', millRepositionOpenPeriodDropdowns_, true);
+      window.addEventListener('resize', millRepositionOpenPeriodDropdowns_, { passive: true });
+      const mainContent = document.querySelector('#dashboard .main-content');
+      if (mainContent) mainContent.addEventListener('scroll', millRepositionOpenPeriodDropdowns_, { passive: true });
     }
 
     document.querySelectorAll('.mill-dim-filter-surface').forEach(function(surface) {
