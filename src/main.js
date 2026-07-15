@@ -6934,6 +6934,18 @@ function initDashboardApp() {
     scheduleRenderMillTable();
   }
 
+  function millExpandToEntityRows_(data) {
+    var out = [];
+    data.forEach(function(d) {
+      if (d._millGeneralMergeSources && d._millGeneralMergeSources.length > 1) {
+        d._millGeneralMergeSources.forEach(function(src) { out.push(src); });
+      } else {
+        out.push(d);
+      }
+    });
+    return out;
+  }
+
   function updateMillStatsCards_() {
     const totalEl = document.getElementById('stat-total');
     const groupsEl = document.getElementById('stat-groups');
@@ -6941,17 +6953,30 @@ function initDashboardApp() {
     const nblEl = document.getElementById('stat-nbl');
     if (!totalEl || !groupsEl || !highEl || !nblEl) return;
     const data = millRowsAfterRegistryDimFilters();
-    totalEl.textContent = String(data.length);
-    groupsEl.textContent = String(new Set(data.map(function(d) {
+    var entityRows = millExpandToEntityRows_(data);
+    var uniqueEntities = new Set();
+    entityRows.forEach(function(r) {
+      uniqueEntities.add(millRegistryEntityKey_(r));
+    });
+    totalEl.textContent = String(uniqueEntities.size);
+    groupsEl.textContent = String(new Set(entityRows.map(function(d) {
       return pickMillGroupName_(d);
     }).filter(Boolean)).size);
-    highEl.textContent = String(data.filter(function(d) {
-      return (millResolvedRiskLevelForStats_(d) || '').toLowerCase().includes('high');
-    }).length);
-    nblEl.textContent = String(data.filter(function(d) {
-      const v = String(d['BUYER NO BUY LIST'] || '').toLowerCase();
-      return v === 'yes' || v.includes('nbl');
-    }).length);
+    var highSet = new Set();
+    entityRows.forEach(function(d) {
+      if ((millResolvedRiskLevelForStats_(d) || '').toLowerCase().includes('high')) {
+        highSet.add(millRegistryEntityKey_(d));
+      }
+    });
+    highEl.textContent = String(highSet.size);
+    var nblSet = new Set();
+    entityRows.forEach(function(d) {
+      var v = String(d['BUYER NO BUY LIST'] || '').toLowerCase();
+      if (v === 'yes' || v.includes('nbl')) {
+        nblSet.add(millRegistryEntityKey_(d));
+      }
+    });
+    nblEl.textContent = String(nblSet.size);
   }
 
   function parseMillQuarterSort(v) {
