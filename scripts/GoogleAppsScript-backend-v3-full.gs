@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-delete-month-priority',
+        version: 'v3-supply-submit-no-mirror',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -6434,10 +6434,13 @@ function buildSupplyPatchFromDraftGs_(row) {
   var qtyWaste;
 
   if (submitKind === 'CPO' || submitKind === 'BOTH') {
-    var facCpo = supplyFacilityFromDraftGs_(row, 'FACILITY NAME CPO', 'CPO');
+    var facCpo = supplyFacilityFromDraftGs_(row, 'FACILITY NAME CPO', submitKind === 'BOTH' ? 'BOTH' : 'CPO');
     if (facCpo) patch['FACILITY NAME CPO'] = facCpo;
     var qtyCpo = row['SUPPLY CPO'];
-    if ((qtyCpo === undefined || qtyCpo === null || String(qtyCpo).trim() === '') && row.SUPPLY_QTY) {
+    // Fallback legacy SUPPLY_QTY hanya untuk kind CPO murni — untuk BOTH jangan,
+    // karena akan mirror satu qty ke dua kolom (CPO dan PK).
+    if ((qtyCpo === undefined || qtyCpo === null || String(qtyCpo).trim() === '')
+        && row.SUPPLY_QTY && submitKind === 'CPO') {
       qtyCpo = row.SUPPLY_QTY;
     }
     if (qtyCpo !== undefined && qtyCpo !== null && String(qtyCpo).trim() !== '') {
@@ -6445,10 +6448,11 @@ function buildSupplyPatchFromDraftGs_(row) {
     }
   }
   if (submitKind === 'PK' || submitKind === 'BOTH') {
-    var facPk = supplyFacilityFromDraftGs_(row, 'FACILITY NAME PK', 'PK');
+    var facPk = supplyFacilityFromDraftGs_(row, 'FACILITY NAME PK', submitKind === 'BOTH' ? 'BOTH' : 'PK');
     if (facPk) patch['FACILITY NAME PK'] = facPk;
     var qtyPk = row['SUPPLY PK'];
-    if ((qtyPk === undefined || qtyPk === null || String(qtyPk).trim() === '') && row.SUPPLY_QTY) {
+    if ((qtyPk === undefined || qtyPk === null || String(qtyPk).trim() === '')
+        && row.SUPPLY_QTY && submitKind === 'PK') {
       qtyPk = row.SUPPLY_QTY;
     }
     if (qtyPk !== undefined && qtyPk !== null && String(qtyPk).trim() !== '') {

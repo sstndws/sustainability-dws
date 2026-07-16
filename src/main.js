@@ -26695,6 +26695,28 @@ function initDashboardApp() {
 
   function supplyApplyImportToDraftRow_(existing, r, kind, batch) {
     const wasteCfg = supplyWasteKindFromType_(kind);
+    // Guard re-import salah tipe: jika sisi lawan punya qty + facility PERSIS sama
+    // dengan data yang masuk, berarti file yang sama diimport ulang dengan tipe
+    // berbeda — pindahkan (retype), jangan digabung jadi CPO+PK dobel.
+    if (!wasteCfg) {
+      const ek0 = supplyRowSupplyKindStrict_(existing);
+      if ((ek0 === 'CPO' && kind === 'PK') || (ek0 === 'PK' && kind === 'CPO')) {
+        const incPlant = supplyNormalizePlantValue_(r.PLANT || '').toUpperCase();
+        const incQty = String(supplyParsedQty_(r) || '').trim();
+        const oppQtyField = ek0 === 'CPO' ? 'SUPPLY CPO' : 'SUPPLY PK';
+        const oppFacField = ek0 === 'CPO' ? 'FACILITY NAME CPO' : 'FACILITY NAME PK';
+        const oppPctField = ek0 === 'CPO' ? SUPPLY_PCT_COL_CPO : SUPPLY_PCT_COL_PK;
+        const oppQty = String(existing[oppQtyField] == null ? '' : existing[oppQtyField]).trim();
+        const oppFac = supplyNormalizePlantValue_(existing[oppFacField] || existing.PLANT || '').toUpperCase();
+        if (incQty && incQty === oppQty && incPlant && incPlant === oppFac) {
+          delete existing[oppQtyField];
+          delete existing[oppFacField];
+          delete existing[oppPctField];
+          existing.supply_type = kind;
+          existing.SUPPLY_TYPE = kind;
+        }
+      }
+    }
     const pctField = wasteCfg ? wasteCfg.pct : (kind === 'PK' ? SUPPLY_PCT_COL_PK : SUPPLY_PCT_COL_CPO);
     existing[pctField] = r.SUPPLY_PCT;
     supplyApplyPlantToDraftFacility_(existing, r.PLANT, kind);
@@ -27367,7 +27389,17 @@ function initDashboardApp() {
   function supplyApplyTypedQtyAndFacility_(payload, draftRow, batch) {
     const out = payload || {};
     if (draftRow) millNormalizeWasteQtyAliasesOnRow_(draftRow);
-    const kind = supplyResolveKindFromDraft_(draftRow, batch);
+    let kind = supplyResolveKindFromDraft_(draftRow, batch);
+    // Guard: batch/label tipe bisa salah (mis. file CPO terimport sebagai PK).
+    // Koreksi kind dari data qty yang benar-benar ada supaya qty/facility CPO
+    // tidak pernah di-mirror ke kolom PK (atau sebaliknya).
+    if (!supplyImportIsWaste_(kind) && draftRow) {
+      const hasCpoData = draftRow['SUPPLY CPO'] != null && String(draftRow['SUPPLY CPO']).trim() !== '';
+      const hasPkData = draftRow['SUPPLY PK'] != null && String(draftRow['SUPPLY PK']).trim() !== '';
+      if (hasCpoData && hasPkData) kind = 'CPO+PK';
+      else if (kind === 'PK' && hasCpoData && !hasPkData) kind = 'CPO';
+      else if (kind === 'CPO' && hasPkData && !hasCpoData) kind = 'PK';
+    }
     const plant = supplyNormalizePlantValue_(
       (draftRow && draftRow.PLANT) || out.PLANT
         || (draftRow && draftRow[supplyFacilityFieldForKind_(kind)]) || ''
@@ -27712,6 +27744,21 @@ function initDashboardApp() {
     }
     supplyApplyPlantToDraftFacility_(row, row.PLANT, kind);
     supplyApplyTypedQtyAndFacility_(row, row, batch);
+    // Re-stamp supply_type dari data qty final agar backend menerima kind yang benar
+    // (label batch 'CPO+PK' tidak boleh membuat baris CPO-only ditulis dobel ke PK).
+    const curType = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
+    if (!supplyImportIsWaste_(curType)) {
+      const hasCpoQ = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
+      const hasPkQ = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
+      let dataKind = '';
+      if (hasCpoQ && hasPkQ) dataKind = 'CPO+PK';
+      else if (hasCpoQ) dataKind = 'CPO';
+      else if (hasPkQ) dataKind = 'PK';
+      if (dataKind) {
+        row.supply_type = dataKind;
+        row.SUPPLY_TYPE = dataKind;
+      }
+    }
     if (!supplyImportIsWaste_(batch && batch.supply_type)) {
       row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
     }
@@ -27727,7 +27774,8 @@ function initDashboardApp() {
     }
   }
 
-  const SUPPLY_SUBMIT_CHUNK_SIZE_ = 20;
+  // Small chunks keep each GAS call under the Vercel proxy timeout (504 guard).
+  const SUPPLY_SUBMIT_CHUNK_SIZE_ = 5;
 
   function supplyPrepareRowForBulkSubmit_(row, batch) {
     supplyHydrateRowForSubmit_(row, batch);
@@ -28017,6 +28065,7 @@ function initDashboardApp() {
       const submitPayloads = toSubmit.map(function(r) { return supplyRowPayloadForSubmit_(r, batch); });
 
       let submittedN = 0;
+      let sawTimeout = false;
       const okIdSet = new Set();
       const total = submitPayloads.length;
       for (let i = 0; i < submitPayloads.length; i += SUPPLY_SUBMIT_CHUNK_SIZE_) {
@@ -28085,8 +28134,13 @@ function initDashboardApp() {
             }
           }
         } catch (err) {
-          const chunkErr = 'Chunk ' + (Math.floor(i / SUPPLY_SUBMIT_CHUNK_SIZE_) + 1) + ': '
-            + (err && err.message ? err.message : err);
+          const rawMsg = err && err.message ? err.message : String(err);
+          // Proxy timeout (504/FUNCTION_INVOCATION_TIMEOUT) ≠ gagal di GAS —
+          // server bisa saja tetap menulis baris ini. Tandai untuk reconcile.
+          if (/timeout|timed out|504|502|invalid json|function_invocation/i.test(rawMsg)) {
+            sawTimeout = true;
+          }
+          const chunkErr = 'Chunk ' + (Math.floor(i / SUPPLY_SUBMIT_CHUNK_SIZE_) + 1) + ': ' + rawMsg;
           errors.push(chunkErr);
           chunk.forEach(function(p) {
             failures.push({
@@ -28119,13 +28173,40 @@ function initDashboardApp() {
         }
       }
 
+      // Timeout di proxy ≠ gagal di GAS: server sering tetap selesai menulis.
+      // Sinkronkan status dari sheet supaya baris yang sebenarnya sudah masuk
+      // langsung tertandai Submitted (tidak bisa disubmit dobel).
+      let reconciledMarked = 0;
+      if (sawTimeout) {
+        try {
+          const rec = await supplyReconcileBatchStatus_(batch, bId);
+          reconciledMarked = Number(rec && rec.marked) || 0;
+        } catch (_) { /* GAS masih sibuk — user bisa pakai Repair status nanti */ }
+      }
+      const finalBatch = (window._supplyDraftBatches || []).find(function(b) {
+        return supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(bId);
+      }) || batch;
+      if (reconciledMarked > 0) {
+        // Buang failure untuk baris yang ternyata sudah Submitted setelah reconcile.
+        const stillFails = (finalBatch._submitFailures || []).filter(function(f) {
+          const fid = String(f.draft_id || '').trim();
+          if (!fid) return true;
+          const row = (finalBatch.rows || []).find(function(rr) {
+            return String(rr.draft_id || '').trim() === fid;
+          });
+          return !row || !supplyRowIsSubmitted_(row);
+        });
+        supplyStoreSubmitFailures_(finalBatch, stillFails);
+      }
+
       return {
-        submittedN: submittedN || okIdSet.size,
-        failedN: (batch._submitFailures || []).length,
+        submittedN: (submittedN || okIdSet.size) + reconciledMarked,
+        failedN: (finalBatch._submitFailures || []).length,
         errors: errors,
-        failures: batch._submitFailures || [],
-        allDone: batch.status === 'submitted',
+        failures: finalBatch._submitFailures || [],
+        allDone: finalBatch.status === 'submitted',
         skipped: pending.length - valid.length,
+        timedOut: sawTimeout,
       };
     } finally {
       if (batch) batch._submitInFlight = false;
@@ -30233,9 +30314,13 @@ function initDashboardApp() {
           supplyPatchBatchFooterSubmitCount_(bId);
           const failedN = result && result.failedN ? result.failedN : 0;
           const sheetLabel = supplyBatchTargetSheetLabel_(batch);
-          const msg = '✓ ' + bulkSubmittedN + ' submitted to ' + sheetLabel
+          let msg = '✓ ' + bulkSubmittedN + ' submitted to ' + sheetLabel
             + (failedN ? ('. ' + failedN + ' failed — use Retry failed.') : '.')
             + (blocked.length ? (' ' + blocked.length + ' skipped.') : '');
+          if (result && result.timedOut) {
+            msg += ' Server timeout terjadi — data mungkin masih diproses di server.'
+              + ' Tunggu 1-2 menit lalu klik "Repair status" sebelum Retry, supaya tidak dobel.';
+          }
           if (typeof window.showSddToast === 'function') {
             window.showSddToast(msg, failedN ? 'warning' : 'success');
           } else {
@@ -30298,7 +30383,10 @@ function initDashboardApp() {
           if (typeof window.showSddToast === 'function') {
             window.showSddToast(
               'Retry: ' + retrySubmittedN + ' submitted'
-                + (failedN ? (', ' + failedN + ' still failing') : ''),
+                + (failedN ? (', ' + failedN + ' still failing') : '')
+                + (result && result.timedOut
+                  ? '. Server timeout — tunggu 1-2 menit lalu klik "Repair status" sebelum Retry lagi.'
+                  : ''),
               failedN ? 'warning' : 'success'
             );
           }
@@ -30347,7 +30435,10 @@ function initDashboardApp() {
           const failN = result && result.failedN ? result.failedN : 0;
           if (typeof window.showSddToast === 'function') {
             window.showSddToast(
-              okN ? ('✓ Submitted (' + okN + ')') : 'Submit did not complete',
+              (okN ? ('✓ Submitted (' + okN + ')') : 'Submit did not complete')
+                + (result && result.timedOut
+                  ? '. Server timeout — tunggu 1-2 menit lalu klik "Repair status" sebelum Retry.'
+                  : ''),
               failN || !okN ? 'warning' : 'success'
             );
           }
