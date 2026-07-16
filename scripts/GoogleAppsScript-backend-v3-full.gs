@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-filter-safe',
+        version: 'v3-supply-submit-cell-write',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5692,10 +5692,10 @@ function millClearOppositeSupplyColumnsGs_(sheet, headers, targetRow, kind) {
 
 /**
  * Jalankan fn() dengan Filter aktif (Data > Create a filter) di sheet dilepas sementara.
- * insertRowAfter/insertRowBefore/setValues multi-baris gagal dengan error
+ * insertRowAfter/insertRowBefore gagal dengan
  * "This operation is not supported on a range with a filtered out row" jika sheet
- * punya filter aktif dan baris target/insert sedang tersembunyi. Filter (+ kriteria
- * per kolom) dipulihkan otomatis setelah fn() selesai, termasuk jika fn() melempar error.
+ * punya filter aktif. Filter (+ kriteria) dipulihkan setelah fn() selesai.
+ * Tanpa filter aktif → langsung fn() (tanpa overhead).
  */
 function millRunWithFilterRemovedGs_(sheet, fn) {
   var filter = null;
@@ -5706,36 +5706,35 @@ function millRunWithFilterRemovedGs_(sheet, fn) {
   var savedCriteria = {};
   var startCol = range.getColumn();
   var endCol = startCol + range.getNumColumns() - 1;
-  for (var c = startCol; c <= endCol; c++) {
+  var c;
+  for (c = startCol; c <= endCol; c++) {
     try {
       var crit = filter.getColumnFilterCriteria(c);
       if (crit) savedCriteria[c] = crit;
-    } catch (e2) { /* no criteria on this column */ }
+    } catch (e2) { /* no criteria */ }
   }
-  try { filter.remove(); } catch (e3) { /* nothing to remove */ }
+  filter.remove();
 
   try {
     return fn();
   } finally {
     try {
       var newFilter = range.createFilter();
-      Object.keys(savedCriteria).forEach(function(colStr) {
-        var col = parseInt(colStr, 10);
+      var colKeys = Object.keys(savedCriteria);
+      for (var i = 0; i < colKeys.length; i++) {
+        var col = parseInt(colKeys[i], 10);
         try { newFilter.setColumnFilterCriteria(col, savedCriteria[col]); } catch (e4) { /* best effort */ }
-      });
+      }
     } catch (e5) {
       Logger.log('[millRunWithFilterRemovedGs_] Failed to restore filter on ' + sheet.getName() + ': ' + e5.message);
     }
   }
 }
 
-/** Tulis hanya sel non-rumus — jangan setValues satu baris penuh (itu menghapus rumus). */
+/** Tulis hanya sel non-rumus — setValue per kolom patch (jangan setValues full-row:
+ *  itu lambat di sheet lebar + menimpa rumus jadi nilai statis). */
 function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
   if (!patch || !Object.keys(patch).length) return;
-  var width = headers.length;
-  if (width < 1) return;
-  var rowRange = sheet.getRange(targetRow, 1, 1, width);
-  var rowVals = rowRange.getValues()[0];
   var coordCols = [];
   Object.keys(patch).forEach(function(k) {
     if (!k || millIsFormulaColumnGs_(k)) return;
@@ -5743,16 +5742,16 @@ function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
     if (colIdx < 0) return;
     var v = patch[k];
     if (v === undefined || v === null) return;
+    var colNum = colIdx + 1;
     if (COORD_COLUMN_NAMES.indexOf(k) >= 0) {
       var s = String(v).trim();
       if (!s) return;
-      rowVals[colIdx] = s;
-      coordCols.push(colIdx + 1);
+      sheet.getRange(targetRow, colNum).setValue(s);
+      coordCols.push(colNum);
       return;
     }
-    rowVals[colIdx] = coerceSheetDateValue_(v);
+    sheet.getRange(targetRow, colNum).setValue(coerceSheetDateValue_(v));
   });
-  rowRange.setValues([rowVals]);
   coordCols.forEach(function(colNum) {
     sheet.getRange(targetRow, colNum).setNumberFormat('@');
   });
@@ -6747,6 +6746,7 @@ function submitSupplyDraft_(batchId, rows, meta) {
   }
 
   var results = [];
+  var draftMarkedRowIdx = {};
 
   millRunWithFilterRemovedGs_(millSheet, function() {
   rows.forEach(function(row) {
@@ -6822,6 +6822,12 @@ function submitSupplyDraft_(batchId, rows, meta) {
 
     var markRes = markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, row, batchId, now);
     if (markRes && markRes.dirty) draftDirty = true;
+    if (markRes && Array.isArray(markRes.marked_ids)) {
+      markRes.marked_ids.forEach(function(mid) {
+        var mri = draftIdIndex[mid];
+        if (mri != null) draftMarkedRowIdx[mri] = true;
+      });
+    }
     var markedIds = (markRes && Array.isArray(markRes.marked_ids)) ? markRes.marked_ids.slice() : [];
     if (draftId && markedIds.indexOf(draftId) < 0) markedIds.unshift(draftId);
     results.push({
@@ -6838,7 +6844,16 @@ function submitSupplyDraft_(batchId, rows, meta) {
 
   if (draftDirty) {
     millRunWithFilterRemovedGs_(draftSheet, function() {
-      draftSheet.getRange(1, 1, draftData.length, draftHeaders.length).setValues(draftData);
+      // Write only status/updated_at for marked rows — avoid rewriting entire draft sheet.
+      var statusCol = draftHeaders.indexOf('status');
+      var updCol = draftHeaders.indexOf('updated_at');
+      Object.keys(draftMarkedRowIdx).forEach(function(riStr) {
+        var ri = parseInt(riStr, 10);
+        if (!(ri >= 1) || !draftData[ri]) return;
+        var sheetRow = ri + 1;
+        if (statusCol >= 0) draftSheet.getRange(sheetRow, statusCol + 1).setValue(draftData[ri][statusCol]);
+        if (updCol >= 0) draftSheet.getRange(sheetRow, updCol + 1).setValue(draftData[ri][updCol]);
+      });
     });
   }
 

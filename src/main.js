@@ -28333,7 +28333,8 @@ function initDashboardApp() {
           bId,
           processed,
           total,
-          'Submitting chunk ' + chunkNum + '/' + totalChunks + '…'
+          'Waiting for server… chunk ' + chunkNum + '/' + totalChunks
+            + ' (' + chunk.length + ' rows). Usually 20–90s — counter stays 0 until Apps Script finishes.'
         );
         const post = await supplyPostSubmitChunkWithRetry_(batch, bId, chunk, chunkNum);
         let chunkOkIds = new Set();
