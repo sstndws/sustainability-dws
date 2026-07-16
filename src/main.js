@@ -26416,15 +26416,18 @@ function initDashboardApp() {
 
   function supplyRowSupplyKindStrict_(row) {
     if (!row) return 'CPO';
+    const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
+    const hasPkQty = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
+    // Qty columns win over supply_type label — prevents CPO+PK type with only CPO qty
+    // from blocking PK merge / coalesce (e.g. CPO 3000 + PK 1300 → both preserved).
+    if (hasCpoQty && hasPkQty) return 'CPO+PK';
+    if (hasPkQty) return 'PK';
+    if (hasCpoQty) return 'CPO';
     const st = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
     if (supplyImportIsWaste_(st)) return st;
     if (st === 'PK') return 'PK';
     if (st === 'CPO') return 'CPO';
-    if (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0) return 'CPO+PK';
-    const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
-    const hasPkQty = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
-    if (hasCpoQty && hasPkQty) return 'CPO+PK';
-    if (hasPkQty) return 'PK';
+    if (st === 'CPO+PK' || st === 'BOTH' || (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0)) return 'CPO+PK';
     return 'CPO';
   }
 
@@ -26495,9 +26498,6 @@ function initDashboardApp() {
       const source = batch.rows[p.pkIdx];
       if (!target || !source) return;
       supplyMergeDraftRows_(target, source);
-      target.supply_type = 'CPO+PK';
-      target.SUPPLY_TYPE = 'CPO+PK';
-      target['PRODUCT SUPPLY'] = 'CPO, PK';
       batch.rows.splice(p.pkIdx, 1);
     });
     return pairs.length;
@@ -26731,11 +26731,28 @@ function initDashboardApp() {
     }
     const ek = supplyRowSupplyKindStrict_(existing);
     if ((ek === 'CPO' && kind === 'PK') || (ek === 'PK' && kind === 'CPO')) {
-      existing.supply_type = 'CPO+PK';
-      existing.SUPPLY_TYPE = 'CPO+PK';
+      /* qty merged above — stamp type from both columns */
     }
-    existing['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(existing);
+    supplyStampDualSupplyType_(existing);
     supplyRematchDraftRow_(existing, batch);
+  }
+
+  /** After CPO+PK merge — stamp type only when both qty columns are present. */
+  function supplyStampDualSupplyType_(row) {
+    if (!row) return;
+    const hasCpo = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
+    const hasPk = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
+    if (hasCpo && hasPk) {
+      row.supply_type = 'CPO+PK';
+      row.SUPPLY_TYPE = 'CPO+PK';
+      row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    } else if (hasPk) {
+      row.supply_type = 'PK';
+      row.SUPPLY_TYPE = 'PK';
+    } else if (hasCpo) {
+      row.supply_type = 'CPO';
+      row.SUPPLY_TYPE = 'CPO';
+    }
   }
 
   /** Gabungkan dua draft row (mis. batch CPO + batch PK periode sama) per company. */
@@ -26755,13 +26772,8 @@ function initDashboardApp() {
     if (source['SUPPLY PK'] != null && String(source['SUPPLY PK']).trim() !== '') {
       target['SUPPLY PK'] = source['SUPPLY PK'];
     }
-    if (source.SUPPLY_QTY != null && String(source.SUPPLY_QTY).trim() !== '') {
-      target.SUPPLY_QTY = source.SUPPLY_QTY;
-    }
     if (source['SOURCE TYPE'] && !target['SOURCE TYPE']) target['SOURCE TYPE'] = source['SOURCE TYPE'];
-    target.supply_type = 'CPO+PK';
-    target.SUPPLY_TYPE = 'CPO+PK';
-    target['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(target);
+    supplyStampDualSupplyType_(target);
   }
 
   function supplyConsolidateBatchesByPeriod_(batchList) {
@@ -27271,6 +27283,8 @@ function initDashboardApp() {
     supplyApplyTypedQtyAndFacility_(out, row, batch);
     supplySubmitFillFields_(batch).forEach(function(k) {
       if (millIsSheetComputedField_(k)) return;
+      // Typed qty columns already resolved — never overwrite from raw row / profile mirror.
+      if (k === 'SUPPLY CPO' || k === 'SUPPLY PK') return;
       const v = row[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = v;
     });
@@ -27325,14 +27339,17 @@ function initDashboardApp() {
         out.push(list[0]);
         return;
       }
-      const dual = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'CPO+PK'; });
-      if (dual.length) {
-        out.push(dual[0]);
-        return;
-      }
+      const dualRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'CPO+PK'; });
       const cpoRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'CPO'; });
       const pkRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'PK'; });
-      if (cpoRows.length === 1 && pkRows.length === 1 && list.length === 2) {
+      if (dualRows.length >= 1) {
+        const target = dualRows[0];
+        cpoRows.forEach(function(r) { if (r !== target) supplyMergeDraftRows_(target, r); });
+        pkRows.forEach(function(r) { if (r !== target) supplyMergeDraftRows_(target, r); });
+        out.push(target);
+        return;
+      }
+      if (cpoRows.length === 1 && pkRows.length === 1) {
         supplyMergeDraftRows_(cpoRows[0], pkRows[0]);
         out.push(cpoRows[0]);
         return;
@@ -27715,8 +27732,9 @@ function initDashboardApp() {
 
     const prefill = supplyBuildMillPrefillFromDraft_(row, batch, { rematch: false });
     const fillKeys = supplySubmitFillFields_(batch);
-    fillKeys.forEach(function(f) {
-      if (millIsSheetComputedField_(f)) return;
+      fillKeys.forEach(function(f) {
+        if (f === 'SUPPLY CPO' || f === 'SUPPLY PK' || f === 'SUPPLY_QTY') return;
+        if (millIsSheetComputedField_(f)) return;
       const cur = row[f];
       const pv = prefill[f];
       if ((cur === undefined || cur === null || String(cur).trim() === '')
@@ -30001,9 +30019,10 @@ function initDashboardApp() {
     if (key === 'SUPPLY CPO' || key === 'SUPPLY PK') {
       const direct = row[key];
       if (direct != null && String(direct).trim() !== '') return direct;
+      const effKind = supplyRowSupplyKindStrict_(row);
       if (row.SUPPLY_QTY != null && String(row.SUPPLY_QTY).trim() !== '') {
-        if (key === 'SUPPLY PK' && kind === 'PK') return row.SUPPLY_QTY;
-        if (key === 'SUPPLY CPO' && kind !== 'PK') return row.SUPPLY_QTY;
+        if (key === 'SUPPLY PK' && effKind === 'PK') return row.SUPPLY_QTY;
+        if (key === 'SUPPLY CPO' && effKind === 'CPO') return row.SUPPLY_QTY;
       }
       return '';
     }
