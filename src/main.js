@@ -27774,8 +27774,238 @@ function initDashboardApp() {
     }
   }
 
-  // Small chunks keep each GAS call under the Vercel proxy timeout (504 guard).
-  const SUPPLY_SUBMIT_CHUNK_SIZE_ = 5;
+  /** Adaptive chunk size — smaller batches for large submits (GAS / Vercel timeout guard). */
+  function supplySubmitChunkSize_(totalRows) {
+    const n = Number(totalRows) || 0;
+    if (n <= 8) return n || 1;
+    if (n <= 25) return 5;
+    if (n <= 60) return 4;
+    return 3;
+  }
+
+  function supplySleepMs_(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+  }
+
+  function supplyIsSubmitTransportError_(msg) {
+    return /timeout|timed out|504|502|503|invalid json|function_invocation|network|abort|failed to fetch|upstream/i.test(String(msg || ''));
+  }
+
+  function supplyTouchSubmitActivity_() {
+    window._supplySubmitLastActivity = Date.now();
+  }
+
+  function supplyStopSubmitWatchdog_() {
+    if (window._supplyBulkSubmitWatchdog) {
+      clearInterval(window._supplyBulkSubmitWatchdog);
+      window._supplyBulkSubmitWatchdog = null;
+    }
+  }
+
+  /** Unlock only when no chunk progress for staleMs (default 3 min). */
+  function supplyStartSubmitWatchdog_(batchId, staleMs) {
+    supplyStopSubmitWatchdog_();
+    supplyTouchSubmitActivity_();
+    const key = supplyBatchIdKey_(batchId);
+    const limit = staleMs || 180000;
+    window._supplyBulkSubmitWatchdog = setInterval(function() {
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) !== key) {
+        supplyStopSubmitWatchdog_();
+        return;
+      }
+      if (Date.now() - (window._supplySubmitLastActivity || 0) < limit) return;
+      const stuck = supplyFindDraftBatch_(key);
+      if (stuck) stuck._submitInFlight = false;
+      supplySetBatchSubmitLock_(key, false);
+      supplySetSubmitBtnBusy_(key, false);
+      supplyHideSubmitProgressBar_(key);
+      supplyNotifySubmitBlocked_(
+        'Submit paused — no progress for a while. Click Repair status, then Retry failed for the rest.'
+      );
+      supplyStopSubmitWatchdog_();
+    }, 15000);
+  }
+
+  function supplyShowSubmitProgressBar_(batchId, done, total, label) {
+    const key = supplyBatchIdKey_(batchId);
+    const wrap = document.getElementById('supply-batch-table-' + key);
+    if (!wrap) return;
+    let bar = wrap.querySelector('.supply-submit-progress');
+    if (!bar) {
+      const toolbar = wrap.querySelector('.supply-batch-toolbar');
+      if (!toolbar) return;
+      bar = document.createElement('div');
+      bar.className = 'supply-submit-progress';
+      bar.innerHTML = '<div class="supply-submit-progress__track"><div class="supply-submit-progress__fill"></div></div>'
+        + '<span class="supply-submit-progress__label"></span>';
+      toolbar.insertAdjacentElement('afterend', bar);
+    }
+    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    const fill = bar.querySelector('.supply-submit-progress__fill');
+    const lbl = bar.querySelector('.supply-submit-progress__label');
+    if (fill) fill.style.width = pct + '%';
+    if (lbl) lbl.textContent = label || ('Submitting ' + done + '/' + total + ' (' + pct + '%)');
+    bar.hidden = false;
+    supplyPatchBatchSubmittedChip_(key);
+  }
+
+  function supplyHideSubmitProgressBar_(batchId) {
+    const key = supplyBatchIdKey_(batchId);
+    const wrap = document.getElementById('supply-batch-table-' + key);
+    const bar = wrap && wrap.querySelector('.supply-submit-progress');
+    if (bar) bar.hidden = true;
+  }
+
+  function supplyPatchBatchSubmittedChip_(batchId) {
+    const batch = supplyFindDraftBatch_(batchId);
+    if (!batch) return;
+    const card = document.querySelector('.supply-batch-card[data-batch-id="' + supplyBatchIdKey_(batchId) + '"]');
+    if (!card) return;
+    const rowCount = (batch.rows || []).length;
+    const doneCount = (batch.rows || []).filter(function(r) { return supplyRowIsSubmitted_(r); }).length;
+    const stats = card.querySelector('.supply-batch-stats');
+    if (!stats) return;
+    let chip = stats.querySelector('.supply-stat-chip--submit-progress');
+    const label = doneCount + '/' + rowCount + ' submitted';
+    if (doneCount <= 0) {
+      if (chip) chip.remove();
+      return;
+    }
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'supply-stat-chip supply-stat-chip--ok supply-stat-chip--submit-progress';
+      stats.appendChild(chip);
+    }
+    chip.textContent = label;
+    const badge = card.querySelector('.supply-badge--partial, .supply-badge--draft');
+    if (badge && doneCount > 0 && doneCount < rowCount) {
+      badge.className = 'supply-badge supply-badge--partial';
+      badge.textContent = 'In progress';
+    }
+  }
+
+  function supplySetBatchSubmitLock_(batchId, locked) {
+    const key = supplyBatchIdKey_(batchId);
+    const wrap = document.getElementById('supply-batch-table-' + key);
+    if (!wrap) return;
+    wrap.querySelectorAll(
+      '[data-action="submit-selected"], [data-action="submit-row"], [data-action="retry-failed"], '
+      + '[data-action="merge-cpo-pk"], [data-action="delete-batch"]'
+    ).forEach(function(el) {
+      if (locked) {
+        el.setAttribute('disabled', 'disabled');
+        el.setAttribute('aria-disabled', 'true');
+      } else {
+        el.removeAttribute('disabled');
+        el.setAttribute('aria-disabled', el.dataset.action === 'submit-selected' ? 'false' : 'false');
+      }
+    });
+  }
+
+  function supplyProcessChunkSubmitResponse_(chunk, res, failures, errors) {
+    const chunkOkIds = new Set();
+    let chunkSubmittedN = 0;
+    const results = (res && Array.isArray(res.results)) ? res.results : [];
+    if (results.length) {
+      results.forEach(function(item) {
+        if (item && item.ok) {
+          chunkSubmittedN += 1;
+          const ids = Array.isArray(item.marked_draft_ids) && item.marked_draft_ids.length
+            ? item.marked_draft_ids
+            : [item.draft_id];
+          ids.forEach(function(id) {
+            const sid = String(id || '').trim();
+            if (sid) chunkOkIds.add(sid);
+          });
+        } else if (item) {
+          const fail = {
+            draft_id: String(item.draft_id || '').trim(),
+            company: String(item.company || '').trim(),
+            error: String(item.error || 'submit failed').trim(),
+          };
+          failures.push(fail);
+          errors.push(fail.error);
+        }
+      });
+    } else {
+      const okN = (res && typeof res.submitted === 'number') ? res.submitted : 0;
+      const errList = (res && Array.isArray(res.errors)) ? res.errors : [];
+      if (errList.length) {
+        errors.push.apply(errors, errList);
+        errList.forEach(function(msg) {
+          failures.push({ draft_id: '', company: '', error: String(msg || '') });
+        });
+      }
+      if (okN > 0 && okN === chunk.length && !errList.length) {
+        chunk.forEach(function(p) {
+          const id = String(p.draft_id || '').trim();
+          if (id) chunkOkIds.add(id);
+        });
+        chunkSubmittedN += okN;
+      } else if (okN > 0) {
+        errors.push('Partial submit without per-row results — chunk marked for retry/reconcile.');
+        chunk.forEach(function(p) {
+          failures.push({
+            draft_id: String(p.draft_id || '').trim(),
+            company: String(p['COMPANY NAME'] || '').trim(),
+            error: 'Needs retry (legacy/partial response)',
+          });
+        });
+      }
+    }
+    return { chunkOkIds: chunkOkIds, chunkSubmittedN: chunkSubmittedN };
+  }
+
+  async function supplyPostSubmitChunkWithRetry_(batch, bId, chunk, chunkNum) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      if (attempt > 0) await supplySleepMs_(2500 * attempt);
+      supplyTouchSubmitActivity_();
+      try {
+        const res = await apiPost({
+          action: 'submitSupplyDraft',
+          batch_id: bId,
+          rows: chunk,
+          meta: supplyBatchMetaForApi_(batch),
+          timeoutMs: 110000,
+        });
+        return { ok: true, res: res, transportError: false };
+      } catch (err) {
+        lastErr = err;
+        const msg = err && err.message ? err.message : String(err);
+        if (!supplyIsSubmitTransportError_(msg) || attempt >= 2) {
+          return { ok: false, error: err, transportError: supplyIsSubmitTransportError_(msg) };
+        }
+      }
+    }
+    return { ok: false, error: lastErr, transportError: true };
+  }
+
+  async function supplyRecoverChunkAfterTransportError_(batch, bId, chunk, chunkNum, failures, errors) {
+    if (typeof reloadMillDataSoft_ === 'function') {
+      try { await reloadMillDataSoft_(); } catch (_) { /* keep going */ }
+    }
+    supplyReconcileBatchLocal_(batch);
+    const recovered = new Set();
+    chunk.forEach(function(p) {
+      const id = String(p.draft_id || '').trim();
+      const row = id
+        ? (batch.rows || []).find(function(r) { return String(r.draft_id || '').trim() === id; })
+        : null;
+      if (row && supplyRowIsSubmitted_(row)) {
+        recovered.add(id);
+        return;
+      }
+      const chunkErr = 'Chunk ' + chunkNum + ': server timeout — row may still be processing';
+      failures.push({
+        draft_id: id,
+        company: String(p['COMPANY NAME'] || '').trim(),
+        error: chunkErr,
+      });
+      errors.push(chunkErr);
+    });
+    return recovered;
+  }
 
   function supplyPrepareRowForBulkSubmit_(row, batch) {
     supplyHydrateRowForSubmit_(row, batch);
@@ -28068,104 +28298,88 @@ function initDashboardApp() {
       let sawTimeout = false;
       const okIdSet = new Set();
       const total = submitPayloads.length;
-      const totalChunks = Math.max(1, Math.ceil(total / SUPPLY_SUBMIT_CHUNK_SIZE_));
-      // Allow ~2 min per chunk + 1 min buffer (142 rows ≈ 29 chunks → ~59 min max).
-      supplyResetSubmitWatchdog_(bId, totalChunks * 120000 + 60000);
-      for (let i = 0; i < submitPayloads.length; i += SUPPLY_SUBMIT_CHUNK_SIZE_) {
-        const chunk = submitPayloads.slice(i, i + SUPPLY_SUBMIT_CHUNK_SIZE_);
-        supplyResetSubmitWatchdog_(bId, 120000);
+      const chunkSize = supplySubmitChunkSize_(total);
+      const totalChunks = Math.max(1, Math.ceil(total / chunkSize));
+      supplyStartSubmitWatchdog_(bId);
+      supplySetBatchSubmitLock_(bId, true);
+      supplyShowSubmitProgressBar_(bId, 0, total, 'Preparing submit…');
+      let processed = 0;
+      for (let i = 0; i < submitPayloads.length; i += chunkSize) {
+        const chunk = submitPayloads.slice(i, i + chunkSize);
+        const chunkNum = Math.floor(i / chunkSize) + 1;
+        supplyTouchSubmitActivity_();
         if (typeof progressCb === 'function') {
-          progressCb(Math.min(i + chunk.length, total), total);
+          progressCb(processed, total);
         }
-        try {
-          const res = await apiPost({
-            action: 'submitSupplyDraft',
-            batch_id: bId,
-            rows: chunk,
-            meta: supplyBatchMetaForApi_(batch),
-            timeoutMs: 90000,
-          });
-          const results = (res && Array.isArray(res.results)) ? res.results : [];
-          if (results.length) {
-            results.forEach(function(item) {
-              if (item && item.ok) {
-                submittedN += 1;
-                const ids = Array.isArray(item.marked_draft_ids) && item.marked_draft_ids.length
-                  ? item.marked_draft_ids
-                  : [item.draft_id];
-                ids.forEach(function(id) {
-                  const sid = String(id || '').trim();
-                  if (sid) okIdSet.add(sid);
-                });
-              } else if (item) {
-                const fail = {
-                  draft_id: String(item.draft_id || '').trim(),
-                  company: String(item.company || '').trim(),
-                  error: String(item.error || 'submit failed').trim(),
-                };
-                failures.push(fail);
-                errors.push(fail.error);
-              }
-            });
-          } else {
-            // Legacy backend (no results[]): never mark the whole chunk on partial success.
-            // Only mark all when every payload row succeeded and the API reported zero errors.
-            const okN = (res && typeof res.submitted === 'number') ? res.submitted : 0;
-            const errList = (res && Array.isArray(res.errors)) ? res.errors : [];
-            if (errList.length) {
-              errors.push.apply(errors, errList);
-              errList.forEach(function(msg) {
-                failures.push({ draft_id: '', company: '', error: String(msg || '') });
-              });
-            }
-            if (okN > 0 && okN === chunk.length && !errList.length) {
-              chunk.forEach(function(p) {
-                const id = String(p.draft_id || '').trim();
-                if (id) okIdSet.add(id);
-              });
-              submittedN += okN;
-            } else if (okN > 0) {
-              errors.push(
-                'Partial submit without per-row results — none marked Submitted. Redeploy GAS, then Retry failed.'
-              );
-              chunk.forEach(function(p) {
-                failures.push({
-                  draft_id: String(p.draft_id || '').trim(),
-                  company: String(p['COMPANY NAME'] || '').trim(),
-                  error: 'Needs retry (legacy/partial response)',
-                });
-              });
-            }
-          }
-        } catch (err) {
-          const rawMsg = err && err.message ? err.message : String(err);
-          // Proxy timeout (504/FUNCTION_INVOCATION_TIMEOUT) ≠ gagal di GAS —
-          // server bisa saja tetap menulis baris ini. Tandai untuk reconcile.
-          if (/timeout|timed out|504|502|invalid json|function_invocation/i.test(rawMsg)) {
+        supplyShowSubmitProgressBar_(
+          bId,
+          processed,
+          total,
+          'Submitting chunk ' + chunkNum + '/' + totalChunks + '…'
+        );
+        const post = await supplyPostSubmitChunkWithRetry_(batch, bId, chunk, chunkNum);
+        let chunkOkIds = new Set();
+        if (post.ok) {
+          const parsed = supplyProcessChunkSubmitResponse_(chunk, post.res, failures, errors);
+          chunkOkIds = parsed.chunkOkIds;
+          submittedN += parsed.chunkSubmittedN;
+        } else {
+          const rawMsg = post.error && post.error.message ? post.error.message : post.error;
+          if (post.transportError) {
             sawTimeout = true;
-          }
-          const chunkErr = 'Chunk ' + (Math.floor(i / SUPPLY_SUBMIT_CHUNK_SIZE_) + 1) + ': ' + rawMsg;
-          errors.push(chunkErr);
-          chunk.forEach(function(p) {
-            failures.push({
-              draft_id: String(p.draft_id || '').trim(),
-              company: String(p['COMPANY NAME'] || '').trim(),
-              error: chunkErr,
+            const recovered = await supplyRecoverChunkAfterTransportError_(
+              batch, bId, chunk, chunkNum, failures, errors
+            );
+            recovered.forEach(function(id) { chunkOkIds.add(id); });
+            submittedN += recovered.size;
+          } else {
+            const chunkErr = 'Chunk ' + chunkNum + ': ' + rawMsg;
+            errors.push(chunkErr);
+            chunk.forEach(function(p) {
+              failures.push({
+                draft_id: String(p.draft_id || '').trim(),
+                company: String(p['COMPANY NAME'] || '').trim(),
+                error: chunkErr,
+              });
             });
-          });
+          }
+        }
+        if (chunkOkIds.size) {
+          chunkOkIds.forEach(function(id) { okIdSet.add(id); });
+          supplyMarkRowsByDraftIds_(batch.rows || [], chunkOkIds);
+          supplyMarkRowsByDraftIds_(valid, chunkOkIds);
+          supplyNormalizeBatchSubmittedState_(batch);
+          try { await supplyPersistDraftBatch_(batch); } catch (_) { /* next chunk */ }
+        }
+        processed = Math.min(i + chunk.length, total);
+        supplyShowSubmitProgressBar_(bId, processed, total);
+        supplyTouchSubmitActivity_();
+        // Periodic reconcile on long runs — keeps UI/sheet in sync without waiting for the end.
+        if (chunkNum % 4 === 0 && processed < total) {
+          try {
+            if (typeof reloadMillDataSoft_ === 'function') await reloadMillDataSoft_();
+            const mid = supplyReconcileBatchLocal_(batch);
+            submittedN += mid.marked || 0;
+            (batch.rows || []).forEach(function(r) {
+              const id = String(r.draft_id || '').trim();
+              if (id && supplyRowIsSubmitted_(r)) okIdSet.add(id);
+            });
+          } catch (_) { /* continue */ }
         }
       }
-
-      if (okIdSet.size) {
-        supplyMarkRowsByDraftIds_(batch.rows || [], okIdSet);
-        // Also mark valid payload rows whose draft_id was coalesced away but company siblings succeeded.
-        supplyMarkRowsByDraftIds_(valid, okIdSet);
-      }
+      supplyHideSubmitProgressBar_(bId);
+      supplySetBatchSubmitLock_(bId, false);
+      supplyStopSubmitWatchdog_();
 
       supplyNormalizeBatchSubmittedState_(batch);
       supplyStoreSubmitFailures_(batch, failures.filter(function(f) {
         const id = String(f.draft_id || '').trim();
-        return !id || !okIdSet.has(id);
+        if (!id) return true;
+        if (okIdSet.has(id)) return false;
+        const row = (batch.rows || []).find(function(r) {
+          return String(r.draft_id || '').trim() === id;
+        });
+        return !row || !supplyRowIsSubmitted_(row);
       }));
 
       if (submittedN > 0 || okIdSet.size > 0) {
@@ -28214,6 +28428,9 @@ function initDashboardApp() {
       };
     } finally {
       if (batch) batch._submitInFlight = false;
+      supplyStopSubmitWatchdog_();
+      supplySetBatchSubmitLock_(bId, false);
+      supplyHideSubmitProgressBar_(bId);
     }
   }
 
@@ -28387,48 +28604,33 @@ function initDashboardApp() {
     supplyBindFooterActionButtons_(wrap);
   }
 
-  function supplyResetSubmitWatchdog_(batchId, ms) {
-    const key = supplyBatchIdKey_(batchId);
-    if (window._supplyBulkSubmitWatchdog) clearTimeout(window._supplyBulkSubmitWatchdog);
-    window._supplyBulkSubmitWatchdog = setTimeout(function() {
-      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
-        const stuck = supplyFindDraftBatch_(key);
-        if (stuck) stuck._submitInFlight = false;
-        supplySetSubmitBtnBusy_(key, false);
-        supplyNotifySubmitBlocked_(
-          'Submit took too long and was unlocked. Click Repair status before Retry — '
-          + 'some rows may already be on the sheet.'
-        );
-      }
-    }, ms || 120000);
-  }
-
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
     const key = supplyBatchIdKey_(batchId);
     if (busy) {
       window._supplyBulkSubmitInFlight = key;
-      // Bulk submit can run many chunks (5 rows each) — 90s was too short and
-      // unlocked the UI while GAS was still writing (2/144 then toast).
-      supplyResetSubmitWatchdog_(key, 120000);
     } else {
       if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
         window._supplyBulkSubmitInFlight = null;
       }
-      if (window._supplyBulkSubmitWatchdog) {
-        clearTimeout(window._supplyBulkSubmitWatchdog);
-        window._supplyBulkSubmitWatchdog = null;
-      }
+      supplyStopSubmitWatchdog_();
     }
     const wrap = document.getElementById('supply-batch-table-' + key);
     const btn = wrap && wrap.querySelector(
       '.supply-batch-toolbar [data-action="submit-selected"], [data-action="submit-selected"]'
     );
     if (!btn) return;
-    btn.removeAttribute('disabled');
+    if (busy) {
+      btn.setAttribute('disabled', 'disabled');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.style.pointerEvents = 'none';
+      btn.style.cursor = 'wait';
+    } else {
+      btn.removeAttribute('disabled');
+      btn.style.pointerEvents = 'auto';
+      btn.style.cursor = 'pointer';
+    }
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     btn.classList.toggle('is-busy', !!busy);
-    btn.style.pointerEvents = 'auto';
-    btn.style.cursor = busy ? 'wait' : 'pointer';
     if (label) btn.textContent = label;
     else supplyPatchBatchFooterSubmitCount_(key);
   }
