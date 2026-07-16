@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-flush-per-row',
+        version: 'v3-supply-submit-kind-qty',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5563,22 +5563,42 @@ function millRowSupplyKindGs_(obj) {
 }
 
 function supplySubmitKindFromDraftGs_(row) {
+  if (!row) return 'CPO';
+  // Qty columns win — same rule as frontend supplyRowSupplyKindStrict_.
+  // Mill sheet rows often have no supply_type cell; defaulting those to CPO made
+  // PK-only rows look like CPO and caused period-match / sibling-mark bugs.
+  var hasCpo = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
+  var hasPk = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
+  var hasIscc = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
+  var hasIns = row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '';
+  var hasShell = row['SUPPLY SHELL'] != null && String(row['SUPPLY SHELL']).trim() !== '';
+  if (hasIscc) return 'POME_ISCC';
+  if (hasIns) return 'POME_INS';
+  if (hasShell) return 'SHELL_GGL';
+  if (hasCpo && hasPk) return 'BOTH';
+  if (hasPk) return 'PK';
+  if (hasCpo) return 'CPO';
+
   var stRaw = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
-  if (!stRaw) {
-    if (row['SUPPLY ISCC'] !== undefined && row['SUPPLY ISCC'] !== null && String(row['SUPPLY ISCC']).trim() !== '') stRaw = 'POME_ISCC';
-    else if (row['SUPPLY INS'] !== undefined && row['SUPPLY INS'] !== null && String(row['SUPPLY INS']).trim() !== '') stRaw = 'POME_INS';
-    else if (row['SUPPLY SHELL'] !== undefined && row['SUPPLY SHELL'] !== null && String(row['SUPPLY SHELL']).trim() !== '') stRaw = 'SHELL_GGL';
-    else stRaw = 'CPO';
-  }
-  var st = stRaw;
-  if (st === 'POME_ISCC') return 'POME_ISCC';
-  if (st === 'POME_INS') return 'POME_INS';
-  if (st === 'SHELL_GGL') return 'SHELL_GGL';
-  if (st === 'PK') return 'PK';
-  if (st === 'CPO') return 'CPO';
-  if (st === 'CPO+PK' || st === 'BOTH') return 'BOTH';
-  if (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0) return 'BOTH';
+  if (!stRaw) return 'CPO';
+  if (stRaw === 'POME_ISCC') return 'POME_ISCC';
+  if (stRaw === 'POME_INS') return 'POME_INS';
+  if (stRaw === 'SHELL_GGL') return 'SHELL_GGL';
+  if (stRaw === 'PK') return 'PK';
+  if (stRaw === 'CPO') return 'CPO';
+  if (stRaw === 'CPO+PK' || stRaw === 'BOTH') return 'BOTH';
+  if (stRaw.indexOf('CPO') >= 0 && stRaw.indexOf('PK') >= 0) return 'BOTH';
   return 'CPO';
+}
+
+/** True if marking draft siblings should include objKind when submitKind was written. */
+function supplyDraftMarkKindsCompatibleGs_(submitKind, objKind) {
+  var a = String(submitKind || '').toUpperCase();
+  var b = String(objKind || '').toUpperCase();
+  if (supplyIsWasteSubmitKind_(a)) return a === b;
+  if (a === 'BOTH') return b === 'CPO' || b === 'PK' || b === 'BOTH';
+  if (b === 'BOTH') return a === 'CPO' || a === 'PK' || a === 'BOTH';
+  return a === b;
 }
 
 function supplyIsWasteSubmitKind_(kind) {
@@ -6646,7 +6666,15 @@ function millFindSupplyRowByCompanyPeriodGs_(millData, millHeaders, row) {
   for (var r = 1; r < millData.length; r++) {
     var obj = millRowToObjectGs_(millData[r], millHeaders);
     if (supplyNormKey_(obj['COMPANY NAME']) !== co) continue;
-    if (supplySubmitKindFromDraftGs_(obj) !== wantKind) continue;
+    var rowKind = supplySubmitKindFromDraftGs_(obj);
+    // CPO and PK stay on separate rows unless submitting BOTH (then reuse either side).
+    if (wantKind === 'BOTH') {
+      if (rowKind !== 'CPO' && rowKind !== 'PK' && rowKind !== 'BOTH') continue;
+    } else if (rowKind === 'BOTH') {
+      if (wantKind !== 'CPO' && wantKind !== 'PK') continue;
+    } else if (rowKind !== wantKind) {
+      continue;
+    }
     var rp = supplyReadPeriodFromRowGs_(obj);
     if (supplyNormalizeMonthTokGs_(rp.month) !== wantMonth) continue;
     if (String(rp.year || '').trim() !== wantYear) continue;
@@ -6703,7 +6731,8 @@ function markSupplyDraftRowsSubmittedGs_(draftData, draftHeaders, draftIdIndex, 
     var obj = millRowToObjectGs_(draftData[di], draftHeaders);
     if (bid && batchCol >= 0 && String(draftData[di][batchCol] || '').trim() !== bid) continue;
     if (coKey && supplyNormKey_(obj['COMPANY NAME']) !== coKey) continue;
-    if (supplyIsWasteSubmitKind_(submitKind) && supplySubmitKindFromDraftGs_(obj) !== submitKind) continue;
+    // Never mark a CPO draft submitted just because PK (same company/period) landed — and vice versa.
+    if (!supplyDraftMarkKindsCompatibleGs_(submitKind, supplySubmitKindFromDraftGs_(obj))) continue;
     var rp = supplyReadPeriodFromRowGs_(obj);
     if (per.month && rp.month && String(rp.month) !== String(per.month)) continue;
     if (per.year && rp.year && String(rp.year) !== String(per.year)) continue;
