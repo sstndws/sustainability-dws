@@ -41,9 +41,20 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const gasUrl = env_('GAS_WEBAPP_URL')
+  // Strip accidental quotes/whitespace from Vercel env paste.
+  const gasUrl = String(env_('GAS_WEBAPP_URL') || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
     || 'https://script.google.com/macros/s/AKfycby6k3vGrhKWU5zeBFo7LdkCorUYtSpD2R0BNoHcl_9aRPgcIqd5jWkVXrVRh9jGsvD0JQ/exec';
   const gasSecret = env_('GAS_API_SECRET');
+
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/AKfycb[\w-]+\/exec\/?$/.test(gasUrl)) {
+    console.error('[gas-proxy] invalid GAS_WEBAPP_URL', gasUrl.slice(0, 120));
+    return res.status(502).json({
+      error: 'Upstream data service unavailable',
+      detail: 'Invalid GAS_WEBAPP_URL — must be https://script.google.com/macros/s/.../exec (no quotes)',
+    });
+  }
 
   const payload = parseBody_(req);
   const method = String(payload.method || 'GET').toUpperCase();
@@ -56,7 +67,7 @@ export default async function handler(req, res) {
         params.token = gasSecret;
         params._actor = actor;
       }
-      const fullUrl = gasUrl + '?' + new URLSearchParams(params).toString();
+      const fullUrl = gasUrl.replace(/\/$/, '') + '?' + new URLSearchParams(params).toString();
       const gasRes = await fetch(fullUrl, {
         method: 'GET',
         redirect: 'follow',
@@ -88,7 +99,11 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ error: 'Invalid method' });
   } catch (err) {
-    console.error('[gas-proxy] upstream error', err);
-    return res.status(502).json({ error: 'Upstream data service unavailable' });
+    const msg = (err && err.message) ? String(err.message) : String(err);
+    console.error('[gas-proxy] upstream error', msg, 'url=', gasUrl.slice(0, 80));
+    return res.status(502).json({
+      error: 'Upstream data service unavailable',
+      detail: msg.slice(0, 200),
+    });
   }
 }
