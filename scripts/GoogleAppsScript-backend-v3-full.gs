@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-fast-write',
+        version: 'v3-supply-submit-filter-safe',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5690,6 +5690,45 @@ function millClearOppositeSupplyColumnsGs_(sheet, headers, targetRow, kind) {
   });
 }
 
+/**
+ * Jalankan fn() dengan Filter aktif (Data > Create a filter) di sheet dilepas sementara.
+ * insertRowAfter/insertRowBefore/setValues multi-baris gagal dengan error
+ * "This operation is not supported on a range with a filtered out row" jika sheet
+ * punya filter aktif dan baris target/insert sedang tersembunyi. Filter (+ kriteria
+ * per kolom) dipulihkan otomatis setelah fn() selesai, termasuk jika fn() melempar error.
+ */
+function millRunWithFilterRemovedGs_(sheet, fn) {
+  var filter = null;
+  try { filter = sheet.getFilter(); } catch (e) { filter = null; }
+  if (!filter) return fn();
+
+  var range = filter.getRange();
+  var savedCriteria = {};
+  var startCol = range.getColumn();
+  var endCol = startCol + range.getNumColumns() - 1;
+  for (var c = startCol; c <= endCol; c++) {
+    try {
+      var crit = filter.getColumnFilterCriteria(c);
+      if (crit) savedCriteria[c] = crit;
+    } catch (e2) { /* no criteria on this column */ }
+  }
+  try { filter.remove(); } catch (e3) { /* nothing to remove */ }
+
+  try {
+    return fn();
+  } finally {
+    try {
+      var newFilter = range.createFilter();
+      Object.keys(savedCriteria).forEach(function(colStr) {
+        var col = parseInt(colStr, 10);
+        try { newFilter.setColumnFilterCriteria(col, savedCriteria[col]); } catch (e4) { /* best effort */ }
+      });
+    } catch (e5) {
+      Logger.log('[millRunWithFilterRemovedGs_] Failed to restore filter on ' + sheet.getName() + ': ' + e5.message);
+    }
+  }
+}
+
 /** Tulis hanya sel non-rumus — jangan setValues satu baris penuh (itu menghapus rumus). */
 function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
   if (!patch || !Object.keys(patch).length) return;
@@ -6709,6 +6748,7 @@ function submitSupplyDraft_(batchId, rows, meta) {
 
   var results = [];
 
+  millRunWithFilterRemovedGs_(millSheet, function() {
   rows.forEach(function(row) {
     var draftId = String(row.draft_id || '').trim();
     var company = String(row['COMPANY NAME'] || '').trim() || 'row';
@@ -6794,9 +6834,12 @@ function submitSupplyDraft_(batchId, rows, meta) {
     });
     submitted++;
   });
+  });
 
   if (draftDirty) {
-    draftSheet.getRange(1, 1, draftData.length, draftHeaders.length).setValues(draftData);
+    millRunWithFilterRemovedGs_(draftSheet, function() {
+      draftSheet.getRange(1, 1, draftData.length, draftHeaders.length).setValues(draftData);
+    });
   }
 
   if (errors.length && !submitted) {
