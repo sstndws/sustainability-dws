@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-no-mirror',
+        version: 'v3-supply-submit-fast-write',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5692,21 +5692,30 @@ function millClearOppositeSupplyColumnsGs_(sheet, headers, targetRow, kind) {
 
 /** Tulis hanya sel non-rumus — jangan setValues satu baris penuh (itu menghapus rumus). */
 function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
-  Object.keys(patch || {}).forEach(function(k) {
+  if (!patch || !Object.keys(patch).length) return;
+  var width = headers.length;
+  if (width < 1) return;
+  var rowRange = sheet.getRange(targetRow, 1, 1, width);
+  var rowVals = rowRange.getValues()[0];
+  var coordCols = [];
+  Object.keys(patch).forEach(function(k) {
     if (!k || millIsFormulaColumnGs_(k)) return;
     var colIdx = headers.indexOf(k);
     if (colIdx < 0) return;
     var v = patch[k];
     if (v === undefined || v === null) return;
-    var cell = sheet.getRange(targetRow, colIdx + 1);
     if (COORD_COLUMN_NAMES.indexOf(k) >= 0) {
       var s = String(v).trim();
       if (!s) return;
-      cell.setNumberFormat('@');
-      cell.setValue(s);
+      rowVals[colIdx] = s;
+      coordCols.push(colIdx + 1);
       return;
     }
-    cell.setValue(coerceSheetDateValue_(v));
+    rowVals[colIdx] = coerceSheetDateValue_(v);
+  });
+  rowRange.setValues([rowVals]);
+  coordCols.forEach(function(colNum) {
+    sheet.getRange(targetRow, colNum).setNumberFormat('@');
   });
 }
 

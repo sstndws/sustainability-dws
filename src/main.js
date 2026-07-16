@@ -27774,13 +27774,13 @@ function initDashboardApp() {
     }
   }
 
-  /** Adaptive chunk size — smaller batches for large submits (GAS / Vercel timeout guard). */
+  /** Adaptive chunk size — balance speed vs GAS/Vercel timeout (110s per request). */
   function supplySubmitChunkSize_(totalRows) {
     const n = Number(totalRows) || 0;
-    if (n <= 8) return n || 1;
-    if (n <= 25) return 5;
-    if (n <= 60) return 4;
-    return 3;
+    if (n <= 10) return n || 1;
+    if (n <= 40) return 8;
+    if (n <= 100) return 12;
+    return 15;
   }
 
   function supplySleepMs_(ms) {
@@ -28349,23 +28349,14 @@ function initDashboardApp() {
           supplyMarkRowsByDraftIds_(batch.rows || [], chunkOkIds);
           supplyMarkRowsByDraftIds_(valid, chunkOkIds);
           supplyNormalizeBatchSubmittedState_(batch);
-          try { await supplyPersistDraftBatch_(batch); } catch (_) { /* next chunk */ }
+          // Save draft every 5 chunks (not every chunk) — fewer round-trips, much faster.
+          if (chunkNum % 5 === 0 || i + chunk.length >= submitPayloads.length) {
+            try { await supplyPersistDraftBatch_(batch); } catch (_) { /* continue */ }
+          }
         }
         processed = Math.min(i + chunk.length, total);
         supplyShowSubmitProgressBar_(bId, processed, total);
         supplyTouchSubmitActivity_();
-        // Periodic reconcile on long runs — keeps UI/sheet in sync without waiting for the end.
-        if (chunkNum % 4 === 0 && processed < total) {
-          try {
-            if (typeof reloadMillDataSoft_ === 'function') await reloadMillDataSoft_();
-            const mid = supplyReconcileBatchLocal_(batch);
-            submittedN += mid.marked || 0;
-            (batch.rows || []).forEach(function(r) {
-              const id = String(r.draft_id || '').trim();
-              if (id && supplyRowIsSubmitted_(r)) okIdSet.add(id);
-            });
-          } catch (_) { /* continue */ }
-        }
       }
       supplyHideSubmitProgressBar_(bId);
       supplySetBatchSubmitLock_(bId, false);
