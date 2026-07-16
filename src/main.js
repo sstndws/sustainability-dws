@@ -28068,8 +28068,12 @@ function initDashboardApp() {
       let sawTimeout = false;
       const okIdSet = new Set();
       const total = submitPayloads.length;
+      const totalChunks = Math.max(1, Math.ceil(total / SUPPLY_SUBMIT_CHUNK_SIZE_));
+      // Allow ~2 min per chunk + 1 min buffer (142 rows ≈ 29 chunks → ~59 min max).
+      supplyResetSubmitWatchdog_(bId, totalChunks * 120000 + 60000);
       for (let i = 0; i < submitPayloads.length; i += SUPPLY_SUBMIT_CHUNK_SIZE_) {
         const chunk = submitPayloads.slice(i, i + SUPPLY_SUBMIT_CHUNK_SIZE_);
+        supplyResetSubmitWatchdog_(bId, 120000);
         if (typeof progressCb === 'function') {
           progressCb(Math.min(i + chunk.length, total), total);
         }
@@ -28383,20 +28387,29 @@ function initDashboardApp() {
     supplyBindFooterActionButtons_(wrap);
   }
 
+  function supplyResetSubmitWatchdog_(batchId, ms) {
+    const key = supplyBatchIdKey_(batchId);
+    if (window._supplyBulkSubmitWatchdog) clearTimeout(window._supplyBulkSubmitWatchdog);
+    window._supplyBulkSubmitWatchdog = setTimeout(function() {
+      if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
+        const stuck = supplyFindDraftBatch_(key);
+        if (stuck) stuck._submitInFlight = false;
+        supplySetSubmitBtnBusy_(key, false);
+        supplyNotifySubmitBlocked_(
+          'Submit took too long and was unlocked. Click Repair status before Retry — '
+          + 'some rows may already be on the sheet.'
+        );
+      }
+    }, ms || 120000);
+  }
+
   function supplySetSubmitBtnBusy_(batchId, busy, label) {
     const key = supplyBatchIdKey_(batchId);
     if (busy) {
       window._supplyBulkSubmitInFlight = key;
-      // Self-healing watchdog: never let the submit lock stick permanently.
-      if (window._supplyBulkSubmitWatchdog) clearTimeout(window._supplyBulkSubmitWatchdog);
-      window._supplyBulkSubmitWatchdog = setTimeout(function() {
-        if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
-          const stuck = supplyFindDraftBatch_(key);
-          if (stuck) stuck._submitInFlight = false;
-          supplySetSubmitBtnBusy_(key, false);
-          supplyNotifySubmitBlocked_('Submit took too long and was unlocked. You can try again.');
-        }
-      }, 90000);
+      // Bulk submit can run many chunks (5 rows each) — 90s was too short and
+      // unlocked the UI while GAS was still writing (2/144 then toast).
+      supplyResetSubmitWatchdog_(key, 120000);
     } else {
       if (supplyBatchIdKey_(window._supplyBulkSubmitInFlight) === key) {
         window._supplyBulkSubmitInFlight = null;
