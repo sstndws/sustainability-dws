@@ -6276,8 +6276,6 @@ body.supply-import-open {
   color: #8b1a1a;
   white-space: nowrap;
 }
-  cursor: wait !important;
-}
 .supply-batch-table-scroll {
   overflow: auto;
   max-height: min(52vh, 520px);
