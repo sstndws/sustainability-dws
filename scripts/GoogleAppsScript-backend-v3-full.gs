@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-cell-write',
+        version: 'v3-supply-submit-no-flush',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5731,10 +5731,10 @@ function millRunWithFilterRemovedGs_(sheet, fn) {
   }
 }
 
-/** Tulis hanya sel non-rumus — setValue per kolom patch (jangan setValues full-row:
- *  itu lambat di sheet lebar + menimpa rumus jadi nilai statis). */
+/** Tulis hanya sel non-rumus. Batch contiguous columns via setValues (no full-row read). */
 function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
   if (!patch || !Object.keys(patch).length) return;
+  var cells = [];
   var coordCols = [];
   Object.keys(patch).forEach(function(k) {
     if (!k || millIsFormulaColumnGs_(k)) return;
@@ -5746,12 +5746,26 @@ function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
     if (COORD_COLUMN_NAMES.indexOf(k) >= 0) {
       var s = String(v).trim();
       if (!s) return;
-      sheet.getRange(targetRow, colNum).setValue(s);
+      cells.push({ col: colNum, value: s });
       coordCols.push(colNum);
       return;
     }
-    sheet.getRange(targetRow, colNum).setValue(coerceSheetDateValue_(v));
+    cells.push({ col: colNum, value: coerceSheetDateValue_(v) });
   });
+  if (!cells.length) return;
+  cells.sort(function(a, b) { return a.col - b.col; });
+  var i = 0;
+  while (i < cells.length) {
+    var start = cells[i].col;
+    var vals = [cells[i].value];
+    var j = i + 1;
+    while (j < cells.length && cells[j].col === start + (j - i)) {
+      vals.push(cells[j].value);
+      j++;
+    }
+    sheet.getRange(targetRow, start, 1, vals.length).setValues([vals]);
+    i = j;
+  }
   coordCols.forEach(function(colNum) {
     sheet.getRange(targetRow, colNum).setNumberFormat('@');
   });
@@ -5978,10 +5992,30 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   var submitKind = supplySubmitKindFromDraftGs_(row);
   if (submitKind === 'CPO') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'CPO');
   else if (submitKind === 'PK') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'PK');
-  millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
-  millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetRow, row);
+  // insertRowAfter already copies formulas from the row above — skip per-column
+  // getFormula/copyTo (each forces a sheet flush and dominates submit time).
+  if (!needInsert) millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
 
-  var rowArr = millSheet.getRange(targetRow, 1, 1, millHeaders.length).getValues()[0];
+  // Keep in-memory millData in sync from the patch — do NOT re-read the row
+  // (getValues flushes all pending writes and is very slow on wide sheets).
+  var rowArr = (millData[targetRow - 1] || millHeaders.map(function() { return ''; })).slice();
+  Object.keys(patch).forEach(function(k) {
+    var col = millHeaders.indexOf(k);
+    if (col < 0) return;
+    if (patch[k] === undefined || patch[k] === null) return;
+    rowArr[col] = patch[k];
+  });
+  if (submitKind === 'CPO') {
+    var pkCol = millHeaders.indexOf('SUPPLY PK');
+    var pkFac = millHeaders.indexOf('FACILITY NAME PK');
+    if (pkCol >= 0) rowArr[pkCol] = '';
+    if (pkFac >= 0) rowArr[pkFac] = '';
+  } else if (submitKind === 'PK') {
+    var cpoCol = millHeaders.indexOf('SUPPLY CPO');
+    var cpoFac = millHeaders.indexOf('FACILITY NAME CPO');
+    if (cpoCol >= 0) rowArr[cpoCol] = '';
+    if (cpoFac >= 0) rowArr[cpoFac] = '';
+  }
   millData[targetRow - 1] = rowArr;
   state.activeLast = targetRow;
   state.lastRow = Math.max(lastRow, targetRow);
@@ -6317,14 +6351,11 @@ function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
     if (!col) col = millFindHeaderColGs_(headers, supplyGrievanceNamedKeysGs_(canonical));
     if (!col) return;
     var draftYn = supplyGrievanceValFromObjsGs_([row], canonical, legacy);
+    // Only touch grievance cells when draft explicitly has Yes/No — avoid getValue
+    // (forces sheet flush) on every row for columns the user didn't change.
+    if (draftYn !== 'Yes' && draftYn !== 'No') return;
     var yn = draftYn;
-    if (draftYn === 'Yes' || draftYn === 'No') {
-      try { sheet.getRange(targetRow, col).setValue(draftYn); } catch (e) { /* ignore */ }
-    } else {
-      try {
-        yn = supplyNormalizeGrievanceYesNoGs_(sheet.getRange(targetRow, col).getValue());
-      } catch (e) { /* ignore */ }
-    }
+    try { sheet.getRange(targetRow, col).setValue(draftYn); } catch (e) { /* ignore */ }
     var note = supplyGrievanceNoteFromRowGs_(row, canonical);
     var noteCol = millFindHeaderColGs_(headers, [supplyGrievanceNoteKeyGs_(canonical)]);
     if (yn === 'Yes' && note) {
@@ -6332,14 +6363,15 @@ function millApplyGrievanceNotesOnRowGs_(sheet, headers, targetRow, row) {
       if (noteCol) {
         try { sheet.getRange(targetRow, noteCol).setValue(note); } catch (e) { /* ignore */ }
       }
-    } else if (yn === 'No' || (yn === 'Yes' && !note)) {
+    } else {
       try { sheet.getRange(targetRow, col).setNote(''); } catch (e) { /* ignore */ }
       if (noteCol) {
         try { sheet.getRange(targetRow, noteCol).clearContent(); } catch (e) { /* ignore */ }
       }
     }
   });
-  try { SpreadsheetApp.flush(); } catch (e) { /* ignore */ }
+  // No SpreadsheetApp.flush() here — flushing per row on a large Mill sheet
+  // is what made 3-row submits take ~2 minutes. Writes flush at end of request.
 }
 
 function supplyGrievanceNamedKeysGs_(canonical) {
