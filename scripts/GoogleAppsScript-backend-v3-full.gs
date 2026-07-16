@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-no-flush',
+        version: 'v3-supply-submit-flush-per-row',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5996,8 +5996,13 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
   // getFormula/copyTo (each forces a sheet flush and dominates submit time).
   if (!needInsert) millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
 
-  // Keep in-memory millData in sync from the patch — do NOT re-read the row
-  // (getValues flushes all pending writes and is very slow on wide sheets).
+  // CRITICAL: flush once per appended row. Without this, buffered setValues + the
+  // next insertRowAfter shift row numbers and later rows silently fail to land
+  // (UI still reports ok because millData was updated in memory only).
+  // One flush/row is far cheaper than the old per-grievance getValue flush storm.
+  try { SpreadsheetApp.flush(); } catch (eFlush) { /* ignore */ }
+
+  // Keep in-memory millData in sync from the patch (avoid a second full-row read).
   var rowArr = (millData[targetRow - 1] || millHeaders.map(function() { return ''; })).slice();
   Object.keys(patch).forEach(function(k) {
     var col = millHeaders.indexOf(k);
