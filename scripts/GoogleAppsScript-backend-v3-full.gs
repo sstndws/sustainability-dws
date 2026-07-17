@@ -772,7 +772,7 @@ function doGet(e) {
       return respond({
         success: true,
         message: 'Apps Script is alive',
-        version: 'v3-supply-submit-kind-qty',
+        version: 'v3-supply-facility-from-plant',
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
@@ -5791,6 +5791,64 @@ function millWriteSupplyPatchCellsGs_(sheet, headers, targetRow, patch) {
   });
 }
 
+/**
+ * 2026+: Facility Name is NOT a sheet formula (no more VLOOKUP to Supplied CPO 2025).
+ * Task List import PLANT (template col A) must land as a plain value in
+ * FACILITY NAME CPO / FACILITY NAME PK. insertRowAfter often copies old formulas
+ * from the row above — clear those and force-write the Task List plant value.
+ */
+function millForceWriteFacilityFromPlantGs_(sheet, headers, targetRow, row, patch) {
+  if (!sheet || !headers || !targetRow) return;
+  var src = Object.assign({}, patch || {}, row || {});
+  var kind = supplySubmitKindFromDraftGs_(src);
+  var facCpo = '';
+  var facPk = '';
+  if (kind === 'CPO' || kind === 'BOTH') {
+    facCpo = supplyFacilityFromDraftGs_(src, 'FACILITY NAME CPO', kind === 'BOTH' ? 'BOTH' : 'CPO');
+  }
+  if (kind === 'PK' || kind === 'BOTH') {
+    facPk = supplyFacilityFromDraftGs_(src, 'FACILITY NAME PK', kind === 'BOTH' ? 'BOTH' : 'PK');
+  }
+  // Also accept already-resolved patch keys.
+  if (!facCpo && patch && patch['FACILITY NAME CPO']) facCpo = String(patch['FACILITY NAME CPO']).trim();
+  if (!facPk && patch && patch['FACILITY NAME PK']) facPk = String(patch['FACILITY NAME PK']).trim();
+
+  function writeFac_(header, value) {
+    var col = headers.indexOf(header);
+    if (col < 0) return;
+    var cell = sheet.getRange(targetRow, col + 1);
+    try {
+      var f = String(cell.getFormula() || '').trim();
+      if (f) cell.clearContent();
+    } catch (eClr) { /* ignore */ }
+    if (value) cell.setValue(value);
+    else cell.clearContent();
+  }
+
+  if (kind === 'CPO') {
+    writeFac_('FACILITY NAME CPO', facCpo);
+    // CPO-only: do not leave a copied PK facility formula from the row above.
+    writeFac_('FACILITY NAME PK', '');
+  } else if (kind === 'PK') {
+    writeFac_('FACILITY NAME PK', facPk);
+    writeFac_('FACILITY NAME CPO', '');
+  } else if (kind === 'BOTH') {
+    writeFac_('FACILITY NAME CPO', facCpo);
+    writeFac_('FACILITY NAME PK', facPk);
+  } else if (supplyIsWasteSubmitKind_(kind)) {
+    var wasteMap = {
+      POME_ISCC: 'FACILITY NAME ISCC',
+      POME_INS: 'FACILITY NAME INS',
+      SHELL_GGL: 'FACILITY NAME SHELL',
+    };
+    var wh = wasteMap[kind];
+    if (wh) {
+      var wv = supplyFacilityFromDraftGs_(src, wh, kind);
+      writeFac_(wh, wv);
+    }
+  }
+}
+
 /** Salin rumus dari baris tetangga jika sel target belum punya rumus (setelah insert / slot kosong). */
 function millRestoreFormulaColumnsGs_(sheet, headers, targetRow) {
   var lastRow = sheet.getLastRow();
@@ -6006,14 +6064,23 @@ function millAppendSupplyRowGs_(millSheet, millHeaders, row, millData, state) {
     lastRow = insertAfter + 1;
     var emptyRow = millHeaders.map(function() { return ''; });
     millData.splice(targetRow - 1, 0, emptyRow);
+    // Break Facility Name formulas copied from the row above (often still point at
+    // Supplied CPO 2025). Values are written from Task List PLANT below.
+    ['FACILITY NAME CPO', 'FACILITY NAME PK', 'FACILITY NAME ISCC', 'FACILITY NAME INS', 'FACILITY NAME SHELL'].forEach(function(fh) {
+      var fc = millHeaders.indexOf(fh);
+      if (fc < 0) return;
+      try { millSheet.getRange(targetRow, fc + 1).clearContent(); } catch (eFac) { /* ignore */ }
+    });
   }
 
   millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetRow, patch);
+  millForceWriteFacilityFromPlantGs_(millSheet, millHeaders, targetRow, row, patch);
   var submitKind = supplySubmitKindFromDraftGs_(row);
   if (submitKind === 'CPO') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'CPO');
   else if (submitKind === 'PK') millClearOppositeSupplyColumnsGs_(millSheet, millHeaders, targetRow, 'PK');
   // insertRowAfter already copies formulas from the row above — skip per-column
   // getFormula/copyTo (each forces a sheet flush and dominates submit time).
+  // Never restore FACILITY NAME formulas — 2026+ uses Task List PLANT values.
   if (!needInsert) millRestoreFormulaColumnsGs_(millSheet, millHeaders, targetRow);
 
   // CRITICAL: flush once per appended row. Without this, buffered setValues + the
@@ -6867,9 +6934,13 @@ function submitSupplyDraft_(batchId, rows, meta) {
         resolveGrievanceKeysOnPatchGs_(identityPatch, millHeaders);
         identityPatch = millStripFormulaFromPatchGs_(identityPatch);
         millWriteSupplyPatchCellsGs_(millSheet, millHeaders, targetSheetRow, identityPatch);
+        millForceWriteFacilityFromPlantGs_(millSheet, millHeaders, targetSheetRow, row, identityPatch);
         mode = 'update';
       } else {
         mode = 'exists';
+        // Even on exact duplicate fingerprint, replace any leftover 2025 Facility Name formula
+        // with Task List PLANT value for this period.
+        millForceWriteFacilityFromPlantGs_(millSheet, millHeaders, targetSheetRow, row, buildSupplyPatchFromDraftGs_(row));
       }
       if (targetSheetRow) {
         millApplyGrievanceNotesOnRowGs_(millSheet, millHeaders, targetSheetRow, row);
