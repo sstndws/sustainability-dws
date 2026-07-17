@@ -24305,14 +24305,9 @@ function initDashboardApp() {
       return;
     }
 
-    // Demo account fallback — jika Supabase tidak dikonfigurasi.
-    const isStaffDemo =
-      emailNorm === 'trace123@gmail.com' &&
-      (passCompact === 'trace123!' || passCompact === 'trace123');
-    if (isStaffDemo) {
-      await finalizeSuccessfulLogin_(emailRaw, 'STAFF');
-    } else if (err) {
-      err.textContent = 'Invalid credentials. Please try again.';
+    // No hardcoded demo account — Supabase must be configured for sign-in.
+    if (err) {
+      err.textContent = 'Sign-in is not available. Configure Supabase auth.';
       err.style.display = 'block';
     }
   }
