@@ -301,6 +301,9 @@
     padding-block-end: 1.75rem;
     padding-inline: 1.25rem;
   }
+  .ov-ld__tagline {
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

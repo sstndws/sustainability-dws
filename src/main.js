@@ -24419,14 +24419,96 @@ function initDashboardApp() {
     btn.addEventListener('click', applyDefaultPanel_);
   });
 
-  // ─── SIDEBAR TOGGLE ─────────────────────────────────────
+  // ─── SIDEBAR TOGGLE (+ mobile drawer) ───────────────────
   const sidebar = document.getElementById('mainSidebar');
   const sidebarToggle = document.getElementById('sidebarToggle');
+  const dashMobileMenuBtn = document.getElementById('dashMobileMenuBtn');
+  const MOBILE_NAV_MQ = window.matchMedia('(max-width: 768px)');
+
+  function isMobileNav_() {
+    return MOBILE_NAV_MQ.matches;
+  }
+
+  function ensureSidebarBackdrop_() {
+    var existing = document.getElementById('sidebarBackdrop');
+    if (existing) return existing;
+    var backdrop = document.createElement('div');
+    backdrop.id = 'sidebarBackdrop';
+    backdrop.className = 'sidebar-backdrop';
+    backdrop.setAttribute('aria-hidden', 'true');
+    var body = sidebar && sidebar.parentElement;
+    if (body) body.appendChild(backdrop);
+    else document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', function() {
+      setMobileSidebarOpen_(false);
+    });
+    return backdrop;
+  }
+
+  function syncMobileMenuAria_(open) {
+    if (!dashMobileMenuBtn) return;
+    dashMobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    dashMobileMenuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  }
+
+  function setMobileSidebarOpen_(open) {
+    if (!sidebar) return;
+    var backdrop = ensureSidebarBackdrop_();
+    if (open) {
+      sidebar.classList.add('expanded', 'mobile-open');
+      backdrop.classList.add('is-visible');
+      backdrop.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('sidebar-drawer-open');
+    } else {
+      sidebar.classList.remove('mobile-open');
+      backdrop.classList.remove('is-visible');
+      backdrop.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('sidebar-drawer-open');
+    }
+    syncMobileMenuAria_(!!open);
+  }
+
   if (sidebar && sidebarToggle) {
     sidebarToggle.addEventListener('click', function(e) {
       e.stopPropagation();
+      if (isMobileNav_()) {
+        setMobileSidebarOpen_(!sidebar.classList.contains('mobile-open'));
+        return;
+      }
       sidebar.classList.toggle('expanded');
     });
+  }
+
+  if (sidebar && dashMobileMenuBtn) {
+    ensureSidebarBackdrop_();
+    dashMobileMenuBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (!isMobileNav_()) return;
+      setMobileSidebarOpen_(!sidebar.classList.contains('mobile-open'));
+    });
+  }
+
+  if (sidebar) {
+    sidebar.addEventListener('click', function(e) {
+      if (!isMobileNav_() || !sidebar.classList.contains('mobile-open')) return;
+      var navHit = e.target.closest('.nav-item[data-panel]');
+      if (navHit) setMobileSidebarOpen_(false);
+    });
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    if (!sidebar || !sidebar.classList.contains('mobile-open')) return;
+    setMobileSidebarOpen_(false);
+  });
+
+  function onMobileNavMqChange_() {
+    if (!isMobileNav_()) setMobileSidebarOpen_(false);
+  }
+  if (typeof MOBILE_NAV_MQ.addEventListener === 'function') {
+    MOBILE_NAV_MQ.addEventListener('change', onMobileNavMqChange_);
+  } else if (typeof MOBILE_NAV_MQ.addListener === 'function') {
+    MOBILE_NAV_MQ.addListener(onMobileNavMqChange_);
   }
 
   // ─── TRACEABILITY GROUP TOGGLE ──────────────────────────
