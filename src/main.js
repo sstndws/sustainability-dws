@@ -24337,7 +24337,7 @@ function initDashboardApp() {
 
   function clearClientSessionForLogout_() {
     if (!AUTH_GATE_ENABLED) {
-      finalizeSuccessfulLogin_('Dashboard User', 'STAFF');
+      finalizeSuccessfulLogin_('User', 'STAFF');
       return;
     }
     var le = document.getElementById('loginEmail');
@@ -24388,7 +24388,7 @@ function initDashboardApp() {
 
   (async function bootstrapAuth_() {
     if (!AUTH_GATE_ENABLED) {
-      await finalizeSuccessfulLogin_('Dashboard User', 'STAFF');
+      await finalizeSuccessfulLogin_('User', 'STAFF');
       return;
     }
     var sb = getSupabase();
