@@ -21840,6 +21840,57 @@ function initDashboardApp() {
     }
 
     /**
+     * Group mills under each facility from all period rows.
+     * Keeps latest Year/Month per (facility, mill) — not one global row per mill.
+     * Fixes year-only filter missing suppliers whose latest row lists another facility.
+     */
+    function pfGroupMillRowsByFacilityLatest_(rows, splitFacilitiesFn, buildCompanyFn) {
+      const byFacility = new Map();
+      const byFacMill = new Map();
+
+      (rows || []).forEach(function(r) {
+        const millKey = pfMillRowIdentityKey_(r);
+        const sk = pfMillRowPeriodSortKey_(r);
+        const rowNum = r._row || 0;
+        (splitFacilitiesFn(r) || []).forEach(function(fac) {
+          if (!pfIsValidFacilityName_(fac)) return;
+          const facKey = fac.trim().toUpperCase();
+          const dedupeKey = facKey + '\x1f' + millKey;
+          const existing = byFacMill.get(dedupeKey);
+          if (!existing || sk > existing.sortKey || (sk === existing.sortKey && rowNum > existing.rowNum)) {
+            byFacMill.set(dedupeKey, {
+              sortKey: sk,
+              rowNum: rowNum,
+              facKey: facKey,
+              facility: fac,
+              company: buildCompanyFn(r),
+            });
+          }
+        });
+      });
+
+      byFacMill.forEach(function(entry) {
+        if (!byFacility.has(entry.facKey)) {
+          byFacility.set(entry.facKey, {
+            facility: entry.facility,
+            facilityKey: entry.facKey,
+            companies: [],
+          });
+        }
+        byFacility.get(entry.facKey).companies.push(Object.assign({}, entry.company));
+      });
+
+      return byFacility;
+    }
+
+    /** Supply aggregation rows: all months in filtered year, else latest row per mill. */
+    function pfMillRowsForSupplyBuild_() {
+      const yFilter = pfGetPeriodFilters_().y;
+      if (yFilter) return pfMillRowsInPeriodScope_();
+      return pfMillRowsForBuild_();
+    }
+
+    /**
      * Mill Onboarding rows for Facility Performance:
      * - Month/Year filter set → rows for that period (year-only → latest month in that year per mill)
      * - All → latest Month+Year per mill (no duplicate historical rows)
@@ -22485,30 +22536,23 @@ function initDashboardApp() {
     }
 
     function pfBuildRows_() {
+      const periodRows = pfMillRowsInPeriodScope_();
+      const supplyRows = pfMillRowsForSupplyBuild_();
       const millRows = pfMillRowsForBuild_();
       const ttpLookup = pfBuildTtpLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
-      const millIspoLookup = pfBuildMillIspoLookup_(millRows);
-      const suppliedLookup = pfResolveSuppliedCpoLookup_(millRows);
+      const millIspoLookup = pfBuildMillIspoLookup_(supplyRows.length ? supplyRows : millRows);
+      const suppliedLookup = pfResolveSuppliedCpoLookup_(supplyRows);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
       const supplyLabel = pfSupplyDataSourceLabel_('cpo');
 
-      // Group mill rows by facility
-      const byFacility = new Map();
-      millRows.forEach(function(r) {
-        const facilities = pfSplitCpoFacilities_(r['FACILITY NAME CPO']);
-        const company = pfBuildCpoCompanyFromMillRow_(r, ttpLookup, ttpCertLookup);
+      const byFacility = pfGroupMillRowsByFacilityLatest_(
+        periodRows,
+        function(r) { return pfSplitCpoFacilities_(r['FACILITY NAME CPO']); },
+        function(r) { return pfBuildCpoCompanyFromMillRow_(r, ttpLookup, ttpCertLookup); }
+      );
 
-        facilities.forEach(function(fac) {
-          const key = fac.trim().toUpperCase();
-          if (!byFacility.has(key)) {
-            byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
-          }
-          byFacility.get(key).companies.push(Object.assign({}, company));
-        });
-      });
-
-      pfMergeSuppliedCpoSellers_(byFacility, suppliedLookup, millRows, ttpLookup, ttpCertLookup, _pfSuppliedCpoData);
+      pfMergeSuppliedCpoSellers_(byFacility, suppliedLookup, periodRows, ttpLookup, ttpCertLookup, _pfSuppliedCpoData);
 
       // For each facility, calculate % traceable from Supplied CPO
       byFacility.forEach(function(g) {
@@ -22562,34 +22606,24 @@ function initDashboardApp() {
      * Same algorithm as pfBuildRows_ but uses PK column + PK Supplied data.
      */
     function pfBuildPkGroups_() {
-      const millRows    = pfMillRowsForBuild_();
+      const periodRows = pfMillRowsInPeriodScope_();
+      const supplyRows = pfMillRowsForSupplyBuild_();
+      const millRows = pfMillRowsForBuild_();
       const ttpPkLookup = pfBuildTtpPkLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
-      const millIspoLookup = pfBuildMillIspoLookup_(millRows);
-      const suppliedLookup = pfResolveSuppliedPkLookup_(millRows);
+      const millIspoLookup = pfBuildMillIspoLookup_(supplyRows.length ? supplyRows : millRows);
+      const suppliedLookup = pfResolveSuppliedPkLookup_(supplyRows);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
       const supplyLabel = pfSupplyDataSourceLabel_('pk');
 
-      const byFacility = new Map();
-      millRows.forEach(function(r) {
-        // PK facilities from FACILITY NAME PK, plus any KCP names that leaked into
-        // FACILITY NAME CPO on stale sheet rows (KCP is always a PK facility).
-        const facilities = pfSplitPkFacilities_(r['FACILITY NAME PK'], r['FACILITY NAME CPO']);
-        if (!facilities.length) return;
-
-        const company = pfBuildPkCompanyFromMillRow_(r, ttpPkLookup, ttpCertLookup);
-
-        facilities.forEach(function(fac) {
-          const key = fac.trim().toUpperCase();
-          if (!byFacility.has(key)) {
-            byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
-          }
-          byFacility.get(key).companies.push(Object.assign({}, company));
-        });
-      });
+      const byFacility = pfGroupMillRowsByFacilityLatest_(
+        periodRows,
+        function(r) { return pfSplitPkFacilities_(r['FACILITY NAME PK'], r['FACILITY NAME CPO']); },
+        function(r) { return pfBuildPkCompanyFromMillRow_(r, ttpPkLookup, ttpCertLookup); }
+      );
 
       // Include Supplied PK sellers even without coordinates / FACILITY NAME PK link
-      pfMergeSuppliedPkSellers_(byFacility, suppliedLookup, millRows, ttpPkLookup, ttpCertLookup, _pfSuppliedPkData);
+      pfMergeSuppliedPkSellers_(byFacility, suppliedLookup, periodRows, ttpPkLookup, ttpCertLookup, _pfSuppliedPkData);
 
       // Calculate % PK traceable per facility
       byFacility.forEach(function(g) {

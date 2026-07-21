@@ -108,6 +108,47 @@ function pfDedupeMillRowsLatest_(rows) {
   return Array.from(byId.values());
 }
 
+function pfIsValidFacilityName_(name) {
+  const s = String(name || '').trim();
+  return !!s && s !== '—' && s !== '-';
+}
+
+function pfSplitCpoFacilities_(raw) {
+  return String(raw || '').split(/[,;|/]+/).map(function(f) { return f.trim(); }).filter(pfIsValidFacilityName_);
+}
+
+function pfGroupMillRowsByFacilityLatest_(rows, splitFacilitiesFn, buildCompanyFn) {
+  const byFacility = new Map();
+  const byFacMill = new Map();
+  (rows || []).forEach(function(r) {
+    const millKey = pfMillRowIdentityKey_(r);
+    const sk = pfMillRowPeriodSortKey_(r);
+    const rowNum = r._row || 0;
+    (splitFacilitiesFn(r) || []).forEach(function(fac) {
+      if (!pfIsValidFacilityName_(fac)) return;
+      const facKey = fac.trim().toUpperCase();
+      const dedupeKey = facKey + '\x1f' + millKey;
+      const existing = byFacMill.get(dedupeKey);
+      if (!existing || sk > existing.sortKey || (sk === existing.sortKey && rowNum > existing.rowNum)) {
+        byFacMill.set(dedupeKey, {
+          sortKey: sk,
+          rowNum: rowNum,
+          facKey: facKey,
+          facility: fac,
+          company: buildCompanyFn(r),
+        });
+      }
+    });
+  });
+  byFacMill.forEach(function(entry) {
+    if (!byFacility.has(entry.facKey)) {
+      byFacility.set(entry.facKey, { facility: entry.facility, facilityKey: entry.facKey, companies: [] });
+    }
+    byFacility.get(entry.facKey).companies.push(Object.assign({}, entry.company));
+  });
+  return byFacility;
+}
+
 function pfSellerMatchesCompany_(sellerUpper, companyName) {
   const co = String(companyName || '').trim().toUpperCase();
   return co === sellerUpper;
@@ -234,6 +275,36 @@ assert(mainJs.includes('pfResolveSuppliedCpoLookup_'), 'resolved CPO lookup');
 assert(mainJs.includes('if (!pfShouldUseLegacySuppliedSheets_()) return [];'), 'skip legacy fetch for 2026');
 assert(mainJs.includes('data-company-key'), 'company key on mill profile open button');
 assert(mainJs.includes('pfSellerMatchesMillRow_(key, row)'), 'validate mill row matches clicked company');
+assert(mainJs.includes('pfGroupMillRowsByFacilityLatest_'), 'per-facility mill dedupe for year filter');
+
+// Year-only: global dedupe drops mills whose latest row lists another facility
+const crcYear2026 = [
+  { 'COMPANY NAME': 'SEPANJANG INTISURYA MULIA', 'UML ID': 'PO1', 'FACILITY NAME CPO': 'CRC', MONTH: '1', YEAR: '2026', _row: 321 },
+  { 'COMPANY NAME': 'PALM MAS ASRI', 'UML ID': 'PO2', 'FACILITY NAME CPO': 'CRC', MONTH: '2', YEAR: '2026', _row: 408 },
+  { 'COMPANY NAME': 'BUKIT PALEM', 'UML ID': 'PO3', 'FACILITY NAME CPO': 'CRC', MONTH: '3', YEAR: '2026', _row: 676 },
+  { 'COMPANY NAME': 'PALM MAS ASRI', 'UML ID': 'PO2', 'FACILITY NAME CPO': 'OTHER', MONTH: '4', YEAR: '2026', _row: 700 },
+  { 'COMPANY NAME': 'SEPANJANG INTISURYA MULIA', 'UML ID': 'PO1', 'FACILITY NAME CPO': 'CRC', MONTH: '6', YEAR: '2026', _row: 1070 },
+];
+const globalDeduped = pfDedupeMillRowsLatest_(crcYear2026);
+const crcFromGlobal = globalDeduped.filter(function(r) {
+  return pfSplitCpoFacilities_(r['FACILITY NAME CPO']).some(function(f) { return f.toUpperCase() === 'CRC'; });
+});
+assert(crcFromGlobal.length === 2, 'global dedupe drops mills whose latest row lists another facility');
+assert(!crcFromGlobal.some(function(r) {
+  return String(r['COMPANY NAME'] || '').toUpperCase().indexOf('PALM MAS') !== -1;
+}), 'PALM MAS ASRI missing from global CRC grouping');
+
+const byFac = pfGroupMillRowsByFacilityLatest_(
+  crcYear2026,
+  function(r) { return pfSplitCpoFacilities_(r['FACILITY NAME CPO']); },
+  function(r) {
+    return { company: String(r['COMPANY NAME'] || '').trim().toUpperCase() };
+  }
+);
+const crcCompanies = (byFac.get('CRC') || { companies: [] }).companies;
+assert(crcCompanies.length === 3, 'per-facility dedupe lists all CRC suppliers in year');
+assert(crcCompanies.some(function(c) { return c.company === 'PALM MAS ASRI'; }), 'PALM MAS ASRI still under CRC');
+assert(crcCompanies.some(function(c) { return c.company === 'BUKIT PALEM'; }), 'BUKIT PALEM still under CRC');
 
 console.log('\nPF TTM coordinate tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
