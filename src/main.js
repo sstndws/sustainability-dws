@@ -21500,11 +21500,30 @@ function initDashboardApp() {
 
     function pfResolveCompanyMillRow_(c) {
       if (!c) return null;
-      if (c.millRowNum) return c.millRowNum;
       const key = String(c.companyKey || c.company || '').trim().toUpperCase();
-      if (!key) return null;
-      const hit = pfFindMillRowForSeller_(key, pfMillRowsForBuild_());
-      return hit ? hit._row : null;
+      if (!key) return c.millRowNum || null;
+
+      function rowMatchesCompany_(row) {
+        return row && pfSellerMatchesMillRow_(key, row);
+      }
+
+      // Always resolve by company identity for the active period — stale _row on shared
+      // company objects can point at a different mill when the same row is listed under
+      // multiple facilities.
+      const scopedHit = pfFindMillRowForSeller_(key, pfMillRowsForBuild_());
+      if (scopedHit) return scopedHit._row;
+
+      if (c.millRowNum) {
+        const byNum = pfFindMillRowByNum_(c.millRowNum);
+        if (rowMatchesCompany_(byNum)) return c.millRowNum;
+      }
+
+      if (!pfShouldStrictMillLookup_()) {
+        const anyHit = pfFindMillRowForSeller_(key, pfAllMillRowsForLookup_());
+        if (anyHit) return anyHit._row;
+      }
+
+      return null;
     }
 
     function pfCompanyGroupValue_(r) {
@@ -22485,7 +22504,7 @@ function initDashboardApp() {
           if (!byFacility.has(key)) {
             byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
           }
-          byFacility.get(key).companies.push(company);
+          byFacility.get(key).companies.push(Object.assign({}, company));
         });
       });
 
@@ -22565,7 +22584,7 @@ function initDashboardApp() {
           if (!byFacility.has(key)) {
             byFacility.set(key, { facility: fac, facilityKey: key, companies: [] });
           }
-          byFacility.get(key).companies.push(company);
+          byFacility.get(key).companies.push(Object.assign({}, company));
         });
       });
 
@@ -22688,25 +22707,43 @@ function initDashboardApp() {
         ? '<span class="pf-eudr-flag eudr-status-val eudr-status-val--potential">EUDR Potential</span>'
         : '';
       const rowNum = pfResolveCompanyMillRow_(c);
+      const companyKey = String(c.companyKey || c.company || '').trim().toUpperCase();
       if (!rowNum) {
         return '<td class="pf-td-company"><span class="mill-name">' + escHtml(c.company) + '</span>' + eudrBadge + '</td>';
       }
       return ''
         + '<td class="pf-td-company">'
-        + '<button type="button" class="pf-company-open" data-mill-row="' + rowNum + '" title="View mill profile">'
+        + '<button type="button" class="pf-company-open"'
+        + ' data-mill-row="' + rowNum + '"'
+        + (companyKey ? ' data-company-key="' + escAttr_(companyKey) + '"' : '')
+        + ' title="View mill profile">'
         + '<span class="mill-name">' + escHtml(c.company) + '</span>'
         + '</button>'
         + eudrBadge
         + '</td>';
     }
 
-    async function pfOpenMillProfileByRowNum_(rowNum) {
+    async function pfOpenMillProfileByRowNum_(rowNum, companyKey) {
       const num = parseInt(rowNum, 10);
-      if (!num) return;
+      const key = String(companyKey || '').trim().toUpperCase();
+      if (!num && !key) return;
       try {
         if (!allData || !allData.length) await loadMillData();
-        const src = pfAllMillRowsForLookup_();
-        const row = src.find(function(r) { return r._row === num; });
+        let row = null;
+        if (key) {
+          row = pfFindMillRowForSeller_(key, pfMillRowsForBuild_());
+          if (!row && !pfShouldStrictMillLookup_()) {
+            row = pfFindMillRowForSeller_(key, pfAllMillRowsForLookup_());
+          }
+        }
+        if (!row && num) {
+          const src = pfAllMillRowsForLookup_();
+          row = src.find(function(r) { return r._row === num; }) || null;
+          if (row && key && !pfSellerMatchesMillRow_(key, row)) {
+            row = pfFindMillRowForSeller_(key, pfMillRowsForBuild_())
+              || (!pfShouldStrictMillLookup_() ? pfFindMillRowForSeller_(key, pfAllMillRowsForLookup_()) : null);
+          }
+        }
         if (!row) {
           alert('Mill profile not found in Mill Registry.');
           return;
@@ -22734,7 +22771,7 @@ function initDashboardApp() {
       if (companyBtn && body.contains(companyBtn)) {
         e.preventDefault();
         e.stopPropagation();
-        pfOpenMillProfileByRowNum_(companyBtn.dataset.millRow);
+        pfOpenMillProfileByRowNum_(companyBtn.dataset.millRow, companyBtn.dataset.companyKey);
         return;
       }
       const groupRow = e.target.closest('.pf-group-row');

@@ -232,6 +232,8 @@ assert(mainJs.includes('pfShouldUseLegacySuppliedSheets_'), 'legacy sheet gate')
 assert(mainJs.includes('pfBuildMillSuppliedLookup_'), 'mill supply lookup');
 assert(mainJs.includes('pfResolveSuppliedCpoLookup_'), 'resolved CPO lookup');
 assert(mainJs.includes('if (!pfShouldUseLegacySuppliedSheets_()) return [];'), 'skip legacy fetch for 2026');
+assert(mainJs.includes('data-company-key'), 'company key on mill profile open button');
+assert(mainJs.includes('pfSellerMatchesMillRow_(key, row)'), 'validate mill row matches clicked company');
 
 console.log('\nPF TTM coordinate tests: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
