@@ -1,9 +1,18 @@
 /**
- * Simulates EUDR group-name backfill for mills where the newest period row lacks GROUP NAME.
+ * Simulates EUDR registry dedup: UML ID primary key, group name backfill.
  */
 import assert from 'node:assert/strict';
 
-function eudrEntityKey_(group, company, mill) {
+function eudrNormalizeUmlId_(val) {
+  const s = String(val == null ? '' : val).trim();
+  if (!s || s === '—' || s === '-') return '';
+  if (/^n\/?a$/i.test(s)) return '';
+  return s.toLowerCase();
+}
+
+function eudrEntityKey_(group, company, mill, umlId) {
+  const uml = eudrNormalizeUmlId_(umlId);
+  if (uml) return 'uml:' + uml;
   return [group, company, mill].map(function(s) {
     return String(s || '').trim().toLowerCase();
   }).join('|');
@@ -26,6 +35,10 @@ function millPickField_(row, keys) {
   return '';
 }
 
+function eudrPickUmlId_(row) {
+  return millPickField_(row, ['UML ID']);
+}
+
 function millYearVal(r) { return String(r.YEAR || r['YEAR'] || '').trim(); }
 function millMonthVal(r) { return String(r.MONTH || r['MONTH'] || '').trim(); }
 
@@ -33,11 +46,26 @@ function eudrCompanyMillKey_(company, mill) {
   return eudrEntityKey_('', company, mill);
 }
 
-function eudrBestGroupNameForMill_(allData, company, mill) {
+function eudrRegistryDedupKey_(company, mill, umlId) {
+  const uml = eudrNormalizeUmlId_(umlId);
+  if (uml) return 'uml:' + uml;
+  return eudrCompanyMillKey_(company, mill);
+}
+
+function eudrBestGroupNameForMill_(allData, company, mill, umlId) {
+  const uml = eudrNormalizeUmlId_(umlId);
+  if (uml) {
+    for (let i = 0; i < (allData || []).length; i++) {
+      const r = allData[i];
+      if (eudrNormalizeUmlId_(eudrPickUmlId_(r)) !== uml) continue;
+      const g = pickMillGroupName_(r);
+      if (g) return g;
+    }
+  }
   let best = '';
   (allData || []).forEach(function(r) {
     if (pickMillCompanyName_(r) !== company) return;
-    if (millPickField_(r, ['MILL NAME', 'Mill Name']) !== mill) return;
+    if (millPickField_(r, ['MILL NAME']) !== mill) return;
     const g = pickMillGroupName_(r);
     if (g) best = g;
   });
@@ -50,8 +78,9 @@ function eudrBuildMillRegistry_(allData) {
   const dedupArr = [];
   (allData || []).forEach(function(r) {
     const company = pickMillCompanyName_(r);
-    const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-    const key = eudrCompanyMillKey_(company, mill);
+    const mill = millPickField_(r, ['MILL NAME']);
+    const umlId = eudrPickUmlId_(r);
+    const key = eudrRegistryDedupKey_(company, mill, umlId);
     if (!company || !mill || !key || key === '|') return;
     const group = pickMillGroupName_(r);
     if (group) groups[key] = group;
@@ -71,45 +100,36 @@ function eudrBuildMillRegistry_(allData) {
   });
   return dedupArr.map(function(r) {
     const company = pickMillCompanyName_(r);
-    const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-    const cmKey = eudrCompanyMillKey_(company, mill);
-    const group = pickMillGroupName_(r) || groups[cmKey] || eudrBestGroupNameForMill_(allData, company, mill);
-    return { 'GROUP NAME': group, 'COMPANY NAME': company, 'MILL NAME': mill };
-  });
-}
-
-// CITRA MAHKOTA scenario: newest row missing group, older row has KPN PLANTATION
-const allData = [
-  { YEAR: '2024', MONTH: '6', 'GROUP NAME': 'KPN PLANTATION', 'COMPANY NAME': 'CITRA MAHKOTA', 'MILL NAME': 'CITRA MAHKOTA' },
-  { YEAR: '2025', MONTH: '12', 'GROUP NAME': '', 'COMPANY NAME': 'CITRA MAHKOTA', 'MILL NAME': 'CITRA MAHKOTA' },
-];
-
-const out = eudrBuildMillRegistry_(allData);
-assert.equal(out.length, 1, 'one mill entry');
-assert.equal(out[0]['GROUP NAME'], 'KPN PLANTATION', 'group backfilled from older row');
-assert.equal(out[0]['COMPANY NAME'], 'CITRA MAHKOTA');
-
-// Old bug: dedup by group+company+mill would produce two entries
-function oldBuild(allData) {
-  const seen = {};
-  const dedupArr = [];
-  allData.forEach(function(r) {
-    const group = pickMillGroupName_(r);
-    const company = pickMillCompanyName_(r);
     const mill = millPickField_(r, ['MILL NAME']);
-    const key = eudrEntityKey_(group, company, mill);
-    if (seen[key] === undefined) {
-      seen[key] = dedupArr.length;
-      dedupArr.push(r);
-    }
-  });
-  return dedupArr.map(function(r) {
-    return { 'GROUP NAME': pickMillGroupName_(r), 'COMPANY NAME': pickMillCompanyName_(r) };
+    const umlId = eudrPickUmlId_(r);
+    const dedupKey = eudrRegistryDedupKey_(company, mill, umlId);
+    const group = pickMillGroupName_(r) || groups[dedupKey] || eudrBestGroupNameForMill_(allData, company, mill, umlId);
+    return { 'GROUP NAME': group, 'COMPANY NAME': company, 'MILL NAME': mill, 'UML ID': umlId };
   });
 }
 
-const oldOut = oldBuild(allData);
-assert.equal(oldOut.length, 2, 'old logic duplicated mill');
-assert.ok(oldOut.some(function(r) { return !r['GROUP NAME']; }), 'old logic had empty group row');
+// Group backfill: newest period row missing group
+const patiware = [
+  { YEAR: '2024', MONTH: '6', 'GROUP NAME': 'KPN PLANTATION', 'COMPANY NAME': 'PATIWARE', 'MILL NAME': 'PATIWARE', 'UML ID': 'PO100203923' },
+  { YEAR: '2025', MONTH: '12', 'GROUP NAME': '', 'COMPANY NAME': 'PATIWARE', 'MILL NAME': 'PATIWARE', 'UML ID': 'PO100203923' },
+];
+const patiOut = eudrBuildMillRegistry_(patiware);
+assert.equal(patiOut.length, 1);
+assert.equal(patiOut[0]['GROUP NAME'], 'KPN PLANTATION');
+assert.equal(patiOut[0]['UML ID'], 'PO100203923');
+
+// Same company+mill, different UML → separate entries
+const multiUml = [
+  { YEAR: '2025', MONTH: '12', 'COMPANY NAME': 'ACME', 'MILL NAME': 'ACME MILL', 'UML ID': 'PO1000000001' },
+  { YEAR: '2025', MONTH: '12', 'COMPANY NAME': 'ACME', 'MILL NAME': 'ACME MILL', 'UML ID': 'PO1000000002' },
+];
+assert.equal(eudrBuildMillRegistry_(multiUml).length, 2);
+
+// Same UML, different mill spelling → one entry
+const sameUml = [
+  { YEAR: '2024', MONTH: '1', 'COMPANY NAME': 'EKAJAYA', 'MILL NAME': 'EKA JAYA MULTI PERKASA', 'UML ID': 'PO1000004490' },
+  { YEAR: '2025', MONTH: '12', 'COMPANY NAME': 'EKAJAYA', 'MILL NAME': 'EKAJAYA MULTI PERKASA', 'UML ID': 'PO1000004490' },
+];
+assert.equal(eudrBuildMillRegistry_(sameUml).length, 1);
 
 console.log('test-eudr-group-backfill: OK');

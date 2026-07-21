@@ -17433,10 +17433,29 @@ function initDashboardApp() {
   ];
   let eudrExportSelectedColIds = EUDR_EXPORT_DEFAULT_COL_IDS.slice();
 
-  function eudrEntityKey_(group, company, mill) {
+  function eudrEntityKey_(group, company, mill, umlId) {
+    const uml = eudrNormalizeUmlId_(umlId);
+    if (uml) return 'uml:' + uml;
     return [group, company, mill].map(function(s) {
       return String(s || '').trim().toLowerCase();
     }).join('|');
+  }
+
+  function eudrNormalizeUmlId_(val) {
+    const s = String(val == null ? '' : val).trim();
+    if (!s || s === '—' || s === '-') return '';
+    if (/^n\/?a$/i.test(s)) return '';
+    return s.toLowerCase();
+  }
+
+  function eudrPickUmlId_(row) {
+    return millPickField_(row, ['UML ID', 'UML Id', 'UML_ID']);
+  }
+
+  function eudrRegistryDedupKey_(company, mill, umlId) {
+    const uml = eudrNormalizeUmlId_(umlId);
+    if (uml) return 'uml:' + uml;
+    return eudrCompanyMillKey_(company, mill);
   }
 
   function eudrPickField_(row, keys) {
@@ -17507,7 +17526,16 @@ function initDashboardApp() {
     return eudrEntityKey_('', company, mill);
   }
 
-  function eudrBestGroupNameForMill_(company, mill) {
+  function eudrBestGroupNameForMill_(company, mill, umlId) {
+    const uml = eudrNormalizeUmlId_(umlId);
+    if (uml) {
+      for (let i = 0; i < (allData || []).length; i++) {
+        const r = allData[i];
+        if (eudrNormalizeUmlId_(eudrPickUmlId_(r)) !== uml) continue;
+        const g = pickMillGroupName_(r);
+        if (g) return g;
+      }
+    }
     let best = '';
     (allData || []).forEach(function(r) {
       if (pickMillCompanyName_(r) !== company) return;
@@ -17526,23 +17554,25 @@ function initDashboardApp() {
     }
     const company = String(row['COMPANY NAME'] || '').trim();
     const mill = String(row['MILL NAME'] || '').trim();
-    const fromMill = eudrBestGroupNameForMill_(company, mill);
+    const umlId = eudrPickUmlId_(row) || String(row['UML ID'] || '').trim();
+    const fromMill = eudrBestGroupNameForMill_(company, mill, umlId);
     if (fromMill) row['GROUP NAME'] = fromMill;
     return row;
   }
 
   function eudrBuildMillRegistry_() {
-    // Deduplicate by company|mill — group name may be blank on the newest period row
-    // but filled on an older row for the same mill (detail modal already merges this way).
-    const seen = {};  // company|mill key → index in dedupArr
-    const groups = {}; // company|mill key → best group name seen
+    // One list row per UML ID when present; same company+mill with different UML IDs stay separate.
+    // Without UML ID, fall back to company|mill (latest period). Group name backfilled from any matching row.
+    const seen = {};
+    const groups = {};
     const dedupArr = [];
     (allData || [])
       .filter(millRowHasCompanyName_)
       .forEach(function(r) {
         const company = pickMillCompanyName_(r);
         const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-        const key = eudrCompanyMillKey_(company, mill);
+        const umlId = eudrPickUmlId_(r);
+        const key = eudrRegistryDedupKey_(company, mill, umlId);
         if (!company || !mill || !key || key === '|') return;
         const group = pickMillGroupName_(r);
         if (group) groups[key] = group;
@@ -17565,14 +17595,15 @@ function initDashboardApp() {
       .map(function(r) {
         const company = pickMillCompanyName_(r);
         const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-        const cmKey = eudrCompanyMillKey_(company, mill);
-        const group = pickMillGroupName_(r) || groups[cmKey] || eudrBestGroupNameForMill_(company, mill);
-        const entityKey = eudrEntityKey_(group, company, mill);
+        const umlId = eudrPickUmlId_(r);
+        const dedupKey = eudrRegistryDedupKey_(company, mill, umlId);
+        const group = pickMillGroupName_(r) || groups[dedupKey] || eudrBestGroupNameForMill_(company, mill, umlId);
+        const entityKey = eudrEntityKey_(group, company, mill, umlId);
         return {
           'GROUP NAME': group,
           'COMPANY NAME': company,
           'MILL NAME': mill,
-          'UML ID': String(r['UML ID'] || '').trim(),
+          'UML ID': umlId,
           'PROVINCE': String(r['PROVINCE'] || r['Province'] || '').trim(),
           'SUPPLY TO': eudrSupplyToFromMill_(r),
           'SUPPLY TO PK': eudrSupplyPkFromMill_(r),
@@ -17610,14 +17641,17 @@ function initDashboardApp() {
       const g = String(r['GROUP NAME'] || '').trim();
       const c = String(r['COMPANY NAME'] || '').trim();
       const m = String(r['MILL NAME'] || '').trim();
-      sheetMap[eudrEntityKey_(g, c, m)] = r;
+      const uml = eudrNormalizeUmlId_(r['UML ID']);
+      sheetMap[eudrEntityKey_(g, c, m, r['UML ID'])] = r;
+      if (uml) sheetMap['uml:' + uml] = r;
       const cmKey = eudrCompanyMillKey_(c, m);
       if (cmKey && cmKey !== '|' && !sheetMap[cmKey]) sheetMap[cmKey] = r;
     });
     return (mills || []).map(function(m) {
-      const entityKey = eudrEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME']);
+      const entityKey = m._entityKey || eudrEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME'], m['UML ID']);
+      const uml = eudrNormalizeUmlId_(m['UML ID']);
       const cmKey = eudrCompanyMillKey_(m['COMPANY NAME'], m['MILL NAME']);
-      const hit = sheetMap[entityKey] || (cmKey ? sheetMap[cmKey] : null);
+      const hit = sheetMap[entityKey] || (uml ? sheetMap['uml:' + uml] : null) || (cmKey ? sheetMap[cmKey] : null);
       var cap = m['MILL CAPACITY'] || '';
       var supply = m['SUPPLY TO'] || '';
       var out = Object.assign({}, m, {
@@ -18950,16 +18984,22 @@ function initDashboardApp() {
 
   function eudrFindMillRowsForEntity_(eudrRow) {
     if (!eudrRow || !Array.isArray(allData) || !allData.length) return [];
+    const uml = eudrNormalizeUmlId_(eudrRow['UML ID']);
+    if (uml) {
+      return allData.filter(function(r) {
+        return eudrNormalizeUmlId_(eudrPickUmlId_(r)) === uml;
+      });
+    }
     const group = String(eudrRow['GROUP NAME'] || '').trim();
     const company = String(eudrRow['COMPANY NAME'] || '').trim();
     const mill = String(eudrRow['MILL NAME'] || '').trim();
-    const key = eudrRow._entityKey || eudrEntityKey_(group, company, mill);
+    const key = eudrRow._entityKey || eudrEntityKey_(group, company, mill, eudrRow['UML ID']);
     const ccKey = company && mill ? eudrEntityKey_('', company, mill) : '';
     return allData.filter(function(r) {
       const rg = String(r['GROUP NAME'] || r['Group Name'] || r['Grup Name'] || '').trim();
       const rc = String(r['COMPANY NAME'] || r['Company Name'] || '').trim();
       const rm = String(r['MILL NAME'] || r['Mill Name'] || '').trim();
-      if (eudrEntityKey_(rg, rc, rm) === key) return true;
+      if (eudrEntityKey_(rg, rc, rm, eudrPickUmlId_(r)) === key) return true;
       if (ccKey && eudrEntityKey_('', rc, rm) === ccKey) return true;
       return false;
     });
