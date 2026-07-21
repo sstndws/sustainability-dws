@@ -1,15 +1,12 @@
 /**
- * Risk-level explanation — mirrors Mill Onboarding sheet formulas (English copy).
+ * Risk-level explanation — anchored to Result Risk Level shown in the UI (English copy).
  *
  * RESULT RISK LEVEL:
  *   IF BUYER NO BUY LIST = Yes → HIGH
  *   ELSE → RISK LEVEL
  *
- * RISK LEVEL:
- *   IF COMPLIMENT/NOT COMPLIMENT = NC → HIGH
- *   IF C and TOTAL SCORE >= 4 → LOW
- *   IF C and TOTAL SCORE <= 2 → HIGH
- *   IF C and TOTAL SCORE = 3 → MEDIUM
+ * RISK LEVEL (when Compliment = C):
+ *   NC → HIGH · score ≤ 2 → HIGH · score 3 → MEDIUM · score ≥ 4 → LOW
  */
 
 const FIELD_ALIASES = {
@@ -69,10 +66,15 @@ export function millRowIsHighRisk_(row) {
   return String(millResolvedRiskLevelFromRow_(row)).toLowerCase().includes('high');
 }
 
+function scorePhrase_(totalScore) {
+  if (totalScore === null) return '';
+  return ' (Total Score: ' + totalScore + ')';
+}
+
 /**
  * @param {object} row — mill sheet row
  * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
- * @returns {string} English explanation for the resolved risk level
+ * @returns {string} English explanation for the displayed Result Risk Level
  */
 export function millRiskReason_(row, opts) {
   opts = opts || {};
@@ -84,38 +86,48 @@ export function millRiskReason_(row, opts) {
   const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
   const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
   const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
-
-  if (isNblYes(nbl)) {
-    return 'Listed on No Buy List — Result Risk Level set to HIGH';
-  }
-
-  if (compliment === 'NC') {
-    return 'Legality status: Not Compliment (NC) — classified as HIGH risk';
-  }
-
-  if (compliment === 'C' && totalScore !== null) {
-    if (totalScore <= 2) {
-      return 'Compliment (C) with Total Score ≤ 2 — classified as HIGH risk (score: ' + totalScore + ')';
-    }
-    if (totalScore === 3) {
-      return 'Compliment (C) with Total Score 3 — classified as MEDIUM risk';
-    }
-    if (totalScore >= 4) {
-      return 'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: ' + totalScore + ')';
-    }
-  }
+  const scoreTxt = scorePhrase_(totalScore);
 
   if (resolved === 'HIGH') {
-    return 'Classified as HIGH risk based on assessment score and legality status';
-  }
-  if (resolved === 'MEDIUM') {
-    return 'Classified as MEDIUM risk based on assessment score and legality status';
-  }
-  if (resolved === 'LOW') {
-    return 'Classified as LOW risk based on assessment score and legality status';
+    if (isNblYes(nbl)) {
+      return 'On No Buy List — Result Risk Level elevated to HIGH';
+    }
+    if (compliment === 'NC') {
+      return 'Legality: Not Compliment (NC) — Result Risk Level is HIGH';
+    }
+    if (compliment === 'C' && totalScore !== null && totalScore <= 2) {
+      return 'Compliment (C) with low Total Score (≤ 2) — Result Risk Level is HIGH' + scoreTxt;
+    }
+    if (compliment === 'C' && totalScore !== null) {
+      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is HIGH';
+    }
+    return 'Assessment outcome — Result Risk Level is HIGH';
   }
 
-  return 'Risk level: ' + resolved;
+  if (resolved === 'MEDIUM') {
+    if (compliment === 'C' && totalScore === 3) {
+      return 'Compliment (C) with moderate Total Score (3) — Result Risk Level is MEDIUM';
+    }
+    if (compliment === 'C' && totalScore !== null) {
+      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is MEDIUM';
+    }
+    if (compliment === 'NC') {
+      return 'Legality flagged — Result Risk Level is MEDIUM';
+    }
+    return 'Assessment outcome — Result Risk Level is MEDIUM';
+  }
+
+  if (resolved === 'LOW') {
+    if (compliment === 'C' && totalScore !== null && totalScore >= 4) {
+      return 'Compliment (C) with strong Total Score (≥ 4) — Result Risk Level is LOW' + scoreTxt;
+    }
+    if (compliment === 'C' && totalScore !== null) {
+      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is LOW';
+    }
+    return 'Assessment outcome — Result Risk Level is LOW';
+  }
+
+  return 'Result Risk Level: ' + resolved;
 }
 
 /** @deprecated Use millRiskReason_ — kept for callers not yet migrated. */

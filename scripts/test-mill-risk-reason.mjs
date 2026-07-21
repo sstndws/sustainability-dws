@@ -16,7 +16,7 @@ assert.equal(
     'BUYER NO BUY LIST': 'Yes',
     'RESULT RISK LEVEL': 'HIGH',
   }, opts),
-  'Listed on No Buy List — Result Risk Level set to HIGH'
+  'On No Buy List — Result Risk Level elevated to HIGH'
 );
 
 assert.equal(
@@ -24,9 +24,8 @@ assert.equal(
     'BUYER NO BUY LIST': 'No',
     'COMPLIMENT/NOT COMPLIMENT': 'NC',
     'RESULT RISK LEVEL': 'HIGH',
-    'RISK LEVEL': 'HIGH',
   }, opts),
-  'Legality status: Not Compliment (NC) — classified as HIGH risk'
+  'Legality: Not Compliment (NC) — Result Risk Level is HIGH'
 );
 
 assert.equal(
@@ -35,9 +34,8 @@ assert.equal(
     'COMPLIMENT/NOT COMPLIMENT': 'C',
     'TOTAL SCORE': 1,
     'RESULT RISK LEVEL': 'HIGH',
-    'RISK LEVEL': 'HIGH',
   }, opts),
-  'Compliment (C) with Total Score ≤ 2 — classified as HIGH risk (score: 1)'
+  'Compliment (C) with low Total Score (≤ 2) — Result Risk Level is HIGH (Total Score: 1)'
 );
 
 assert.equal(
@@ -46,9 +44,8 @@ assert.equal(
     'COMPLIMENT/NOT COMPLIMENT': 'C',
     'TOTAL SCORE': 3,
     'RESULT RISK LEVEL': 'MEDIUM',
-    'RISK LEVEL': 'MEDIUM',
   }, opts),
-  'Compliment (C) with Total Score 3 — classified as MEDIUM risk'
+  'Compliment (C) with moderate Total Score (3) — Result Risk Level is MEDIUM'
 );
 
 assert.equal(
@@ -57,9 +54,29 @@ assert.equal(
     'COMPLIMENT/NOT COMPLIMENT': 'C',
     'TOTAL SCORE': 4,
     'RESULT RISK LEVEL': 'LOW',
-    'RISK LEVEL': 'LOW',
   }, opts),
-  'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: 4)'
+  'Compliment (C) with strong Total Score (≥ 4) — Result Risk Level is LOW (Total Score: 4)'
+);
+
+// Reason must follow displayed Result Risk Level, not score formula alone.
+assert.equal(
+  millRiskReason_({
+    'BUYER NO BUY LIST': 'No',
+    'COMPLIMENT/NOT COMPLIMENT': 'C',
+    'TOTAL SCORE': 3,
+    'RESULT RISK LEVEL': 'LOW',
+  }, opts),
+  'Compliment (C) (Total Score: 3) — Result Risk Level is LOW'
+);
+
+assert.equal(
+  millRiskReason_({
+    'BUYER NO BUY LIST': 'No',
+    'COMPLIMENT/NOT COMPLIMENT': 'C',
+    'TOTAL SCORE': 2,
+    'RESULT RISK LEVEL': 'MEDIUM',
+  }, opts),
+  'Compliment (C) (Total Score: 2) — Result Risk Level is MEDIUM'
 );
 
 assert.equal(
@@ -69,7 +86,7 @@ assert.equal(
     'TOTAL SCORE': 5,
     'RESULT RISK LEVEL': 'LOW',
   }, opts),
-  'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: 5)'
+  'Compliment (C) with strong Total Score (≥ 4) — Result Risk Level is LOW (Total Score: 5)'
 );
 
 assert.equal(millRowIsHighRisk_({ 'RESULT RISK LEVEL': 'HIGH' }), true);
