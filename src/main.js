@@ -7087,6 +7087,13 @@ function initDashboardApp() {
     const province = millPickField_(o, ['PROVINCE', 'Province']);
     if (province) o['PROVINCE'] = province;
 
+    // Sheet column may be COORDINATE (singular); normalize to COORDINATES for all readers.
+    const coordRaw = typeof millCoordinatesRaw_ === 'function' ? millCoordinatesRaw_(o) : '';
+    if (coordRaw) {
+      o['COORDINATES'] = coordRaw;
+      o['COORDINATE'] = coordRaw;
+    }
+
     // Waste sheet may use SUPPLY POME ISCC / SUPPLY POME INS (user-renamed headers).
     millNormalizeWasteQtyAliasesOnRow_(o);
 
@@ -21141,9 +21148,16 @@ function initDashboardApp() {
     }
 
     function pfCompanyCoordValue_(row) {
-      return String(
-        (row && (row['COORDINATES'] || row['Coordinates'] || row['Coordinate'] || row['COORDINATE'])) || ''
-      ).trim();
+      if (!row) return '';
+      const raw = typeof millCoordinatesRaw_ === 'function' ? millCoordinatesRaw_(row) : '';
+      if (raw) return String(raw).trim();
+      const lat = typeof millPickField_ === 'function'
+        ? millPickField_(row, ['LATITUDE', 'Latitude', 'LAT'])
+        : '';
+      const lng = typeof millPickField_ === 'function'
+        ? millPickField_(row, ['LONGITUDE', 'Longitude', 'LONG'])
+        : '';
+      return lat && lng ? (String(lat).trim() + ', ' + String(lng).trim()) : '';
     }
 
     function pfIsValidCompanyName_(name) {
@@ -21154,8 +21168,76 @@ function initDashboardApp() {
     function pfIsValidCoord_(coord) {
       const s = String(coord || '').trim();
       if (!s || s === '—') return false;
-      if (/^(n\/a|na|none|null|-+)$/i.test(s)) return false;
+      if (/^(no\s*data|n\/a|na|none|null|-+)$/i.test(s)) return false;
+      if (typeof millParseCoordinatePair_ === 'function') {
+        return !!millParseCoordinatePair_(s);
+      }
       return true;
+    }
+
+    /** Row has a parseable mill coordinate (combined column or lat/lng fields). */
+    function pfRowHasTraceableCoord_(row) {
+      if (!row) return false;
+      if (typeof millHasValidCoordinate_ === 'function') return millHasValidCoordinate_(row);
+      return pfIsValidCoord_(pfCompanyCoordValue_(row));
+    }
+
+    /** All Mill Onboarding rows matching the active period filter (not deduped). */
+    function pfMillRowsInPeriodScope_() {
+      const rows = (allData || []).slice();
+      const ctx = _pfMrdBuildCtx;
+      if (ctx && ctx.millPickMode === 'as-of') {
+        const y = parseInt(String(ctx.reportYear || ''), 10);
+        const m = parseInt(String(ctx.reportMonth || ''), 10);
+        if (!y && !(m >= 1 && m <= 12)) return rows;
+        return rows.filter(function(r) {
+          if (y && !pfYearMatchesFilter_(millYearVal(r), String(y))) return false;
+          if (m >= 1 && m <= 12) {
+            const sk = pfMillRowPeriodSortKey_(r);
+            const rm = sk % 100;
+            if (rm > m) return false;
+          }
+          return true;
+        });
+      }
+      const mFilter = pfGetPeriodFilters_().m;
+      const yFilter = pfGetPeriodFilters_().y;
+      if (!mFilter && !yFilter) return rows;
+      return rows.filter(function(r) {
+        if (mFilter && !pfMonthMatchesFilter_(millMonthVal(r), mFilter)) return false;
+        if (yFilter && !pfYearMatchesFilter_(millYearVal(r), yFilter)) return false;
+        return true;
+      });
+    }
+
+    /**
+     * Best coordinate for a seller — search all period rows, then full registry.
+     * Coordinates are stable identity data: a valid coord in any period means TTM traceable.
+     */
+    function pfFindBestMillCoordForSeller_(sellerUpper) {
+      if (!sellerUpper) return '';
+      const candidates = [];
+      function collect(rows) {
+        (rows || []).forEach(function(r) {
+          if (!pfSellerMatchesMillRow_(sellerUpper, r)) return;
+          if (!pfRowHasTraceableCoord_(r)) return;
+          const coord = pfCompanyCoordValue_(r);
+          if (!pfIsValidCoord_(coord)) return;
+          candidates.push({
+            coord: coord,
+            sortKey: pfMillRowPeriodSortKey_(r),
+            rowNum: r._row || 0,
+          });
+        });
+      }
+      collect(pfMillRowsInPeriodScope_());
+      if (!candidates.length) collect(pfAllMillRowsForLookup_());
+      if (!candidates.length) return '';
+      candidates.sort(function(a, b) {
+        if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
+        return b.rowNum - a.rowNum;
+      });
+      return candidates[0].coord;
     }
 
     function pfQtyForCompanyAtFacility_(suppliedLookup, facilityKey, company) {
@@ -21163,8 +21245,13 @@ function initDashboardApp() {
       if (!hit || !hit.entry || !hit.entry.sellers) return 0;
       const sellers = hit.entry.sellers;
       let total = 0;
+      const millRow = company && company.millRowNum ? pfFindMillRowByNum_(company.millRowNum) : null;
       Object.keys(sellers).forEach(function(sk) {
         if (pfSellerMatchesCompany_(sk, company.companyKey) || pfSellerMatchesCompany_(sk, company.company)) {
+          total += sellers[sk] || 0;
+          return;
+        }
+        if (millRow && pfSellerMatchesMillRow_(sk, millRow)) {
           total += sellers[sk] || 0;
         }
       });
@@ -21190,21 +21277,33 @@ function initDashboardApp() {
     /** Resolve company row for TTM — enrich coords from mill registry when period row is incomplete. */
     function pfResolveCompanyForTtm_(sellerKey, companies) {
       let company = (companies || []).find(function(c) {
-        return pfSellerMatchesCompany_(sellerKey, c.companyKey) || pfSellerMatchesCompany_(sellerKey, c.company);
+        if (pfSellerMatchesCompany_(sellerKey, c.companyKey) || pfSellerMatchesCompany_(sellerKey, c.company)) {
+          return true;
+        }
+        if (c.millRowNum) {
+          const mr = pfFindMillRowByNum_(c.millRowNum);
+          return mr && pfSellerMatchesMillRow_(sellerKey, mr);
+        }
+        return false;
       }) || null;
-      const millHit = pfFindMillRowForSeller_(sellerKey, pfMillRowsForBuild_());
-      if (!millHit) return company;
+      const millHit = pfFindMillRowForTtm_(sellerKey);
+      const bestCoord = pfFindBestMillCoordForSeller_(sellerKey);
+      if (!company && !millHit && !bestCoord) return null;
       if (!company) {
         return {
-          company: String(millHit['COMPANY NAME'] || '').trim() || sellerKey,
+          company: millHit ? String(millHit['COMPANY NAME'] || '').trim() || sellerKey : sellerKey,
           companyKey: sellerKey,
-          coordinate: pfCompanyCoordValue_(millHit) || '—',
+          coordinate: bestCoord || pfCompanyCoordValue_(millHit) || '—',
+          millRowNum: millHit ? millHit._row : null,
         };
       }
       if (!pfIsValidCoord_(company.coordinate)) {
-        const coord = pfCompanyCoordValue_(millHit);
+        const coord = bestCoord || (millHit ? pfCompanyCoordValue_(millHit) : '');
         if (pfIsValidCoord_(coord)) {
-          company = Object.assign({}, company, { coordinate: coord, millRowNum: company.millRowNum || millHit._row });
+          company = Object.assign({}, company, {
+            coordinate: coord,
+            millRowNum: company.millRowNum || (millHit ? millHit._row : null),
+          });
         }
       }
       return company;
@@ -21308,14 +21407,43 @@ function initDashboardApp() {
       return (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
     }
 
+    function pfFindMillRowByNum_(rowNum) {
+      const n = parseInt(String(rowNum || ''), 10);
+      if (!n) return null;
+      const src = pfAllMillRowsForLookup_();
+      for (let i = 0; i < src.length; i++) {
+        if (src[i]._row === n) return src[i];
+      }
+      return null;
+    }
+
+    /** Strip PT/CV/PD prefix so Supplied SELLER can match Mill Onboarding COMPANY NAME. */
+    function pfNormalizeSellerKey_(name) {
+      let s = normalizeLooseKey(name);
+      if (!s) return '';
+      return s.replace(/^(pt|pd|cv|tbk|persero)/, '');
+    }
+
     function pfSellerMatchesCompany_(sellerUpper, companyName) {
       const co = String(companyName || '').trim().toUpperCase();
       if (!co || !sellerUpper) return false;
       if (co === sellerUpper) return true;
       if (normalizeLooseKey(co) === normalizeLooseKey(sellerUpper)) return true;
+      const coLoose = pfNormalizeSellerKey_(co);
+      const sellerLoose = pfNormalizeSellerKey_(sellerUpper);
+      if (coLoose && sellerLoose && coLoose === sellerLoose) return true;
       if (typeof millNameSimilarLoose_ === 'function' && millNameSimilarLoose_(co, sellerUpper)) {
         return true;
       }
+      return false;
+    }
+
+    /** Supplied SELLER may match COMPANY NAME, MILL NAME, or TRADER NAME on the mill row. */
+    function pfSellerMatchesMillRow_(sellerUpper, row) {
+      if (!sellerUpper || !row) return false;
+      if (pfSellerMatchesCompany_(sellerUpper, row['COMPANY NAME'])) return true;
+      if (pfSellerMatchesCompany_(sellerUpper, row['MILL NAME'])) return true;
+      if (pfSellerMatchesCompany_(sellerUpper, row['TRADER NAME'])) return true;
       return false;
     }
 
@@ -21336,7 +21464,7 @@ function initDashboardApp() {
       if (!sellerUpper) return null;
       const matches = [];
       (rows || []).forEach(function(r) {
-        if (pfSellerMatchesCompany_(sellerUpper, r['COMPANY NAME'])) matches.push(r);
+        if (pfSellerMatchesMillRow_(sellerUpper, r)) matches.push(r);
       });
       return pfPickBestMillRowMatch_(matches);
     }
@@ -21346,6 +21474,19 @@ function initDashboardApp() {
       if (_pfMrdBuildCtx) return true;
       const p = pfGetPeriodFilters_();
       return !!(p.m || p.y);
+    }
+
+    /**
+     * TTM mill lookup: period rows first, then all rows in filter scope, then full registry.
+     * Coordinates are identity data — always fall back so month-3-only rows are not missed.
+     */
+    function pfFindMillRowForTtm_(sellerUpper) {
+      if (!sellerUpper) return null;
+      const built = pfFindMillRowInList_(sellerUpper, pfMillRowsForBuild_());
+      if (built) return built;
+      const inScope = pfFindMillRowInList_(sellerUpper, pfMillRowsInPeriodScope_());
+      if (inScope) return inScope;
+      return pfFindMillRowInList_(sellerUpper, pfAllMillRowsForLookup_());
     }
 
     /** Match seller → Mill Onboarding row (period-scoped; no registry fallback when filter is set). */
@@ -21641,6 +21782,18 @@ function initDashboardApp() {
       return y * 100 + (m || 0);
     }
 
+    function pfMergeCoordOntoMillRow_(target, source) {
+      if (!target || !source || pfRowHasTraceableCoord_(target)) return target;
+      const coord = pfCompanyCoordValue_(source);
+      if (!pfIsValidCoord_(coord)) return target;
+      const merged = Object.assign({}, target);
+      merged['COORDINATES'] = coord;
+      merged['Coordinates'] = coord;
+      merged['Coordinate'] = coord;
+      merged['COORDINATE'] = coord;
+      return merged;
+    }
+
     /** One Mill Onboarding row per mill — keep highest Year/Month; ties → later sheet row. */
     function pfDedupeMillRowsLatest_(rows) {
       const byId = new Map();
@@ -21653,11 +21806,16 @@ function initDashboardApp() {
         }
         const skNew = pfMillRowPeriodSortKey_(r);
         const skOld = pfMillRowPeriodSortKey_(existing);
+        let winner = existing;
+        let other = r;
         if (skNew > skOld) {
-          byId.set(key, r);
+          winner = r;
+          other = existing;
         } else if (skNew === skOld && (r._row || 0) > (existing._row || 0)) {
-          byId.set(key, r);
+          winner = r;
+          other = existing;
         }
+        byId.set(key, pfMergeCoordOntoMillRow_(winner, other));
       });
       return Array.from(byId.values());
     }
@@ -21809,6 +21967,90 @@ function initDashboardApp() {
       return byPlant;
     }
 
+    /** 2026+: supply volume lives on Mill Onboarding (SUPPLY CPO/PK), not legacy Supplied sheets. */
+    function pfShouldUseLegacySuppliedSheets_() {
+      const y = parseInt(String(pfGetPeriodFilters_().y || ''), 10);
+      return !y || y < 2026;
+    }
+
+    /**
+     * Build facility supply lookup from Mill Onboarding rows (SUPPLY CPO or SUPPLY PK + facility column).
+     * Same shape as pfBuildSuppliedCpoLookup_ for weighted TTM/TTP/ISPO calculations.
+     */
+    function pfBuildMillSuppliedLookup_(millRows, productKind) {
+      const byPlant = {};
+      const isPk = productKind === 'pk';
+      const qtyFn = isPk ? millSupplyPkQty_ : millSupplyCpoQty_;
+      const matchesProduct = isPk ? millProductSupplyMatchesPk_ : millProductSupplyMatchesCpo_;
+      const splitFn = isPk
+        ? function(r) { return pfSplitPkFacilities_(r['FACILITY NAME PK'], r['FACILITY NAME CPO']); }
+        : function(r) { return pfSplitCpoFacilities_(r['FACILITY NAME CPO']); };
+
+      (millRows || []).forEach(function(r) {
+        if (!matchesProduct(r)) return;
+        const qty = qtyFn(r);
+        if (!qty || qty <= 0) return;
+        const qtyKg = qty * 1000; // SUPPLY CPO/PK columns are metric tons; legacy sheets use kg
+        const seller = String(r['COMPANY NAME'] || '').trim().toUpperCase();
+        if (!seller) return;
+        const facilities = splitFn(r);
+        if (!facilities.length) return;
+        facilities.forEach(function(fac) {
+          if (!pfIsValidFacilityName_(fac)) return;
+          const plant = fac.trim().toUpperCase();
+          if (!byPlant[plant]) byPlant[plant] = { sellers: {}, totalQty: 0 };
+          if (!byPlant[plant].sellers[seller]) byPlant[plant].sellers[seller] = 0;
+          byPlant[plant].sellers[seller] += qtyKg;
+          byPlant[plant].totalQty += qtyKg;
+        });
+      });
+      return byPlant;
+    }
+
+    function pfMergeSuppliedLookups_(primary, secondary) {
+      const out = {};
+      function absorb(src) {
+        Object.keys(src || {}).forEach(function(plant) {
+          if (!out[plant]) out[plant] = { sellers: {}, totalQty: 0 };
+          const entry = src[plant];
+          Object.keys(entry.sellers || {}).forEach(function(seller) {
+            const q = entry.sellers[seller] || 0;
+            if (!q) return;
+            if (!out[plant].sellers[seller]) out[plant].sellers[seller] = 0;
+            out[plant].sellers[seller] += q;
+            out[plant].totalQty += q;
+          });
+        });
+      }
+      absorb(primary);
+      absorb(secondary);
+      return out;
+    }
+
+    function pfResolveSuppliedCpoLookup_(millRows) {
+      const millLookup = pfBuildMillSuppliedLookup_(millRows, 'cpo');
+      if (!pfShouldUseLegacySuppliedSheets_()) return millLookup;
+      const legacyLookup = pfBuildSuppliedCpoLookup_(_pfSuppliedCpoData);
+      return pfMergeSuppliedLookups_(millLookup, legacyLookup);
+    }
+
+    function pfResolveSuppliedPkLookup_(millRows) {
+      const millLookup = pfBuildMillSuppliedLookup_(millRows, 'pk');
+      if (!pfShouldUseLegacySuppliedSheets_()) return millLookup;
+      const legacyLookup = pfBuildSuppliedPkLookup_(_pfSuppliedPkData);
+      return pfMergeSuppliedLookups_(millLookup, legacyLookup);
+    }
+
+    function pfSupplyDataSourceLabel_(productKind) {
+      const isPk = productKind === 'pk';
+      if (!pfShouldUseLegacySuppliedSheets_()) {
+        return isPk ? 'Mill Onboarding SUPPLY PK' : 'Mill Onboarding SUPPLY CPO';
+      }
+      const legacyLen = isPk ? _pfSuppliedPkData.length : _pfSuppliedCpoData.length;
+      if (legacyLen) return isPk ? 'Supplied PK sheet + Mill Onboarding' : 'Supplied CPO sheet + Mill Onboarding';
+      return isPk ? 'Mill Onboarding SUPPLY PK' : 'Mill Onboarding SUPPLY CPO';
+    }
+
     /**
      * Build TTP % traceable lookup: COMPANY NAME (uppercase) → avg % (0–100).
      */
@@ -21870,6 +22112,7 @@ function initDashboardApp() {
       const y = ySel ? ySel.value.trim() : '';
 
       if (!_pfSuppliedCpoSheets.length) return [];
+      if (!pfShouldUseLegacySuppliedSheets_()) return [];
 
       // M + Y selected  →  "SUPPLIED CPO M{m} {y}" or "SUPPLIED CPO {month_name} {y}"
       if (m && y) {
@@ -22031,6 +22274,7 @@ function initDashboardApp() {
       const m = mSel ? mSel.value.trim() : '';
       const y = ySel ? ySel.value.trim() : '';
       if (!_pfSuppliedPkSheets.length) return [];
+      if (!pfShouldUseLegacySuppliedSheets_()) return [];
       const toUpper = function(n) { return n.trim().toUpperCase(); };
       if (m && y) {
         const padM = String(parseInt(m, 10)).padStart(2, '0');
@@ -22226,8 +22470,9 @@ function initDashboardApp() {
       const ttpLookup = pfBuildTtpLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
       const millIspoLookup = pfBuildMillIspoLookup_(millRows);
-      const suppliedLookup = pfBuildSuppliedCpoLookup_(_pfSuppliedCpoData);
+      const suppliedLookup = pfResolveSuppliedCpoLookup_(millRows);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
+      const supplyLabel = pfSupplyDataSourceLabel_('cpo');
 
       // Group mill rows by facility
       const byFacility = new Map();
@@ -22283,6 +22528,7 @@ function initDashboardApp() {
           : null;
         g.ttmCalc = pfCalcTtmFacilityTrace_(g.companies, suppliedLookup, g.facilityKey);
         g.ttmSource = g.ttmCalc.source;
+        g.supplyLabel = supplyLabel;
       });
 
       return Array.from(byFacility.values())
@@ -22301,8 +22547,9 @@ function initDashboardApp() {
       const ttpPkLookup = pfBuildTtpPkLookup_();
       const ttpCertLookup = pfBuildTtpCertLookup_();
       const millIspoLookup = pfBuildMillIspoLookup_(millRows);
-      const suppliedLookup = pfBuildSuppliedPkLookup_(_pfSuppliedPkData);
+      const suppliedLookup = pfResolveSuppliedPkLookup_(millRows);
       const hasSupplied = Object.keys(suppliedLookup).length > 0;
+      const supplyLabel = pfSupplyDataSourceLabel_('pk');
 
       const byFacility = new Map();
       millRows.forEach(function(r) {
@@ -22360,6 +22607,7 @@ function initDashboardApp() {
           : null;
         g.ttmCalc = pfCalcTtmFacilityTrace_(g.companies, suppliedLookup, g.facilityKey);
         g.ttmSource = g.ttmCalc.source;
+        g.supplyLabel = supplyLabel;
       });
 
       return Array.from(byFacility.values())
@@ -22370,6 +22618,7 @@ function initDashboardApp() {
     /** PK group summary — same as pfGroupSummary_ but uses PK traceability. */
     function pfPkGroupSummary_(g) {
       const companies = g.companies;
+      const supplyLabel = g.supplyLabel || pfSupplyDataSourceLabel_('pk');
       let nblYes = 0, highRisk = 0, grievanceSum = 0;
       companies.forEach(function(c) {
         if (pfIsNblYes_(c.nbl))       nblYes++;
@@ -22385,7 +22634,7 @@ function initDashboardApp() {
           traceNote = g.traceCalc.sellersWithTtp + ' of ' + g.traceCalc.sellerCount
             + ' PK suppliers matched in TTM/TTP; unmatched counted as 0%';
         } else {
-          traceNote = 'Weighted avg from Supplied PK — '
+          traceNote = 'Weighted avg from ' + supplyLabel + ' — '
             + g.traceCalc.sellerCount + ' PK supplier(s), all matched in TTM/TTP';
         }
       } else {
@@ -22394,7 +22643,7 @@ function initDashboardApp() {
           if (!isNaN(c.ttpPctNum)) { pkSum += c.ttpPctNum; validN++; }
         });
         avgPk     = validN > 0 ? ttpFormatCellPct_(pkSum / validN) : '—';
-        traceNote = 'No Supplied PK data — avg of ' + validN + ' company TTM/TTP value(s)';
+        traceNote = 'No supply volume — avg of ' + validN + ' company TTM/TTP value(s)';
       }
       const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
       const ispoNote = g.ispoCalc ? g.ispoCalc.note : '';
@@ -22615,6 +22864,7 @@ function initDashboardApp() {
 
     function pfGroupSummary_(g) {
       const companies = g.companies;
+      const supplyLabel = g.supplyLabel || pfSupplyDataSourceLabel_('cpo');
       let nblYes = 0;
       let highRisk = 0;
       let grievanceSum = 0;
@@ -22638,7 +22888,7 @@ function initDashboardApp() {
           traceNote = g.traceCalc.sellersWithTtp + ' of ' + g.traceCalc.sellerCount
             + ' suppliers matched in TTM/TTP; unmatched counted as 0%';
         } else {
-          traceNote = 'Weighted avg from Supplied CPO — '
+          traceNote = 'Weighted avg from ' + supplyLabel + ' — '
             + g.traceCalc.sellerCount + ' supplier(s), all matched in TTM/TTP';
         }
       } else {
@@ -22647,7 +22897,7 @@ function initDashboardApp() {
           if (!isNaN(c.ttpPctNum)) { cpoSum += c.ttpPctNum; validN++; }
         });
         avgCpo = validN > 0 ? ttpFormatCellPct_(cpoSum / validN) : '—';
-        traceNote = 'No Supplied CPO data — avg of ' + validN + ' company TTM/TTP value(s)';
+        traceNote = 'No supply volume — avg of ' + validN + ' company TTM/TTP value(s)';
       }
 
       const ispoPct = g.ispoCalc ? g.ispoCalc.formatted : '—';
@@ -22668,6 +22918,7 @@ function initDashboardApp() {
         traceNote: traceNote,
         ttmSource: ttmSource,
         ttmNote: ttmNote,
+        supplyLabel: supplyLabel,
       };
     }
 
@@ -23146,6 +23397,11 @@ function initDashboardApp() {
         exportBtn._pfBound = true;
         exportBtn.addEventListener('click', pfOpenExportModal_);
       }
+      const excelToolbarBtn = document.getElementById('pfExportExcelBtn');
+      if (excelToolbarBtn && !excelToolbarBtn._pfBound) {
+        excelToolbarBtn._pfBound = true;
+        excelToolbarBtn.addEventListener('click', pfOpenExportModal_);
+      }
 
       const closeIds = ['pfExportModalClose', 'pfExportCancel', 'pfExportModalBackdrop'];
       closeIds.forEach(function(id) {
@@ -23183,20 +23439,340 @@ function initDashboardApp() {
         confirmBtn._pfBound = true;
         confirmBtn.addEventListener('click', pfConfirmExportPdf_);
       }
+      const excelConfirmBtn = document.getElementById('pfExportExcelConfirm');
+      if (excelConfirmBtn && !excelConfirmBtn._pfBound) {
+        excelConfirmBtn._pfBound = true;
+        excelConfirmBtn.addEventListener('click', pfConfirmExportExcel_);
+      }
     }
 
-    async function pfConfirmExportPdf_() {
+    function pfCollectExportSelections_() {
       const checked = Array.from(document.querySelectorAll('#pfExportFacilityList input[type="checkbox"]:checked'));
-      if (!checked.length) {
-        alert('Select at least one facility to export.');
-        return;
-      }
-      const selections = checked.map(function(cb) {
+      if (!checked.length) return null;
+      return checked.map(function(cb) {
         const parts = String(cb.value).split('::');
         return { type: parts[0], facilityKey: parts.slice(1).join('::') };
       });
+    }
+
+    async function pfConfirmExportPdf_() {
+      const selections = pfCollectExportSelections_();
+      if (!selections) {
+        alert('Select at least one facility to export.');
+        return;
+      }
       pfCloseExportModal_();
       await pfGeneratePdf_(selections);
+    }
+
+    async function pfConfirmExportExcel_() {
+      const selections = pfCollectExportSelections_();
+      if (!selections) {
+        alert('Select at least one facility to export.');
+        return;
+      }
+      pfCloseExportModal_();
+      await pfGenerateExcel_(selections);
+    }
+
+    function pfFindExportGroup_(type, facilityKey) {
+      const groups = type === 'pk' ? (_pfAllPkGroups || []) : (_pfAllGroups || []);
+      const full = groups.find(function(g) {
+        return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
+      });
+      if (!full) return null;
+      const filtered = pfApplyFilters_(groups).find(function(g) {
+        return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
+      });
+      if (!filtered) return null;
+      return {
+        facility: full.facility,
+        facilityKey: full.facilityKey,
+        companies: filtered.companies,
+        traceCalc: full.traceCalc,
+        traceSource: full.traceSource,
+        ttmCalc: full.ttmCalc,
+        ttmSource: full.ttmSource,
+        ispoCalc: full.ispoCalc,
+        supplyLabel: full.supplyLabel,
+      };
+    }
+
+    function pfExcelStamp_() {
+      const now = new Date();
+      return now.getFullYear()
+        + String(now.getMonth() + 1).padStart(2, '0')
+        + String(now.getDate()).padStart(2, '0')
+        + '_'
+        + String(now.getHours()).padStart(2, '0')
+        + String(now.getMinutes()).padStart(2, '0');
+    }
+
+    function pfExcelSetSheetTitle_(ws, title) {
+      if (!ws || !title) return;
+      const addr = 'A1';
+      if (ws[addr]) {
+        ws[addr].v = title;
+      } else {
+        ws[addr] = { t: 's', v: title };
+      }
+    }
+
+    /** Highlight Yes/No or count cells — e.g. EUDR Potential column. */
+    function pfExcelStyleColumn_(ws, headerRow, colIdx, rows, isPositive) {
+      if (!ws || colIdx < 0) return;
+      (rows || []).forEach(function(rowVals, ri) {
+        const cellAddr = XLSX.utils.encode_cell({ r: headerRow + 1 + ri, c: colIdx });
+        if (!ws[cellAddr] || !ws[cellAddr].s) return;
+        const positive = typeof isPositive === 'function'
+          ? isPositive(rowVals, ri)
+          : String(rowVals[colIdx] || '').trim().toLowerCase() === 'yes';
+        if (!positive) return;
+        ws[cellAddr].s.fill = { patternType: 'solid', fgColor: { rgb: 'E8F5E9' } };
+        ws[cellAddr].s.font = Object.assign({}, ws[cellAddr].s.font || {}, {
+          color: { rgb: '1B5E20' },
+          bold: true,
+        });
+      });
+    }
+
+    function pfBuildExcelInfoSheet_(XLSX, meta) {
+      const rows = [
+        ['FACILITY PERFORMANCE REPORT'],
+        [],
+        ['Report period', meta.period || '—'],
+        ['Generated at', meta.generatedAt || '—'],
+        ['Facilities exported', meta.facilityCount != null ? meta.facilityCount : '—'],
+        ['Total companies', meta.companyCount != null ? meta.companyCount : '—'],
+        ['EUDR Potential (companies)', meta.eudrCount != null ? meta.eudrCount : '—'],
+        [],
+        ['Sheet guide'],
+        ['Facility Summary', 'One row per facility — aggregate KPIs and EUDR count'],
+        ['Company Detail', 'All companies under exported facilities'],
+        ['Facility Profile', 'Company Profile List data matched to each facility'],
+        ['EUDR Facilities', 'Facilities that have at least one EUDR Potential company'],
+        ['EUDR Companies', 'Company rows flagged as EUDR Potential only'],
+        [],
+        ['Notes'],
+        ['EUDR Potential', 'Company appears on the EUDR Potential monitoring sheet.'],
+        ['TTM %', '100% when company name, valid coordinate, and supply volume are all present.'],
+        ['Supply volume', meta.supplyNote || '2026+ uses Mill Onboarding SUPPLY CPO/PK.'],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 26 }, { wch: 56 }];
+      if (ws.A1) {
+        ws.A1.s = {
+          font: { bold: true, sz: 14, name: 'Calibri', color: { rgb: '8B1A1A' } },
+          alignment: { horizontal: 'left', vertical: 'center' },
+        };
+      }
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: 1 } });
+      return ws;
+    }
+
+    function pfExcelPct_(num) {
+      if (num == null || isNaN(num)) return '—';
+      return ttpFormatCellPct_(num);
+    }
+
+    function pfExcelSanitize_(val) {
+      return String(val == null ? '' : val).replace(/\r?\n/g, ' ').trim() || '—';
+    }
+
+    async function pfGenerateExcel_(selections) {
+      if (typeof XLSX === 'undefined') {
+        alert('Excel library is not ready. Refresh the page and try again.');
+        return;
+      }
+      if (!selections || !selections.length) return;
+
+      const excelBtn = document.getElementById('pfExportExcelConfirm');
+      const toolbarExcel = document.getElementById('pfExportExcelBtn');
+      const exportBtn = document.getElementById('pfExportPdfBtn');
+      const generatedAt = pfFormatGeneratedAt_();
+      const periodLabel = pfPeriodLabel_();
+
+      if (excelBtn) { excelBtn.disabled = true; excelBtn.textContent = 'Generating…'; }
+      if (toolbarExcel) toolbarExcel.disabled = true;
+      if (exportBtn) exportBtn.disabled = true;
+
+      try {
+        if (!cplLoaded) await loadCompanyProfileListData();
+        await pfRefreshEudrCompanySet_();
+        await Promise.all([pfLoadSuppliedCpo_(), pfLoadSuppliedPk_()]);
+        _pfAllGroups = pfBuildRows_();
+        _pfAllPkGroups = pfBuildPkGroups_();
+
+        const eudrSet = _pfEudrCompanySet || new Set();
+        const summaryHeaders = [
+          'Product', 'Facility', '# Companies', 'EUDR Potential', 'EUDR Count',
+          'NBL (Yes)', 'High Risk', 'Total Grievance', 'Est. ISPO %', 'TTM %', 'TTP %', 'Supply Source',
+        ];
+        const detailHeaders = [
+          'Product', 'Facility', 'Group Name', 'Company Name', 'EUDR Potential',
+          'Certification', 'Coordinate', 'Province', 'Period Month', 'Period Year',
+          'No Buy List', 'Risk Level', 'Grievance', 'TTM %', 'TTP %',
+        ];
+        const profileHeaders = [
+          'Product', 'Facility', 'Company', 'Site Name', 'Address', 'Capacity',
+          'Coordinate', 'Facility Type', 'Certification',
+        ];
+        const summaryRows = [];
+        const detailRows = [];
+        const profileRows = [];
+        let totalCompanies = 0;
+        let totalEudr = 0;
+
+        selections.forEach(function(sel) {
+          const g = pfFindExportGroup_(sel.type, sel.facilityKey);
+          if (!g) return;
+          const isPk = sel.type === 'pk';
+          const badge = isPk ? 'PK' : 'CPO';
+          const sumFn = isPk ? pfPkGroupSummary_ : pfGroupSummary_;
+          const sum = sumFn(g);
+          const eudrCount = mrdFacilityEudrPotentialCount_(g.companies, eudrSet);
+          const uniqueCount = mrdUniqueFacilityCompanyCount_(g.companies);
+          totalCompanies += uniqueCount;
+          totalEudr += eudrCount;
+
+          summaryRows.push([
+            badge,
+            pfExcelSanitize_(g.facility),
+            uniqueCount,
+            eudrCount > 0 ? 'Yes' : 'No',
+            eudrCount,
+            sum.nblYes,
+            sum.highRisk,
+            sum.grievanceSum,
+            sum.ispoPct || '—',
+            sum.avgTtm || '0%',
+            isPk ? sum.avgPk : sum.avgCpo,
+            g.supplyLabel || pfSupplyDataSourceLabel_(isPk ? 'pk' : 'cpo'),
+          ]);
+
+          g.companies.slice().sort(function(a, b) {
+            return String(a.company).localeCompare(String(b.company), undefined, { sensitivity: 'base' });
+          }).forEach(function(c) {
+            const isEudr = mrdCompanyIsEudrPotential_(c, eudrSet);
+            detailRows.push([
+              badge,
+              pfExcelSanitize_(g.facility),
+              pfExcelSanitize_(c.group),
+              pfExcelSanitize_(c.company),
+              isEudr ? 'Yes' : 'No',
+              pfExcelSanitize_(c.certification),
+              pfExcelSanitize_(c.coordinate),
+              pfExcelSanitize_(c.province),
+              pfExcelSanitize_(c.month),
+              pfExcelSanitize_(c.year),
+              pfExcelSanitize_(c.nbl),
+              pfExcelSanitize_(c.riskLevel),
+              c.grievance != null ? c.grievance : '—',
+              pfExcelPct_(c.ttmPctNum),
+              pfExcelPct_(c.ttpPctNum),
+            ]);
+          });
+
+          pfCplRowsForPlant_(g.facilityKey || g.facility).forEach(function(p) {
+            profileRows.push([
+              badge,
+              pfExcelSanitize_(g.facility),
+              pfExcelSanitize_(p._cplCompany),
+              pfExcelSanitize_(p._cplSite),
+              pfExcelSanitize_(p._cplAddress),
+              pfExcelSanitize_(p._cplCapacity),
+              pfExcelSanitize_(p._cplCoordinate),
+              pfExcelSanitize_(p._cplFacility),
+              pfExcelSanitize_(p._cplCert),
+            ]);
+          });
+        });
+
+        const eudrDetailRows = detailRows.filter(function(r) { return String(r[4]).toLowerCase() === 'yes'; });
+
+        const wb = XLSX.utils.book_new();
+        const infoWs = pfBuildExcelInfoSheet_(XLSX, {
+          period: periodLabel,
+          generatedAt: generatedAt,
+          facilityCount: selections.length,
+          companyCount: totalCompanies,
+          eudrCount: totalEudr,
+          supplyNote: pfShouldUseLegacySuppliedSheets_()
+            ? '2025 and earlier may combine Supplied CPO/PK sheets with Mill Onboarding.'
+            : '2026+ uses Mill Onboarding SUPPLY CPO/PK only.',
+        });
+        XLSX.utils.book_append_sheet(wb, infoWs, 'Report Info');
+
+        const wsSummary = buildBrandedExcelSheet_(XLSX, summaryHeaders, summaryRows, { headerFill: '8B1A1A' });
+        pfExcelSetSheetTitle_(wsSummary, 'FACILITY PERFORMANCE — SUMMARY');
+        const sumHeaderRow = excelBrandPreambleRowCount_();
+        pfExcelStyleColumn_(wsSummary, sumHeaderRow, 3, summaryRows);
+        pfExcelStyleColumn_(wsSummary, sumHeaderRow, 4, summaryRows, function(r) {
+          return (parseInt(r[4], 10) || 0) > 0;
+        });
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Facility Summary');
+
+        const wsDetail = buildBrandedExcelSheet_(XLSX, detailHeaders, detailRows, {
+          headerFill: '8B1A1A',
+          includeCompanyInfo: false,
+        });
+        pfExcelSetSheetTitle_(wsDetail, 'COMPANY DETAIL');
+        pfExcelStyleColumn_(wsDetail, excelBrandPreambleRowCount_({ includeCompanyInfo: false }), 4, detailRows);
+        XLSX.utils.book_append_sheet(wb, wsDetail, 'Company Detail');
+
+        const wsProfile = buildBrandedExcelSheet_(XLSX, profileHeaders, profileRows, {
+          headerFill: '0D6E46',
+          includeCompanyInfo: false,
+        });
+        pfExcelSetSheetTitle_(wsProfile, 'FACILITY PROFILE');
+        XLSX.utils.book_append_sheet(wb, wsProfile, 'Facility Profile');
+
+        const eudrFacilityHeaders = [
+          'Product', 'Facility', '# Companies', 'EUDR Count', 'TTM %', 'TTP %',
+        ];
+        const eudrFacilityRows = summaryRows
+          .filter(function(r) { return String(r[3]).toLowerCase() === 'yes'; })
+          .map(function(r) {
+            return [r[0], r[1], r[2], r[4], r[9], r[10]];
+          });
+        const eudrBodyRows = eudrDetailRows.length
+          ? eudrDetailRows
+          : [['—', '—', '—', 'No EUDR Potential in selected export', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']];
+        const wsEudrFac = buildBrandedExcelSheet_(XLSX, eudrFacilityHeaders, eudrFacilityRows.length ? eudrFacilityRows : [['—', '—', 0, 0, '—', '—']], {
+          headerFill: '1B5E20',
+          includeCompanyInfo: false,
+        });
+        pfExcelSetSheetTitle_(wsEudrFac, 'EUDR — FACILITIES');
+        XLSX.utils.book_append_sheet(wb, wsEudrFac, 'EUDR Facilities');
+
+        const wsEudr = buildBrandedExcelSheet_(XLSX, detailHeaders, eudrBodyRows, {
+          headerFill: '1B5E20',
+          includeCompanyInfo: false,
+        });
+        pfExcelSetSheetTitle_(wsEudr, 'EUDR — COMPANIES');
+        pfExcelStyleColumn_(wsEudr, excelBrandPreambleRowCount_({ includeCompanyInfo: false }), 4, eudrBodyRows);
+        XLSX.utils.book_append_sheet(wb, wsEudr, 'EUDR Companies');
+
+        const namePart = selections.length === 1
+          ? pfExcelSanitize_(selections[0].facilityKey).replace(/[^\w\-]+/g, '-').slice(0, 24)
+          : (selections.length + '-facilities');
+        const fname = 'Facility-Performance-' + namePart + '-' + periodLabel.replace(/\s/g, '-') + '-' + pfExcelStamp_() + '.xlsx';
+        XLSX.writeFile(wb, fname, { cellStyles: true });
+
+        if (typeof window.showSddToast === 'function') {
+          window.showSddToast(
+            'Excel downloaded · ' + selections.length + ' facility(s) · ' + totalEudr + ' EUDR Potential',
+            'success'
+          );
+        }
+      } catch (err) {
+        console.error('[PF Excel]', err);
+        alert('Excel export failed: ' + (err && err.message ? err.message : err));
+      } finally {
+        if (excelBtn) { excelBtn.disabled = false; excelBtn.textContent = 'Generate Excel'; }
+        if (toolbarExcel) toolbarExcel.disabled = false;
+        if (exportBtn) exportBtn.disabled = false;
+      }
     }
 
     // ── PDF Export (selected facilities + company breakdown) ───────────────
@@ -23242,25 +23818,7 @@ function initDashboardApp() {
         const BORDER = [230, 220, 220];
 
         function findGroup(type, facilityKey) {
-          const groups = type === 'pk' ? (_pfAllPkGroups || []) : (_pfAllGroups || []);
-          const full = groups.find(function(g) {
-            return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
-          });
-          if (!full) return null;
-          const filtered = pfApplyFilters_(groups).find(function(g) {
-            return (g.facilityKey || g.facility.toUpperCase()) === facilityKey;
-          });
-          if (!filtered) return null;
-          return {
-            facility: full.facility,
-            facilityKey: full.facilityKey,
-            companies: filtered.companies,
-            traceCalc: full.traceCalc,
-            traceSource: full.traceSource,
-            ttmCalc: full.ttmCalc,
-            ttmSource: full.ttmSource,
-            ispoCalc: full.ispoCalc,
-          };
+          return pfFindExportGroup_(type, facilityKey);
         }
 
         function pfPdfTableBase_() {

@@ -7124,6 +7124,18 @@ body.supply-import-open {
   cursor: not-allowed;
   box-shadow: none;
 }
+.pf-export-btn--excel {
+  background: #fff;
+  border-color: #1b5e20;
+  color: #1b5e20;
+  box-shadow: 0 1px 3px rgba(27, 94, 32, 0.15);
+}
+.pf-export-btn--excel:hover {
+  background: #f1f8f2;
+  border-color: #1b5e20;
+  color: #1b5e20;
+  box-shadow: 0 2px 6px rgba(27, 94, 32, 0.2);
+}
 
 /* Export PDF modal */
 .pf-export-modal {
@@ -7287,6 +7299,14 @@ body.supply-import-open {
   padding: 16px 20px;
   border-top: 1px solid #ebe3e3;
   background: #faf8f8;
+}
+.pf-btn--outline {
+  background: #fff;
+  color: #1b5e20;
+  border: 1px solid #1b5e20;
+}
+.pf-btn--outline:hover {
+  background: #f1f8f2;
 }
 
 /* Modal action buttons */

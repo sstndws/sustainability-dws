@@ -44,6 +44,10 @@
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                 Export PDF
               </button>
+              <button type="button" id="pfExportExcelBtn" class="pf-export-btn pf-export-btn--excel" title="Export selected facilities to Excel">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>
+                Export Excel
+              </button>
             </div>
           </div>
           <span class="pf-scope-text" id="pfScopeText"></span>
@@ -155,8 +159,8 @@
               <button type="button" class="pf-export-modal-close" id="pfExportModalClose" aria-label="Close">✕</button>
             </div>
             <div class="pf-export-modal-body">
-              <p class="pf-export-hint">Select product type and facilities to export. Company breakdown follows active Quarter/Year filters and search.</p>
-              <p class="pf-export-meta-note">Each PDF shows <strong>Generated at</strong> (date &amp; time) in the header and footer.</p>
+              <p class="pf-export-hint">Select product type and facilities to export. Company breakdown follows active Month/Year filters and search.</p>
+              <p class="pf-export-meta-note">PDF includes maps and facility profile. Excel includes summary, company detail, facility profile, and EUDR Potential highlights.</p>
               <div class="pf-export-type-row">
                 <span class="pf-export-label">Product</span>
                 <label class="pf-export-radio"><input type="radio" name="pfExportType" value="cpo" checked /> CPO (Refinery)</label>
@@ -172,6 +176,7 @@
             </div>
             <div class="pf-export-modal-foot">
               <button type="button" class="pf-btn pf-btn--ghost" id="pfExportCancel">Cancel</button>
+              <button type="button" class="pf-btn pf-btn--outline" id="pfExportExcelConfirm">Generate Excel</button>
               <button type="button" class="pf-btn pf-btn--primary" id="pfExportConfirm">Generate PDF</button>
             </div>
           </div>
