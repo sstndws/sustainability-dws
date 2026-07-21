@@ -23782,7 +23782,7 @@ function initDashboardApp() {
 
         if (typeof window.showSddToast === 'function') {
           window.showSddToast(
-            'Excel downloaded · ' + selections.length + ' facility(s) · ' + totalEudr + ' EUDR Potential',
+            'Excel downloaded · ' + selections.length + ' facility(s) · ' + eudrDetailRows.length + ' EUDR Potential',
             'success'
           );
         }
