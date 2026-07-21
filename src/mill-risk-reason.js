@@ -1,5 +1,5 @@
 /**
- * High-risk explanation — mirrors Mill Onboarding sheet formulas (English copy).
+ * Risk-level explanation — mirrors Mill Onboarding sheet formulas (English copy).
  *
  * RESULT RISK LEVEL:
  *   IF BUYER NO BUY LIST = Yes → HIGH
@@ -50,6 +50,15 @@ function parseTotalScore_(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeRiskBand_(val) {
+  const upper = String(val == null ? '' : val).trim().toUpperCase();
+  if (!upper) return '';
+  if (upper.includes('HIGH')) return 'HIGH';
+  if (upper.includes('MEDIUM') || upper.includes('MED')) return 'MEDIUM';
+  if (upper.includes('LOW')) return 'LOW';
+  return upper;
+}
+
 export function millResolvedRiskLevelFromRow_(row) {
   const rr = pickRowField_(row, FIELD_ALIASES.resultRisk);
   if (rr) return rr;
@@ -63,37 +72,53 @@ export function millRowIsHighRisk_(row) {
 /**
  * @param {object} row — mill sheet row
  * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
- * @returns {string} English explanation, empty when not HIGH
+ * @returns {string} English explanation for the resolved risk level
  */
-export function millHighRiskReason_(row, opts) {
+export function millRiskReason_(row, opts) {
   opts = opts || {};
   const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
 
-  if (!millRowIsHighRisk_(row)) return '';
+  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
+  if (!resolved) return '';
 
   const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
-  if (isNblYes(nbl)) {
-    return 'No Buy List = Yes (Result Risk Level forced to HIGH)';
-  }
-
   const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
   const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
 
+  if (isNblYes(nbl)) {
+    return 'Listed on No Buy List — Result Risk Level set to HIGH';
+  }
+
   if (compliment === 'NC') {
-    return 'Legality: Not Compliment (NC) — Risk Level = HIGH';
+    return 'Legality status: Not Compliment (NC) — classified as HIGH risk';
   }
 
-  if (compliment === 'C' && totalScore !== null && totalScore <= 2) {
-    return 'Compliment (C) with Total Score ≤ 2 — Risk Level = HIGH (score: ' + totalScore + ')';
-  }
-
-  const riskLevel = pickRowField_(row, FIELD_ALIASES.riskLevel);
-  if (riskLevel.toLowerCase().includes('high')) {
-    if (compliment === 'C' && totalScore !== null) {
-      return 'Risk Level = HIGH (Compliment: C, Total Score: ' + totalScore + ')';
+  if (compliment === 'C' && totalScore !== null) {
+    if (totalScore <= 2) {
+      return 'Compliment (C) with Total Score ≤ 2 — classified as HIGH risk (score: ' + totalScore + ')';
     }
-    return 'Risk Level = HIGH';
+    if (totalScore === 3) {
+      return 'Compliment (C) with Total Score 3 — classified as MEDIUM risk';
+    }
+    if (totalScore >= 4) {
+      return 'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: ' + totalScore + ')';
+    }
   }
 
-  return 'Result Risk Level = HIGH';
+  if (resolved === 'HIGH') {
+    return 'Classified as HIGH risk based on assessment score and legality status';
+  }
+  if (resolved === 'MEDIUM') {
+    return 'Classified as MEDIUM risk based on assessment score and legality status';
+  }
+  if (resolved === 'LOW') {
+    return 'Classified as LOW risk based on assessment score and legality status';
+  }
+
+  return 'Risk level: ' + resolved;
+}
+
+/** @deprecated Use millRiskReason_ — kept for callers not yet migrated. */
+export function millHighRiskReason_(row, opts) {
+  return millRiskReason_(row, opts);
 }

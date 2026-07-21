@@ -15,7 +15,7 @@ import {
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
-import { millHighRiskReason_ } from './mill-risk-reason.js';
+import { millRiskReason_ } from './mill-risk-reason.js';
 import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
 import {
   dashDateFieldHtml,
@@ -7191,14 +7191,19 @@ function initDashboardApp() {
     return String(d && d['RISK LEVEL'] != null ? d['RISK LEVEL'] : '').trim();
   }
 
-  function millHighRiskReasonForRow_(d) {
-    return millHighRiskReason_(d, { millIsNblYes: millIsNblYes_ });
+  function millRiskReasonForRow_(d) {
+    return millRiskReason_(d, { millIsNblYes: millIsNblYes_ });
   }
 
-  function millHighRiskReasonCellHtml_(d) {
-    const reason = millHighRiskReasonForRow_(d);
+  function millRiskReasonCellHtml_(d) {
+    const reason = millRiskReasonForRow_(d);
     if (!reason) return '<span class="mill-risk-reason mill-risk-reason--empty">—</span>';
-    return '<span class="mill-risk-reason" title="' + escHtml(reason) + '">' + escHtml(reason) + '</span>';
+    const band = String(d['RESULT RISK LEVEL'] || d['RISK LEVEL'] || '').toLowerCase();
+    const cls = band.includes('high') ? 'mill-risk-reason--high'
+      : band.includes('medium') || band.includes('med') ? 'mill-risk-reason--medium'
+      : band.includes('low') ? 'mill-risk-reason--low'
+      : '';
+    return '<span class="mill-risk-reason ' + cls + '" title="' + escHtml(reason) + '">' + escHtml(reason) + '</span>';
   }
 
   // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
@@ -8876,7 +8881,7 @@ function initDashboardApp() {
         return `
         <tr class="mill-row-clickable${d._millTableMerged || d._millGeneralMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
-          <td class="mill-td mill-td--risk-reason">${millHighRiskReasonCellHtml_(d)}</td>
+          <td class="mill-td mill-td--risk-reason">${millRiskReasonCellHtml_(d)}</td>
           <td class="mill-td mill-td--group">${millTableCellText_(pickMillGroupName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
@@ -9331,7 +9336,7 @@ function initDashboardApp() {
     if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
     if (riskReasonEl) {
-      const riskReason = millHighRiskReasonForRow_(row);
+      const riskReason = millRiskReasonForRow_(row);
       riskReasonEl.textContent = riskReason;
       riskReasonEl.hidden = !riskReason;
     }
@@ -31183,7 +31188,7 @@ function initDashboardApp() {
         millQuarterVal: millQuarterVal,
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
-        millHighRiskReason: millHighRiskReasonForRow_,
+        millRiskReason: millRiskReasonForRow_,
         getMillData: function() { return allData; },
         getMillsForReportPeriod: function(year, month, productView) {
           return millRowsForReportPeriod_(year, month, productView);

@@ -40,7 +40,7 @@ import {
   mrdCompanyIsEudrPotential_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
-import { millHighRiskReason_ } from './mill-risk-reason.js';
+import { millRiskReason_ } from './mill-risk-reason.js';
 
 const BRAND = [139, 26, 26];
 const PK_GREEN = [13, 110, 70];
@@ -105,9 +105,9 @@ function isNblYes_(val) {
   return /yes|nbl|no buy/i.test(String(val || ''));
 }
 
-function pdfHighRiskReason_(item) {
+function pdfRiskReason_(item) {
   const r = (item && item.row) || item || {};
-  return millHighRiskReason_(r, { millIsNblYes: isNblYes_ });
+  return millRiskReason_(r, { millIsNblYes: isNblYes_ });
 }
 
 /** PDF Mill Onboarding export — HIGH RISK only (matches website Result Risk Level). */
@@ -940,7 +940,7 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       return [
         pdfSanitize(item.product || (r && r._mrdProduct === 'waste' ? 'Waste' : 'Main')),
         pdfSanitize(item.risk),
-        pdfSanitize(pdfHighRiskReason_(item)),
+        pdfSanitize(pdfRiskReason_(item)),
         pdfSanitize(r['GROUP NAME']),
         pdfSanitize(r['COMPANY NAME']),
         pdfSanitize(r['MILL NAME']),
@@ -951,7 +951,7 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       ];
     });
     ctx.drawTableComplete_(
-      pdfTableHead(['Product', 'Result Risk Level', 'High Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
+      pdfTableHead(['Product', 'Result Risk Level', 'Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
       body,
       NBL_RED,
       {
@@ -971,7 +971,7 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       return [
         pdfSanitize(item.product || (r && r._mrdProduct === 'waste' ? 'Waste' : 'Main')),
         pdfSanitize(item.risk),
-        pdfSanitize(pdfHighRiskReason_(item)),
+        pdfSanitize(pdfRiskReason_(item)),
         pdfSanitize(r['GROUP NAME']),
         pdfSanitize(r['COMPANY NAME']),
         pdfSanitize(r['MILL NAME']),
@@ -979,7 +979,7 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       ];
     });
     ctx.drawTableComplete_(
-      pdfTableHead(['Product', 'Result Risk Level', 'High Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
+      pdfTableHead(['Product', 'Result Risk Level', 'Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
       body,
       NBL_RED,
       {

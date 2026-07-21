@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  millRiskReason_,
   millHighRiskReason_,
   millRowIsHighRisk_,
 } from '../src/mill-risk-reason.js';
@@ -8,43 +9,67 @@ function isNblYes(v) {
   return String(v || '').trim().toLowerCase() === 'yes';
 }
 
+const opts = { millIsNblYes: isNblYes };
+
 assert.equal(
-  millHighRiskReason_({
+  millRiskReason_({
     'BUYER NO BUY LIST': 'Yes',
     'RESULT RISK LEVEL': 'HIGH',
-  }, { millIsNblYes: isNblYes }),
-  'No Buy List = Yes (Result Risk Level forced to HIGH)'
+  }, opts),
+  'Listed on No Buy List — Result Risk Level set to HIGH'
 );
 
 assert.equal(
-  millHighRiskReason_({
+  millRiskReason_({
     'BUYER NO BUY LIST': 'No',
     'COMPLIMENT/NOT COMPLIMENT': 'NC',
     'RESULT RISK LEVEL': 'HIGH',
     'RISK LEVEL': 'HIGH',
-  }, { millIsNblYes: isNblYes }),
-  'Legality: Not Compliment (NC) — Risk Level = HIGH'
+  }, opts),
+  'Legality status: Not Compliment (NC) — classified as HIGH risk'
 );
 
 assert.equal(
-  millHighRiskReason_({
+  millRiskReason_({
     'BUYER NO BUY LIST': 'No',
     'COMPLIMENT/NOT COMPLIMENT': 'C',
     'TOTAL SCORE': 1,
     'RESULT RISK LEVEL': 'HIGH',
     'RISK LEVEL': 'HIGH',
-  }, { millIsNblYes: isNblYes }),
-  'Compliment (C) with Total Score ≤ 2 — Risk Level = HIGH (score: 1)'
+  }, opts),
+  'Compliment (C) with Total Score ≤ 2 — classified as HIGH risk (score: 1)'
+);
+
+assert.equal(
+  millRiskReason_({
+    'BUYER NO BUY LIST': 'No',
+    'COMPLIMENT/NOT COMPLIMENT': 'C',
+    'TOTAL SCORE': 3,
+    'RESULT RISK LEVEL': 'MEDIUM',
+    'RISK LEVEL': 'MEDIUM',
+  }, opts),
+  'Compliment (C) with Total Score 3 — classified as MEDIUM risk'
+);
+
+assert.equal(
+  millRiskReason_({
+    'BUYER NO BUY LIST': 'No',
+    'COMPLIMENT/NOT COMPLIMENT': 'C',
+    'TOTAL SCORE': 4,
+    'RESULT RISK LEVEL': 'LOW',
+    'RISK LEVEL': 'LOW',
+  }, opts),
+  'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: 4)'
 );
 
 assert.equal(
   millHighRiskReason_({
     'BUYER NO BUY LIST': 'No',
     'COMPLIMENT/NOT COMPLIMENT': 'C',
-    'TOTAL SCORE': 4,
+    'TOTAL SCORE': 5,
     'RESULT RISK LEVEL': 'LOW',
-  }, { millIsNblYes: isNblYes }),
-  ''
+  }, opts),
+  'Compliment (C) with Total Score ≥ 4 — classified as LOW risk (score: 5)'
 );
 
 assert.equal(millRowIsHighRisk_({ 'RESULT RISK LEVEL': 'HIGH' }), true);
