@@ -23607,40 +23607,6 @@ function initDashboardApp() {
       });
     }
 
-    function pfBuildExcelInfoSheet_(XLSX, meta) {
-      const rows = [
-        ['FACILITY PERFORMANCE REPORT'],
-        [],
-        ['Report period', meta.period || '—'],
-        ['Generated at', meta.generatedAt || '—'],
-        ['Facilities exported', meta.facilityCount != null ? meta.facilityCount : '—'],
-        ['Total companies', meta.companyCount != null ? meta.companyCount : '—'],
-        ['EUDR Potential (companies)', meta.eudrCount != null ? meta.eudrCount : '—'],
-        [],
-        ['Sheet guide'],
-        ['Facility Summary', 'One row per facility — aggregate KPIs and EUDR count'],
-        ['Company Detail', 'All companies under exported facilities'],
-        ['Facility Profile', 'Company Profile List data matched to each facility'],
-        ['EUDR Facilities', 'Facilities that have at least one EUDR Potential company'],
-        ['EUDR Companies', 'Company rows flagged as EUDR Potential only'],
-        [],
-        ['Notes'],
-        ['EUDR Potential', 'Company appears on the EUDR Potential monitoring sheet.'],
-        ['TTM %', '100% when company name, valid coordinate, and supply volume are all present.'],
-        ['Supply volume', meta.supplyNote || '2026+ uses Mill Onboarding SUPPLY CPO/PK.'],
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols'] = [{ wch: 26 }, { wch: 56 }];
-      if (ws.A1) {
-        ws.A1.s = {
-          font: { bold: true, sz: 14, name: 'Calibri', color: { rgb: '8B1A1A' } },
-          alignment: { horizontal: 'left', vertical: 'center' },
-        };
-      }
-      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: 1 } });
-      return ws;
-    }
-
     function pfExcelPct_(num) {
       if (num == null || isNaN(num)) return '—';
       return ttpFormatCellPct_(num);
@@ -23660,7 +23626,6 @@ function initDashboardApp() {
       const excelBtn = document.getElementById('pfExportExcelConfirm');
       const toolbarExcel = document.getElementById('pfExportExcelBtn');
       const exportBtn = document.getElementById('pfExportPdfBtn');
-      const generatedAt = pfFormatGeneratedAt_();
       const periodLabel = pfPeriodLabel_();
 
       if (excelBtn) { excelBtn.disabled = true; excelBtn.textContent = 'Generating…'; }
@@ -23691,8 +23656,6 @@ function initDashboardApp() {
         const summaryRows = [];
         const detailRows = [];
         const profileRows = [];
-        let totalCompanies = 0;
-        let totalEudr = 0;
 
         selections.forEach(function(sel) {
           const g = pfFindExportGroup_(sel.type, sel.facilityKey);
@@ -23703,8 +23666,6 @@ function initDashboardApp() {
           const sum = sumFn(g);
           const eudrCount = mrdFacilityEudrPotentialCount_(g.companies, eudrSet);
           const uniqueCount = mrdUniqueFacilityCompanyCount_(g.companies);
-          totalCompanies += uniqueCount;
-          totalEudr += eudrCount;
 
           summaryRows.push([
             badge,
@@ -23762,17 +23723,6 @@ function initDashboardApp() {
         const eudrDetailRows = detailRows.filter(function(r) { return String(r[4]).toLowerCase() === 'yes'; });
 
         const wb = XLSX.utils.book_new();
-        const infoWs = pfBuildExcelInfoSheet_(XLSX, {
-          period: periodLabel,
-          generatedAt: generatedAt,
-          facilityCount: selections.length,
-          companyCount: totalCompanies,
-          eudrCount: totalEudr,
-          supplyNote: pfShouldUseLegacySuppliedSheets_()
-            ? '2025 and earlier may combine Supplied CPO/PK sheets with Mill Onboarding.'
-            : '2026+ uses Mill Onboarding SUPPLY CPO/PK only.',
-        });
-        XLSX.utils.book_append_sheet(wb, infoWs, 'Report Info');
 
         const wsSummary = buildBrandedExcelSheet_(XLSX, summaryHeaders, summaryRows, { headerFill: '8B1A1A' });
         pfExcelSetSheetTitle_(wsSummary, 'FACILITY PERFORMANCE — SUMMARY');
