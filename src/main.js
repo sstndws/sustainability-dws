@@ -14,7 +14,7 @@ import {
   mrdCompanyIsEudrPotential_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
-import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
+import { isSecureGasEnabled, isLocalDevGasProxyEnabled, usesGasProxy_, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 import { millRiskReason_ } from './mill-risk-reason.js';
 import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
 import {
@@ -4000,6 +4000,13 @@ function getSddApiUrl() {
 
 /** Ping Apps Script deployment (checks blMonitoring support). */
 async function sddPingApiUrl_(baseUrl) {
+  if (usesGasProxy_()) {
+    try {
+      return await gasSecureRequest_({ method: 'GET', params: { action: 'ping' }, timeoutMs: 30000 });
+    } catch (e) {
+      return null;
+    }
+  }
   var url = String(baseUrl || '').trim();
   if (!url || url.indexOf('http') !== 0) return null;
   if (url.indexOf('/exec') === -1) url = url.replace(/\/?$/, '') + '/exec';
@@ -4127,7 +4134,7 @@ async function apiGet(sheet, opts) {
   opts = opts || {};
   const bustCache = sheet === 'sdd' || !!opts.bustCache;
   const timeoutMs = opts.timeoutMs || (sheet === 'mill' || sheet === 'millWaste' ? 120000 : 60000);
-  if (isSecureGasEnabled()) {
+  if (usesGasProxy_()) {
     var secParams = { action: 'getAll', sheet: sheet };
     if (bustCache) secParams._ts = String(Date.now());
     var secData = await gasSecureRequest_({ method: 'GET', params: secParams, timeoutMs: timeoutMs });
@@ -4200,14 +4207,14 @@ async function apiGet(sheet, opts) {
 
 async function apiPost(body, opts) {
   var timeoutMs = (opts && opts.timeoutMs) ? Number(opts.timeoutMs) : 120000;
-  if (isSecureGasEnabled()) {
+  if (usesGasProxy_()) {
     return gasSecureRequest_({ method: 'POST', body: body, timeoutMs: timeoutMs });
   }
 
   var url = (opts && opts.baseUrl) ? normalizeSddWebAppUrl_(opts.baseUrl) : getSddApiUrl();
   if (!url) url = SDD_DEFAULT_WEBAPP_URL;
   var payload = JSON.stringify(body);
-  if (!isSecureGasEnabled()) console.log('📤 API POST →', url, body);
+  console.log('📤 API POST →', url, body);
   var controller = new AbortController();
   var tid = setTimeout(function() { controller.abort(); }, timeoutMs);
   var res;
@@ -4306,7 +4313,7 @@ async function apiDeleteSubmission(payload) {
  * @param {Object} params  additional URL params, e.g. { sheet: 'SUPPLIED CPO Q1 2026' }
  */
 async function apiGetAction_(action, params) {
-  if (isSecureGasEnabled()) {
+  if (usesGasProxy_()) {
     return gasSecureRequest_({
       method: 'GET',
       params: Object.assign({ action: action, _ts: String(Date.now()) }, params || {}),
@@ -4329,7 +4336,7 @@ async function apiGetAction_(action, params) {
 
 async function apiGetSubmissionById(submissionId) {
   var data;
-  if (isSecureGasEnabled()) {
+  if (usesGasProxy_()) {
     data = await gasSecureRequest_({
       method: 'GET',
       params: { action: 'getSubmissionById', submission_id: String(submissionId) },
@@ -4359,7 +4366,7 @@ window.apiGetSubmissionById = apiGetSubmissionById;
  * Returns { success, total, page, page_size, data: [mainRow, ...] }
  */
 async function apiListSubmissions(params) {
-  if (isSecureGasEnabled()) {
+  if (usesGasProxy_()) {
     return gasSecureRequest_({
       method: 'GET',
       params: Object.assign({ action: 'listSubmissions', _ts: String(Date.now()) }, params || {}),
@@ -5261,10 +5268,12 @@ function initDashboardApp() {
     console.log('🌐 Local dev: http://localhost:' + devPort + ' (or http://127.0.0.1:' + devPort + ')');
   }
   if (isSecureGasEnabled()) {
-    console.log('🔒 Secure GAS mode: API via /api/gas-proxy (JWT required). GAS URL not exposed to browser.');
+    console.log('🔒 Secure GAS mode: API via /api/gas-proxy. GAS URL not exposed to browser.');
+  } else if (isLocalDevGasProxyEnabled()) {
+    console.log('🌐 Local dev: API via /api/gas-proxy (same path as Vercel).');
   } else {
     console.log('ℹ️ SDD Apps Script URL:', typeof getSddApiUrl === 'function' ? getSddApiUrl() : '(n/a)');
-    console.warn('⚠️ Dev/insecure mode — set VITE_SECURE_GAS=true in production.');
+    console.warn('⚠️ Direct GAS fetch mode — prefer localhost with /api/gas-proxy.');
   }
   if (location.protocol === 'file:') {
     console.warn('⚠️ Page is file:// — saving to Google Sheets will not work until you open this HTML via http(s) (e.g. Live Server).');

@@ -22,15 +22,9 @@ export function gasProxyApiPlugin() {
         if (!req.url || req.url.split('?')[0] !== '/api/gas-proxy') return next();
 
         const env = loadEnv(server.config.mode, process.cwd(), '');
-        const gasUrl = env.GAS_WEBAPP_URL;
+        const gasUrl = String(env.GAS_WEBAPP_URL || '').trim()
+          || 'https://script.google.com/macros/s/AKfycbyxbr4znky9OIANcAN5G7qzZbbQkUdx2q21UlwnOTTgoBJtT9cr7ORpz-U-aB41iIPF7g/exec';
         const gasSecret = env.GAS_API_SECRET || '';
-
-        if (!gasUrl) {
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Set GAS_WEBAPP_URL in .env.local' }));
-          return;
-        }
 
         if (req.method === 'OPTIONS') {
           res.statusCode = 204;

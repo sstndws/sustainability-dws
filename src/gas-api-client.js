@@ -13,6 +13,19 @@ export function isSecureGasEnabled() {
   return false;
 }
 
+/** Localhost dev — route via Vite /api/gas-proxy (Node fetch), not brittle /gas-api rewrite. */
+export function isLocalDevGasProxyEnabled() {
+  if (import.meta.env.VITE_LOCAL_GAS_PROXY === 'false') return false;
+  if (typeof location === 'undefined') return false;
+  const h = String(location.hostname || '').toLowerCase();
+  return (h === 'localhost' || h === '127.0.0.1') && !isSecureGasEnabled();
+}
+
+/** Production Vercel proxy or local dev proxy — never expose GAS URL to browser fetch. */
+export function usesGasProxy_() {
+  return isSecureGasEnabled() || isLocalDevGasProxyEnabled();
+}
+
 export function requireSupabaseAuth_() {
   return import.meta.env.VITE_REQUIRE_SUPABASE_AUTH === 'true';
 }
