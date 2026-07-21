@@ -17503,25 +17503,53 @@ function initDashboardApp() {
     return inc;
   }
 
+  function eudrCompanyMillKey_(company, mill) {
+    return eudrEntityKey_('', company, mill);
+  }
+
+  function eudrBestGroupNameForMill_(company, mill) {
+    let best = '';
+    (allData || []).forEach(function(r) {
+      if (pickMillCompanyName_(r) !== company) return;
+      if (millPickField_(r, ['MILL NAME', 'Mill Name']) !== mill) return;
+      const g = pickMillGroupName_(r);
+      if (g) best = g;
+    });
+    return best;
+  }
+
+  function eudrEnrichGroupName_(row) {
+    if (!row || typeof row !== 'object') return row;
+    if (pickMillGroupName_(row)) {
+      row['GROUP NAME'] = pickMillGroupName_(row);
+      return row;
+    }
+    const company = String(row['COMPANY NAME'] || '').trim();
+    const mill = String(row['MILL NAME'] || '').trim();
+    const fromMill = eudrBestGroupNameForMill_(company, mill);
+    if (fromMill) row['GROUP NAME'] = fromMill;
+    return row;
+  }
+
   function eudrBuildMillRegistry_() {
-    // Deduplicate by group|company|mill — keep the row with the latest period so identity
-    // fields (Facility Name, Province, etc.) reflect the most recent data.
-    // Bug: allData contains one row per (mill × month × year), causing each mill to appear
-    // as many times as it has period rows in the sheet.
-    const seen = {};  // entityKey → best candidate index in dedupArr
+    // Deduplicate by company|mill — group name may be blank on the newest period row
+    // but filled on an older row for the same mill (detail modal already merges this way).
+    const seen = {};  // company|mill key → index in dedupArr
+    const groups = {}; // company|mill key → best group name seen
     const dedupArr = [];
     (allData || [])
       .filter(millRowHasCompanyName_)
       .forEach(function(r) {
-        const group = pickMillGroupName_(r);
         const company = pickMillCompanyName_(r);
         const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-        const key = eudrEntityKey_(group, company, mill);
+        const key = eudrCompanyMillKey_(company, mill);
+        if (!company || !mill || !key || key === '|') return;
+        const group = pickMillGroupName_(r);
+        if (group) groups[key] = group;
         if (seen[key] === undefined) {
           seen[key] = dedupArr.length;
           dedupArr.push(r);
         } else {
-          // Prefer the row with a higher numeric period (later year/month).
           const prev = dedupArr[seen[key]];
           const prevYear = parseInt(millYearVal(prev), 10) || 0;
           const curYear  = parseInt(millYearVal(r),    10) || 0;
@@ -17535,9 +17563,10 @@ function initDashboardApp() {
 
     return dedupArr
       .map(function(r) {
-        const group = pickMillGroupName_(r);
         const company = pickMillCompanyName_(r);
         const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
+        const cmKey = eudrCompanyMillKey_(company, mill);
+        const group = pickMillGroupName_(r) || groups[cmKey] || eudrBestGroupNameForMill_(company, mill);
         const entityKey = eudrEntityKey_(group, company, mill);
         return {
           'GROUP NAME': group,
@@ -17578,11 +17607,17 @@ function initDashboardApp() {
   function eudrMergeDisplay_(mills, sheetRows) {
     const sheetMap = {};
     (sheetRows || []).forEach(function(r) {
-      sheetMap[eudrEntityKey_(r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'])] = r;
+      const g = String(r['GROUP NAME'] || '').trim();
+      const c = String(r['COMPANY NAME'] || '').trim();
+      const m = String(r['MILL NAME'] || '').trim();
+      sheetMap[eudrEntityKey_(g, c, m)] = r;
+      const cmKey = eudrCompanyMillKey_(c, m);
+      if (cmKey && cmKey !== '|' && !sheetMap[cmKey]) sheetMap[cmKey] = r;
     });
     return (mills || []).map(function(m) {
       const entityKey = eudrEntityKey_(m['GROUP NAME'], m['COMPANY NAME'], m['MILL NAME']);
-      const hit = sheetMap[entityKey];
+      const cmKey = eudrCompanyMillKey_(m['COMPANY NAME'], m['MILL NAME']);
+      const hit = sheetMap[entityKey] || (cmKey ? sheetMap[cmKey] : null);
       var cap = m['MILL CAPACITY'] || '';
       var supply = m['SUPPLY TO'] || '';
       var out = Object.assign({}, m, {
@@ -17608,6 +17643,7 @@ function initDashboardApp() {
   }
 
   function eudrPrepareRow_(d) {
+    eudrEnrichGroupName_(d);
     eudrAttachTtpMetrics_(d);
     d._eudrSearchBlob = [
       d['GROUP NAME'], d['COMPANY NAME'], d['MILL NAME'], d['UML ID'],
