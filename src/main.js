@@ -15,6 +15,7 @@ import {
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
+import { millHighRiskReason_ } from './mill-risk-reason.js';
 import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
 import {
   dashDateFieldHtml,
@@ -7190,6 +7191,16 @@ function initDashboardApp() {
     return String(d && d['RISK LEVEL'] != null ? d['RISK LEVEL'] : '').trim();
   }
 
+  function millHighRiskReasonForRow_(d) {
+    return millHighRiskReason_(d, { millIsNblYes: millIsNblYes_ });
+  }
+
+  function millHighRiskReasonCellHtml_(d) {
+    const reason = millHighRiskReasonForRow_(d);
+    if (!reason) return '<span class="mill-risk-reason mill-risk-reason--empty">—</span>';
+    return '<span class="mill-risk-reason" title="' + escHtml(reason) + '">' + escHtml(reason) + '</span>';
+  }
+
   // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
   const MILL_PDF_EXPORT_COLS = [
     { key: 'MONTH', label: 'Month' },
@@ -8823,7 +8834,7 @@ function initDashboardApp() {
     updateMillPdfExportScope();
     updateMillStatsCards_();
 
-    const colCount = millRegistryProductView === 'waste' ? 18 : 15;
+    const colCount = millRegistryProductView === 'waste' ? 19 : 16;
     const theadRow = document.querySelector('#millTable thead tr');
     if (millSortKey && theadRow && !theadRow.querySelector('[data-mill-sort="' + millSortKey + '"]')) {
       millSortKey = null;
@@ -8865,6 +8876,7 @@ function initDashboardApp() {
         return `
         <tr class="mill-row-clickable${d._millTableMerged || d._millGeneralMerged ? ' mill-row--merged' : ''}" data-idx="${i}" data-mill-key="${escHtml(millKey)}" title="${escHtml(rowTitle)}">
           <td class="mill-td mill-td--risk">${resultRiskLevelPill(d['RESULT RISK LEVEL'])}</td>
+          <td class="mill-td mill-td--risk-reason">${millHighRiskReasonCellHtml_(d)}</td>
           <td class="mill-td mill-td--group">${millTableCellText_(pickMillGroupName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--company">${millTableCellText_(pickMillCompanyName_(d), { wrap: true })}</td>
           <td class="mill-td mill-td--mill"><span class="mill-name">${escHtml(millName || '—')}</span>${mergeBadge}${umlId ? '<div class="mill-id">' + escHtml(umlId) + '</div>' : ''}</td>
@@ -9300,6 +9312,7 @@ function initDashboardApp() {
     const nblEl = document.getElementById('mp-mill-nbl');
     const nblSourceEl = document.getElementById('mp-mill-nbl-source');
     const rrEl = document.getElementById('mp-mill-result-risk');
+    const riskReasonEl = document.getElementById('mp-mill-high-risk-reason');
     if (!nameEl || !locEl || !supEl || !nblEl || !rrEl) return;
     const companyName = String(row['COMPANY NAME'] != null ? row['COMPANY NAME'] : '').trim();
     const groupName = String(row['GROUP NAME'] != null ? row['GROUP NAME'] : '').trim();
@@ -9317,6 +9330,11 @@ function initDashboardApp() {
     nblEl.innerHTML = nblBadge(row['BUYER NO BUY LIST']);
     if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
+    if (riskReasonEl) {
+      const riskReason = millHighRiskReasonForRow_(row);
+      riskReasonEl.textContent = riskReason;
+      riskReasonEl.hidden = !riskReason;
+    }
     millProfileUpdateNblSourceInfo_(row);
   }
 
@@ -17472,13 +17490,41 @@ function initDashboardApp() {
   }
 
   function eudrBuildMillRegistry_() {
-    return (allData || [])
+    // Deduplicate by group|company|mill — keep the row with the latest period so identity
+    // fields (Facility Name, Province, etc.) reflect the most recent data.
+    // Bug: allData contains one row per (mill × month × year), causing each mill to appear
+    // as many times as it has period rows in the sheet.
+    const seen = {};  // entityKey → best candidate index in dedupArr
+    const dedupArr = [];
+    (allData || [])
       .filter(millRowHasCompanyName_)
-      .map(function(r, idx) {
+      .forEach(function(r) {
         const group = pickMillGroupName_(r);
         const company = pickMillCompanyName_(r);
         const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
-        const rowKey = r._row != null ? String(r._row) : String(idx);
+        const key = eudrEntityKey_(group, company, mill);
+        if (seen[key] === undefined) {
+          seen[key] = dedupArr.length;
+          dedupArr.push(r);
+        } else {
+          // Prefer the row with a higher numeric period (later year/month).
+          const prev = dedupArr[seen[key]];
+          const prevYear = parseInt(millYearVal(prev), 10) || 0;
+          const curYear  = parseInt(millYearVal(r),    10) || 0;
+          const prevMonth = parseInt(millMonthVal(prev), 10) || 0;
+          const curMonth  = parseInt(millMonthVal(r),    10) || 0;
+          if (curYear > prevYear || (curYear === prevYear && curMonth > prevMonth)) {
+            dedupArr[seen[key]] = r;
+          }
+        }
+      });
+
+    return dedupArr
+      .map(function(r) {
+        const group = pickMillGroupName_(r);
+        const company = pickMillCompanyName_(r);
+        const mill = millPickField_(r, ['MILL NAME', 'Mill Name']);
+        const entityKey = eudrEntityKey_(group, company, mill);
         return {
           'GROUP NAME': group,
           'COMPANY NAME': company,
@@ -17488,7 +17534,7 @@ function initDashboardApp() {
           'SUPPLY TO': eudrSupplyToFromMill_(r),
           'SUPPLY TO PK': eudrSupplyPkFromMill_(r),
           'MILL CAPACITY': eudrMillCapacityFromMill_(r),
-          _entityKey: eudrEntityKey_(group, company, mill) + '|row:' + rowKey,
+          _entityKey: entityKey,
           _millRow: r._row,
         };
       })
@@ -31137,6 +31183,7 @@ function initDashboardApp() {
         millQuarterVal: millQuarterVal,
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
+        millHighRiskReason: millHighRiskReasonForRow_,
         getMillData: function() { return allData; },
         getMillsForReportPeriod: function(year, month, productView) {
           return millRowsForReportPeriod_(year, month, productView);

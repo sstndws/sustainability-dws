@@ -40,6 +40,7 @@ import {
   mrdCompanyIsEudrPotential_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
+import { millHighRiskReason_ } from './mill-risk-reason.js';
 
 const BRAND = [139, 26, 26];
 const PK_GREEN = [13, 110, 70];
@@ -102,6 +103,11 @@ function applyReportHeaderMeta_(ctx, year, month, dataPeriodOverride) {
 
 function isNblYes_(val) {
   return /yes|nbl|no buy/i.test(String(val || ''));
+}
+
+function pdfHighRiskReason_(item) {
+  const r = (item && item.row) || item || {};
+  return millHighRiskReason_(r, { millIsNblYes: isNblYes_ });
 }
 
 /** PDF Mill Onboarding export — HIGH RISK only (matches website Result Risk Level). */
@@ -927,13 +933,14 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
   }
 
   if (full) {
-    const w = colWidths_([8, 10, 13, 17, 17, 11, 7, 9, 9], ctx.cW);
+    const w = colWidths_([7, 9, 22, 12, 14, 14, 9, 7, 8, 8], ctx.cW);
     const body = rows.map(function(item) {
       const r = item.row;
       const d = millDetailCells_(item);
       return [
         pdfSanitize(item.product || (r && r._mrdProduct === 'waste' ? 'Waste' : 'Main')),
         pdfSanitize(item.risk),
+        pdfSanitize(pdfHighRiskReason_(item)),
         pdfSanitize(r['GROUP NAME']),
         pdfSanitize(r['COMPANY NAME']),
         pdfSanitize(r['MILL NAME']),
@@ -944,25 +951,27 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       ];
     });
     ctx.drawTableComplete_(
-      pdfTableHead(['Product', 'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
+      pdfTableHead(['Product', 'Result Risk Level', 'High Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province', 'No Buy List', 'Supplier Status', 'Certification']),
       body,
       NBL_RED,
       {
         0: { cellWidth: w[0], fontStyle: 'bold' },
         1: { cellWidth: w[1], fontStyle: 'bold', textColor: NBL_RED },
-        2: { cellWidth: w[2] }, 3: { cellWidth: w[3] }, 4: { cellWidth: w[4] },
-        5: { cellWidth: w[5] }, 6: { cellWidth: w[6] },
-        7: { cellWidth: w[7], fontSize: 6.5 }, 8: { cellWidth: w[8], fontSize: 6.5 },
+        2: { cellWidth: w[2], fontSize: 6.2 },
+        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+        6: { cellWidth: w[6] }, 7: { cellWidth: w[7] },
+        8: { cellWidth: w[8], fontSize: 6.5 }, 9: { cellWidth: w[9], fontSize: 6.5 },
       },
       { fontSize: 7, cellPadding: 1.8, headFontSize: 6, headMinHeight: 10 }
     );
   } else {
-    const w = colWidths_([9, 11, 16, 20, 20, 13], ctx.cW);
+    const w = colWidths_([8, 10, 24, 14, 16, 14, 10], ctx.cW);
     const body = rows.map(function(item) {
       const r = item.row;
       return [
         pdfSanitize(item.product || (r && r._mrdProduct === 'waste' ? 'Waste' : 'Main')),
         pdfSanitize(item.risk),
+        pdfSanitize(pdfHighRiskReason_(item)),
         pdfSanitize(r['GROUP NAME']),
         pdfSanitize(r['COMPANY NAME']),
         pdfSanitize(r['MILL NAME']),
@@ -970,13 +979,14 @@ function drawHighRiskSection_(ctx, data, full, noHeader) {
       ];
     });
     ctx.drawTableComplete_(
-      pdfTableHead(['Product', 'Result Risk Level', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
+      pdfTableHead(['Product', 'Result Risk Level', 'High Risk Reason', 'Group Name', 'Company Name', 'Mill Name', 'Province']),
       body,
       NBL_RED,
       {
         0: { cellWidth: w[0], fontStyle: 'bold' },
         1: { cellWidth: w[1], fontStyle: 'bold', textColor: NBL_RED },
-        2: { cellWidth: w[2] }, 3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] },
+        2: { cellWidth: w[2], fontSize: 6.2 },
+        3: { cellWidth: w[3] }, 4: { cellWidth: w[4] }, 5: { cellWidth: w[5] }, 6: { cellWidth: w[6] },
       },
       { headFontSize: 5.6, headMinHeight: 10 }
     );

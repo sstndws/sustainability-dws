@@ -41,6 +41,7 @@ import {
   mrdMillProductLabel_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
+import { millHighRiskReason_ } from './mill-risk-reason.js';
 
 const MRD_ROW_LIMIT = 5000;
 const MRD_SDD_LIMIT = 5000;
@@ -264,6 +265,22 @@ function mrdResolvedRisk_(rowOrItem) {
 
 function mrdIsHighRiskItem_(rowOrItem) {
   return isHighRisk(mrdResolvedRisk_(rowOrItem));
+}
+
+function mrdHighRiskReason_(rowOrItem) {
+  const item = rowOrItem && rowOrItem.row ? rowOrItem : null;
+  const r = item ? item.row : rowOrItem;
+  if (!r) return '';
+  if (_deps && _deps.millHighRiskReason) return _deps.millHighRiskReason(r) || '';
+  return millHighRiskReason_(r, {
+    millIsNblYes: _deps && _deps.millIsNblYes_ ? _deps.millIsNblYes_ : undefined,
+  });
+}
+
+function mrdHighRiskReasonCell_(rowOrItem) {
+  const reason = mrdHighRiskReason_(rowOrItem);
+  if (!reason) return '<span class="mrd-muted">—</span>';
+  return '<span class="mrd-high-risk-reason" title="' + esc(reason) + '">' + esc(reason) + '</span>';
 }
 
 function isNblYes(val) {
@@ -977,6 +994,7 @@ function renderHighRiskSection(rows) {
       return '<span class="' + cls + '">' + esc(p) + '</span>';
     }},
     { label: 'Result Risk Level', title: 'Result Risk Level', thCls: 'mrd-th-wrap', hasData: function(row) { return hasCellValue(row._data.risk); }, render: function(row) { return riskPill(row._data.risk); } },
+    { label: 'High Risk Reason', title: 'Why Result Risk Level is HIGH (sheet formula)', thCls: 'mrd-th-wrap mrd-th-risk-reason', always: true, render: function(row) { return mrdHighRiskReasonCell_(row._data); } },
     { label: 'Group Name', title: 'Group Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['GROUP NAME']; } },
     { label: 'Company Name', title: 'Company Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['COMPANY NAME']; } },
     { label: 'Mill Name', title: 'Mill Name', thCls: 'mrd-th-wrap', raw: function(row) { return row._data.row['MILL NAME']; } },
@@ -1064,7 +1082,12 @@ function renderMillDetailHtml_(item, r) {
     html += '<p class="mrd-detail-note">NBL source — click expand again if it has not appeared.</p>';
   }
   if (isHighRisk(item.risk)) {
-    html += '<p class="mrd-detail-note mrd-detail-note--risk">High risk supplier — review mitigation plan.</p>';
+    const reason = mrdHighRiskReason_(item);
+    if (reason) {
+      html += '<p class="mrd-detail-note mrd-detail-note--risk"><strong>High Risk Reason:</strong> ' + esc(reason) + '</p>';
+    } else {
+      html += '<p class="mrd-detail-note mrd-detail-note--risk">High risk supplier — review mitigation plan.</p>';
+    }
   }
   return html;
 }

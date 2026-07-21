@@ -2726,6 +2726,31 @@
    }
    #panel-mill-onboarding #millTable .mill-th--risk,
    #panel-mill-onboarding #millTable .mill-td--risk { min-width: 118px; width: 118px; }
+   #panel-mill-onboarding #millTable .mill-th--risk-reason,
+   #panel-mill-onboarding #millTable .mill-td--risk-reason {
+     min-width: 200px;
+     max-width: 280px;
+     width: 220px;
+     white-space: normal;
+     vertical-align: top;
+   }
+   #panel-mill-onboarding #millTable .mill-risk-reason {
+     display: block;
+     font-size: 11.5px;
+     line-height: 1.4;
+     color: #6a3030;
+   }
+   #panel-mill-onboarding #millTable .mill-risk-reason--empty {
+     color: #b8a8a8;
+   }
+   .mp-metric-sub--risk-reason {
+     margin-top: 6px;
+     font-size: 11px;
+     line-height: 1.4;
+     color: #8b4040;
+     font-weight: 500;
+     max-width: 28ch;
+   }
    #panel-mill-onboarding #millTable .mill-th--group,
    #panel-mill-onboarding #millTable .mill-td--group { min-width: 132px; width: 132px; }
    #panel-mill-onboarding #millTable .mill-th--company,
@@ -10340,6 +10365,18 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 #panel-monthly-report-detail .mrd-detail-note--risk {
   color: #c0392b;
   font-weight: 600;
+}
+#panel-monthly-report-detail .mrd-high-risk-reason {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6a3030;
+  max-width: 42ch;
+}
+#panel-monthly-report-detail .mrd-table .mrd-th-risk-reason,
+#panel-monthly-report-detail .mrd-table td .mrd-high-risk-reason {
+  min-width: 180px;
+  max-width: 320px;
 }
 #panel-monthly-report-detail .mrd-pill {
   display: inline-block;
