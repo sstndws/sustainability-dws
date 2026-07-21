@@ -23922,35 +23922,54 @@ function initDashboardApp() {
         }
 
         function drawFacilityHero_(g, badge, facilityPct, pctLabel, facilityTtm, ttmLabel, companiesCount, y, accent) {
-          y = ensureSpace_(y, 22);
+          const pad = 4;
+          const badgeW = 20;
+          const nameX = mL + pad + badgeW + 4;
+          const contentW = cW - pad * 2;
+          const nameMaxW = contentW - badgeW - 4;
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          const facilityName = pfPdfSanitize_(g.facility);
+          const nameLines = doc.splitTextToSize(facilityName, nameMaxW);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          const statsText = ttmLabel + ': ' + pfPdfSanitize_(facilityTtm) + '   ·   '
+            + pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '   ·   '
+            + companiesCount + ' companies';
+          const statsLines = doc.splitTextToSize(statsText, contentW);
+
+          const line1H = Math.max(8, nameLines.length * 5.5);
+          const line2H = statsLines.length * 4.2;
+          const heroH = pad + line1H + 3 + line2H + pad;
+
+          y = ensureSpace_(y, heroH + 4);
+
           doc.setDrawColor.apply(doc, BORDER);
           doc.setFillColor.apply(doc, BG_SOFT);
           doc.setLineWidth(0.25);
-          doc.roundedRect(mL, y, cW, 18, 2, 2, 'FD');
+          doc.roundedRect(mL, y, cW, heroH, 2, 2, 'FD');
 
+          const badgeY = y + pad + Math.max(0, (line1H - 8) / 2);
           doc.setFillColor.apply(doc, accent);
-          doc.roundedRect(mL + 4, y + 5, 20, 8, 1.5, 1.5, 'F');
+          doc.roundedRect(mL + pad, badgeY, badgeW, 8, 1.5, 1.5, 'F');
           doc.setTextColor.apply(doc, WHITE);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(8);
-          doc.text(badge, mL + 14, y + 10.5, { align: 'center' });
+          doc.text(badge, mL + pad + badgeW / 2, badgeY + 5.5, { align: 'center' });
 
           doc.setTextColor.apply(doc, INK);
-          doc.setFontSize(15);
-          doc.text(pfPdfSanitize_(g.facility), mL + 28, y + 11);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          doc.text(nameLines, nameX, y + pad + 5);
 
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(9);
+          doc.setFontSize(8.5);
           doc.setTextColor.apply(doc, INK_MUTED);
-          doc.text(
-            ttmLabel + ': ' + pfPdfSanitize_(facilityTtm) + '   ·   '
-              + pctLabel + ': ' + pfPdfSanitize_(facilityPct) + '   ·   '
-              + companiesCount + ' companies',
-            pageW - mR - 4,
-            y + 11,
-            { align: 'right' }
-          );
-          return y + 22;
+          doc.text(statsLines, mL + pad, y + pad + line1H + 3);
+
+          return y + heroH + 4;
         }
 
         function drawKpiCards_(y, sum, facilityPct, pctLabel, facilityTtm, ttmLabel, accent) {
