@@ -234,32 +234,36 @@ function fallbackBandReason_(resolved, compliment, totalScore) {
 /**
  * @param {object} row — mill sheet row
  * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
+ * @returns {string[]} Short labels for Risk Reason pills (certification-style chips)
+ */
+export function millRiskReasonTokens_(row, opts) {
+  opts = opts || {};
+  const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
+  const tokens = [];
+  const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
+  if (isNblYes(nbl)) tokens.push('On No Buy List');
+
+  millRiskReasonGaps_(row).forEach(function(g) {
+    if (tokens.indexOf(g) < 0) tokens.push(g);
+  });
+
+  if (tokens.length) return tokens;
+
+  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
+  if (!resolved) return [];
+  const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
+  const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
+  const fallback = fallbackBandReason_(resolved, compliment, totalScore);
+  return fallback ? [fallback] : [];
+}
+
+/**
+ * @param {object} row — mill sheet row
+ * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
  * @returns {string} English explanation for Risk Reason column
  */
 export function millRiskReason_(row, opts) {
-  opts = opts || {};
-  const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
-
-  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
-  const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
-  const gaps = millRiskReasonGaps_(row);
-  const parts = [];
-
-  if (isNblYes(nbl)) {
-    parts.push('On No Buy List — Result Risk Level elevated to HIGH');
-  }
-
-  if (gaps.length) {
-    parts.push(gaps.join('; '));
-  }
-
-  if (parts.length) return parts.join(' · ');
-
-  // No sheet gaps detected — fall back to band / score wording.
-  if (!resolved) return '';
-  const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
-  const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
-  return fallbackBandReason_(resolved, compliment, totalScore);
+  return millRiskReasonTokens_(row, opts).join('; ');
 }
 
 /** @deprecated Use millRiskReason_ — kept for callers not yet migrated. */

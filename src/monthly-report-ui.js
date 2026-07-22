@@ -41,7 +41,7 @@ import {
   mrdMillProductLabel_,
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
-import { millRiskReason_ } from './mill-risk-reason.js';
+import { millRiskReason_, millRiskReasonTokens_ } from './mill-risk-reason.js';
 
 const MRD_ROW_LIMIT = 5000;
 const MRD_SDD_LIMIT = 5000;
@@ -267,7 +267,20 @@ function mrdIsHighRiskItem_(rowOrItem) {
   return isHighRisk(mrdResolvedRisk_(rowOrItem));
 }
 
+function mrdRiskReasonTokens_(rowOrItem) {
+  const item = rowOrItem && rowOrItem.row ? rowOrItem : null;
+  const r = item ? item.row : rowOrItem;
+  if (!r) return [];
+  const opts = {
+    millIsNblYes: _deps && _deps.millIsNblYes_ ? _deps.millIsNblYes_ : undefined,
+  };
+  if (_deps && _deps.millRiskReasonTokens) return _deps.millRiskReasonTokens(r) || [];
+  return millRiskReasonTokens_(r, opts);
+}
+
 function mrdRiskReason_(rowOrItem) {
+  const tokens = mrdRiskReasonTokens_(rowOrItem);
+  if (tokens.length) return tokens.join('; ');
   const item = rowOrItem && rowOrItem.row ? rowOrItem : null;
   const r = item ? item.row : rowOrItem;
   if (!r) return '';
@@ -278,17 +291,28 @@ function mrdRiskReason_(rowOrItem) {
   });
 }
 
+function mrdRiskReasonPillClass_(label) {
+  const s = String(label || '').toLowerCase();
+  if (s.includes('no buy')) return 'mill-risk-reason-pill--nbl';
+  if (s.includes('deforest')) return 'mill-risk-reason-pill--deforest';
+  if (s.includes('grievance')) return 'mill-risk-reason-pill--grievance';
+  if (s.includes('coordinate') || s.includes('legality') || s.includes('apl')
+    || s.includes('ndpe') || s.includes('certification')) {
+    return 'mill-risk-reason-pill--gap';
+  }
+  return 'mill-risk-reason-pill--other';
+}
+
 function mrdRiskReasonCell_(rowOrItem) {
-  const reason = mrdRiskReason_(rowOrItem);
-  if (!reason) return '<span class="mrd-muted">—</span>';
-  const item = rowOrItem && rowOrItem.row ? rowOrItem : null;
-  const risk = item ? item.risk : (rowOrItem && rowOrItem['RESULT RISK LEVEL']) || '';
-  const band = String(risk || '').toLowerCase();
-  const cls = band.includes('high') ? 'mrd-risk-reason mrd-risk-reason--high'
-    : band.includes('medium') || band.includes('med') ? 'mrd-risk-reason mrd-risk-reason--medium'
-    : band.includes('low') ? 'mrd-risk-reason mrd-risk-reason--low'
-    : 'mrd-risk-reason';
-  return '<span class="' + cls + '" title="' + esc(reason) + '">' + esc(reason) + '</span>';
+  const tokens = mrdRiskReasonTokens_(rowOrItem);
+  if (!tokens.length) return '<span class="mrd-muted">—</span>';
+  const title = tokens.join('; ');
+  return '<div class="cert-pill-list mill-risk-reason-pill-list" title="' + esc(title) + '">'
+    + tokens.map(function(tok) {
+      return '<span class="cert-pill mill-risk-reason-pill ' + mrdRiskReasonPillClass_(tok) + '">'
+        + esc(tok) + '</span>';
+    }).join('')
+    + '</div>';
 }
 
 function isNblYes(val) {

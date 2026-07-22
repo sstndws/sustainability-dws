@@ -2737,30 +2737,51 @@
    #panel-mill-onboarding #millTable .mill-td--risk { min-width: 118px; width: 118px; }
    #panel-mill-onboarding #millTable .mill-th--risk-reason,
    #panel-mill-onboarding #millTable .mill-td--risk-reason {
-     min-width: 200px;
-     max-width: 280px;
-     width: 220px;
+     min-width: 220px;
+     max-width: 320px;
+     width: 260px;
      white-space: normal;
-     vertical-align: top;
+     vertical-align: middle;
    }
-   #panel-mill-onboarding #millTable .mill-risk-reason {
-     display: block;
-     font-size: 11.5px;
-     line-height: 1.4;
+   #panel-mill-onboarding #millTable .mill-risk-reason-pill-list {
+     gap: 5px;
    }
-   #panel-mill-onboarding #millTable .mill-risk-reason--high { color: #6a3030; }
-   #panel-mill-onboarding #millTable .mill-risk-reason--medium { color: #7a5a18; }
-   #panel-mill-onboarding #millTable .mill-risk-reason--low { color: #1f5a3a; }
-   #panel-mill-onboarding #millTable .mill-risk-reason--empty {
-     color: #b8a8a8;
+   #panel-mill-onboarding #millTable .mill-risk-reason-pill {
+     white-space: normal;
+     text-align: left;
+     max-width: 100%;
+   }
+   .mill-risk-reason-pill--nbl {
+     color: #8b1a1a;
+     border-color: rgba(139, 26, 26, 0.28);
+     background: rgba(139, 26, 26, 0.1);
+   }
+   .mill-risk-reason-pill--gap {
+     color: #6a3030;
+     border-color: rgba(139, 26, 26, 0.2);
+     background: rgba(139, 26, 26, 0.06);
+   }
+   .mill-risk-reason-pill--deforest {
+     color: #7a4510;
+     border-color: rgba(180, 100, 30, 0.28);
+     background: rgba(180, 100, 30, 0.1);
+   }
+   .mill-risk-reason-pill--grievance {
+     color: #5b2c6f;
+     border-color: rgba(106, 27, 154, 0.22);
+     background: rgba(106, 27, 154, 0.08);
+   }
+   .mill-risk-reason-pill--other {
+     color: #475569;
+     border-color: rgba(71, 85, 105, 0.22);
+     background: rgba(71, 85, 105, 0.08);
+   }
+   .mill-risk-reason-pill-list--profile {
+     margin-top: 2px;
    }
    .mp-metric-sub--risk-reason {
      margin-top: 6px;
-     font-size: 11px;
-     line-height: 1.4;
-     color: #475569;
-     font-weight: 500;
-     max-width: 32ch;
+     max-width: 42ch;
    }
    #panel-mill-onboarding #millTable .mill-th--group,
    #panel-mill-onboarding #millTable .mill-td--group { min-width: 132px; width: 132px; }

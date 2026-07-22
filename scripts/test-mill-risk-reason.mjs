@@ -42,7 +42,7 @@ assert.equal(
     'BUYER NO BUY LIST': 'Yes',
     'RESULT RISK LEVEL': 'HIGH',
   }, opts),
-  'On No Buy List — Result Risk Level elevated to HIGH'
+  'On No Buy List'
 );
 
 assert.equal(
@@ -114,7 +114,7 @@ assert.equal(
     COORDINATES: '',
     NDPE: 'No',
   }, opts),
-  'On No Buy List — Result Risk Level elevated to HIGH · No Coordinate; No NDPE Commitment'
+  'On No Buy List; No Coordinate; No NDPE Commitment'
 );
 
 assert.equal(millRowIsHighRisk_({ 'RESULT RISK LEVEL': 'HIGH' }), true);

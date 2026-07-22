@@ -15,7 +15,7 @@ import {
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, isLocalDevGasProxyEnabled, usesGasProxy_, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
-import { millRiskReason_ } from './mill-risk-reason.js';
+import { millRiskReason_, millRiskReasonTokens_ } from './mill-risk-reason.js';
 import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
 import {
   dashDateFieldHtml,
@@ -7273,15 +7273,28 @@ function initDashboardApp() {
     return millRiskReason_(d, { millIsNblYes: millIsNblYes_ });
   }
 
+  function millRiskReasonPillClass_(label) {
+    const s = String(label || '').toLowerCase();
+    if (s.includes('no buy')) return 'mill-risk-reason-pill--nbl';
+    if (s.includes('deforest')) return 'mill-risk-reason-pill--deforest';
+    if (s.includes('grievance')) return 'mill-risk-reason-pill--grievance';
+    if (s.includes('coordinate') || s.includes('legality') || s.includes('apl')
+      || s.includes('ndpe') || s.includes('certification')) {
+      return 'mill-risk-reason-pill--gap';
+    }
+    return 'mill-risk-reason-pill--other';
+  }
+
   function millRiskReasonCellHtml_(d) {
-    const reason = millRiskReasonForRow_(d);
-    if (!reason) return '<span class="mill-risk-reason mill-risk-reason--empty">—</span>';
-    const band = String(d['RESULT RISK LEVEL'] || d['RISK LEVEL'] || '').toLowerCase();
-    const cls = band.includes('high') ? 'mill-risk-reason--high'
-      : band.includes('medium') || band.includes('med') ? 'mill-risk-reason--medium'
-      : band.includes('low') ? 'mill-risk-reason--low'
-      : '';
-    return '<span class="mill-risk-reason ' + cls + '" title="' + escHtml(reason) + '">' + escHtml(reason) + '</span>';
+    const tokens = millRiskReasonTokens_(d, { millIsNblYes: millIsNblYes_ });
+    if (!tokens.length) return '<span class="cert-pill-empty">—</span>';
+    const title = tokens.join('; ');
+    return '<div class="cert-pill-list mill-risk-reason-pill-list" title="' + escHtml(title) + '">'
+      + tokens.map(function(tok) {
+        return '<span class="cert-pill mill-risk-reason-pill ' + millRiskReasonPillClass_(tok) + '">'
+          + escHtml(tok) + '</span>';
+      }).join('')
+      + '</div>';
   }
 
   // ─── MILL PDF EXPORT (toolbar pattern aligned with Monitoring TTM/TTP) ──
@@ -9399,9 +9412,19 @@ function initDashboardApp() {
     if (nblSourceEl) nblSourceEl.innerHTML = '';
     rrEl.innerHTML = resultRiskLevelPill(row['RESULT RISK LEVEL']);
     if (riskReasonEl) {
-      const riskReason = millRiskReasonForRow_(row);
-      riskReasonEl.textContent = riskReason;
-      riskReasonEl.hidden = !riskReason;
+      const tokens = millRiskReasonTokens_(row, { millIsNblYes: millIsNblYes_ });
+      if (!tokens.length) {
+        riskReasonEl.innerHTML = '';
+        riskReasonEl.hidden = true;
+      } else {
+        riskReasonEl.innerHTML = '<div class="cert-pill-list mill-risk-reason-pill-list mill-risk-reason-pill-list--profile">'
+          + tokens.map(function(tok) {
+            return '<span class="cert-pill mill-risk-reason-pill ' + millRiskReasonPillClass_(tok) + '">'
+              + escHtml(tok) + '</span>';
+          }).join('')
+          + '</div>';
+        riskReasonEl.hidden = false;
+      }
     }
     millProfileUpdateNblSourceInfo_(row);
   }
