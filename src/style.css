@@ -578,6 +578,15 @@
      text-transform: uppercase;
      letter-spacing: 0.5px;
    }
+   .stat-card-note {
+     font-size: 11px;
+     font-weight: 400;
+     color: #B0A0A0;
+     line-height: 1.35;
+     margin-top: 6px;
+     text-transform: none;
+     letter-spacing: 0;
+   }
 
    /* TTP — overview card (period toolbar + CPO/PK × TTM/TTP matrix) */
    #panel-ttm-ttp .ttp-overview {

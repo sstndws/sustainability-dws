@@ -6944,16 +6944,38 @@ function initDashboardApp() {
     scheduleRenderMillTable();
   }
 
-  function millExpandToEntityRows_(data) {
-    var out = [];
-    data.forEach(function(d) {
-      if (d._millGeneralMergeSources && d._millGeneralMergeSources.length > 1) {
-        d._millGeneralMergeSources.forEach(function(src) { out.push(src); });
-      } else {
-        out.push(d);
+  function millGeneralDisplayBreakdown_(rows) {
+    let mainOnly = 0;
+    let wasteOnly = 0;
+    let merged = 0;
+    (rows || []).forEach(function(r) {
+      if (r._millGeneralMerged && r._millGeneralMergeSources && r._millGeneralMergeSources.length > 1) {
+        merged++;
+        return;
       }
+      if (String(r._millSheetSource || '').toLowerCase() === 'waste') wasteOnly++;
+      else mainOnly++;
     });
-    return out;
+    return { mainOnly: mainOnly, wasteOnly: wasteOnly, merged: merged, total: (rows || []).length };
+  }
+
+  function millStatsTotalNote_(rows) {
+    const n = (rows || []).length;
+    if (!n) return 'No rows in current view';
+    const view = millRegistryProductView;
+    if (view === 'main') {
+      return n + ' rows · Mill Onboarding (main product)';
+    }
+    if (view === 'waste') {
+      return n + ' rows · Waste product sheet';
+    }
+    const b = millGeneralDisplayBreakdown_(rows);
+    const parts = [];
+    if (b.mainOnly) parts.push(b.mainOnly + ' main only');
+    if (b.wasteOnly) parts.push(b.wasteOnly + ' waste only');
+    if (b.merged) parts.push(b.merged + ' main+waste merged');
+    if (!parts.length) return n + ' rows · matches table';
+    return parts.join(' · ');
   }
 
   function updateMillStatsCards_() {
@@ -6961,26 +6983,26 @@ function initDashboardApp() {
     const groupsEl = document.getElementById('stat-groups');
     const highEl = document.getElementById('stat-high-risk');
     const nblEl = document.getElementById('stat-nbl');
+    const noteEl = document.getElementById('stat-total-note');
     if (!totalEl || !groupsEl || !highEl || !nblEl) return;
-    const data = millRowsAfterRegistryDimFilters();
-    var entityRows = millExpandToEntityRows_(data);
-    var uniqueEntities = new Set();
-    entityRows.forEach(function(r) {
-      uniqueEntities.add(millRegistryEntityKey_(r));
-    });
-    totalEl.textContent = String(uniqueEntities.size);
-    groupsEl.textContent = String(new Set(entityRows.map(function(d) {
+    const rows = millFilteredRows || [];
+    totalEl.textContent = String(rows.length);
+    if (noteEl) noteEl.textContent = millStatsTotalNote_(rows);
+
+    groupsEl.textContent = String(new Set(rows.map(function(d) {
       return pickMillGroupName_(d);
     }).filter(Boolean)).size);
+
     var highSet = new Set();
-    entityRows.forEach(function(d) {
+    rows.forEach(function(d) {
       if ((millResolvedRiskLevelForStats_(d) || '').toLowerCase().includes('high')) {
         highSet.add(millRegistryEntityKey_(d));
       }
     });
     highEl.textContent = String(highSet.size);
+
     var nblSet = new Set();
-    entityRows.forEach(function(d) {
+    rows.forEach(function(d) {
       var v = String(d['BUYER NO BUY LIST'] || '').toLowerCase();
       if (v === 'yes' || v.includes('nbl')) {
         nblSet.add(millRegistryEntityKey_(d));
