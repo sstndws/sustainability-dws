@@ -6882,7 +6882,7 @@ function initDashboardApp() {
       return pickPeriodRows_(allDataWaste);
     }
     if (view === 'general') {
-      const mainRows = pickPeriodRows_(allData);
+      const mainRows = millCollapseRowsForTableDisplay_(pickPeriodRows_(allData));
       const wasteRows = pickPeriodRows_(allDataWaste);
       return millMergeGeneralRegistryRows_(mainRows, wasteRows);
     }
@@ -7001,9 +7001,6 @@ function initDashboardApp() {
     const parts = [n + ' baris · sama dengan tabel'];
     if (b.bothSheets) {
       parts.push(b.bothSheets + ' baris Main + Waste digabung (bulan & tahun sama)');
-    }
-    if (b.wasteOnly) {
-      parts.push(b.wasteOnly + ' company hanya di Waste sheet (tidak ada di Mill Onboarding)');
     }
     return parts.join(' · ');
   }
@@ -7611,9 +7608,14 @@ function initDashboardApp() {
     if (millRegistryProductView === 'main') {
       return millRegistryBaseRows_('main');
     }
-    const mainRows = millRegistryBaseRows_('main');
+    const mainRows = millCollapsedMainRegistryRows_();
     const wasteRows = millRegistryBaseRows_('waste');
     return millMergeGeneralRegistryRows_(mainRows, wasteRows);
+  }
+
+  /** Main registry rows after newest/period pick + table collapse (matches Main tab row count). */
+  function millCollapsedMainRegistryRows_() {
+    return millCollapseRowsForTableDisplay_(millRegistryBaseRows_('main'));
   }
 
   function getMillRowsForPdfExport() {
@@ -8690,19 +8692,9 @@ function initDashboardApp() {
     return merged;
   }
 
-  function millMainCompanyKeySet_(mainRows) {
-    const set = new Set();
-    (mainRows || []).forEach(function(r) {
-      const k = millGeneralCompanyKey_(r);
-      if (k) set.add(k);
-    });
-    return set;
-  }
-
   /**
-   * General view: one newest row per company from main & waste (via period view),
-   * then merge main + waste only when company + month + year match exactly.
-   * Unmatched waste rows are kept only when the company is absent from main.
+   * General view: collapsed main rows (same count as Main tab), then merge waste
+   * only when company + month + year match exactly. Unmatched waste never adds rows.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     const wasteByKey = new Map();
@@ -8713,7 +8705,6 @@ function initDashboardApp() {
       wasteByKey.get(key).push(r);
     });
 
-    const mainCompanies = millMainCompanyKeySet_(mainRows);
     const out = [];
     const wasteKeysUsed = new Set();
 
@@ -8730,14 +8721,6 @@ function initDashboardApp() {
       } else {
         out.push(mainR);
       }
-    });
-
-    wasteByKey.forEach(function(wastes, key) {
-      if (wasteKeysUsed.has(key)) return;
-      wastes.forEach(function(w) {
-        if (mainCompanies.has(millGeneralCompanyKey_(w))) return;
-        out.push(w);
-      });
     });
 
     return out;
