@@ -8691,56 +8691,57 @@ function initDashboardApp() {
     return merged;
   }
 
-  function millMainCompanyKeySet_(mainRows) {
-    const set = new Set();
-    (mainRows || []).forEach(function(r) {
-      const k = millGeneralCompanyKey_(r);
-      if (k) set.add(k);
-    });
-    return set;
-  }
-
   /**
-   * General view: newest main rows (one per company+mill), merge waste when
-   * company + month + year match. Waste-only companies not in main are appended.
+   * General view (morning ~394 behavior): group by company + month + year.
+   * Same company with multiple mill names in the same period → one row.
+   * Waste joins the same company+period group (empty month/year may wildcard-match).
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-    const wasteByKey = new Map();
-    (wasteRows || []).forEach(function(r) {
-      if (!pickMillCompanyName_(r)) return;
-      const key = millGeneralStrictMergeKey_(r);
-      if (!wasteByKey.has(key)) wasteByKey.set(key, []);
-      wasteByKey.get(key).push(r);
-    });
-
-    const mainCompanies = millMainCompanyKeySet_(mainRows);
-    const out = [];
-    const wasteKeysUsed = new Set();
-
-    (mainRows || []).forEach(function(mainR) {
-      if (!pickMillCompanyName_(mainR)) return;
-      const key = millGeneralStrictMergeKey_(mainR);
-      const wastes = wasteByKey.get(key) || [];
-      if (wastes.length && !wasteKeysUsed.has(key)) {
-        wasteKeysUsed.add(key);
-        out.push(millMergeGeneralMemberRow_({
-          primary: mainR,
-          members: [mainR].concat(wastes),
-        }));
-      } else {
-        out.push(mainR);
+    const groups = [];
+    function pickGroupForRow(r) {
+      const company = millGeneralCompanyKey_(r);
+      const year = millGeneralYearKey_(r);
+      const month = millGeneralMonthKey_(r);
+      if (!company) return null;
+      let wildcardMatch = null;
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (g.company !== company) continue;
+        if (g.year && year && g.year !== year) continue;
+        if (g.month && month && g.month === month) return g;
+        if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
+          wildcardMatch = wildcardMatch || g;
+        }
       }
-    });
-
-    wasteByKey.forEach(function(wastes, key) {
-      if (wasteKeysUsed.has(key)) return;
-      wastes.forEach(function(w) {
-        if (mainCompanies.has(millGeneralCompanyKey_(w))) return;
-        out.push(w);
-      });
-    });
-
-    return out;
+      return wildcardMatch;
+    }
+    function ingest(r, isMain) {
+      if (!pickMillCompanyName_(r)) return;
+      let g = pickGroupForRow(r);
+      if (!g) {
+        g = {
+          company: millGeneralCompanyKey_(r),
+          month: millGeneralMonthKey_(r),
+          year: millGeneralYearKey_(r),
+          primary: r,
+          members: [],
+          hasMain: false,
+        };
+        groups.push(g);
+      }
+      g.members.push(r);
+      if (!g.month) g.month = millGeneralMonthKey_(r);
+      if (!g.year) g.year = millGeneralYearKey_(r);
+      if (isMain) {
+        g.primary = r;
+        g.hasMain = true;
+      } else if (!g.hasMain) {
+        g.primary = r;
+      }
+    }
+    (mainRows || []).forEach(function(r) { ingest(r, true); });
+    (wasteRows || []).forEach(function(r) { ingest(r, false); });
+    return groups.map(millMergeGeneralMemberRow_);
   }
 
   function millRegistryBaseRows_(source) {
@@ -8764,7 +8765,7 @@ function initDashboardApp() {
       } else if (millRegistryProductView === 'waste') {
         hint.textContent = 'Product Supply = product type at import (POME ISCC / INS / Shell)';
       } else {
-        hint.textContent = 'Main + waste combined when company, month & year match';
+        hint.textContent = 'Combined main + waste per company & period';
       }
     }
     const table = document.getElementById('millTable');

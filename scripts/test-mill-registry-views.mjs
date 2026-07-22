@@ -140,46 +140,72 @@ function millGeneralMergeKey_(row) {
   ].join('\u0001');
 }
 
+function millGeneralCompanyKey_(row) {
+  return String(pickMillCompanyName_(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function millGeneralMonthKey_(row) {
+  const m = parseInt(String(millMonthVal(row) || ''), 10);
+  return m ? String(m) : String(millMonthVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function millGeneralYearKey_(row) {
+  const y = parseInt(String(millYearVal(row) || ''), 10);
+  return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-  const wasteByKey = new Map();
-  (wasteRows || []).forEach(function(r) {
-    const key = millGeneralMergeKey_(r);
-    if (!pickMillCompanyName_(r)) return;
-    if (!wasteByKey.has(key)) wasteByKey.set(key, []);
-    wasteByKey.get(key).push(r);
-  });
-  const mainCompanies = new Set(
-    (mainRows || []).map(function(r) {
-      return String(pickMillCompanyName_(r) || '').trim().toLowerCase();
-    }).filter(Boolean)
-  );
-  const out = [];
-  const wasteKeysUsed = new Set();
-  (mainRows || []).forEach(function(mainR) {
-    const key = millGeneralMergeKey_(mainR);
-    if (!pickMillCompanyName_(mainR)) return;
-    const wastes = wasteByKey.get(key) || [];
-    if (wastes.length && !wasteKeysUsed.has(key)) {
-      wasteKeysUsed.add(key);
-      const merged = Object.assign({}, mainR);
-      merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_([mainR].concat(wastes));
-      merged._millQtySummary = millBuildQtySummaryFromRows_([mainR].concat(wastes));
-      merged._millGeneralMerged = true;
-      merged._millGeneralMergeCount = 1 + wastes.length;
-      out.push(merged);
-    } else {
-      out.push(mainR);
+  const groups = [];
+  function pickGroupForRow(r) {
+    const company = millGeneralCompanyKey_(r);
+    const year = millGeneralYearKey_(r);
+    const month = millGeneralMonthKey_(r);
+    if (!company) return null;
+    let wildcardMatch = null;
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      if (g.company !== company) continue;
+      if (g.year && year && g.year !== year) continue;
+      if (g.month && month && g.month === month) return g;
+      if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
+        wildcardMatch = wildcardMatch || g;
+      }
     }
+    return wildcardMatch;
+  }
+  function ingest(r, isMain) {
+    if (!pickMillCompanyName_(r)) return;
+    let g = pickGroupForRow(r);
+    if (!g) {
+      g = {
+        company: millGeneralCompanyKey_(r),
+        month: millGeneralMonthKey_(r),
+        year: millGeneralYearKey_(r),
+        primary: r,
+        members: [],
+        hasMain: false,
+      };
+      groups.push(g);
+    }
+    g.members.push(r);
+    if (!g.month) g.month = millGeneralMonthKey_(r);
+    if (!g.year) g.year = millGeneralYearKey_(r);
+    if (isMain) {
+      g.primary = r;
+      g.hasMain = true;
+    } else if (!g.hasMain) {
+      g.primary = r;
+    }
+  }
+  (mainRows || []).forEach(function(r) { ingest(r, true); });
+  (wasteRows || []).forEach(function(r) { ingest(r, false); });
+  return groups.map(function(g) {
+    const merged = Object.assign({}, g.primary);
+    merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
+    merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
+    merged._millGeneralMerged = g.members.length > 1;
+    merged._millGeneralMergeCount = g.members.length;
+    merged._millGeneralMergeSources = g.members.slice();
+    return merged;
   });
-  wasteByKey.forEach(function(wastes, key) {
-    if (wasteKeysUsed.has(key)) return;
-    wastes.forEach(function(w) {
-      const ck = String(pickMillCompanyName_(w) || '').trim().toLowerCase();
-      if (mainCompanies.has(ck)) return;
-      out.push(w);
-    });
-  });
-  return out;
 }
 
 // ── General merge: same company + month + year ─────────────────────────────
@@ -211,12 +237,21 @@ assert(merged[0]._millQtySummary.indexOf('CPO:') >= 0, 'qty includes CPO');
 assert(merged[0]._millQtySummary.indexOf('POME INS:') >= 0, 'qty includes POME INS');
 assert(merged[0]._millGeneralMerged === true, 'flagged as general merge');
 
-// different period → main row kept, waste not added when company already in main
+// different period (both months filled) → separate rows
 const main2 = [{ 'COMPANY NAME': 'CO A', MONTH: '2', YEAR: '2026', 'SUPPLY CPO': 100 }];
 const waste2 = [{ 'COMPANY NAME': 'CO A', MONTH: '1', YEAR: '2026', 'SUPPLY INS': 50 }];
 const merged2 = millMergeGeneralRegistryRows_(main2, waste2);
-assert(merged2.length === 1, 'waste different period not added when company in main');
-assert(merged2[0].MONTH === '2', 'main newest period kept');
+assert(merged2.length === 2, 'different filled months stay separate');
+
+// same company, different mills, same month → one General row (morning ~394 behavior)
+const multiMillSamePeriod = [
+  { 'COMPANY NAME': 'CO M', 'MILL NAME': 'Mill 1', MONTH: '3', YEAR: '2026', 'SUPPLY CPO': 10 },
+  { 'COMPANY NAME': 'CO M', 'MILL NAME': 'Mill 2', MONTH: '3', YEAR: '2026', 'SUPPLY PK': 20 },
+];
+const mergedMills = millMergeGeneralRegistryRows_(multiMillSamePeriod, []);
+assert(mergedMills.length === 1, 'same company+period collapses mills in General');
+assert(mergedMills[0]['PRODUCT SUPPLY'].indexOf('CPO') >= 0, 'collapsed mills keep CPO');
+assert(mergedMills[0]['PRODUCT SUPPLY'].indexOf('PK') >= 0, 'collapsed mills keep PK');
 
 // same company, different main months → both kept (not merged together)
 const mainMultiMonth = [
