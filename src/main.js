@@ -6854,11 +6854,10 @@ function initDashboardApp() {
   }
 
   function millApplyRegistryPeriodView_(rows) {
-    if (millPeriodMode === 'period') {
-      return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
+    if (millPeriodMode === 'newest') {
+      return millPickNewestPerEntity_(rows);
     }
-    // Newest mode — keep every sheet row (each month/year stays separate).
-    return rows || [];
+    return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
 
   /** Monthly Report — same as-of snapshot + dedupe as Mill Registry period mode.
@@ -6923,7 +6922,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'All sheet rows — each month & year shown separately'
+        ? 'Latest version per company (newest month & year)'
         : millPeriodFilterHintText_();
     }
   }
@@ -8693,8 +8692,8 @@ function initDashboardApp() {
   }
 
   /**
-   * General view: keep each main sheet row separate by month/year.
-   * Merge with waste only when company + month + year match exactly.
+   * General view: one newest row per company from main & waste (via period view),
+   * then merge main + waste only when company + month + year match exactly.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     const wasteByKey = new Map();
