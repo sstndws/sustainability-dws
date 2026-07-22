@@ -6854,10 +6854,11 @@ function initDashboardApp() {
   }
 
   function millApplyRegistryPeriodView_(rows) {
-    if (millPeriodMode === 'newest') {
-      return millPickNewestPerEntity_(rows);
+    if (millPeriodMode === 'period') {
+      return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
     }
-    return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
+    // Newest mode — keep every sheet row (each month/year stays separate).
+    return rows || [];
   }
 
   /** Monthly Report — same as-of snapshot + dedupe as Mill Registry period mode.
@@ -6922,7 +6923,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Latest version per company'
+        ? 'All sheet rows — each month & year shown separately'
         : millPeriodFilterHintText_();
     }
   }
@@ -7003,10 +7004,7 @@ function initDashboardApp() {
       parts.push(b.wasteOnly + ' company cuma di Waste sheet (tab Waste Product)');
     }
     if (b.bothSheets) {
-      parts.push(b.bothSheets + ' company ada di Main & Waste (digabung 1 baris)');
-    }
-    if (b.multiMain) {
-      parts.push(b.multiMain + ' baris Main duplikat digabung — bukan waste');
+      parts.push(b.bothSheets + ' baris Main + Waste (bulan & tahun sama)');
     }
     return parts.join(' · ');
   }
@@ -8662,106 +8660,75 @@ function initDashboardApp() {
     return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  function millGeneralResolvedPeriodKey_(row) {
-    const companyKey = millGeneralCompanyKey_(row);
-    let monthKey = millGeneralMonthKey_(row);
-    let yearKey = millGeneralYearKey_(row);
-    if (!companyKey || (monthKey && yearKey)) {
-      return { monthKey: monthKey, yearKey: yearKey };
-    }
-    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
-    const src = isWasteRow
-      ? ((allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []))
-      : ((allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []));
-    if (!src.length) return { monthKey: monthKey, yearKey: yearKey };
-
-    const yearCand = new Set();
-    const monthCand = new Set();
-    src.forEach(function(r) {
-      if (millGeneralCompanyKey_(r) !== companyKey) return;
-      const y = parseMillYearSort(millYearVal(r));
-      const m = parseMillMonthSort(millMonthVal(r));
-      if (y) yearCand.add(String(y));
-      if (m) monthCand.add(String(m));
-    });
-
-    if (!yearKey && yearCand.size === 1) yearKey = Array.from(yearCand)[0];
-    if (!monthKey && monthCand.size === 1) monthKey = Array.from(monthCand)[0];
-    return { monthKey: monthKey, yearKey: yearKey };
-  }
-
-  /** Kunci gabungan General: company + bulan + tahun (main + waste). */
-  function millGeneralMergeKey_(row) {
-    const p = millGeneralResolvedPeriodKey_(row);
+  /** Kunci gabungan General: company + bulan + tahun (exact — no wildcard). */
+  function millGeneralStrictMergeKey_(row) {
     return [
       millGeneralCompanyKey_(row),
-      p.monthKey,
-      p.yearKey,
+      millGeneralMonthKey_(row),
+      millGeneralYearKey_(row),
     ].join('\u0001');
   }
 
+  /** @deprecated alias — use millGeneralStrictMergeKey_ */
+  function millGeneralMergeKey_(row) {
+    return millGeneralStrictMergeKey_(row);
+  }
+
+  function millMergeGeneralMemberRow_(g) {
+    const merged = Object.assign({}, g.primary);
+    merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
+    merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
+    if (!String(millMonthVal(merged) || '').trim()) {
+      const m = g.members.map(function(r) { return parseMillMonthSort(millMonthVal(r)); }).find(function(x) { return x > 0; });
+      if (m) merged.MONTH = String(m);
+    }
+    if (!String(millYearVal(merged) || '').trim()) {
+      const y = g.members.map(function(r) { return parseMillYearSort(millYearVal(r)); }).find(function(x) { return x > 0; });
+      if (y) merged.YEAR = String(y);
+    }
+    merged._millGeneralMerged = g.members.length > 1;
+    merged._millGeneralMergeCount = g.members.length;
+    merged._millGeneralMergeSources = g.members.slice();
+    return merged;
+  }
+
+  /**
+   * General view: keep each main sheet row separate by month/year.
+   * Merge with waste only when company + month + year match exactly.
+   */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-    const groups = [];
-    function pickGroupForRow(r) {
-      const company = millGeneralCompanyKey_(r);
-      const year = millGeneralYearKey_(r);
-      const month = millGeneralMonthKey_(r);
-      if (!company) return null;
-      let wildcardMatch = null;
-      for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        if (g.company !== company) continue;
-        if (g.year && year && g.year !== year) continue;
-        if (g.month && month && g.month === month) return g; // exact month wins
-        if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
-          wildcardMatch = wildcardMatch || g; // month kosong boleh match
-        }
-      }
-      return wildcardMatch;
-    }
-    function ingest(r, isMain) {
+    const wasteByKey = new Map();
+    (wasteRows || []).forEach(function(r) {
       if (!pickMillCompanyName_(r)) return;
-      let g = pickGroupForRow(r);
-      if (!g) {
-        g = {
-          company: millGeneralCompanyKey_(r),
-          month: millGeneralMonthKey_(r),
-          year: millGeneralYearKey_(r),
-          primary: r,
-          members: [],
-          hasMain: false,
-        };
-        groups.push(g);
-      }
-      g.members.push(r);
-      if (!g.month) g.month = millGeneralMonthKey_(r);
-      if (!g.year) g.year = millGeneralYearKey_(r);
-      if (isMain) {
-        g.primary = r;
-        g.hasMain = true;
-      } else if (!g.hasMain) {
-        g.primary = r;
-      }
-    }
-    (mainRows || []).forEach(function(r) { ingest(r, true); });
-    (wasteRows || []).forEach(function(r) { ingest(r, false); });
-    return groups.map(function(g) {
-      const merged = Object.assign({}, g.primary);
-      merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
-      merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
-      if (!String(millMonthVal(merged) || '').trim()) {
-        const m = g.members.map(function(r) { return parseMillMonthSort(millMonthVal(r)); }).find(function(x) { return x > 0; });
-        if (m) merged.MONTH = String(m);
-      }
-      if (!String(millYearVal(merged) || '').trim()) {
-        const y = g.members.map(function(r) { return parseMillYearSort(millYearVal(r)); }).find(function(x) { return x > 0; });
-        if (y) merged.YEAR = String(y);
-      }
-      merged._millGeneralMerged = g.members.length > 1;
-      merged._millGeneralMergeCount = g.members.length;
-      merged._millGeneralMergeSources = g.members.slice();
-      return merged;
+      const key = millGeneralStrictMergeKey_(r);
+      if (!wasteByKey.has(key)) wasteByKey.set(key, []);
+      wasteByKey.get(key).push(r);
     });
+
+    const out = [];
+    const wasteKeysUsed = new Set();
+
+    (mainRows || []).forEach(function(mainR) {
+      if (!pickMillCompanyName_(mainR)) return;
+      const key = millGeneralStrictMergeKey_(mainR);
+      const wastes = wasteByKey.get(key) || [];
+      if (wastes.length && !wasteKeysUsed.has(key)) {
+        wasteKeysUsed.add(key);
+        out.push(millMergeGeneralMemberRow_({
+          primary: mainR,
+          members: [mainR].concat(wastes),
+        }));
+      } else {
+        out.push(mainR);
+      }
+    });
+
+    wasteByKey.forEach(function(wastes, key) {
+      if (wasteKeysUsed.has(key)) return;
+      wastes.forEach(function(w) { out.push(w); });
+    });
+
+    return out;
   }
 
   function millRegistryBaseRows_(source) {
@@ -8785,7 +8752,7 @@ function initDashboardApp() {
       } else if (millRegistryProductView === 'waste') {
         hint.textContent = 'Product Supply = product type at import (POME ISCC / INS / Shell)';
       } else {
-        hint.textContent = 'Combined main + waste per company & period';
+        hint.textContent = 'Main + waste combined when company, month & year match';
       }
     }
     const table = document.getElementById('millTable');

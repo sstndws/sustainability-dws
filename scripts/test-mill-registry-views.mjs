@@ -208,6 +208,16 @@ const waste2 = [{ 'COMPANY NAME': 'CO A', MONTH: '2', YEAR: '2026', 'SUPPLY INS'
 const merged2 = millMergeGeneralRegistryRows_(main2, waste2);
 assert(merged2.length === 2, 'different month stays separate');
 
+// same company, different main months → both kept (not merged together)
+const mainMultiMonth = [
+  { 'COMPANY NAME': 'CO B', MONTH: '1', YEAR: '2026', 'SUPPLY CPO': 100 },
+  { 'COMPANY NAME': 'CO B', MONTH: '3', YEAR: '2026', 'SUPPLY CPO': 200 },
+];
+const mergedMulti = millMergeGeneralRegistryRows_(mainMultiMonth, []);
+assert(mergedMulti.length === 2, 'main rows different months stay separate');
+assert(mergedMulti[0]['SUPPLY CPO'] === 100, 'month 1 supply preserved');
+assert(mergedMulti[1]['SUPPLY CPO'] === 200, 'month 3 supply preserved');
+
 // waste-only company
 const wasteOnly = [{ 'COMPANY NAME': 'WASTE ONLY CO', MONTH: '3', YEAR: '2026', 'SUPPLY ISCC': 500 }];
 const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
