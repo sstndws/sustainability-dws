@@ -238,6 +238,10 @@ function fallbackBandReason_(resolved, compliment, totalScore) {
  */
 export function millRiskReasonTokens_(row, opts) {
   opts = opts || {};
+  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
+  // LOW — no Risk Reason pills (user request).
+  if (resolved === 'LOW') return [];
+
   const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
   const tokens = [];
   const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
@@ -249,7 +253,6 @@ export function millRiskReasonTokens_(row, opts) {
 
   if (tokens.length) return tokens;
 
-  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
   if (!resolved) return [];
   const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
   const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));

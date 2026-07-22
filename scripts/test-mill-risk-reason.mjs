@@ -31,9 +31,15 @@ const cleanLow = {
 };
 
 assert.deepEqual(millRiskReasonGaps_(cleanLow), []);
+assert.equal(millRiskReason_(cleanLow, opts), '');
 assert.equal(
-  millRiskReason_(cleanLow, opts),
-  'Compliment (C) with strong Total Score (≥ 4) — Result Risk Level is LOW (Total Score: 4)'
+  millRiskReason_({
+    ...cleanLow,
+    COORDINATES: '',
+    NDPE: 'No',
+  }, opts),
+  '',
+  'LOW rows hide Risk Reason even if gaps exist'
 );
 
 assert.equal(
