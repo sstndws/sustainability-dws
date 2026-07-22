@@ -141,36 +141,45 @@ function millGeneralMergeKey_(row) {
 }
 
 function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-  const map = new Map();
-  const order = [];
-  function ingest(r, isMain) {
+  const wasteByKey = new Map();
+  (wasteRows || []).forEach(function(r) {
     const key = millGeneralMergeKey_(r);
     if (!pickMillCompanyName_(r)) return;
-    if (!map.has(key)) {
-      map.set(key, { primary: r, members: [r], hasMain: !!isMain });
-      order.push(key);
-      return;
-    }
-    const g = map.get(key);
-    g.members.push(r);
-    if (isMain) {
-      g.primary = r;
-      g.hasMain = true;
-    } else if (!g.hasMain) {
-      g.primary = r;
-    }
-  }
-  (mainRows || []).forEach(function(r) { ingest(r, true); });
-  (wasteRows || []).forEach(function(r) { ingest(r, false); });
-  return order.map(function(key) {
-    const g = map.get(key);
-    const merged = Object.assign({}, g.primary);
-    merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
-    merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
-    merged._millGeneralMerged = g.members.length > 1;
-    merged._millGeneralMergeCount = g.members.length;
-    return merged;
+    if (!wasteByKey.has(key)) wasteByKey.set(key, []);
+    wasteByKey.get(key).push(r);
   });
+  const mainCompanies = new Set(
+    (mainRows || []).map(function(r) {
+      return String(pickMillCompanyName_(r) || '').trim().toLowerCase();
+    }).filter(Boolean)
+  );
+  const out = [];
+  const wasteKeysUsed = new Set();
+  (mainRows || []).forEach(function(mainR) {
+    const key = millGeneralMergeKey_(mainR);
+    if (!pickMillCompanyName_(mainR)) return;
+    const wastes = wasteByKey.get(key) || [];
+    if (wastes.length && !wasteKeysUsed.has(key)) {
+      wasteKeysUsed.add(key);
+      const merged = Object.assign({}, mainR);
+      merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_([mainR].concat(wastes));
+      merged._millQtySummary = millBuildQtySummaryFromRows_([mainR].concat(wastes));
+      merged._millGeneralMerged = true;
+      merged._millGeneralMergeCount = 1 + wastes.length;
+      out.push(merged);
+    } else {
+      out.push(mainR);
+    }
+  });
+  wasteByKey.forEach(function(wastes, key) {
+    if (wasteKeysUsed.has(key)) return;
+    wastes.forEach(function(w) {
+      const ck = String(pickMillCompanyName_(w) || '').trim().toLowerCase();
+      if (mainCompanies.has(ck)) return;
+      out.push(w);
+    });
+  });
+  return out;
 }
 
 // ── General merge: same company + month + year ─────────────────────────────
@@ -202,11 +211,12 @@ assert(merged[0]._millQtySummary.indexOf('CPO:') >= 0, 'qty includes CPO');
 assert(merged[0]._millQtySummary.indexOf('POME INS:') >= 0, 'qty includes POME INS');
 assert(merged[0]._millGeneralMerged === true, 'flagged as general merge');
 
-// different period → separate rows
-const main2 = [{ 'COMPANY NAME': 'CO A', MONTH: '1', YEAR: '2026', 'SUPPLY CPO': 100 }];
-const waste2 = [{ 'COMPANY NAME': 'CO A', MONTH: '2', YEAR: '2026', 'SUPPLY INS': 50 }];
+// different period → main row kept, waste not added when company already in main
+const main2 = [{ 'COMPANY NAME': 'CO A', MONTH: '2', YEAR: '2026', 'SUPPLY CPO': 100 }];
+const waste2 = [{ 'COMPANY NAME': 'CO A', MONTH: '1', YEAR: '2026', 'SUPPLY INS': 50 }];
 const merged2 = millMergeGeneralRegistryRows_(main2, waste2);
-assert(merged2.length === 2, 'different month stays separate');
+assert(merged2.length === 1, 'waste different period not added when company in main');
+assert(merged2[0].MONTH === '2', 'main newest period kept');
 
 // same company, different main months → both kept (not merged together)
 const mainMultiMonth = [
@@ -222,7 +232,7 @@ assert(mergedMulti[1]['SUPPLY CPO'] === 200, 'month 3 supply preserved');
 const wasteOnly = [{ 'COMPANY NAME': 'WASTE ONLY CO', MONTH: '3', YEAR: '2026', 'SUPPLY ISCC': 500 }];
 const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
 assert(merged3.length === 1, 'waste-only row kept');
-assert(merged3[0]['PRODUCT SUPPLY'].indexOf('POME ISCC') >= 0, 'waste-only product');
+assert(millCollectProductSupplyTokens_(merged3[0]).indexOf('POME ISCC') >= 0, 'waste-only product');
 
 // renamed waste qty headers (SUPPLY POME ISCC / INS) still drive product + qty display
 const pomeAliasRow = { 'COMPANY NAME': 'POME ALIAS CO', MONTH: '4', YEAR: '2026', 'SUPPLY POME ISCC': 777, 'SUPPLY POME INS': 88 };

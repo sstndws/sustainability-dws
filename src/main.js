@@ -6999,11 +6999,11 @@ function initDashboardApp() {
     }
     const b = millGeneralDisplayBreakdown_(rows);
     const parts = [n + ' baris · sama dengan tabel'];
-    if (b.wasteOnly) {
-      parts.push(b.wasteOnly + ' company cuma di Waste sheet (tab Waste Product)');
-    }
     if (b.bothSheets) {
-      parts.push(b.bothSheets + ' baris Main + Waste (bulan & tahun sama)');
+      parts.push(b.bothSheets + ' baris Main + Waste digabung (bulan & tahun sama)');
+    }
+    if (b.wasteOnly) {
+      parts.push(b.wasteOnly + ' company hanya di Waste sheet (tidak ada di Mill Onboarding)');
     }
     return parts.join(' · ');
   }
@@ -7622,7 +7622,6 @@ function initDashboardApp() {
     // (those stay table-only, as before).
     const base = millRowsAfterRegistryDimFilters();
     const sorted = sortMillRowsForDisplay(base);
-    if (millRegistryProductView === 'general') return sorted;
     return millCollapseRowsForTableDisplay_(sorted);
   }
 
@@ -8691,9 +8690,19 @@ function initDashboardApp() {
     return merged;
   }
 
+  function millMainCompanyKeySet_(mainRows) {
+    const set = new Set();
+    (mainRows || []).forEach(function(r) {
+      const k = millGeneralCompanyKey_(r);
+      if (k) set.add(k);
+    });
+    return set;
+  }
+
   /**
    * General view: one newest row per company from main & waste (via period view),
    * then merge main + waste only when company + month + year match exactly.
+   * Unmatched waste rows are kept only when the company is absent from main.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     const wasteByKey = new Map();
@@ -8704,6 +8713,7 @@ function initDashboardApp() {
       wasteByKey.get(key).push(r);
     });
 
+    const mainCompanies = millMainCompanyKeySet_(mainRows);
     const out = [];
     const wasteKeysUsed = new Set();
 
@@ -8724,7 +8734,10 @@ function initDashboardApp() {
 
     wasteByKey.forEach(function(wastes, key) {
       if (wasteKeysUsed.has(key)) return;
-      wastes.forEach(function(w) { out.push(w); });
+      wastes.forEach(function(w) {
+        if (mainCompanies.has(millGeneralCompanyKey_(w))) return;
+        out.push(w);
+      });
     });
 
     return out;
@@ -8869,9 +8882,7 @@ function initDashboardApp() {
     millRefreshFilterOptions(baseFiltered);
     const filtered = baseFiltered.filter(millRowMatchesColumnFilters);
     const sorted = sortMillRowsForDisplay(filtered);
-    const displayRows = millRegistryProductView === 'general'
-      ? sorted
-      : millCollapseRowsForTableDisplay_(sorted);
+    const displayRows = millCollapseRowsForTableDisplay_(sorted);
     millFilteredRows = displayRows;
     updateMillPdfExportScope();
     updateMillStatsCards_();
