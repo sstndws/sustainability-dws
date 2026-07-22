@@ -132,14 +132,6 @@ function millBuildQtySummaryFromRows_(rows) {
   return parts.join(' · ');
 }
 
-function millGeneralMergeKey_(row) {
-  return [
-    String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
-    String(millMonthVal(row) || '').trim().toLowerCase(),
-    String(millYearVal(row) || '').trim().toLowerCase(),
-  ].join('\u0001');
-}
-
 function millGeneralCompanyKey_(row) {
   return String(pickMillCompanyName_(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -151,61 +143,54 @@ function millGeneralYearKey_(row) {
   const y = parseInt(String(millYearVal(row) || ''), 10);
   return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
+function millGeneralMergeKey_(row) {
+  return [millGeneralCompanyKey_(row), millGeneralMonthKey_(row), millGeneralYearKey_(row)].join('\u0001');
+}
+function millRegistryEntityKey_(r) {
+  const mill = String(r['MILL NAME'] || '').trim().toUpperCase();
+  if (mill && mill !== '—' && mill !== '-') return mill;
+  const co = String(pickMillCompanyName_(r) || '').trim().toUpperCase();
+  return co ? ('\u0000' + co) : '';
+}
 
 function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-  const groups = [];
-  function pickGroupForRow(r) {
-    const company = millGeneralCompanyKey_(r);
-    const year = millGeneralYearKey_(r);
-    const month = millGeneralMonthKey_(r);
-    if (!company) return null;
-    let wildcardMatch = null;
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i];
-      if (g.company !== company) continue;
-      if (g.year && year && g.year !== year) continue;
-      if (g.month && month && g.month === month) return g;
-      if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
-        wildcardMatch = wildcardMatch || g;
-      }
-    }
-    return wildcardMatch;
-  }
-  function ingest(r, isMain) {
+  const wasteByKey = new Map();
+  (wasteRows || []).forEach(function(r) {
+    const key = millGeneralMergeKey_(r);
     if (!pickMillCompanyName_(r)) return;
-    let g = pickGroupForRow(r);
-    if (!g) {
-      g = {
-        company: millGeneralCompanyKey_(r),
-        month: millGeneralMonthKey_(r),
-        year: millGeneralYearKey_(r),
-        primary: r,
-        members: [],
-        hasMain: false,
-      };
-      groups.push(g);
-    }
-    g.members.push(r);
-    if (!g.month) g.month = millGeneralMonthKey_(r);
-    if (!g.year) g.year = millGeneralYearKey_(r);
-    if (isMain) {
-      g.primary = r;
-      g.hasMain = true;
-    } else if (!g.hasMain) {
-      g.primary = r;
-    }
-  }
-  (mainRows || []).forEach(function(r) { ingest(r, true); });
-  (wasteRows || []).forEach(function(r) { ingest(r, false); });
-  return groups.map(function(g) {
-    const merged = Object.assign({}, g.primary);
-    merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
-    merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
-    merged._millGeneralMerged = g.members.length > 1;
-    merged._millGeneralMergeCount = g.members.length;
-    merged._millGeneralMergeSources = g.members.slice();
-    return merged;
+    if (!wasteByKey.has(key)) wasteByKey.set(key, []);
+    wasteByKey.get(key).push(r);
   });
+  const mainMills = new Set(
+    (mainRows || []).map(millRegistryEntityKey_).filter(Boolean)
+  );
+  const out = [];
+  const wasteKeysUsed = new Set();
+  (mainRows || []).forEach(function(mainR) {
+    const key = millGeneralMergeKey_(mainR);
+    if (!pickMillCompanyName_(mainR)) return;
+    const wastes = wasteByKey.get(key) || [];
+    if (wastes.length && !wasteKeysUsed.has(key)) {
+      wasteKeysUsed.add(key);
+      const merged = Object.assign({}, mainR);
+      merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_([mainR].concat(wastes));
+      merged._millQtySummary = millBuildQtySummaryFromRows_([mainR].concat(wastes));
+      merged._millGeneralMerged = true;
+      merged._millGeneralMergeCount = 1 + wastes.length;
+      out.push(merged);
+    } else {
+      out.push(mainR);
+    }
+  });
+  wasteByKey.forEach(function(wastes, key) {
+    if (wasteKeysUsed.has(key)) return;
+    wastes.forEach(function(w) {
+      const mk = millRegistryEntityKey_(w);
+      if (mk && mainMills.has(mk)) return;
+      out.push(w);
+    });
+  });
+  return out;
 }
 
 // ── General merge: same company + month + year ─────────────────────────────
@@ -237,21 +222,20 @@ assert(merged[0]._millQtySummary.indexOf('CPO:') >= 0, 'qty includes CPO');
 assert(merged[0]._millQtySummary.indexOf('POME INS:') >= 0, 'qty includes POME INS');
 assert(merged[0]._millGeneralMerged === true, 'flagged as general merge');
 
-// different period (both months filled) → separate rows
-const main2 = [{ 'COMPANY NAME': 'CO A', MONTH: '2', YEAR: '2026', 'SUPPLY CPO': 100 }];
-const waste2 = [{ 'COMPANY NAME': 'CO A', MONTH: '1', YEAR: '2026', 'SUPPLY INS': 50 }];
+// different period → keep main only when mill already in main (no orphan waste row)
+const main2 = [{ 'COMPANY NAME': 'CO A', 'MILL NAME': 'Mill A', MONTH: '2', YEAR: '2026', 'SUPPLY CPO': 100 }];
+const waste2 = [{ 'COMPANY NAME': 'CO A', 'MILL NAME': 'Mill A', MONTH: '1', YEAR: '2026', 'SUPPLY INS': 50 }];
 const merged2 = millMergeGeneralRegistryRows_(main2, waste2);
-assert(merged2.length === 2, 'different filled months stay separate');
+assert(merged2.length === 1, 'waste different period not added when mill already in main');
+assert(merged2[0].MONTH === '2', 'main newest period kept');
 
-// same company, different mills, same month → one General row (morning ~394 behavior)
+// same company, different mill names → stay separate (sheet unique Mill Name)
 const multiMillSamePeriod = [
   { 'COMPANY NAME': 'CO M', 'MILL NAME': 'Mill 1', MONTH: '3', YEAR: '2026', 'SUPPLY CPO': 10 },
   { 'COMPANY NAME': 'CO M', 'MILL NAME': 'Mill 2', MONTH: '3', YEAR: '2026', 'SUPPLY PK': 20 },
 ];
 const mergedMills = millMergeGeneralRegistryRows_(multiMillSamePeriod, []);
-assert(mergedMills.length === 1, 'same company+period collapses mills in General');
-assert(mergedMills[0]['PRODUCT SUPPLY'].indexOf('CPO') >= 0, 'collapsed mills keep CPO');
-assert(mergedMills[0]['PRODUCT SUPPLY'].indexOf('PK') >= 0, 'collapsed mills keep PK');
+assert(mergedMills.length === 2, 'different mill names stay two rows');
 
 // same company, different main months → both kept (not merged together)
 const mainMultiMonth = [
@@ -269,13 +253,7 @@ const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
 assert(merged3.length === 1, 'waste-only row kept when no main row');
 assert(millCollectProductSupplyTokens_(merged3[0]).indexOf('POME ISCC') >= 0, 'waste-only product');
 
-// newest per company+mill — same company different mill names stay separate
-function millRegistryEntityKey_(r) {
-  return [
-    String(pickMillCompanyName_(r) || '').trim().toUpperCase(),
-    String(r['MILL NAME'] || '').trim().toUpperCase(),
-  ].join('\u0001');
-}
+// newest per mill name — same mill name collapses across company/period
 function millRowPeriodSortKey_(r) {
   return (parseInt(r.YEAR, 10) || 0) * 100 + (parseInt(r.MONTH, 10) || 0);
 }
@@ -283,7 +261,7 @@ function millPickNewestPerEntity_(rows) {
   const byEntity = new Map();
   (rows || []).forEach(function(r) {
     const ek = millRegistryEntityKey_(r);
-    if (!ek || ek === '\u0001') return;
+    if (!ek) return;
     const existing = byEntity.get(ek);
     if (!existing) { byEntity.set(ek, r); return; }
     byEntity.set(ek, millRowPeriodSortKey_(r) > millRowPeriodSortKey_(existing) ? r : existing);
@@ -291,14 +269,14 @@ function millPickNewestPerEntity_(rows) {
   return Array.from(byEntity.values());
 }
 const dupMill = [
-  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill A', MONTH: '1', YEAR: '2026' },
-  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill B', MONTH: '3', YEAR: '2026' },
-  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill A', MONTH: '3', YEAR: '2026' },
+  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Shared Mill', MONTH: '1', YEAR: '2026' },
+  { 'COMPANY NAME': 'CO Y', 'MILL NAME': 'Shared Mill', MONTH: '3', YEAR: '2026' },
+  { 'COMPANY NAME': 'CO Z', 'MILL NAME': 'Other Mill', MONTH: '2', YEAR: '2026' },
 ];
 const newestEnt = millPickNewestPerEntity_(dupMill);
-assert(newestEnt.length === 2, 'same company different mills stay two rows');
-assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Mill A' && r.MONTH === '3'; }), 'Mill A keeps newest month');
-assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Mill B'; }), 'Mill B kept');
+assert(newestEnt.length === 2, 'unique mill names only');
+assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Shared Mill' && r.MONTH === '3'; }), 'Shared Mill keeps newest month');
+assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Other Mill'; }), 'Other Mill kept');
 
 // renamed waste qty headers (SUPPLY POME ISCC / INS) still drive product + qty display
 const pomeAliasRow = { 'COMPANY NAME': 'POME ALIAS CO', MONTH: '4', YEAR: '2026', 'SUPPLY POME ISCC': 777, 'SUPPLY POME INS': 88 };

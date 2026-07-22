@@ -6693,12 +6693,22 @@ function initDashboardApp() {
     return y * 100 + (m || 0);
   }
 
-  /** Mill registry entity key — company + mill (satu snapshot per entitas). */
+  /** Normalize mill name for registry identity (matches sheet unique Mill Name filter). */
+  function millRegistryMillNameToken_(r) {
+    const mill = String(millPickField_(r, ['MILL NAME', 'Mill Name']) || '').trim().toUpperCase();
+    if (mill && mill !== '—' && mill !== '-') return mill;
+    return '';
+  }
+
+  /**
+   * Mill registry entity key — unique Mill Name (sheet filter "Select all N").
+   * Blank mill name falls back to company so those rows are not dropped.
+   */
   function millRegistryEntityKey_(r) {
-    return [
-      String(pickMillCompanyName_(r) || '').trim().toUpperCase(),
-      String(millPickField_(r, ['MILL NAME', 'Mill Name']) || '').trim().toUpperCase(),
-    ].join('\u0001');
+    const mill = millRegistryMillNameToken_(r);
+    if (mill) return mill;
+    const co = String(pickMillCompanyName_(r) || '').trim().toUpperCase();
+    return co ? ('\u0000' + co) : '';
   }
 
   /** @deprecated use millRegistryEntityKey_ */
@@ -6822,8 +6832,8 @@ function initDashboardApp() {
   }
 
   /**
-   * Newest mode — satu baris per company+mill, period tertinggi di data.
-   * Company yang sama dengan mill name berbeda tetap baris terpisah.
+   * Newest mode — satu baris per Mill Name (sesuai unique filter di sheet ~393),
+   * period tertinggi. Mill name kosong fallback ke company name.
    */
   function millPickNewestPerEntity_(rows) {
     const byEntity = new Map();
@@ -6922,7 +6932,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Latest version per company + mill (newest month & year)'
+        ? 'Latest version per mill name (newest month & year)'
         : millPeriodFilterHintText_();
     }
   }
@@ -8691,57 +8701,57 @@ function initDashboardApp() {
     return merged;
   }
 
+  function millMainMillKeySet_(mainRows) {
+    const set = new Set();
+    (mainRows || []).forEach(function(r) {
+      const k = millRegistryEntityKey_(r);
+      if (k) set.add(k);
+    });
+    return set;
+  }
+
   /**
-   * General view (morning ~394 behavior): group by company + month + year.
-   * Same company with multiple mill names in the same period → one row.
-   * Waste joins the same company+period group (empty month/year may wildcard-match).
+   * General view: newest rows per mill name, then merge waste only when
+   * company + month + year match exactly. Waste-only mills not in main are appended.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
-    const groups = [];
-    function pickGroupForRow(r) {
-      const company = millGeneralCompanyKey_(r);
-      const year = millGeneralYearKey_(r);
-      const month = millGeneralMonthKey_(r);
-      if (!company) return null;
-      let wildcardMatch = null;
-      for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        if (g.company !== company) continue;
-        if (g.year && year && g.year !== year) continue;
-        if (g.month && month && g.month === month) return g;
-        if ((!g.month || !month) && (!g.year || !year || g.year === year)) {
-          wildcardMatch = wildcardMatch || g;
-        }
-      }
-      return wildcardMatch;
-    }
-    function ingest(r, isMain) {
+    const wasteByKey = new Map();
+    (wasteRows || []).forEach(function(r) {
       if (!pickMillCompanyName_(r)) return;
-      let g = pickGroupForRow(r);
-      if (!g) {
-        g = {
-          company: millGeneralCompanyKey_(r),
-          month: millGeneralMonthKey_(r),
-          year: millGeneralYearKey_(r),
-          primary: r,
-          members: [],
-          hasMain: false,
-        };
-        groups.push(g);
+      const key = millGeneralStrictMergeKey_(r);
+      if (!wasteByKey.has(key)) wasteByKey.set(key, []);
+      wasteByKey.get(key).push(r);
+    });
+
+    const mainMills = millMainMillKeySet_(mainRows);
+    const out = [];
+    const wasteKeysUsed = new Set();
+
+    (mainRows || []).forEach(function(mainR) {
+      if (!pickMillCompanyName_(mainR)) return;
+      const key = millGeneralStrictMergeKey_(mainR);
+      const wastes = wasteByKey.get(key) || [];
+      if (wastes.length && !wasteKeysUsed.has(key)) {
+        wasteKeysUsed.add(key);
+        out.push(millMergeGeneralMemberRow_({
+          primary: mainR,
+          members: [mainR].concat(wastes),
+        }));
+      } else {
+        out.push(mainR);
       }
-      g.members.push(r);
-      if (!g.month) g.month = millGeneralMonthKey_(r);
-      if (!g.year) g.year = millGeneralYearKey_(r);
-      if (isMain) {
-        g.primary = r;
-        g.hasMain = true;
-      } else if (!g.hasMain) {
-        g.primary = r;
-      }
-    }
-    (mainRows || []).forEach(function(r) { ingest(r, true); });
-    (wasteRows || []).forEach(function(r) { ingest(r, false); });
-    return groups.map(millMergeGeneralMemberRow_);
+    });
+
+    wasteByKey.forEach(function(wastes, key) {
+      if (wasteKeysUsed.has(key)) return;
+      wastes.forEach(function(w) {
+        const mk = millRegistryEntityKey_(w);
+        if (mk && mainMills.has(mk)) return;
+        out.push(w);
+      });
+    });
+
+    return out;
   }
 
   function millRegistryBaseRows_(source) {
@@ -8765,7 +8775,7 @@ function initDashboardApp() {
       } else if (millRegistryProductView === 'waste') {
         hint.textContent = 'Product Supply = product type at import (POME ISCC / INS / Shell)';
       } else {
-        hint.textContent = 'Combined main + waste per company & period';
+        hint.textContent = 'Main + waste per mill; waste merges when company, month & year match';
       }
     }
     const table = document.getElementById('millTable');
