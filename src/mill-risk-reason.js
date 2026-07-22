@@ -1,12 +1,19 @@
 /**
- * Risk-level explanation — anchored to Result Risk Level shown in the UI (English copy).
+ * Risk Reason — per-row explanation from Mill Onboarding sheet gaps.
  *
- * RESULT RISK LEVEL:
- *   IF BUYER NO BUY LIST = Yes → HIGH
- *   ELSE → RISK LEVEL
+ * Risk factors (what is missing / failing):
+ *   Coordinate     → No Coordinate
+ *   Legality       → Legality Not Complete
+ *   APL            → Non APL Area
+ *   NDPE           → No NDPE Commitment
+ *   Certification  → No Certification
  *
- * RISK LEVEL (when Compliment = C):
- *   NC → HIGH · score ≤ 2 → HIGH · score 3 → MEDIUM · score ≥ 4 → LOW
+ * Pengurangan (risk reduction factors on the sheet):
+ *   Deforestasi            → 1
+ *   High Deforestation     → 2
+ *   Have Grievance (Legality, Enviro)
+ *
+ * RESULT RISK LEVEL still drives HIGH/MEDIUM/LOW display; NBL can elevate to HIGH.
  */
 
 const FIELD_ALIASES = {
@@ -15,7 +22,24 @@ const FIELD_ALIASES = {
   riskLevel: ['RISK LEVEL', 'Risk Level'],
   compliment: ['COMPLIMENT/NOT COMPLIMENT', 'Compliment/Not Compliment'],
   totalScore: ['TOTAL SCORE', 'Total Score'],
+  coordinate: ['COORDINATES', 'Coordinates', 'COORDINATE', 'Coordinate'],
+  millLoc: ['MILL LOC', 'MILL LOCATION', 'Mill Location', 'LOC'],
+  ndpe: ['NDPE', 'NDPE COMMITMENT', 'NDPE Policy'],
+  certification: ['CERTIFICATION', 'Certification'],
+  totalCertification: ['TOTAL CERTIFICATION', 'Total Certification'],
+  deforestationWidth: ['DEFORESTATION WIDTH', 'Deforestation Width'],
+  riskReduction: ['RISK REDUCTION FACTOR', 'Risk Reduction Factor'],
+  legalityDocs: ['HGU/HGB', 'IZIN LOKASI', 'IUP', 'IZIN LINGKUNGAN'],
+  legalityGrievance: [
+    'LEGALITY GRIEVANCE', 'LEGALITY GRIEVANCES', 'LEGALITY', 'Legality',
+  ],
+  environmentGrievance: [
+    'ENVIRONMENT GRIEVANCE', 'ENVIRONMENT GRIEVANCES', 'ENVIRONMENT', 'Environment',
+  ],
 };
+
+/** Ha threshold aligned with mill form Medium tier for deforestation width. */
+const HIGH_DEFORESTATION_HA = 25;
 
 function pickRowField_(row, keys) {
   if (!row || typeof row !== 'object') return '';
@@ -30,6 +54,17 @@ function pickRowField_(row, keys) {
 function defaultIsYes_(val) {
   const s = String(val == null ? '' : val).trim().toLowerCase();
   return s === 'yes' || s === 'y' || s === '1' || s === 'true' || /\bnbl\b/.test(s) || s.includes('no buy');
+}
+
+function isExplicitNo_(val) {
+  const s = String(val == null ? '' : val).trim().toLowerCase();
+  return s === 'no' || s === 'n' || s === '0' || s === 'false' || s === 'tidak';
+}
+
+function isBlankCell_(val) {
+  if (val == null) return true;
+  const s = String(val).trim();
+  return !s || s === '—' || s === '-' || /^no\s*data$/i.test(s) || /^n\/?a$/i.test(s);
 }
 
 function normalizeComplimentCode_(val) {
@@ -56,6 +91,105 @@ function normalizeRiskBand_(val) {
   return upper;
 }
 
+function parseHaWidth_(raw) {
+  if (isBlankCell_(raw)) return NaN;
+  const n = parseFloat(String(raw).replace(/[^\d.,-]/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function hasValidCoordinate_(row) {
+  const raw = pickRowField_(row, FIELD_ALIASES.coordinate);
+  if (isBlankCell_(raw)) return false;
+  if (/^(none|null|-+)$/i.test(raw)) return false;
+  // Accept "lat, lng" or similar numeric pair.
+  const nums = String(raw).match(/-?\d+(?:[.,]\d+)?/g);
+  return !!(nums && nums.length >= 2);
+}
+
+function legalityNotComplete_(row) {
+  const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
+  if (compliment === 'NC') return true;
+  // Any legality doc explicitly No → incomplete.
+  for (let i = 0; i < FIELD_ALIASES.legalityDocs.length; i++) {
+    const k = FIELD_ALIASES.legalityDocs[i];
+    const v = row && row[k] != null ? String(row[k]).trim() : '';
+    if (isExplicitNo_(v)) return true;
+  }
+  return false;
+}
+
+function isNonApl_(row) {
+  const loc = pickRowField_(row, FIELD_ALIASES.millLoc);
+  if (isBlankCell_(loc)) return false;
+  const u = loc.toUpperCase().replace(/\s+/g, ' ');
+  if (u.includes('NON APL') || u.includes('NON-APL') || u === 'NONAPL') return true;
+  if (u === 'APL' || u.includes('APL')) return false;
+  return false;
+}
+
+function hasNoNdpe_(row) {
+  const v = pickRowField_(row, FIELD_ALIASES.ndpe);
+  if (isBlankCell_(v)) return true;
+  return isExplicitNo_(v);
+}
+
+function hasNoCertification_(row) {
+  const cert = pickRowField_(row, FIELD_ALIASES.certification);
+  const total = pickRowField_(row, FIELD_ALIASES.totalCertification);
+  if (!isBlankCell_(cert)) {
+    const u = cert.toUpperCase();
+    if (u === 'NO' || u === 'NONE' || u === 'N/A' || u === '-' || u === '—') return true;
+    return false;
+  }
+  if (!isBlankCell_(total)) {
+    const n = parseTotalScore_(total);
+    if (n === 0) return true;
+    if (n != null && n > 0) return false;
+  }
+  return true;
+}
+
+function grievanceYes_(row, aliases) {
+  for (let i = 0; i < aliases.length; i++) {
+    const v = row && row[aliases[i]] != null ? String(row[aliases[i]]).trim() : '';
+    if (defaultIsYes_(v)) return true;
+  }
+  return false;
+}
+
+/**
+ * Collect Risk / Pengurangan phrases from the sheet row (handwritten mapping).
+ * @returns {string[]}
+ */
+export function millRiskReasonGaps_(row) {
+  const gaps = [];
+  if (!hasValidCoordinate_(row)) gaps.push('No Coordinate');
+  if (legalityNotComplete_(row)) gaps.push('Legality Not Complete');
+  if (isNonApl_(row)) gaps.push('Non APL Area');
+  if (hasNoNdpe_(row)) gaps.push('No NDPE Commitment');
+  if (hasNoCertification_(row)) gaps.push('No Certification');
+
+  const rrf = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.riskReduction));
+  const defHa = parseHaWidth_(pickRowField_(row, FIELD_ALIASES.deforestationWidth));
+  if (rrf === 2 || (!Number.isNaN(defHa) && defHa > HIGH_DEFORESTATION_HA)) {
+    gaps.push('High Deforestation');
+  } else if (rrf === 1 || (!Number.isNaN(defHa) && defHa > 0)) {
+    gaps.push('Deforestation');
+  }
+
+  const hasLegGrv = grievanceYes_(row, FIELD_ALIASES.legalityGrievance);
+  const hasEnvGrv = grievanceYes_(row, FIELD_ALIASES.environmentGrievance);
+  if (hasLegGrv && hasEnvGrv) {
+    gaps.push('Have Grievance (Legality, Enviro)');
+  } else if (hasLegGrv) {
+    gaps.push('Have Grievance (Legality)');
+  } else if (hasEnvGrv) {
+    gaps.push('Have Grievance (Enviro)');
+  }
+
+  return gaps;
+}
+
 export function millResolvedRiskLevelFromRow_(row) {
   const rr = pickRowField_(row, FIELD_ALIASES.resultRisk);
   if (rr) return rr;
@@ -71,63 +205,61 @@ function scorePhrase_(totalScore) {
   return ' (Total Score: ' + totalScore + ')';
 }
 
-/**
- * @param {object} row — mill sheet row
- * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
- * @returns {string} English explanation for the displayed Result Risk Level
- */
-export function millRiskReason_(row, opts) {
-  opts = opts || {};
-  const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
-
-  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
-  if (!resolved) return '';
-
-  const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
-  const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
-  const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
+function fallbackBandReason_(resolved, compliment, totalScore) {
   const scoreTxt = scorePhrase_(totalScore);
-
   if (resolved === 'HIGH') {
-    if (isNblYes(nbl)) {
-      return 'On No Buy List — Result Risk Level elevated to HIGH';
-    }
     if (compliment === 'NC') {
       return 'Legality: Not Compliment (NC) — Result Risk Level is HIGH';
     }
     if (compliment === 'C' && totalScore !== null && totalScore <= 2) {
       return 'Compliment (C) with low Total Score (≤ 2) — Result Risk Level is HIGH' + scoreTxt;
     }
-    if (compliment === 'C' && totalScore !== null) {
-      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is HIGH';
-    }
     return 'Assessment outcome — Result Risk Level is HIGH';
   }
-
   if (resolved === 'MEDIUM') {
     if (compliment === 'C' && totalScore === 3) {
       return 'Compliment (C) with moderate Total Score (3) — Result Risk Level is MEDIUM';
     }
-    if (compliment === 'C' && totalScore !== null) {
-      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is MEDIUM';
-    }
-    if (compliment === 'NC') {
-      return 'Legality flagged — Result Risk Level is MEDIUM';
-    }
     return 'Assessment outcome — Result Risk Level is MEDIUM';
   }
-
   if (resolved === 'LOW') {
     if (compliment === 'C' && totalScore !== null && totalScore >= 4) {
       return 'Compliment (C) with strong Total Score (≥ 4) — Result Risk Level is LOW' + scoreTxt;
     }
-    if (compliment === 'C' && totalScore !== null) {
-      return 'Compliment (C)' + scoreTxt + ' — Result Risk Level is LOW';
-    }
     return 'Assessment outcome — Result Risk Level is LOW';
   }
+  return resolved ? ('Result Risk Level: ' + resolved) : '';
+}
 
-  return 'Result Risk Level: ' + resolved;
+/**
+ * @param {object} row — mill sheet row
+ * @param {{ millIsNblYes?: (val: unknown) => boolean }} [opts]
+ * @returns {string} English explanation for Risk Reason column
+ */
+export function millRiskReason_(row, opts) {
+  opts = opts || {};
+  const isNblYes = typeof opts.millIsNblYes === 'function' ? opts.millIsNblYes : defaultIsYes_;
+
+  const resolved = normalizeRiskBand_(millResolvedRiskLevelFromRow_(row));
+  const nbl = pickRowField_(row, FIELD_ALIASES.nbl);
+  const gaps = millRiskReasonGaps_(row);
+  const parts = [];
+
+  if (isNblYes(nbl)) {
+    parts.push('On No Buy List — Result Risk Level elevated to HIGH');
+  }
+
+  if (gaps.length) {
+    parts.push(gaps.join('; '));
+  }
+
+  if (parts.length) return parts.join(' · ');
+
+  // No sheet gaps detected — fall back to band / score wording.
+  if (!resolved) return '';
+  const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
+  const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
+  return fallbackBandReason_(resolved, compliment, totalScore);
 }
 
 /** @deprecated Use millRiskReason_ — kept for callers not yet migrated. */
