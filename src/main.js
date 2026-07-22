@@ -6944,19 +6944,47 @@ function initDashboardApp() {
     scheduleRenderMillTable();
   }
 
+  function millRowSourceFlags_(row) {
+    const sources = (row._millGeneralMergeSources && row._millGeneralMergeSources.length)
+      ? row._millGeneralMergeSources
+      : [row];
+    let hasMain = false;
+    let hasWaste = false;
+    sources.forEach(function(s) {
+      if (String(s._millSheetSource || '').toLowerCase() === 'waste') hasWaste = true;
+      else hasMain = true;
+    });
+    return { hasMain: hasMain, hasWaste: hasWaste, sourceCount: sources.length };
+  }
+
   function millGeneralDisplayBreakdown_(rows) {
     let mainOnly = 0;
     let wasteOnly = 0;
-    let merged = 0;
+    let bothSheets = 0;
+    let multiMain = 0;
     (rows || []).forEach(function(r) {
-      if (r._millGeneralMerged && r._millGeneralMergeSources && r._millGeneralMergeSources.length > 1) {
-        merged++;
+      const f = millRowSourceFlags_(r);
+      if (f.hasMain && f.hasWaste) {
+        bothSheets++;
         return;
       }
-      if (String(r._millSheetSource || '').toLowerCase() === 'waste') wasteOnly++;
-      else mainOnly++;
+      if (f.hasWaste) {
+        wasteOnly++;
+        return;
+      }
+      if (f.hasMain && f.sourceCount > 1) {
+        multiMain++;
+        return;
+      }
+      if (f.hasMain) mainOnly++;
     });
-    return { mainOnly: mainOnly, wasteOnly: wasteOnly, merged: merged, total: (rows || []).length };
+    return {
+      mainOnly: mainOnly,
+      wasteOnly: wasteOnly,
+      bothSheets: bothSheets,
+      multiMain: multiMain,
+      total: (rows || []).length,
+    };
   }
 
   function millStatsTotalNote_(rows) {
@@ -6964,17 +6992,20 @@ function initDashboardApp() {
     if (!n) return 'No rows in current view';
     const view = millRegistryProductView;
     if (view === 'main') {
-      return n + ' rows · Mill Onboarding (main product)';
+      return n + ' baris · sheet Mill Onboarding (main)';
     }
     if (view === 'waste') {
-      return n + ' rows · Waste product sheet';
+      return n + ' baris · sheet Waste product';
     }
     const b = millGeneralDisplayBreakdown_(rows);
     const parts = [];
-    if (b.mainOnly) parts.push(b.mainOnly + ' main only');
-    if (b.wasteOnly) parts.push(b.wasteOnly + ' waste only');
-    if (b.merged) parts.push(b.merged + ' main+waste merged');
-    if (!parts.length) return n + ' rows · matches table';
+    if (b.mainOnly) parts.push(b.mainOnly + ' hanya main');
+    if (b.wasteOnly) parts.push(b.wasteOnly + ' hanya waste');
+    if (b.bothSheets) {
+      parts.push(b.bothSheets + ' ada di main & waste (jadi 1 baris)');
+    }
+    if (b.multiMain) parts.push(b.multiMain + ' baris main digabung');
+    if (!parts.length) return n + ' baris · sama dengan tabel';
     return parts.join(' · ');
   }
 
