@@ -6821,28 +6821,9 @@ function initDashboardApp() {
     return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
   }
 
-  /** Registry dedupe key — satu baris per company (UI: "Latest version per company"). */
-  function millRegistryCompanyKey_(r) {
-    return millGeneralCompanyKey_(r);
-  }
-
   /**
-   * Newest mode — satu baris per company name, period tertinggi.
-   * Beberapa mill name untuk company yang sama digabung ke versi terbaru.
-   */
-  function millPickNewestPerCompanyName_(rows) {
-    const byCompany = new Map();
-    (rows || []).forEach(function(r) {
-      const ck = millRegistryCompanyKey_(r);
-      if (!ck) return;
-      const existing = byCompany.get(ck);
-      byCompany.set(ck, existing ? millPickRegistryRowWinner_(existing, r) : r);
-    });
-    return Array.from(byCompany.values());
-  }
-
-  /**
-   * Newest mode — company+mill (legacy; prefer millPickNewestPerCompanyName_ for registry).
+   * Newest mode — satu baris per company+mill, period tertinggi di data.
+   * Company yang sama dengan mill name berbeda tetap baris terpisah.
    */
   function millPickNewestPerEntity_(rows) {
     const byEntity = new Map();
@@ -6874,7 +6855,7 @@ function initDashboardApp() {
 
   function millApplyRegistryPeriodView_(rows) {
     if (millPeriodMode === 'newest') {
-      return millPickNewestPerCompanyName_(rows);
+      return millPickNewestPerEntity_(rows);
     }
     return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
@@ -6894,7 +6875,7 @@ function initDashboardApp() {
     };
     function pickPeriodRows_(src) {
       const rows = (src || []).filter(millRowHasCompanyName_);
-      if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerCompanyName_(rows);
+      if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerEntity_(rows);
       return millPickLatestPerCompany_(rows, pf);
     }
     if (view === 'waste') {
@@ -6941,7 +6922,7 @@ function initDashboardApp() {
     const hint = document.getElementById('millPeriodHint');
     if (hint) {
       hint.textContent = millPeriodMode === 'newest'
-        ? 'Latest version per company (newest month & year)'
+        ? 'Latest version per company + mill (newest month & year)'
         : millPeriodFilterHintText_();
     }
   }
@@ -7641,6 +7622,7 @@ function initDashboardApp() {
     // (those stay table-only, as before).
     const base = millRowsAfterRegistryDimFilters();
     const sorted = sortMillRowsForDisplay(base);
+    if (millRegistryProductView === 'general') return sorted;
     return millCollapseRowsForTableDisplay_(sorted);
   }
 
@@ -8719,7 +8701,7 @@ function initDashboardApp() {
   }
 
   /**
-   * General view: newest main rows (one per company), merge waste when
+   * General view: newest main rows (one per company+mill), merge waste when
    * company + month + year match. Waste-only companies not in main are appended.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
@@ -8900,7 +8882,11 @@ function initDashboardApp() {
     millRefreshFilterOptions(baseFiltered);
     const filtered = baseFiltered.filter(millRowMatchesColumnFilters);
     const sorted = sortMillRowsForDisplay(filtered);
-    const displayRows = millCollapseRowsForTableDisplay_(sorted);
+    // General: newest-per-entity already collapsed same period; keep morning row count.
+    // Main/Waste: still collapse CPO/PK split rows for the same period.
+    const displayRows = millRegistryProductView === 'general'
+      ? sorted
+      : millCollapseRowsForTableDisplay_(sorted);
     millFilteredRows = displayRows;
     updateMillPdfExportScope();
     updateMillStatsCards_();

@@ -234,28 +234,36 @@ const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
 assert(merged3.length === 1, 'waste-only row kept when no main row');
 assert(millCollectProductSupplyTokens_(merged3[0]).indexOf('POME ISCC') >= 0, 'waste-only product');
 
-// newest per company name — multiple mill names collapse to one row
+// newest per company+mill — same company different mill names stay separate
+function millRegistryEntityKey_(r) {
+  return [
+    String(pickMillCompanyName_(r) || '').trim().toUpperCase(),
+    String(r['MILL NAME'] || '').trim().toUpperCase(),
+  ].join('\u0001');
+}
 function millRowPeriodSortKey_(r) {
   return (parseInt(r.YEAR, 10) || 0) * 100 + (parseInt(r.MONTH, 10) || 0);
 }
-function millPickNewestPerCompanyName_(rows) {
-  const byCompany = new Map();
+function millPickNewestPerEntity_(rows) {
+  const byEntity = new Map();
   (rows || []).forEach(function(r) {
-    const ck = String(pickMillCompanyName_(r) || '').trim().toLowerCase();
-    if (!ck) return;
-    const existing = byCompany.get(ck);
-    if (!existing) { byCompany.set(ck, r); return; }
-    byCompany.set(ck, millRowPeriodSortKey_(r) > millRowPeriodSortKey_(existing) ? r : existing);
+    const ek = millRegistryEntityKey_(r);
+    if (!ek || ek === '\u0001') return;
+    const existing = byEntity.get(ek);
+    if (!existing) { byEntity.set(ek, r); return; }
+    byEntity.set(ek, millRowPeriodSortKey_(r) > millRowPeriodSortKey_(existing) ? r : existing);
   });
-  return Array.from(byCompany.values());
+  return Array.from(byEntity.values());
 }
 const dupMill = [
   { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill A', MONTH: '1', YEAR: '2026' },
   { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill B', MONTH: '3', YEAR: '2026' },
+  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill A', MONTH: '3', YEAR: '2026' },
 ];
-const newestCo = millPickNewestPerCompanyName_(dupMill);
-assert(newestCo.length === 1, 'one row per company in newest mode');
-assert(newestCo[0].MONTH === '3', 'newest month wins across mills');
+const newestEnt = millPickNewestPerEntity_(dupMill);
+assert(newestEnt.length === 2, 'same company different mills stay two rows');
+assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Mill A' && r.MONTH === '3'; }), 'Mill A keeps newest month');
+assert(newestEnt.some(function(r) { return r['MILL NAME'] === 'Mill B'; }), 'Mill B kept');
 
 // renamed waste qty headers (SUPPLY POME ISCC / INS) still drive product + qty display
 const pomeAliasRow = { 'COMPANY NAME': 'POME ALIAS CO', MONTH: '4', YEAR: '2026', 'SUPPLY POME ISCC': 777, 'SUPPLY POME INS': 88 };
