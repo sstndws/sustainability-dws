@@ -11644,12 +11644,21 @@ function initDashboardApp() {
     const companyName = ctx && ctx.companyName ? ctx.companyName : '';
     const millName = ctx && ctx.millName ? ctx.millName : '';
     html += '<div class="ttp-group-nested-footer">'
+      + '<div class="ttp-group-nested-footer-actions">'
+      + '<button type="button" class="btn-sm btn-outline ttp-group-export-btn"'
+      + ' data-group-name="' + escHtml(groupName) + '"'
+      + ' data-company-name="' + escHtml(companyName) + '"'
+      + ' data-mill-name="' + escHtml(millName) + '"'
+      + ' title="Export this mill\'s TTP suppliers to Excel">'
+      + '<span class="ttp-btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>'
+      + ' Export Excel</button>'
       + '<button type="button" class="btn-sm btn-filled ttp-group-add-btn"'
       + ' data-group-name="' + escHtml(groupName) + '"'
       + ' data-company-name="' + escHtml(companyName) + '"'
       + ' data-mill-name="' + escHtml(millName) + '"'
       + (sampleJson ? ' data-sample-row=\'' + sampleJson + '\'' : '')
       + '>+ Add TTP</button>'
+      + '</div>'
       + '<p class="ttp-group-nested-hint">Click a row to open supplier detail.</p>'
       + '</div></div></div>';
     return html;
@@ -12153,6 +12162,13 @@ function initDashboardApp() {
         return;
       }
 
+      const exportBtn = e.target.closest('.ttp-group-export-btn');
+      if (exportBtn && body.contains(exportBtn)) {
+        e.stopPropagation();
+        exportTtpMillGroupExcel_(exportBtn);
+        return;
+      }
+
       const nestedRow = e.target.closest('.ttp-group-nested-row');
       if (nestedRow && body.contains(nestedRow) && ttpViewMode === 'grouped') {
         if (nestedRow.dataset.row) {
@@ -12183,6 +12199,8 @@ function initDashboardApp() {
           groupRow.dataset.expanded = '1';
           groupRow.classList.add('expanded');
           if (millKey) ttpExpandedMills_.add(millKey);
+          const detailRow = children.length ? children[0] : null;
+          ttpScrollExpandedGroupIntoView_(groupRow, detailRow);
         }
       }
     });
@@ -12847,6 +12865,151 @@ function initDashboardApp() {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     XLSX.writeFile(wb, `${filePrefix}_${stamp}.xlsx`, { cellStyles: true });
+  }
+
+  function ttpScrollExpandedGroupIntoView_(groupRow, detailRow) {
+    const scroller = document.querySelector('#panel-ttm-ttp .ttp-table-scroll');
+    if (!scroller || !detailRow) return;
+    requestAnimationFrame(function() {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const detailRect = detailRow.getBoundingClientRect();
+      let delta = 0;
+      if (detailRect.bottom > scrollerRect.bottom - 20) {
+        delta += (detailRect.bottom - scrollerRect.bottom) + 28;
+      }
+      if (groupRow) {
+        const groupRect = groupRow.getBoundingClientRect();
+        const nextTop = groupRect.top - delta;
+        if (nextTop < scrollerRect.top + 8) {
+          delta -= (scrollerRect.top + 8 - nextTop);
+        }
+      }
+      if (delta) scroller.scrollTop += delta;
+    });
+  }
+
+  function ttpEnsureXlsxLoaded_(done) {
+    if (typeof XLSX !== 'undefined') {
+      done();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    script.onload = function() { done(); };
+    script.onerror = function() {
+      alert('Failed to load Excel library. Check your network and try again.');
+    };
+    document.head.appendChild(script);
+  }
+
+  function ttpSanitizeFileToken_(raw) {
+    return String(raw || '')
+      .trim()
+      .replace(/[^\w\s.-]+/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 48) || 'mill';
+  }
+
+  /** Clean per-mill supplier export columns (ordered, readable). */
+  function ttpMillGroupExportColumns_() {
+    const preferred = [
+      'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID', 'Year', 'YEAR',
+      'FFB SUPPLIER GROUP NAME', 'FFB SUPPLIER NAME', 'CATEGORY',
+      'LAT', 'LONG', 'VILLAGE', 'SUBDISTRICT', 'SUB DISTRICT', 'DISTRICT', 'PROVINCE',
+      'PLANTED AREA', 'FFB SUPPLY to MILL (TON)', 'FFB SUPPLY TO MILL (TON)',
+      'ISPO (Y/N)', 'RSPO (Y/N)', 'ISCC (Y/N)',
+      '% CPO TRACEABLE', '% PK TRACEABLE',
+      'CPO Traceable Volume', 'PK Traceable Volume',
+      'CPO SUPPLY to REFINERY', 'PK SUPPLY to KCP',
+    ];
+    const fields = ttpFields && ttpFields.length ? ttpFields : preferred;
+    const byNorm = Object.create(null);
+    fields.forEach(function(f) {
+      byNorm[normalizeTtpHeaderKey_(f)] = f;
+    });
+    const out = [];
+    const seen = new Set();
+    preferred.forEach(function(p) {
+      const hit = byNorm[normalizeTtpHeaderKey_(p)];
+      if (!hit || seen.has(hit)) return;
+      seen.add(hit);
+      out.push(hit);
+    });
+    return out.length ? out : fields.slice(0, 20);
+  }
+
+  function ttpRowsForMillGroupExport_(millName, companyName, groupName) {
+    const millWant = String(millName || '').trim().toUpperCase();
+    const coWant = String(companyName || '').trim().toUpperCase();
+    const groupWant = String(groupName || '').trim().toUpperCase();
+    const millCol = ttpPickField_(['MILL NAME']);
+    const coCol = ttpPickField_(['COMPANY NAME']);
+    return (ttpApplyTableFilters_(ttpData) || []).filter(function(row) {
+      const mill = String((millCol && row[millCol]) || ttpRowField_(row, ['MILL NAME']) || '').trim().toUpperCase();
+      if (millWant && mill !== millWant && millWant !== '(NO MILL NAME)') return false;
+      if (coWant) {
+        const co = String((coCol && row[coCol]) || ttpRowField_(row, ['COMPANY NAME']) || '').trim().toUpperCase();
+        if (co && co !== '—' && co !== coWant) return false;
+      }
+      if (groupWant) {
+        const g = String(ttpGroupNameForRow_(row) || '').trim().toUpperCase();
+        if (g && g !== '—' && g !== groupWant) return false;
+      }
+      return true;
+    });
+  }
+
+  function exportTtpMillGroupExcel_(btn) {
+    const millName = btn.getAttribute('data-mill-name') || '';
+    const companyName = btn.getAttribute('data-company-name') || '';
+    const groupName = btn.getAttribute('data-group-name') || '';
+    const rows = ttpRowsForMillGroupExport_(millName, companyName, groupName);
+    if (!rows.length) {
+      alert('No supplier rows to export for this mill.');
+      return;
+    }
+    const cols = ttpMillGroupExportColumns_();
+    ttpEnsureXlsxLoaded_(function() {
+      const bodyRows = rows.map(function(d) {
+        return cols.map(function(f) { return d[f] !== undefined && d[f] !== null ? d[f] : ''; });
+      });
+      const ws = buildBrandedExcelSheet_(XLSX, cols, bodyRows, {
+        headerFill: '8B1A1A',
+        includeCompanyInfo: false,
+      });
+      // Row 2 (blank under title) → mill context line
+      ws['A2'] = {
+        t: 's',
+        v: 'Mill: ' + (millName || '—')
+          + '   |   Company: ' + (companyName || '—')
+          + '   |   Group: ' + (groupName || '—')
+          + '   |   ' + rows.length + ' supplier row(s)',
+        s: {
+          font: { bold: true, sz: 11, name: 'Calibri', color: { rgb: '4A1C1C' } },
+          alignment: { horizontal: 'left', vertical: 'center' },
+        },
+      };
+      if (!ws['!merges']) ws['!merges'] = [];
+      ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: Math.min(Math.max(cols.length - 1, 0), 6) } });
+      if (!ws['!rows']) ws['!rows'] = [];
+      ws['!rows'][1] = { hpt: 20 };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'TTP Mill');
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const file = 'TTP_'
+        + ttpSanitizeFileToken_(millName)
+        + '_'
+        + ttpSanitizeFileToken_(companyName)
+        + '_'
+        + stamp
+        + '.xlsx';
+      XLSX.writeFile(wb, file, { cellStyles: true });
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Exported ' + rows.length + ' row(s) for ' + (millName || 'mill'), 'success');
+      }
+    });
   }
 
   // ─── GRIEVANCE DATA ─────────────────────────────────────
@@ -31942,6 +32105,9 @@ function initDashboardApp() {
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
         millRiskReason: millRiskReasonForRow_,
+        millRiskReasonTokens: function(r) {
+          return millRiskReasonTokens_(r, { millIsNblYes: millIsNblYes_ });
+        },
         getMillData: function() { return allData; },
         getMillsForReportPeriod: function(year, month, productView) {
           return millRowsForReportPeriod_(year, month, productView);

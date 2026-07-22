@@ -1092,7 +1092,8 @@
    /* TTP registry table — scroll body + frozen column headers */
    #panel-ttm-ttp .ttp-table-scroll {
      overflow: auto;
-     max-height: min(68vh, calc(100dvh - 320px));
+     max-height: min(75vh, calc(100dvh - 260px));
+     padding-bottom: 72px;
      -webkit-overflow-scrolling: touch;
      scrollbar-width: thin;
      scrollbar-color: rgba(139, 26, 26, 0.18) transparent;
@@ -3329,8 +3330,36 @@
      border-top: 1px solid rgba(139, 26, 26, 0.08);
      background: rgba(255, 255, 255, 0.55);
    }
-   .ttp-group-nested-footer .ttp-group-add-btn {
+   .ttp-group-nested-footer-actions {
+     display: flex;
+     align-items: center;
+     gap: 8px;
+     flex-wrap: wrap;
+   }
+   .ttp-group-nested-footer .ttp-group-add-btn,
+   .ttp-group-nested-footer .ttp-group-export-btn {
      flex-shrink: 0;
+   }
+   .ttp-group-nested-footer .ttp-group-export-btn {
+     background: #fff;
+     color: #8b1a1a;
+     border: 1px solid rgba(139, 26, 26, 0.28);
+     display: inline-flex;
+     align-items: center;
+     gap: 6px;
+   }
+   .ttp-group-nested-footer .ttp-group-export-btn:hover {
+     background: rgba(139, 26, 26, 0.06);
+   }
+   .ttp-group-nested-footer .ttp-group-export-btn .ttp-btn-icon {
+     display: inline-flex;
+   }
+   .ttp-group-nested-footer .ttp-group-export-btn .ttp-btn-icon svg {
+     stroke: currentColor;
+     stroke-width: 1.8;
+     fill: none;
+     stroke-linecap: round;
+     stroke-linejoin: round;
    }
 
    /* TTP Add modal — locked prefill + Dealer multi-village */
