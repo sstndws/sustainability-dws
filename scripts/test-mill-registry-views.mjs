@@ -148,6 +148,11 @@ function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     if (!wasteByKey.has(key)) wasteByKey.set(key, []);
     wasteByKey.get(key).push(r);
   });
+  const mainCompanies = new Set(
+    (mainRows || []).map(function(r) {
+      return String(pickMillCompanyName_(r) || '').trim().toLowerCase();
+    }).filter(Boolean)
+  );
   const out = [];
   const wasteKeysUsed = new Set();
   (mainRows || []).forEach(function(mainR) {
@@ -165,6 +170,14 @@ function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     } else {
       out.push(mainR);
     }
+  });
+  wasteByKey.forEach(function(wastes, key) {
+    if (wasteKeysUsed.has(key)) return;
+    wastes.forEach(function(w) {
+      const ck = String(pickMillCompanyName_(w) || '').trim().toLowerCase();
+      if (mainCompanies.has(ck)) return;
+      out.push(w);
+    });
   });
   return out;
 }
@@ -215,10 +228,34 @@ assert(mergedMulti.length === 2, 'main rows different months stay separate');
 assert(mergedMulti[0]['SUPPLY CPO'] === 100, 'month 1 supply preserved');
 assert(mergedMulti[1]['SUPPLY CPO'] === 200, 'month 3 supply preserved');
 
-// waste-only company — not shown in General (same row count as main)
+// waste-only company — appended when not in main
 const wasteOnly = [{ 'COMPANY NAME': 'WASTE ONLY CO', MONTH: '3', YEAR: '2026', 'SUPPLY ISCC': 500 }];
 const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
-assert(merged3.length === 0, 'waste-only row not added without main row');
+assert(merged3.length === 1, 'waste-only row kept when no main row');
+assert(millCollectProductSupplyTokens_(merged3[0]).indexOf('POME ISCC') >= 0, 'waste-only product');
+
+// newest per company name — multiple mill names collapse to one row
+function millRowPeriodSortKey_(r) {
+  return (parseInt(r.YEAR, 10) || 0) * 100 + (parseInt(r.MONTH, 10) || 0);
+}
+function millPickNewestPerCompanyName_(rows) {
+  const byCompany = new Map();
+  (rows || []).forEach(function(r) {
+    const ck = String(pickMillCompanyName_(r) || '').trim().toLowerCase();
+    if (!ck) return;
+    const existing = byCompany.get(ck);
+    if (!existing) { byCompany.set(ck, r); return; }
+    byCompany.set(ck, millRowPeriodSortKey_(r) > millRowPeriodSortKey_(existing) ? r : existing);
+  });
+  return Array.from(byCompany.values());
+}
+const dupMill = [
+  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill A', MONTH: '1', YEAR: '2026' },
+  { 'COMPANY NAME': 'CO X', 'MILL NAME': 'Mill B', MONTH: '3', YEAR: '2026' },
+];
+const newestCo = millPickNewestPerCompanyName_(dupMill);
+assert(newestCo.length === 1, 'one row per company in newest mode');
+assert(newestCo[0].MONTH === '3', 'newest month wins across mills');
 
 // renamed waste qty headers (SUPPLY POME ISCC / INS) still drive product + qty display
 const pomeAliasRow = { 'COMPANY NAME': 'POME ALIAS CO', MONTH: '4', YEAR: '2026', 'SUPPLY POME ISCC': 777, 'SUPPLY POME INS': 88 };
@@ -253,9 +290,6 @@ function millFillEmptySupplyFields_(target, source) {
     if (!millIsBlankSupplyCell_(source[k])) target[k] = source[k];
   });
   return target;
-}
-function millRowPeriodSortKey_(r) {
-  return (parseInt(r.YEAR, 10) || 0) * 100 + (parseInt(r.MONTH, 10) || 0);
 }
 function millPickNewestCarryForward_(existing, incoming) {
   const sk = millRowPeriodSortKey_(incoming);

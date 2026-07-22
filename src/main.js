@@ -6821,9 +6821,28 @@ function initDashboardApp() {
     return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
   }
 
+  /** Registry dedupe key — satu baris per company (UI: "Latest version per company"). */
+  function millRegistryCompanyKey_(r) {
+    return millGeneralCompanyKey_(r);
+  }
+
   /**
-   * Newest mode — semua company+mill, masing-masing versi period tertinggi di data.
-   * Tidak membatasi ke bulan/tahun global terbaru.
+   * Newest mode — satu baris per company name, period tertinggi.
+   * Beberapa mill name untuk company yang sama digabung ke versi terbaru.
+   */
+  function millPickNewestPerCompanyName_(rows) {
+    const byCompany = new Map();
+    (rows || []).forEach(function(r) {
+      const ck = millRegistryCompanyKey_(r);
+      if (!ck) return;
+      const existing = byCompany.get(ck);
+      byCompany.set(ck, existing ? millPickRegistryRowWinner_(existing, r) : r);
+    });
+    return Array.from(byCompany.values());
+  }
+
+  /**
+   * Newest mode — company+mill (legacy; prefer millPickNewestPerCompanyName_ for registry).
    */
   function millPickNewestPerEntity_(rows) {
     const byEntity = new Map();
@@ -6855,7 +6874,7 @@ function initDashboardApp() {
 
   function millApplyRegistryPeriodView_(rows) {
     if (millPeriodMode === 'newest') {
-      return millPickNewestPerEntity_(rows);
+      return millPickNewestPerCompanyName_(rows);
     }
     return millPickLatestPerCompany_(rows, millSelectedPeriodFilter_());
   }
@@ -6875,14 +6894,14 @@ function initDashboardApp() {
     };
     function pickPeriodRows_(src) {
       const rows = (src || []).filter(millRowHasCompanyName_);
-      if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerEntity_(rows);
+      if (!pf.hasYear && !pf.hasMonth) return millPickNewestPerCompanyName_(rows);
       return millPickLatestPerCompany_(rows, pf);
     }
     if (view === 'waste') {
       return pickPeriodRows_(allDataWaste);
     }
     if (view === 'general') {
-      const mainRows = millCollapseRowsForTableDisplay_(pickPeriodRows_(allData));
+      const mainRows = pickPeriodRows_(allData);
       const wasteRows = pickPeriodRows_(allDataWaste);
       return millMergeGeneralRegistryRows_(mainRows, wasteRows);
     }
@@ -7001,6 +7020,9 @@ function initDashboardApp() {
     const parts = [n + ' baris · sama dengan tabel'];
     if (b.bothSheets) {
       parts.push(b.bothSheets + ' baris Main + Waste digabung (bulan & tahun sama)');
+    }
+    if (b.wasteOnly) {
+      parts.push(b.wasteOnly + ' company hanya di Waste sheet (tab Waste Product)');
     }
     return parts.join(' · ');
   }
@@ -7608,14 +7630,9 @@ function initDashboardApp() {
     if (millRegistryProductView === 'main') {
       return millRegistryBaseRows_('main');
     }
-    const mainRows = millCollapsedMainRegistryRows_();
+    const mainRows = millRegistryBaseRows_('main');
     const wasteRows = millRegistryBaseRows_('waste');
     return millMergeGeneralRegistryRows_(mainRows, wasteRows);
-  }
-
-  /** Main registry rows after newest/period pick + table collapse (matches Main tab row count). */
-  function millCollapsedMainRegistryRows_() {
-    return millCollapseRowsForTableDisplay_(millRegistryBaseRows_('main'));
   }
 
   function getMillRowsForPdfExport() {
@@ -8692,9 +8709,18 @@ function initDashboardApp() {
     return merged;
   }
 
+  function millMainCompanyKeySet_(mainRows) {
+    const set = new Set();
+    (mainRows || []).forEach(function(r) {
+      const k = millGeneralCompanyKey_(r);
+      if (k) set.add(k);
+    });
+    return set;
+  }
+
   /**
-   * General view: collapsed main rows (same count as Main tab), then merge waste
-   * only when company + month + year match exactly. Unmatched waste never adds rows.
+   * General view: newest main rows (one per company), merge waste when
+   * company + month + year match. Waste-only companies not in main are appended.
    */
   function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
     const wasteByKey = new Map();
@@ -8705,6 +8731,7 @@ function initDashboardApp() {
       wasteByKey.get(key).push(r);
     });
 
+    const mainCompanies = millMainCompanyKeySet_(mainRows);
     const out = [];
     const wasteKeysUsed = new Set();
 
@@ -8721,6 +8748,14 @@ function initDashboardApp() {
       } else {
         out.push(mainR);
       }
+    });
+
+    wasteByKey.forEach(function(wastes, key) {
+      if (wasteKeysUsed.has(key)) return;
+      wastes.forEach(function(w) {
+        if (mainCompanies.has(millGeneralCompanyKey_(w))) return;
+        out.push(w);
+      });
     });
 
     return out;
