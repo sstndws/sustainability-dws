@@ -6998,14 +6998,16 @@ function initDashboardApp() {
       return n + ' baris · sheet Waste product';
     }
     const b = millGeneralDisplayBreakdown_(rows);
-    const parts = [];
-    if (b.mainOnly) parts.push(b.mainOnly + ' hanya main');
-    if (b.wasteOnly) parts.push(b.wasteOnly + ' hanya waste');
-    if (b.bothSheets) {
-      parts.push(b.bothSheets + ' ada di main & waste (jadi 1 baris)');
+    const parts = [n + ' baris · sama dengan tabel'];
+    if (b.wasteOnly) {
+      parts.push(b.wasteOnly + ' company cuma di Waste sheet (tab Waste Product)');
     }
-    if (b.multiMain) parts.push(b.multiMain + ' baris main digabung');
-    if (!parts.length) return n + ' baris · sama dengan tabel';
+    if (b.bothSheets) {
+      parts.push(b.bothSheets + ' company ada di Main & Waste (digabung 1 baris)');
+    }
+    if (b.multiMain) {
+      parts.push(b.multiMain + ' baris Main duplikat digabung — bukan waste');
+    }
     return parts.join(' · ');
   }
 
