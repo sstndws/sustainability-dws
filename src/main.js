@@ -15268,7 +15268,8 @@ function initDashboardApp() {
   }
 
   function blExportIncludeCompanyInfo_() {
-    return blActiveType === 'declaration';
+    // Declaration Monitoring panel — both Shipping BL and Declaration exports.
+    return blActiveType === 'declaration' || blActiveType === 'shipping';
   }
 
   function writeBlExcelWorkbook_(sheets, filename) {
