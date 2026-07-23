@@ -57,7 +57,7 @@
               <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
-          <div id="eudr-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
+          <div id="eudr-loading" class="dash-loading-host"><div class="dash-loading" role="status" aria-live="polite"><div class="dash-loading__visual" aria-hidden="true"><span class="dash-loading__ring"></span><span class="dash-loading__dot"></span></div><p class="dash-loading__label">Loading…</p></div></div>
           <div class="eudr-table-wrap">
             <table id="eudrTable" class="eudr-registry-table" style="display:none;">
               <thead>
@@ -75,7 +75,6 @@
               <tbody id="eudrTableBody"></tbody>
             </table>
           </div>
-          <p class="eudr-table-hint">Click a row for mill details · Save to Sheet in the popup saves assessment + status to the EUDR Potential tab.</p>
           <div id="eudr-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
         </div>
 

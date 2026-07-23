@@ -1,0 +1,815 @@
+/**
+ * Mobile polish — iPhone 11 through 17 Pro Max (portrait ~375–430px).
+ * All rules scoped to max-width: 768px so desktop is untouched.
+ */
+
+@media (max-width: 768px) {
+  /* ── Mobile drawer nav (full labels, no icon-rail clipping) ── */
+  #mainSidebar.sidebar.mobile-open,
+  #mainSidebar.sidebar.mobile-open.expanded {
+    transform: translate3d(0, 0, 0) !important;
+    width: min(300px, 88vw) !important;
+    pointer-events: auto;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-item,
+  #mainSidebar.sidebar.mobile-open .nav-group-header {
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 44px !important;
+    margin: 2px 8px !important;
+    padding: 0 10px !important;
+    justify-content: flex-start !important;
+    border-radius: 10px !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-group {
+    align-items: stretch !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-label {
+    display: block !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    line-height: 1.3 !important;
+    padding-left: 8px !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-group-chevron {
+    display: flex !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-group.open > .nav-group-children {
+    display: block !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item {
+    padding-left: 14px !important;
+    margin-left: 4px !important;
+    margin-right: 8px !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .sidebar-section {
+    max-height: 40px !important;
+    opacity: 1 !important;
+    padding: 12px 16px 4px !important;
+    pointer-events: auto !important;
+  }
+
+  #mainSidebar.sidebar.mobile-open .sidebar-signout-btn .nav-label {
+    display: block !important;
+  }
+
+  /* ── Safe area (notch / home indicator) ── */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  #dashboard.page.active {
+    --main-pad-x: 16px;
+    --main-pad-y: 18px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  #dashboard .dash-top {
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  #mainSidebar.sidebar,
+  #mainSidebar.sidebar.expanded,
+  #mainSidebar.sidebar.mobile-open {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sidebar-backdrop {
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ── Prevent accidental horizontal page scroll ── */
+  #dashboard .main-content {
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+
+  /* ── Panel rhythm ── */
+  .panel {
+    padding: 18px max(14px, env(safe-area-inset-left, 0px)) max(36px, calc(24px + env(safe-area-inset-bottom, 0px))) max(14px, env(safe-area-inset-right, 0px));
+  }
+
+  .breadcrumb {
+    font-size: 11.5px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page-header {
+    margin-bottom: 16px;
+  }
+
+  .page-header h1 {
+    font-size: clamp(24px, 7vw, 28px);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .page-header p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  /* ── Stats cards ── */
+  .stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    padding: 14px 12px;
+    min-width: 0;
+  }
+
+  .stat-card-num {
+    font-size: clamp(20px, 5.5vw, 24px);
+  }
+
+  .stat-card-label {
+    font-size: 10.5px;
+    line-height: 1.3;
+  }
+
+  .stat-card-note {
+    font-size: 10px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+
+  /* ── Filter chips (All Mills / NBL / …) ── */
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .filter-chip {
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+
+  /* ── Table card headers & action buttons ── */
+  .table-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .table-header h3 {
+    font-size: 14px;
+    line-height: 1.3;
+  }
+
+  .table-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .table-actions > * {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-actions .btn-sm,
+  .table-actions button {
+    justify-content: center;
+    min-height: 40px;
+    width: 100%;
+  }
+
+  #panel-bl-monitoring .bl-table-header-left,
+  #panel-no-buy-list .nbl-table-header-left {
+    width: 100%;
+  }
+
+  #panel-bl-monitoring .bl-source-tabs,
+  #panel-no-buy-list .nbl-source-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 4px;
+    padding: 3px;
+  }
+
+  #panel-bl-monitoring .bl-source-tab,
+  #panel-no-buy-list .nbl-source-tab {
+    min-height: 38px;
+    padding: 8px 6px;
+    font-size: 11.5px;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  /* ── Period / filter bars (Facility, Monthly Report, …) ── */
+  .pf-period-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+
+  .pf-period-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .pf-filter-label {
+    height: auto;
+    min-height: 0;
+    padding-bottom: 2px;
+  }
+
+  .pf-period-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pf-period-group {
+    min-width: 0;
+  }
+
+  .pf-period-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+  }
+
+  .pf-period-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pf-period-actions .pf-export-btn,
+  .pf-period-actions .pf-reset-btn,
+  .pf-period-actions button {
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .pf-scope-text,
+  .mrd-scope-text {
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .mrd-period-hint {
+    font-size: 11.5px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  #panel-monthly-report-detail .mrd-toolbar-search-wrap {
+    width: 100%;
+    max-width: none;
+    order: 0;
+  }
+
+  #panel-monthly-report-detail .mrd-search,
+  .pf-search {
+    width: 100%;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  /* ── Mill Onboarding — compact period / product filters ── */
+  #panel-mill-onboarding .mill-registry-filters {
+    margin-bottom: 14px;
+    border-radius: 12px;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+    min-height: 0;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__divider {
+    margin: 0 12px;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__meta {
+    max-width: none;
+    width: 100%;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__label {
+    font-size: 10px;
+    margin-bottom: 0;
+    letter-spacing: 0.06em;
+  }
+
+  /* Hint is helpful on desktop; on mobile it bloats the card */
+  #panel-mill-onboarding .mill-registry-filters__hint {
+    display: none;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__controls {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__controls .mill-period-mode,
+  #panel-mill-onboarding .mill-period-toolbar .mill-period-mode {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 2px;
+    border-radius: 8px;
+  }
+
+  #panel-mill-onboarding .mill-registry-filters__controls .mill-period-mode-btn,
+  #panel-mill-onboarding .mill-period-toolbar .mill-period-mode-btn {
+    flex: 1 1 0;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 6px;
+    font-size: 11.5px;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  #panel-mill-onboarding .mill-period-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  /* Newest mode: hide disabled month/year pickers on mobile */
+  #panel-mill-onboarding .mill-period-toolbar:not(.mill-period-toolbar--custom) .mill-period-pickers {
+    display: none !important;
+  }
+
+  #panel-mill-onboarding .mill-period-pickers {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  #panel-mill-onboarding .mill-period-pickers > * {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #panel-mill-onboarding .mill-period-pickers .ttp-btn-filter {
+    width: 100%;
+    justify-content: center;
+    min-height: 34px;
+    height: 34px;
+    padding: 0 8px;
+    font-size: 11.5px;
+    gap: 4px;
+    border-radius: 7px;
+  }
+
+  #panel-mill-onboarding .mill-period-pickers .ttp-btn-icon svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Mill export toolbar */
+  #panel-mill-onboarding .mill-export-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  #panel-mill-onboarding .mill-export-toolbar .ttp-dropdown-wrap,
+  #panel-mill-onboarding .mill-export-toolbar .mill-pdf-export-btn,
+  #panel-mill-onboarding .mill-export-toolbar .ttp-btn-export-xlsx {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #panel-mill-onboarding .mill-export-toolbar .ttp-btn-select,
+  #panel-mill-onboarding .mill-export-toolbar .ttp-btn-filter,
+  #panel-mill-onboarding .mill-export-toolbar .ttp-btn-export-xlsx,
+  #panel-mill-onboarding .mill-export-toolbar .mill-pdf-export-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  #panel-mill-onboarding .mill-pdf-scope-wrap {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    justify-content: center;
+    text-align: center;
+    padding: 4px 0 2px;
+  }
+
+  #panel-mill-onboarding .mill-pdf-scope-label {
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  #panel-mill-onboarding .mill-registry-table-scroll {
+    max-height: min(58vh, calc(100dvh - 240px));
+  }
+
+  /* ── TTP toolbar ── */
+  #panel-ttm-ttp .ttp-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  #panel-ttm-ttp .ttp-toolbar .ttp-dropdown-wrap,
+  #panel-ttm-ttp .ttp-toolbar > button,
+  #panel-ttm-ttp .ttp-toolbar > .ttp-btn-select,
+  #panel-ttm-ttp .ttp-toolbar > .ttp-btn-filter,
+  #panel-ttm-ttp .ttp-toolbar > .ttp-btn-reset-filters,
+  #panel-ttm-ttp .ttp-toolbar > .ttp-btn-export-xlsx {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #panel-ttm-ttp .ttp-toolbar .ttp-btn-select,
+  #panel-ttm-ttp .ttp-toolbar .ttp-btn-filter,
+  #panel-ttm-ttp .ttp-toolbar .ttp-btn-reset-filters,
+  #panel-ttm-ttp .ttp-toolbar .ttp-btn-export-xlsx,
+  #panel-ttm-ttp .ttp-toolbar #btn-add-ttp {
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  #panel-ttm-ttp .ttp-selection-info,
+  #panel-ttm-ttp .ttp-group-info-bar {
+    grid-column: 1 / -1;
+  }
+
+  #panel-ttm-ttp .ttp-overview__toolbar {
+    padding: 12px 14px;
+  }
+
+  #panel-ttm-ttp .ttp-period-bar-inner,
+  #panel-ttm-ttp .ttp-period-pickers {
+    width: 100%;
+  }
+
+  #panel-ttm-ttp .ttp-period-mode {
+    width: 100%;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 40px;
+  }
+
+  #panel-ttm-ttp .ttp-period-mode-btn {
+    flex: 1 1 auto;
+    min-height: 34px;
+    padding: 8px 10px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  #panel-ttm-ttp .ttp-traceable-row {
+    grid-template-columns: 1fr;
+  }
+
+  #panel-ttm-ttp .ttp-table-scroll {
+    max-height: min(62vh, calc(100dvh - 260px));
+  }
+
+  #panel-ttm-ttp .ttp-category-mix-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  #panel-ttm-ttp .ttp-category-mix-toggle {
+    align-self: flex-start;
+  }
+
+  /* ── EUDR formula card ── */
+  .eudr-formula-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .eudr-formula-card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .eudr-formula-card-actions > * {
+    min-width: 0;
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .eudr-status-filter {
+    width: 100%;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  /* ── Company profile filters ── */
+  .cpl-filter-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .cpl-filter-select {
+    min-width: 0;
+    flex: 1 1 calc(50% - 4px);
+    min-height: 40px;
+  }
+
+  /* ── Supplier DD ── */
+  #panel-supplier-dd .panel-box {
+    padding: 16px;
+  }
+
+  #panel-supplier-dd .panel-card {
+    padding: 16px;
+  }
+
+  .scr-saved-search-wrap {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .scr-saved-search-input,
+  .scr-saved-filter-select {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 40px;
+  }
+
+  .scr-saved-table-wrap {
+    max-height: min(52vh, calc(100dvh - 280px));
+  }
+
+  /* ── Modals & overlays ── */
+  .modal-overlay,
+  .nbl-modal-overlay,
+  .supply-import-modal-overlay,
+  .eudr-ffb-modal-overlay,
+  .ttp-detail-overlay,
+  .mill-profile-overlay {
+    padding: max(12px, env(safe-area-inset-top, 12px)) max(12px, env(safe-area-inset-right, 12px)) max(12px, env(safe-area-inset-bottom, 12px)) max(12px, env(safe-area-inset-left, 12px));
+    align-items: flex-end;
+  }
+
+  .modal,
+  .modal-box,
+  .nbl-modal,
+  .ttp-detail-box,
+  .mill-profile-box {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0;
+  }
+
+  .pf-export-modal-dialog {
+    width: calc(100% - 24px);
+    max-width: none;
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin: 0 auto;
+  }
+
+  .pf-export-modal-foot {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pf-export-modal-foot .pf-btn {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 42px;
+    justify-content: center;
+  }
+
+  .modal-head,
+  .modal-header {
+    padding: 16px 18px 12px;
+  }
+
+  .modal-body {
+    padding: 16px 18px;
+  }
+
+  .modal-foot,
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 18px 16px;
+  }
+
+  /* ── Dropdown panels ── */
+  .ttp-dropdown-panel,
+  .ttp-dropdown-panel--select.open,
+  #ttpSelectPanel,
+  .mill-pdf-filter-panel,
+  #panel-mill-onboarding .mill-period-filter-panel {
+    min-width: 0;
+    width: min(320px, calc(100vw - 28px));
+    max-width: calc(100vw - 28px);
+  }
+
+  /* ── Touch-friendly controls ── */
+  .btn-sm,
+  .ttp-btn-select,
+  .ttp-btn-filter,
+  .ttp-btn-export-xlsx,
+  .pf-export-btn,
+  .pf-reset-btn {
+    min-height: 40px;
+  }
+
+  select,
+  input[type="search"],
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  textarea {
+    font-size: 16px; /* prevent iOS zoom on focus */
+  }
+
+  .search-bar {
+    padding: 10px 14px;
+  }
+
+  .search-bar input {
+    font-size: 16px;
+    min-height: 24px;
+  }
+
+  #dashboard .dash-logo-name:not(.dash-logo-name--short) {
+    display: none;
+  }
+
+  #dashboard .dash-logo-name--short {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: none;
+  }
+
+  #dashboard .dash-logo-divider {
+    display: none;
+  }
+
+  #dashboard .dash-logo-icon {
+    display: none;
+  }
+
+  #dashboard .dash-logo {
+    gap: 8px;
+  }
+
+  /* ── Overview: full-bleed bg horizontal only (top spacing in overview-landing.css) ── */
+  #panel-overview {
+    margin-top: 0;
+    margin-left: calc(-1 * max(14px, env(safe-area-inset-left, 14px)));
+    margin-right: calc(-1 * max(14px, env(safe-area-inset-right, 14px)));
+  }
+
+  /* ── Monthly report sections ── */
+  #panel-monthly-report-detail .mrd-kpi-row.stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #panel-monthly-report-detail .mrd-facility-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #panel-monthly-report-detail .mrd-section-head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  #panel-monthly-report-detail .mrd-product-mode {
+    width: 100%;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 40px;
+  }
+
+  #panel-monthly-report-detail .mrd-product-mode-btn {
+    flex: 1 1 auto;
+    min-height: 34px;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+/* ── Tighter layout on smaller iPhones (SE, 12/13 mini, etc.) ── */
+@media (max-width: 480px) {
+  .stats-row,
+  #panel-monthly-report-detail .mrd-kpi-row.stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .stat-card-num {
+    font-size: 20px;
+  }
+
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Period month/year stay side-by-side on small phones */
+  #panel-mill-onboarding .mill-period-pickers {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pf-period-fields {
+    grid-template-columns: 1fr;
+  }
+
+  #panel-bl-monitoring .bl-source-tabs,
+  #panel-no-buy-list .nbl-source-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  #panel-mill-onboarding .mill-export-toolbar,
+  #panel-ttm-ttp .ttp-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .table-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pf-period-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .eudr-formula-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mp-grid,
+  .mp-grid.cols2 {
+    grid-template-columns: 1fr;
+  }
+
+  .mill-profile-head-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Large iPhones (Pro Max) — slightly roomier stat numbers ── */
+@media (min-width: 414px) and (max-width: 768px) {
+  .stat-card-num {
+    font-size: clamp(22px, 5vw, 26px);
+  }
+}

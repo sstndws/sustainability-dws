@@ -2,6 +2,8 @@
 // Modal save = in-memory ONLY. Tidak ada localStorage, tidak ada API call.
 // Data dikirim ke Google Sheets saat user klik Save as Draft / Submit di main form
 // (handleFinalSave → apiCreateSubmission / apiUpdateSubmission).
+import { dashLoadingHtml_ } from './dash-loading.js';
+
 window._tmlSelectedMill = '';
 window._tmlScreeningData = {};
 window._tmlYNState = {};
@@ -34,7 +36,7 @@ window.openViewScreeningPopup = async function() {
 
   var body = document.getElementById('sdd-view-screening-body');
   if (!body) return;
-  body.innerHTML = '<div style="padding:18px;text-align:center;color:#6b7280;font-size:13px;">Loading screening data…</div>';
+  body.innerHTML = '<div class="dash-loading-host" style="padding:28px 12px;">' + dashLoadingHtml_() + '</div>';
   existing.style.display = 'flex';
 
   var sid = window._sddSubmissionId || window._scrLoadedKey || '';

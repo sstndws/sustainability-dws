@@ -34,6 +34,7 @@ import {
   grvNormalizeRiskRow_,
   grvRiskTableCellHtml_,
 } from './grievance-risk.js';
+import { dashLoadingHtml_, dashMountLoading_ } from './dash-loading.js';
 
 /** Set VITE_AUTH_ENABLED=true di Vercel/.env untuk mengaktifkan login lagi. */
 const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
@@ -13749,10 +13750,10 @@ function initDashboardApp() {
     if (quarterSel) quarterSel.disabled = !!loading;
     if (search) search.disabled = !!loading;
     if (loading && summary) {
-      summary.textContent = 'Loading monitoring data for TTM/TTP…';
+      summary.textContent = 'Loading…';
     }
     if (loading && results) {
-      results.innerHTML = '<div class="bl-picker-empty">Loading monitoring data…</div>';
+      results.innerHTML = '<div class="bl-picker-empty dash-loading-host">' + dashLoadingHtml_('Loading…', { inline: true }) + '</div>';
       results.classList.remove('open');
     }
   }
@@ -20455,10 +20456,6 @@ function initDashboardApp() {
     }
     var btnAddGroup = document.getElementById('btn-add-nbl-group');
     if (btnAddGroup) btnAddGroup.style.display = nblActiveSource === 'nbl' ? '' : 'none';
-    var hintEl = document.getElementById('nblTableHint');
-    if (hintEl) {
-      hintEl.style.display = nblActiveSource === 'nbl' ? '' : 'none';
-    }
     var infoEl = document.getElementById('nblGroupInfo');
     if (infoEl) infoEl.style.display = nblActiveSource === 'nbl' ? '' : 'none';
     var searchEl = document.getElementById('nblSearch');
@@ -23482,8 +23479,8 @@ function initDashboardApp() {
       const tbl     = document.getElementById('pfTable');
       const pkTbl   = document.getElementById('pfPkTable');
       const errEl   = document.getElementById('pf-error');
-      if (loading) { loading.style.display = 'block'; loading.textContent = 'Loading data…'; }
-      if (pkLoading) { pkLoading.style.display = 'block'; pkLoading.textContent = 'Loading PK data…'; }
+      if (loading) { loading.style.display = 'block'; dashMountLoading_(loading); }
+      if (pkLoading) { pkLoading.style.display = 'block'; dashMountLoading_(pkLoading); }
       if (tbl) tbl.style.display = 'none';
       if (pkTbl) pkTbl.style.display = 'none';
       if (errEl) errEl.style.display = 'none';
@@ -25722,7 +25719,7 @@ function initDashboardApp() {
       return new Date(b['updated_at'] || 0) - new Date(a['updated_at'] || 0);
     });
 
-    body.innerHTML = '<div class="mill-task-loading">Loading task list…</div>';
+    body.innerHTML = '<div class="mill-task-loading dash-loading-host">' + dashLoadingHtml_() + '</div>';
     if (empty) empty.style.display = 'none';
 
     let pendingMillCount = 0;

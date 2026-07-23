@@ -42,6 +42,7 @@ import {
   mrdEudrPotentialLabel_,
 } from './monthly-report-labels.js';
 import { millRiskReason_, millRiskReasonTokens_ } from './mill-risk-reason.js';
+import { dashLoadingHtml_ } from './dash-loading.js';
 
 const MRD_ROW_LIMIT = 5000;
 const MRD_SDD_LIMIT = 5000;
@@ -573,7 +574,7 @@ async function exportMonthlyReport_(exportOpts) {
   const prevTxt = btn ? btn.textContent : '';
   _mrdExportInFlight = true;
   mrdSetExportButtonsBusy_(true, btn, prevTxt);
-  if (btn) btn.textContent = 'Preparing…';
+  if (btn) btn.textContent = 'Loading…';
 
   try {
     _year = String(reportPeriod.year || _year);
@@ -592,7 +593,7 @@ async function exportMonthlyReport_(exportOpts) {
       } catch (_) { /* continue without SDD */ }
     }
 
-    if (btn) btn.textContent = 'Loading data…';
+    if (btn) btn.textContent = 'Loading…';
     const extra = await _deps.preparePdfExport({
       sections: sections,
       dataPeriod: pageDataPeriod,
@@ -991,7 +992,7 @@ function renderKpis(stats, opts) {
 }
 
 function renderSddSection(data, loading) {
-  if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading Supplier Due Diligence…</p>';
+  if (loading) return '<div class="mrd-empty mrd-empty--loading dash-loading-host">' + dashLoadingHtml_('Loading…', { inline: true }) + '</div>';
   const rows = data.filter(function(r) {
     return matchesSearch([
       r['SCR - Screening Status'], r['Group Name'], r['Grup Name'], r['Mill Name'],
@@ -1230,7 +1231,7 @@ function renderGrvSection(rows) {
 }
 
 function renderFacilitySection(bundles, loading, eudrPotential) {
-  if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading facility performance…</p>';
+  if (loading) return '<div class="mrd-empty mrd-empty--loading dash-loading-host">' + dashLoadingHtml_('Loading…', { inline: true }) + '</div>';
   const eudrCompanySet = mrdBuildEudrPotentialCompanySet_(eudrPotential);
   const active = mrdSortFacilityBundles_((bundles || []).filter(function(b) {
     return (b.companies || []).length > 0 && hasCellValue(b.facility);
@@ -1315,7 +1316,7 @@ function renderFacilitySection(bundles, loading, eudrPotential) {
 }
 
 function renderEudrSection(rows, loading) {
-  if (loading) return '<p class="mrd-empty mrd-empty--loading">Loading EUDR Potential…</p>';
+  if (loading) return '<div class="mrd-empty mrd-empty--loading dash-loading-host">' + dashLoadingHtml_('Loading…', { inline: true }) + '</div>';
   const filtered = rows.filter(function(item) { return matchesSearch(item.search); }).slice(0, MRD_ROW_LIMIT);
   const cols = [
     { label: 'Group Name', raw: function(item) { return item.row['GROUP NAME']; } },

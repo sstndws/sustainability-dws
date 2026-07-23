@@ -28,7 +28,7 @@
               <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
-          <div id="qm-loading" style="padding:40px;text-align:center;color:#9C8A8A;font-size:14px;">Loading data...</div>
+          <div id="qm-loading" class="dash-loading-host"><div class="dash-loading" role="status" aria-live="polite"><div class="dash-loading__visual" aria-hidden="true"><span class="dash-loading__ring"></span><span class="dash-loading__dot"></span></div><p class="dash-loading__label">Loading…</p></div></div>
           <div class="qm-table-wrap">
             <table id="qmTable" class="qm-registry-table" style="display:none;">
               <thead>
@@ -45,7 +45,6 @@
               <tbody id="qmTableBody"></tbody>
             </table>
           </div>
-          <p class="qm-table-hint">Check rows for partial export · click a row to edit Status, Progress, and dates in the popup.</p>
           <div id="qm-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
         </div>
       </div>
