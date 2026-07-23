@@ -1,0 +1,549 @@
+/**
+ * ui-polish.css — visual refinement only (same brand colors).
+ * Does not change layout hooks, IDs, or JS behaviour.
+ */
+
+/* ── Motion & typography tokens (colors unchanged) ── */
+:root {
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 160ms;
+  --dur-med: 220ms;
+  --shadow-soft: 0 1px 2px rgba(26, 8, 8, 0.04), 0 4px 16px rgba(139, 26, 26, 0.06);
+  --shadow-lift: 0 2px 4px rgba(26, 8, 8, 0.05), 0 8px 24px rgba(139, 26, 26, 0.08);
+  --focus-ring: 0 0 0 3px rgba(139, 26, 26, 0.12);
+}
+
+/* ── Global typography smoothing ── */
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea {
+  font-family: 'DM Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  font-variant-ligatures: common-ligatures;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  letter-spacing: 0.01em;
+  line-height: 1.55;
+}
+
+/* Headings keep serif accent — slightly softer tracking */
+.page-header h1,
+.panel-title-row h2,
+.ov-ld__title,
+.login-shell__headline {
+  font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* Numbers & stats — cleaner alignment */
+.stat-card-num,
+.ttp-overview__cell-value,
+.ov-ld__stat-value,
+table td[data-numeric],
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Smoother panel entrance ── */
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.panel {
+  animation: panelIn var(--dur-med) var(--ease-out-soft) both;
+}
+
+/* ── Topbar & sidebar — same burgundy, softer edges ── */
+#dashboard .dash-top {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 4px 20px rgba(26, 8, 8, 0.18);
+}
+
+#dashboard .dash-logo-name {
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+#dashboard .dash-user-name {
+  letter-spacing: 0.01em;
+  opacity: 0.92;
+}
+
+#mainSidebar.sidebar {
+  box-shadow: 1px 0 0 rgba(139, 26, 26, 0.06);
+}
+
+#mainSidebar .nav-item,
+#mainSidebar .nav-group-header,
+#mainSidebar .sidebar-toggle,
+#mainSidebar .sidebar-signout-btn,
+#dashboard .dash-mobile-menu-btn {
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    box-shadow var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth),
+    border-radius var(--dur-fast) var(--ease-smooth),
+    margin var(--dur-fast) var(--ease-smooth);
+}
+
+#mainSidebar .nav-item:active:not(.active),
+#mainSidebar .nav-group-header:active {
+  transform: scale(0.985);
+}
+
+#mainSidebar .nav-label {
+  letter-spacing: 0.008em;
+  line-height: 1.35;
+}
+
+#mainSidebar .sidebar-section {
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* ── Cards & panels — same borders, softer shadow ── */
+.stat-card,
+.table-card,
+.panel-box,
+.panel-card,
+#panel-ttm-ttp .ttp-overview,
+.modal,
+.modal-box,
+.nbl-modal {
+  transition:
+    box-shadow var(--dur-med) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.stat-card:hover,
+.table-card:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+/* ── Breadcrumb & meta text ── */
+.breadcrumb {
+  letter-spacing: 0.02em;
+}
+
+.page-header p,
+.stat-card-label,
+.stat-card-note {
+  letter-spacing: 0.015em;
+}
+
+/* ── Buttons — smoother press/hover (colors unchanged) ── */
+.btn-sm,
+.btn-row,
+.btn-expand,
+.btn-cancel,
+.btn-save,
+.btn-filled,
+.btn-danger,
+.btn-outline,
+.login-submit,
+.dash-btn {
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth),
+    box-shadow var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth),
+    opacity var(--dur-fast) var(--ease-smooth) !important;
+}
+
+.btn-sm:active:not(:disabled),
+.btn-filled:active:not(:disabled),
+.btn-save:active:not(:disabled),
+.login-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-filled:hover,
+.btn-save:hover {
+  box-shadow: 0 4px 14px rgba(139, 26, 26, 0.28);
+}
+
+/* ── Form controls ── */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+select,
+textarea,
+.field input,
+#login .form-group input {
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    box-shadow var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth);
+}
+
+input:not([type='checkbox']):not([type='radio']):focus,
+select:focus,
+textarea:focus,
+.field input:focus,
+#login .form-group input:focus {
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Tables — readability ── */
+table {
+  font-size: 13px;
+  letter-spacing: 0.005em;
+}
+
+table th {
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+table td {
+  line-height: 1.45;
+}
+
+.table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 26, 26, 0.22) rgba(139, 26, 26, 0.04);
+}
+
+/* ── Modals ── */
+.modal-overlay,
+.nbl-modal-overlay {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.modal-overlay.active,
+.modal-overlay.open,
+.nbl-modal-overlay.active {
+  animation: overlayIn var(--dur-med) var(--ease-smooth) both;
+}
+
+.modal,
+.modal-box,
+.nbl-modal {
+  animation: modalIn var(--dur-med) var(--ease-out-soft) both;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Login shell ── */
+.login-shell__back {
+  transition: color var(--dur-fast) var(--ease-smooth);
+  letter-spacing: 0.01em;
+}
+
+.login-shell__card {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 8px 32px rgba(61, 16, 16, 0.1),
+    0 2px 8px rgba(61, 16, 16, 0.06);
+}
+
+.login-shell__headline {
+  letter-spacing: -0.02em;
+}
+
+/* ── Overview landing ── */
+.ov-ld {
+  letter-spacing: 0.01em;
+}
+
+.ov-ld__card {
+  transition:
+    transform 0.28s ease,
+    box-shadow 0.28s ease,
+    background-color var(--dur-med) var(--ease-smooth),
+    border-color var(--dur-med) var(--ease-smooth);
+}
+
+.ov-ld__card-title {
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.ov-ld__card-desc {
+  line-height: 1.5;
+  letter-spacing: 0.012em;
+}
+
+/* ── Scrollbars (WebKit) — subtle, on-brand ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 26, 26, 0.2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(139, 26, 26, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 26, 26, 0.32);
+  background-clip: padding-box;
+}
+
+/* ── Reduced motion — respect user preference ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   Phase 2 — lebih terlihat, warna & fungsi tetap sama
+   ═══════════════════════════════════════════════════ */
+
+/* Canvas: depth halus di area konten (base color sama) */
+#dashboard .main-content {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(139, 26, 26, 0.04) 0%, transparent 55%),
+    linear-gradient(180deg, #f9f4f4 0%, #f7f1f1 40%, #f5ecec 100%);
+}
+
+/* Sidebar — active item: accent bar kiri (lebih jelas) */
+#mainSidebar.sidebar.expanded .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  background: #8b1a1a;
+}
+
+#mainSidebar.sidebar:not(.expanded) .nav-item.active .nav-icon {
+  box-shadow: inset 0 0 0 1.5px rgba(139, 26, 26, 0.22);
+}
+
+/* Page header — hierarchy lebih jelas */
+.page-header {
+  margin-bottom: 28px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.08);
+}
+
+.page-header h1 {
+  font-size: 34px;
+  line-height: 1.12;
+  margin-bottom: 6px;
+}
+
+.page-header p {
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+/* Stat cards — accent atas + angka lebih menonjol */
+.stat-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 20px;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #8b1a1a 0%, rgba(139, 26, 26, 0.35) 100%);
+  opacity: 0.85;
+}
+
+.stat-card-num {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+/* Table card — toolbar & search lebih rapi */
+.table-header,
+.search-bar,
+.sdd-toolbar,
+#panel-ttm-ttp .ttp-overview__toolbar {
+  background: linear-gradient(180deg, #fdfbfb 0%, #faf6f6 100%);
+}
+
+.search-bar {
+  padding: 12px 18px;
+  gap: 10px;
+}
+
+.search-bar input {
+  font-size: 13.5px;
+}
+
+.search-bar input::placeholder {
+  letter-spacing: 0.01em;
+}
+
+/* Tabel — zebra strip + hover lebih jelas */
+.table-card .table-scroll thead {
+  background: linear-gradient(180deg, #f3eaea 0%, #faf6f6 100%);
+}
+
+.table-card .table-scroll thead th {
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.1);
+}
+
+.table-card .table-scroll tbody tr:nth-child(even):not(.ttp-group-detail-row) td {
+  background: rgba(139, 26, 26, 0.018);
+}
+
+.table-card .table-scroll tbody tr:hover td {
+  background: rgba(139, 26, 26, 0.055) !important;
+}
+
+.table-card .table-scroll td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Badge & status — pill lebih rapi */
+.badge,
+.status-badge,
+.scr-status-dot,
+.ttp-cert-badge {
+  line-height: 1.2;
+  border: 1px solid transparent;
+}
+
+.badge-high,
+.badge-yes {
+  border-color: rgba(192, 48, 30, 0.14);
+}
+
+.badge-medium {
+  border-color: rgba(200, 120, 0, 0.14);
+}
+
+.badge-low {
+  border-color: rgba(0, 140, 70, 0.14);
+}
+
+.badge-no {
+  border-color: rgba(100, 100, 100, 0.1);
+}
+
+/* Filter chips — border lebih halus */
+.filter-chip {
+  border-width: 1px;
+  padding: 6px 15px;
+}
+
+.filter-chip.active {
+  box-shadow: 0 2px 10px rgba(139, 26, 26, 0.2);
+}
+
+/* Form fields — konsisten & nyaman */
+.field label {
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+
+.field select,
+.field input[type='text'],
+.field input[type='email'],
+.field input[type='number'] {
+  min-height: 40px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border-width: 1px;
+  border-color: rgba(139, 26, 26, 0.16);
+}
+
+/* Saved screening cards */
+.scr-saved-item {
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.scr-saved-item:hover {
+  box-shadow: 0 4px 14px rgba(139, 26, 26, 0.06);
+}
+
+/* Topbar avatar */
+#dashboard .user-avatar {
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+  letter-spacing: 0.02em;
+}
+
+/* Loading state — label lebih readable */
+.dash-loading__label {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+/* Modal header polish */
+.modal-head,
+.modal-header,
+.nbl-modal-header {
+  background: linear-gradient(180deg, #fdfbfb 0%, #fff 100%);
+}
+
+.modal-head h3,
+.modal-header h3,
+.nbl-modal-header h3 {
+  letter-spacing: -0.01em;
+}
+

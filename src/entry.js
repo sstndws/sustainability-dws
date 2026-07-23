@@ -16,6 +16,7 @@
 // CSS + shell first, then heavy app (so #login / overview DOM exists before main binds listeners)
 import './style.css';
 import './mobile.css';
+import './ui-polish.css';
 
 import * as XLSX from 'xlsx-js-style';
 window.XLSX = XLSX;
