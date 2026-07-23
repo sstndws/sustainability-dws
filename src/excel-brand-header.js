@@ -5,6 +5,9 @@
 
 export const EXCEL_REPORT_TITLE = 'PALM OIL TRACEABILITY DATA SUBMISSION';
 
+export const EXCEL_COMPANY_FIELD_LABELS = ['NAME', 'COUNTRY', 'ADDRESS', 'LATITUDE', 'LONGITUDE'];
+
+/** @deprecated Used only when legacy exports still pass filled company values. */
 export const EXCEL_COMPANY_INFO = {
   name: 'SUMBER PANGAN CEMERLANG',
   country: 'INDONESIA',
@@ -24,15 +27,12 @@ export function excelBrandPreambleRowCount_(opts) {
   return opts.includeCompanyInfo === false ? 2 : 9;
 }
 
-function companyLines_() {
-  const info = EXCEL_COMPANY_INFO;
-  return [
-    'NAME: ' + info.name,
-    'COUNTRY: ' + info.country,
-    'ADDRESS: ' + info.address,
-    'LATITUDE: ' + info.latitude,
-    'LONGITUDE: ' + info.longitude,
-  ];
+function companyLines_(info) {
+  const data = info || EXCEL_COMPANY_INFO;
+  return EXCEL_COMPANY_FIELD_LABELS.map(function(label) {
+    const key = label.toLowerCase();
+    return label + ': ' + String(data[key] || '').trim();
+  });
 }
 
 /** Merge title across a short, readable span — not the full table width. */
@@ -61,11 +61,13 @@ function titleMergeLastCol_(colCount, title) {
  *   zebra?: boolean,
  *   freeze?: boolean,
  *   includeCompanyInfo?: boolean,
+ *   blankCompanyInfo?: boolean,
  * }=} opts
  */
 export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
   opts = opts || {};
   const includeCompany = opts.includeCompanyInfo !== false;
+  const blankCompanyInfo = includeCompany && opts.blankCompanyInfo === true;
   const cols = Array.isArray(headers) ? headers : [];
   const rows = Array.isArray(bodyRows) ? bodyRows : [];
   const colCount = Math.max(cols.length, 1);
@@ -76,9 +78,15 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
   wsData[1] = [];
   if (includeCompany) {
     wsData[2] = ['COMPANY INFORMATION'];
-    companyLines_().forEach(function(line, i) {
-      wsData[3 + i] = [line];
-    });
+    if (blankCompanyInfo) {
+      EXCEL_COMPANY_FIELD_LABELS.forEach(function(label, i) {
+        wsData[3 + i] = [label + ':', ''];
+      });
+    } else {
+      companyLines_(opts.companyInfo).forEach(function(line, i) {
+        wsData[3 + i] = [line];
+      });
+    }
     wsData[8] = [];
   }
   wsData[headerRow] = cols.slice();
@@ -106,9 +114,7 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
     : [];
 
   const companyMax = includeCompany
-    ? companyLines_().reduce(function(m, line) {
-      return Math.max(m, line.length);
-    }, 'COMPANY INFORMATION'.length)
+    ? Math.max('COMPANY INFORMATION'.length, 'LONGITUDE:'.length)
     : EXCEL_REPORT_TITLE.length;
 
   ws['!cols'] = Array.from({ length: colCount }, function(_, ci) {
@@ -118,6 +124,7 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
       if (cell.length > maxLen) maxLen = cell.length;
     });
     if (ci === 0) maxLen = Math.max(maxLen, Math.min(companyMax, 48));
+    if (blankCompanyInfo && ci === 1) maxLen = Math.max(maxLen, 36);
     return { wch: Math.min(Math.max(maxLen + 2, 12), 48) };
   });
 
@@ -163,12 +170,22 @@ export function buildBrandedExcelSheet_(XLSX, headers, bodyRows, opts) {
     };
 
     for (let r = 3; r <= 7; r++) {
-      const addr = XLSX.utils.encode_cell({ r: r, c: 0 });
-      if (!ws[addr]) continue;
-      ws[addr].s = {
-        font: { sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
-        alignment: { horizontal: 'left', vertical: 'center' },
-      };
+      const labelAddr = XLSX.utils.encode_cell({ r: r, c: 0 });
+      if (ws[labelAddr]) {
+        ws[labelAddr].s = {
+          font: { bold: blankCompanyInfo, sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
+          alignment: { horizontal: 'left', vertical: 'center' },
+        };
+      }
+      if (blankCompanyInfo) {
+        const valueAddr = XLSX.utils.encode_cell({ r: r, c: 1 });
+        if (!ws[valueAddr]) ws[valueAddr] = { t: 's', v: '' };
+        ws[valueAddr].s = {
+          font: { sz: 11, name: 'Calibri', color: { rgb: '1A0A0A' } },
+          alignment: { horizontal: 'left', vertical: 'center' },
+          border: borderThin,
+        };
+      }
     }
   }
 

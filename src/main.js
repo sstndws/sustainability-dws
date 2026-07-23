@@ -8251,9 +8251,6 @@ function initDashboardApp() {
       millPdfRebuildDimPanels();
       millSyncPeriodModeUi_();
       scheduleRenderMillTable();
-      if (typeof window.showSddToast === 'function') {
-        window.showSddToast('Showing cached data — loading the latest version in the background…', 'info');
-      }
     }
 
     try {
@@ -15265,15 +15262,13 @@ function initDashboardApp() {
     opts = opts || {};
     return buildBrandedExcelSheet_(XLSX, headers, rows || [], {
       headerFill: '8B1A1A',
-      includeCompanyInfo: opts.includeCompanyInfo !== false,
+      includeCompanyInfo: opts.includeCompanyInfo === true,
+      blankCompanyInfo: opts.blankCompanyInfo === true,
     });
   }
 
-  function blSheetIncludeCompanyInfo_(sheetName) {
-    const n = String(sheetName || '').trim().toUpperCase();
-    // Only the main BL sheet — never TTM / TTP companion sheets.
-    if (n === 'TTM' || n === 'TTP') return false;
-    return n === 'BL' || n.indexOf('BL ') === 0 || n.indexOf('BL') === 0;
+  function blExportIncludeCompanyInfo_() {
+    return blActiveType === 'declaration';
   }
 
   function writeBlExcelWorkbook_(sheets, filename) {
@@ -15282,8 +15277,10 @@ function initDashboardApp() {
     (sheets || []).forEach(function(sheet) {
       if (!sheet || !sheet.headers || !sheet.headers.length) return;
       const name = String(sheet.name || 'Sheet').slice(0, 31);
+      const includeCompany = sheet.includeCompanyInfo === true;
       const ws = blCreateStyledExcelSheet_(sheet.headers, sheet.rows || [], {
-        includeCompanyInfo: blSheetIncludeCompanyInfo_(name),
+        includeCompanyInfo: includeCompany,
+        blankCompanyInfo: includeCompany && sheet.blankCompanyInfo !== false,
       });
       XLSX.utils.book_append_sheet(wb, ws, name);
     });
@@ -15298,8 +15295,15 @@ function initDashboardApp() {
     if (!mainDefs.length) return;
     const mainHeaders = mainDefs.map(function(c) { return c.header; });
     const mainData = rows.map(function(d) { return blRowToExport_(d, mainDefs); });
+    const includeCompany = blExportIncludeCompanyInfo_();
     const sheets = [
-      { name: mainSheetLabel || 'BL', headers: mainHeaders, rows: mainData },
+      {
+        name: mainSheetLabel || 'BL',
+        headers: mainHeaders,
+        rows: mainData,
+        includeCompanyInfo: includeCompany,
+        blankCompanyInfo: includeCompany,
+      },
     ];
     const ttmKeys = ttmColKeys && ttmColKeys.length ? ttmColKeys : blDefaultTtmExportColKeys_();
     const ttpKeys = ttpColKeys && ttpColKeys.length ? ttpColKeys : blDefaultTtpExportColKeys_();
@@ -17144,7 +17148,10 @@ function initDashboardApp() {
     }
     const headers = defs.map(function(c) { return c.header; });
     const rows = (dataRows || []).map(function(d) { return qmRowToExport_(d, defs); });
-    const ws = buildBrandedExcelSheet_(XLSX, headers, rows, { headerFill: '8B1A1A' });
+    const ws = buildBrandedExcelSheet_(XLSX, headers, rows, {
+      headerFill: '8B1A1A',
+      includeCompanyInfo: false,
+    });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Questionnaire Monitoring');
     XLSX.writeFile(wb, filename || ('questionnaire_monitoring_' + qmExcelStamp_() + '.xlsx'), { cellStyles: true });
