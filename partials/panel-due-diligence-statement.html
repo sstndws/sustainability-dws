@@ -1,7 +1,151 @@
-      <!-- ── DUE DILIGENCE STATEMENT PANEL ── -->
+      <!-- ── DUE DILIGENCE STATEMENT (EUDR DDS) ── -->
       <div class="panel" id="panel-due-diligence-statement">
         <div class="breadcrumb">Dashboard <span>/ Due Diligence Statement</span></div>
         <div class="page-header">
           <h1>Due Diligence Statement</h1>
+          <p>EUDR due diligence data package — create records on the web and export PDF matching the official DDS template.</p>
+        </div>
+
+        <div class="stats-row dds-stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="dds-stat-total">—</div><div class="stat-card-label">Total records</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="dds-stat-buyers">—</div><div class="stat-card-label">Buyers</div></div>
+          <div class="stat-card"><div class="stat-card-num" id="dds-stat-plants">—</div><div class="stat-card-label">Plants</div></div>
+        </div>
+
+        <div class="table-card dds-table-card">
+          <div class="table-header">
+            <h3>DDS registry</h3>
+            <div class="table-actions">
+              <button type="button" class="btn-sm btn-primary" id="btn-add-dds">+ Add DDS</button>
+              <button type="button" class="btn-sm btn-outline" id="btn-refresh-dds" title="Reload from sheet">Refresh</button>
+            </div>
+          </div>
+          <div class="search-bar">
+            <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg></span>
+            <input type="text" id="ddsSearch" placeholder="Search SD number, plant, buyer, BL, product..." autocomplete="off" />
+            <button type="button" class="search-clear" id="ddsSearchClear" aria-label="Clear search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="dds-loading" class="dash-loading-host"><div class="dash-loading" role="status" aria-live="polite"><div class="dash-loading__visual" aria-hidden="true"><span class="dash-loading__ring"></span><span class="dash-loading__dot"></span></div><p class="dash-loading__label">Loading…</p></div></div>
+          <div class="dds-table-wrap">
+            <table id="ddsTable" class="dds-registry-table" style="display:none;">
+              <thead>
+                <tr>
+                  <th>Plant</th>
+                  <th>SD Number</th>
+                  <th>Buyer Name</th>
+                  <th>Contract Number</th>
+                  <th>HS Code</th>
+                  <th>Product</th>
+                  <th>Quantity (KG)</th>
+                  <th>BL Number</th>
+                  <th>Shipping Name</th>
+                  <th>Port of Discharge</th>
+                  <th>Supplier Name</th>
+                  <th class="dds-actions-col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ddsTableBody"></tbody>
+            </table>
+          </div>
+          <div id="dds-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
+        </div>
+      </div>
+
+      <!-- DDS add / edit (BL-style scroll form — no tab maze) -->
+      <div class="bl-form-overlay" id="ddsFormOverlay" role="dialog" aria-modal="true" aria-labelledby="ddsFormTitle">
+        <div class="bl-form-box dds-form-box">
+          <div class="bl-form-head">
+            <div>
+              <h2 id="ddsFormTitle">New Due Diligence Statement</h2>
+              <p class="bl-form-sub" id="ddsFormSubtitle">Enter shipment data — saved automatically to Google Sheet. Export PDF after Save.</p>
+            </div>
+            <button type="button" class="bl-form-close" id="ddsFormClose" aria-label="Close">✕</button>
+          </div>
+          <div class="bl-form-body" id="ddsFormBody">
+            <section class="bl-form-section" id="ddsSectionMain">
+              <h3 class="bl-form-section-title">Main data (shown in list)</h3>
+              <p class="bl-form-section-desc">Plant, buyer, contract, product, and shipment details.</p>
+              <div class="bl-form-grid" id="ddsFieldsMain"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionAdmin">
+              <h3 class="bl-form-section-title">Administrative information</h3>
+              <div class="bl-form-grid" id="ddsFieldsAdmin"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionIdentity">
+              <h3 class="bl-form-section-title">Exporter &amp; EU buyer identity</h3>
+              <div class="bl-form-grid" id="ddsFieldsIdentity"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionProduct">
+              <h3 class="bl-form-section-title">Product information</h3>
+              <div class="bl-form-grid" id="ddsFieldsProduct"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionShipment">
+              <h3 class="bl-form-section-title">Shipment details</h3>
+              <div class="bl-form-grid" id="ddsFieldsShipment"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionGeo">
+              <h3 class="bl-form-section-title">Plot / estate geolocation</h3>
+              <p class="bl-form-section-desc">List source plots below. Many plots? add a GeoJSON file reference in the field above.</p>
+              <div class="bl-form-grid" id="ddsFieldsGeoMeta"></div>
+              <div class="dds-child-toolbar">
+                <button type="button" class="btn-sm btn-outline" id="ddsAddGeoRow">+ Add plot</button>
+              </div>
+              <div class="dds-child-table-wrap">
+                <table class="dds-child-table" id="ddsGeoTable">
+                  <thead>
+                    <tr>
+                      <th>#</th><th>Plot ID</th><th>Area (ha)</th><th>Coordinates</th><th>Harvest date</th><th>Notes</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="ddsGeoBody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionSuppliers">
+              <h3 class="bl-form-section-title">Suppliers &amp; supply chain <span class="bl-form-hint">min. 1 required</span></h3>
+              <div class="dds-child-toolbar">
+                <button type="button" class="btn-sm btn-outline" id="ddsAddSupplierRow">+ Add supplier</button>
+              </div>
+              <div class="dds-child-table-wrap">
+                <table class="dds-child-table" id="ddsSupplierTable">
+                  <thead>
+                    <tr>
+                      <th>#</th><th>Name</th><th>Address</th><th>Type</th><th>DDS ref</th><th>Proof doc</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="ddsSupplierBody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionDocuments">
+              <h3 class="bl-form-section-title">Supporting documents (checklist)</h3>
+              <p class="bl-form-section-desc">Available: Y = yes, N = no.</p>
+              <div class="dds-child-table-wrap">
+                <table class="dds-child-table dds-doc-table" id="ddsDocTable">
+                  <thead>
+                    <tr>
+                      <th>Code</th><th>Document type</th><th>Number</th><th>Date</th><th>Available</th><th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ddsDocBody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionRisk">
+              <h3 class="bl-form-section-title">Risk assessment summary</h3>
+              <div class="bl-form-grid" id="ddsFieldsRisk"></div>
+            </section>
+            <section class="bl-form-section" id="ddsSectionSign">
+              <h3 class="bl-form-section-title">Operator declaration (signature)</h3>
+              <div class="bl-form-grid" id="ddsFieldsSign"></div>
+            </section>
+          </div>
+          <div class="bl-form-foot dds-form-foot">
+            <button type="button" class="btn-cancel" id="ddsFormCancel">Cancel</button>
+            <button type="button" class="btn-sm btn-outline" id="ddsExportBtn">Export PDF &amp; DOCX</button>
+            <button type="button" class="btn-save" id="ddsFormSave">Save DDS</button>
+          </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { getSupabase } from './supabase-client.js';
 import { getJsPDF } from './pdf-libs.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
 import { createSdMonitoringController_ } from './sd-monitoring-ui.js';
+import { initDdsPanel_ } from './dds-ui.js';
 import {
   mrdBuildTtpByMillMaps_,
   mrdTtpRowsForMill_,
@@ -3951,8 +3952,8 @@ const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyxbr4znky9OIANcAN5G7qzZbbQkUdx2q21UlwnOTTgoBJtT9cr7ORpz-U-aB41iIPF7g/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyxbr4znky9OIANcAN5G7qzZbbQkUdx2q21UlwnOTTgoBJtT9cr7ORpz-U-aB41iIPF7g';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyn7QsagneVRVhfTCls2U1jq5YwRolVXxuE4i9X8vHKuxlzQwwbGAuMjJ8klwnBGidmrQ/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyn7QsagneVRVhfTCls2U1jq5YwRolVXxuE4i9X8vHKuxlzQwwbGAuMjJ8klwnBGidmrQ';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -17572,6 +17573,24 @@ function initDashboardApp() {
     }
   })();
 
+  // ─── EUDR DDS (Due Diligence Statement) ─────────────────
+  function mountDdsOverlay_(id) {
+    const el = document.getElementById(id);
+    if (el && el.parentElement !== document.body) document.body.appendChild(el);
+    return el;
+  }
+  window._ddsPanel = initDdsPanel_({
+    apiGet: apiGet,
+    apiPost: apiPost,
+    escHtml: escHtml,
+    dashDateFieldHtml: dashDateFieldHtml,
+    dashDateCollectValues: dashDateCollectValues,
+    getJsPDF: getJsPDF,
+    showToast: typeof window.showSddToast === 'function' ? window.showSddToast.bind(window) : null,
+    debounce: debounce,
+    mountOverlay: mountDdsOverlay_,
+  });
+
   // ─── EUDR POTENTIAL ──────────────────────────────────────
   let eudrRows = [];
   let eudrLoaded = false;
@@ -21301,6 +21320,9 @@ function initDashboardApp() {
       loadBlReferenceData_();
     }
     if (name === 'questionnaire-monitoring' && !qmLoaded) loadQmData();
+    if (name === 'due-diligence-statement' && window._ddsPanel && !window._ddsPanel.isLoaded()) {
+      window._ddsPanel.load();
+    }
     if (name === 'eudr-potential' && !eudrLoaded) loadEudrData();
     if (name === 'contact-list-supplier') loadContactListData();
     if (name === 'company-profile-list') loadCompanyProfileListData();

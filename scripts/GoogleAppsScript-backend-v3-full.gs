@@ -61,6 +61,10 @@ const SHEETS = {
   eudrPotential           : 'EUDR Potential',
   eudrStatusFormula       : 'EUDR Status Formula',
   facilityProfile         : 'Facility Profile',
+  eudrDds                 : 'EUDR DDS',
+  eudrDdsSuppliers        : 'EUDR DDS Suppliers',
+  eudrDdsGeolocation      : 'EUDR DDS Geolocation',
+  eudrDdsDocuments        : 'EUDR DDS Documents',
 };
 
 /** Tab name for BL Monitoring (must match spreadsheet tab exactly). */
@@ -409,6 +413,79 @@ const EUDR_POTENTIAL_HEADERS = [
 
 const EUDR_STATUS_FORMULA_HEADERS = ['CRITERION KEY', 'ENABLED', 'LABEL', 'THRESHOLD', 'CONFIG'];
 
+const EUDR_DDS_HEADERS = [
+  'SD NUMBER',
+  'PLANT',
+  'BUYER NAME',
+  'CONTRACT NUMBER',
+  'HS CODE',
+  'PRODUCT',
+  'QUANTITY (KG)',
+  'BL NUMBER',
+  'SHIPPING NAME',
+  'PORT OF DISCHARGE',
+  'SUPPLIER NAME',
+  'DOCUMENT DATE',
+  'ANNUAL QUANTITY ESTIMATE (KG)',
+  'EXPORTER COMPANY NAME',
+  'EXPORTER ADDRESS',
+  'EXPORTER NIB',
+  'BUYER ADDRESS',
+  'BUYER EORI',
+  'TRADE NAME',
+  'PORT OF LOADING',
+  'TANK NUMBER',
+  'BATCH NUMBER',
+  'ETD DATE',
+  'COUNTRY RISK CATEGORY',
+  'GEOJSON FILE REF',
+  'RA DOCUMENT NO',
+  'RA DATE',
+  'RA METHODOLOGY',
+  'RA OVERALL RISK',
+  'RA POST MITIGATION STATUS',
+  'RA MITIGATION SUMMARY',
+  'SIGNATORY NAME',
+  'SIGNATORY TITLE',
+  'SIGNATORY PLACE',
+  'SIGNATORY DATE',
+  'LAST UPDATE',
+  'UPDATED BY',
+];
+
+const EUDR_DDS_SUPPLIERS_HEADERS = [
+  'SD NUMBER',
+  'LINE NO',
+  'SUPPLIER NAME',
+  'SUPPLIER ADDRESS',
+  'SUPPLIER TYPE',
+  'SUPPLIER DDS REF',
+  'PROOF DOC',
+];
+
+const EUDR_DDS_GEOLOCATION_HEADERS = [
+  'SD NUMBER',
+  'LINE NO',
+  'PLOT ID',
+  'AREA HA',
+  'COORDINATES',
+  'HARVEST DATE',
+  'NOTES',
+];
+
+const EUDR_DDS_DOCUMENTS_HEADERS = [
+  'SD NUMBER',
+  'DOC CODE',
+  'DOC NUMBER',
+  'DOC DATE',
+  'AVAILABLE',
+  'NOTES',
+];
+
+const EUDR_DDS_DOC_CODES = ['A1', 'A2', 'A3', 'A4', 'A5', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6'];
+
+const EUDR_DDS_CHILD_SHEETS_ = ['eudrDdsSuppliers', 'eudrDdsGeolocation', 'eudrDdsDocuments'];
+
 const EUDR_FFB_FORMULA_DEFAULT_CONFIG = {
   mode: 'combined',
   combined: {
@@ -704,6 +781,7 @@ var MRD_WRITE_ACTIONS_ = {
   createSubmission: 1, updateSubmission: 1, setSubmissionStatus: 1, deleteSubmission: 1,
   saveSupplyDraft: 1, submitSupplyDraft: 1, reconcileSupplyDraft: 1, deleteSupplyDraft: 1,
   addTtpBatch: 1, upsertQuestionnaire: 1, syncEudrPotential: 1, upsertEudr: 1,
+  upsertEudrDds: 1, deleteEudrDds: 1,
   saveEudrStatusFormula: 1,
 };
 
@@ -759,6 +837,10 @@ function doGet(e) {
       if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
       if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
       if (sheetKey === 'sdMonitoring') ensureSdMonitoringHeaders_();
+      if (sheetKey === 'eudrDds') ensureEudrDdsHeaders_();
+      if (sheetKey === 'eudrDdsSuppliers') ensureEudrDdsSuppliersHeaders_();
+      if (sheetKey === 'eudrDdsGeolocation') ensureEudrDdsGeolocationHeaders_();
+      if (sheetKey === 'eudrDdsDocuments') ensureEudrDdsDocumentsHeaders_();
       return respond(getData(sheetKey));
     }
     if (action === 'getByMillId')          return respond(getByMillId(e.parameter.millId));
@@ -778,6 +860,7 @@ function doGet(e) {
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
         eudrStatusFormula: !!resolveSheetTabName_('eudrStatusFormula'),
+        eudrDds: !!resolveSheetTabName_('eudrDds'),
         grievanceRiskHeaders: grvHdr,
       });
     }
@@ -821,6 +904,8 @@ function doPost(e) {
     if (sheetKey === 'facilityProfile') ensureFacilityProfileHeaders_();
     if (sheetKey === 'grievance') ensureGrievanceRiskHeaders_();
     if (action === 'upsertQuestionnaire') return respond(upsertQuestionnaireRow_(body.data || {}));
+    if (action === 'upsertEudrDds') return respond(upsertEudrDds_(body.data || body));
+    if (action === 'deleteEudrDds') return respond(deleteEudrDds_(body.data || body));
     if (action === 'syncEudrPotential') return respond(syncEudrPotentialRows_(body.mills || []));
     if (action === 'upsertEudr') return respond(upsertEudrPotentialRow_(body.data || {}));
     if (action === 'saveEudrStatusFormula') return respond(saveEudrStatusFormula_(body.criteria || []));
@@ -1566,6 +1651,175 @@ function ensureQuestionnaireMonitoringHeaders_() {
 
 function ensureEudrPotentialHeaders_() {
   return ensureSheetHeadersGeneric_('eudrPotential', EUDR_POTENTIAL_HEADERS);
+}
+
+function ensureEudrDdsHeaders_() {
+  return ensureSheetHeadersGeneric_('eudrDds', EUDR_DDS_HEADERS);
+}
+
+function ensureEudrDdsSuppliersHeaders_() {
+  return ensureSheetHeadersGeneric_('eudrDdsSuppliers', EUDR_DDS_SUPPLIERS_HEADERS);
+}
+
+function ensureEudrDdsGeolocationHeaders_() {
+  return ensureSheetHeadersGeneric_('eudrDdsGeolocation', EUDR_DDS_GEOLOCATION_HEADERS);
+}
+
+function ensureEudrDdsDocumentsHeaders_() {
+  return ensureSheetHeadersGeneric_('eudrDdsDocuments', EUDR_DDS_DOCUMENTS_HEADERS);
+}
+
+function eudrDdsNormSd_(val) {
+  return String(val || '').trim().toLowerCase();
+}
+
+function eudrDdsPickSd_(row) {
+  return String((row && row['SD NUMBER']) || '').trim();
+}
+
+function findEudrDdsMasterBySd_(rows, sdNumber) {
+  const needle = eudrDdsNormSd_(sdNumber);
+  if (!needle) return null;
+  for (var i = 0; i < (rows || []).length; i++) {
+    if (eudrDdsNormSd_(eudrDdsPickSd_(rows[i])) === needle) return rows[i];
+  }
+  return null;
+}
+
+function stampEudrDdsMasterMeta_(data, user, now) {
+  data = data || {};
+  const day = String(now || nowIso_()).slice(0, 10);
+  data['LAST UPDATE'] = day;
+  data['UPDATED BY'] = String(user || callerEmail_() || 'system');
+  return data;
+}
+
+function eudrDdsChildRowHasContent_(row, skipKeys) {
+  skipKeys = skipKeys || {};
+  return Object.keys(row || {}).some(function(k) {
+    if (!k || k.charAt(0) === '_' || skipKeys[k]) return false;
+    return String(row[k] || '').trim() !== '';
+  });
+}
+
+function eudrDdsMasterHasContent_(obj) {
+  return eudrDdsPickSd_(obj) !== '' || Object.keys(obj || {}).some(function(k) {
+    if (!k || k.charAt(0) === '_') return false;
+    if (k === 'SD NUMBER') return false;
+    return String(obj[k] || '').trim() !== '';
+  });
+}
+
+function deleteEudrDdsChildRowsBySd_(sheetKey, sdNumber) {
+  const needle = eudrDdsNormSd_(sdNumber);
+  if (!needle) return { deleted: 0 };
+  const rows = getData(sheetKey);
+  const rowNums = (rows || []).filter(function(r) {
+    return eudrDdsNormSd_(eudrDdsPickSd_(r)) === needle;
+  }).map(function(r) { return r._row; });
+  if (!rowNums.length) return { deleted: 0 };
+  return bulkDelete(sheetKey, rowNums);
+}
+
+function appendEudrDdsChildRows_(sheetKey, headers, sdNumber, items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return 0;
+  const sheet = getSheet(sheetKey);
+  let added = 0;
+  list.forEach(function(item) {
+    const row = Object.assign({}, item || {});
+    row['SD NUMBER'] = sdNumber;
+    if (!eudrDdsChildRowHasContent_(row, { 'SD NUMBER': 1, 'LINE NO': 0 })) return;
+    const values = headers.map(function(h) {
+      return row[h] !== undefined && row[h] !== null ? row[h] : '';
+    });
+    sheet.appendRow(values);
+    added++;
+  });
+  return added;
+}
+
+function upsertEudrDds_(payload) {
+  ensureEudrDdsHeaders_();
+  ensureEudrDdsSuppliersHeaders_();
+  ensureEudrDdsGeolocationHeaders_();
+  ensureEudrDdsDocumentsHeaders_();
+
+  const master = Object.assign({}, (payload && payload.master) || payload || {});
+  const sdNumber = eudrDdsPickSd_(master);
+  if (!sdNumber) throw new Error('SD NUMBER is required');
+
+  const user = callerEmail_();
+  const now = nowIso_();
+  stampEudrDdsMasterMeta_(master, user, now);
+
+  const suppliers = Array.isArray(payload.suppliers) ? payload.suppliers : [];
+  const geolocation = Array.isArray(payload.geolocation) ? payload.geolocation : [];
+  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+
+  if (!String(master['SUPPLIER NAME'] || '').trim() && suppliers.length) {
+    const first = suppliers.find(function(s) {
+      return String((s && s['SUPPLIER NAME']) || '').trim();
+    });
+    if (first) master['SUPPLIER NAME'] = String(first['SUPPLIER NAME']).trim();
+  }
+
+  const rows = getData('eudrDds');
+  const hit = findEudrDdsMasterBySd_(rows, sdNumber);
+  let masterRow = hit && hit._row ? hit._row : 0;
+  if (hit && hit._row) {
+    const patch = Object.assign({}, master);
+    EUDR_DDS_HEADERS.forEach(function(h) {
+      if (patch[h] === undefined && hit[h] != null) patch[h] = hit[h];
+    });
+    updateRow('eudrDds', hit._row, patch);
+    masterRow = hit._row;
+  } else {
+    const dup = findEudrDdsMasterBySd_(rows, sdNumber);
+    if (dup && dup._row) throw new Error('SD NUMBER already exists: ' + sdNumber);
+    addRow('eudrDds', master);
+    const refreshed = getData('eudrDds');
+    const inserted = findEudrDdsMasterBySd_(refreshed, sdNumber);
+    masterRow = inserted && inserted._row ? inserted._row : 0;
+  }
+
+  EUDR_DDS_CHILD_SHEETS_.forEach(function(key) {
+    deleteEudrDdsChildRowsBySd_(key, sdNumber);
+  });
+
+  appendEudrDdsChildRows_('eudrDdsSuppliers', EUDR_DDS_SUPPLIERS_HEADERS, sdNumber, suppliers);
+  appendEudrDdsChildRows_('eudrDdsGeolocation', EUDR_DDS_GEOLOCATION_HEADERS, sdNumber, geolocation);
+  appendEudrDdsChildRows_('eudrDdsDocuments', EUDR_DDS_DOCUMENTS_HEADERS, sdNumber, documents);
+
+  return {
+    success: true,
+    mode: hit ? 'update' : 'insert',
+    sdNumber: sdNumber,
+    row: masterRow,
+  };
+}
+
+function deleteEudrDds_(payload) {
+  ensureEudrDdsHeaders_();
+  const sdNumber = eudrDdsPickSd_(payload || {});
+  const rowNum = Number(payload && payload.row);
+  if (!sdNumber && !(rowNum >= 2)) throw new Error('SD NUMBER or row is required for delete');
+
+  let master = null;
+  const rows = getData('eudrDds');
+  if (sdNumber) master = findEudrDdsMasterBySd_(rows, sdNumber);
+  if (!master && rowNum >= 2) {
+    master = rows.find(function(r) { return Number(r._row) === rowNum; }) || null;
+  }
+  const key = eudrDdsPickSd_(master) || sdNumber;
+  if (!key) throw new Error('DDS record not found');
+
+  EUDR_DDS_CHILD_SHEETS_.forEach(function(sheetKey) {
+    deleteEudrDdsChildRowsBySd_(sheetKey, key);
+  });
+
+  if (master && master._row) deleteRow('eudrDds', master._row);
+  return { success: true, sdNumber: key };
 }
 
 function ensureEudrStatusFormulaHeaders_() {
@@ -4290,6 +4544,7 @@ function getData(sheetKey) {
     // TTP: drop KPI/summary rows and header echo; detail filter on dashboard (ttpIsDataRow_).
     if (sheetKey === 'ttp') return !ttpRowLooksLikeKpiData_(obj) && !ttpRowLooksLikeHeaderEcho_(obj);
     if (sheetKey === 'sdMonitoring') return sdRowHasContent_(obj);
+    if (sheetKey === 'eudrDds') return eudrDdsMasterHasContent_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
   });
@@ -4373,6 +4628,35 @@ function addRow(sheetKey, data, insertAfter) {
     ensureQuestionnaireMonitoringHeaders_();
     headers = QUESTIONNAIRE_MONITORING_HEADERS;
     stampQmRowMeta_(data, callerEmail_(), nowIso_());
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true };
+  }
+  if (sheetKey === 'eudrDds') {
+    ensureEudrDdsHeaders_();
+    headers = EUDR_DDS_HEADERS;
+    stampEudrDdsMasterMeta_(data, callerEmail_(), nowIso_());
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true, row: sheet.getLastRow() };
+  }
+  if (sheetKey === 'eudrDdsSuppliers') {
+    ensureEudrDdsSuppliersHeaders_();
+    headers = EUDR_DDS_SUPPLIERS_HEADERS;
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true };
+  }
+  if (sheetKey === 'eudrDdsGeolocation') {
+    ensureEudrDdsGeolocationHeaders_();
+    headers = EUDR_DDS_GEOLOCATION_HEADERS;
+    const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
+    sheet.appendRow(newRow);
+    return { success: true };
+  }
+  if (sheetKey === 'eudrDdsDocuments') {
+    ensureEudrDdsDocumentsHeaders_();
+    headers = EUDR_DDS_DOCUMENTS_HEADERS;
     const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
     sheet.appendRow(newRow);
     return { success: true };
@@ -4461,6 +4745,11 @@ function updateRow(sheetKey, rowNum, data) {
     ensureQuestionnaireMonitoringHeaders_();
     headers = QUESTIONNAIRE_MONITORING_HEADERS;
     stampQmRowMeta_(data, callerEmail_(), nowIso_());
+  }
+  if (sheetKey === 'eudrDds') {
+    ensureEudrDdsHeaders_();
+    headers = EUDR_DDS_HEADERS;
+    stampEudrDdsMasterMeta_(data, callerEmail_(), nowIso_());
   }
   if (sheetKey === 'eudrPotential') {
     ensureEudrPotentialHeaders_();

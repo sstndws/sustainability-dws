@@ -81,7 +81,7 @@ const CARDS = [
   {
     panel: 'due-diligence-statement',
     title: 'Due Diligence Statement',
-    desc: '',
+    desc: 'EUDR due diligence packages per shipment — create records, manage suppliers & plots, export PDF.',
     icon: 'dds',
   },
 ];
