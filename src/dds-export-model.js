@@ -178,7 +178,6 @@ export function buildDdsExportModel_(bundle) {
         ['Status terhadap sistem UE', DDS_EXPORT_STATIC.ueStatus],
         ['Nama Perusahaan Pembeli', ddsSheetOr_(master, 'BUYER NAME', '[Nama buyer UE penerima dokumen ini]')],
         ['Alamat Pembeli', ddsSheetOr_(master, 'BUYER ADDRESS', '[Alamat lengkap, Kota, Negara UE]')],
-        ['Nomor Pembeli (opsional, bila diketahui)', ddsSheetOr_(master, 'BUYER EORI', '[... / Tidak diketahui]')],
       ],
       s3: [
         ['Kode HS', ddsSheetOr_(master, 'HS CODE', '[1511.10 / 1511.90 / 1513.21 / 1513.29]')],

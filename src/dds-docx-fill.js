@@ -75,6 +75,24 @@ function patchTableByMarker_(xml, marker, patchFn) {
   return xml.slice(0, slice.start) + patched + xml.slice(slice.end);
 }
 
+function rowPlainText_(rowXml) {
+  return (rowXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+    .map(function(t) { return t.replace(/<[^>]+>/g, ''); })
+    .join('');
+}
+
+function removeDocxTableRowsMatching_(xml, needles) {
+  return xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/g, function(tableXml) {
+    const rows = tableRows_(tableXml).filter(function(rowXml) {
+      const text = rowPlainText_(rowXml);
+      return !needles.some(function(n) { return text.indexOf(n) !== -1; });
+    });
+    const tblPr = tableXml.match(/<w:tblPr[\s\S]*?<\/w:tblPr>/)?.[0] || '';
+    const tblGrid = tableXml.match(/<w:tblGrid[\s\S]*?<\/w:tblGrid>/)?.[0] || '';
+    return '<w:tbl>' + tblPr + tblGrid + rows.join('') + '</w:tbl>';
+  });
+}
+
 /** Drop English subtitles in section headers; keep numbering (8., 9., 10., …). */
 function stripDdsSectionEnglishSubtitles_(xml) {
   const pairs = [
@@ -95,7 +113,6 @@ function applyDdsTemplateRevisions_(xml) {
     ['Nomor Izin Usaha (NIB / SIUP)', 'Nomor Izin Usaha (NIB)'],
     ['Nama Perusahaan Pembeli/Importir UE', 'Nama Perusahaan Pembeli'],
     ['Alamat Pembeli/Importir UE', 'Alamat Pembeli'],
-    ['Nomor EORI Pembeli/Importir UE (opsional, bila diketahui)', 'Nomor Pembeli (opsional, bila diketahui)'],
     ['Kode HS / Kode CN', 'Kode HS'],
     ['Detail Pengiriman / Konsinyasi Ekspor', 'Detail Pengiriman'],
     ['Nomor Invoice Komersial / Kontrak', 'Nomor Invoice / Kontrak'],
@@ -105,6 +122,11 @@ function applyDdsTemplateRevisions_(xml) {
   textPairs.forEach(function(pair) {
     xml = replaceAll_(xml, pair[0], pair[1]);
   });
+
+  xml = removeDocxTableRowsMatching_(xml, [
+    'Nomor EORI Pembeli',
+    'Nomor Pembeli (opsional',
+  ]);
 
   xml = patchTableByMarker_(xml, 'Nama Pemasok (PKS/Kebun)', function(tableXml) {
     return removeTableColumnIndices_(tableXml, [3, 4]);
@@ -245,7 +267,6 @@ function buildPlaceholderMap_(model) {
     ['[Nomor NIB]', s.s2[2][1]],
     ['[Nama buyer UE penerima dokumen ini]', s.s2[4][1]],
     ['[Alamat lengkap, Kota, Negara UE]', s.s2[5][1]],
-    ['[... / Tidak diketahui]', s.s2[6][1]],
     ['[1511.10 / 1511.90 / 1513.21 / 1513.29]', s.s3[0][1]],
     ['[CPO / RBDPO / RBD Palm Olein / RBD Palm Stearin / CPKO / RBDPKO]', s.s3[1][1]],
     ['[Nama produk persis sesuai sales contract/invoice — cth: &quot;RBDPO&quot;, &quot;RBD Palm Olein IV58&quot;, &quot;CPO SumSel Grade&quot;]', s.s3[2][1]],
