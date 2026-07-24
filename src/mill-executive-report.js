@@ -806,16 +806,6 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   const textAreaW  = heroInnerW - kpiAreaW - 5;
   const kpiAreaX   = innerX + textAreaW + 5;
 
-  setPdfFont_(doc, 'serif');
-  doc.setFontSize(27);
-  doc.setTextColor(15, 12, 10);
-  doc.text('Mill Onboarding', innerX, HERO_Y + 10);
-
-  setPdfFont_(doc, 'sans-bold');
-  doc.setFontSize(10);
-  doc.setTextColor(55, 48, 45);
-  doc.text('Executive report  ·  ' + meta.periodLabel, innerX, HERO_Y + 17);
-
   // Right — KPI mini boxes (colours match charts below)
   const kpis = [
     { label: 'Total mills', value: snapshot.totalMills, style: KPI_STYLES.totalMills },
@@ -828,6 +818,20 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   const kpiBoxH   = HERO_H - HERO_PAD * 2;
   const kpiBoxY   = HERO_Y + HERO_PAD;
   const kpiFill   = [255, 255, 252];
+
+  // Title block vertically centered with the KPI row (same optical midline).
+  const titleLineGap = 7;
+  const titleBlockH = 14;
+  const titleTop = kpiBoxY + (kpiBoxH - titleBlockH) / 2;
+  setPdfFont_(doc, 'serif');
+  doc.setFontSize(27);
+  doc.setTextColor(15, 12, 10);
+  doc.text('Mill Onboarding', innerX, titleTop + 8);
+
+  setPdfFont_(doc, 'sans-bold');
+  doc.setFontSize(10);
+  doc.setTextColor(55, 48, 45);
+  doc.text('Executive report  ·  ' + meta.periodLabel, innerX, titleTop + 8 + titleLineGap);
 
   kpis.forEach(function(k, i) {
     const boxX = kpiAreaX + i * (kpiBoxW + kpiBoxGap);
