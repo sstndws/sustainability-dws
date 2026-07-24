@@ -7387,6 +7387,9 @@ function initDashboardApp() {
     const qSel = document.getElementById('millExecQuarter');
     if (yearSel) yearSel.value = String(millExecYear);
     if (qSel) qSel.value = String(millExecQuarter);
+    // Prewarm PDF assets while the user picks year/quarter.
+    getMillExecutiveBackgroundDataUrl_().catch(function() {});
+    millExecutiveKickoffFacilityTtpLoad_(millExecYear, millExecQuarter);
     refreshMillExecutiveReport_();
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
@@ -7471,40 +7474,56 @@ function initDashboardApp() {
         requestAnimationFrame(function() { setTimeout(resolve, delay); });
       });
     };
-    if (typeof window.showSddToast === 'function') {
-      window.showSddToast('Preparing PDF — charts and data load in the background. Please wait…', 'info');
-    }
+    const toastProgress_ = function(msg) {
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast(msg, 'info');
+      }
+    };
+    toastProgress_('Preparing PDF — charts and data load in the background. Please wait…');
     let offscreenContainer = null;
     try {
       await yieldMain_(8);
+      // Warm background early (cached after first export).
+      const bgWarm = getMillExecutiveBackgroundDataUrl_();
       millExecutiveKickoffFacilityTtpLoad_(millExecYear, millExecQuarter);
+      await yieldMain_(8);
       const snapshot = millExecutiveBuildSnapshot_(millExecYear, millExecQuarter);
       millExecSnapshotCache = snapshot;
       await yieldMain_(8);
+
       const grvPromise = (!grvLoaded && typeof loadGrvData === 'function')
-        ? loadGrvData().catch(function() {})
+        ? Promise.race([
+          loadGrvData().catch(function() {}),
+          new Promise(function(resolve) { setTimeout(resolve, 4000); }),
+        ])
         : Promise.resolve();
-      const bgWarm = getMillExecutiveBackgroundDataUrl_();
+
+      toastProgress_('Loading period metrics…');
       await Promise.all([grvPromise, bgWarm]);
+      await yieldMain_(8);
+
+      // Short TTP wait — fall back to sheet totals instead of blocking ~30s.
       await millExecutiveEnrichSnapshot_(snapshot, millExecYear, millExecQuarter, {
         useFacilityTtp: true,
-        facilityTtpTimeoutMs: 28000,
+        facilityTtpTimeoutMs: 8000,
       });
       if (!snapshot) throw new Error('No executive report data available.');
-      const Chart = await millEnsureChartModule_();
-      await yieldMain_(16);
+      await yieldMain_(8);
 
-      // Smaller offscreen canvases — enough for print, faster PNG encode (less main-thread freeze).
+      toastProgress_('Drawing charts…');
+      const Chart = await millEnsureChartModule_();
+      await yieldMain_(8);
+
       const CHART_SIZES = {
-        risk:        [400, 400],
-        nbl:         [400, 400],
-        traceability:[400, 400],
-        grievance:   [400, 400],
+        risk:        [320, 320],
+        nbl:         [320, 320],
+        traceability:[320, 320],
+        grievance:   [320, 320],
         province:    [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
         facilityQty: [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
       };
       offscreenContainer = document.createElement('div');
-      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;visibility:hidden;pointer-events:none;z-index:-1;';
+      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:560px;visibility:hidden;pointer-events:none;z-index:-1;';
       const offscreenEls = {};
       Object.keys(CHART_SIZES).forEach(function(key) {
         const sz = CHART_SIZES[key];
@@ -7519,15 +7538,16 @@ function initDashboardApp() {
       });
       document.body.appendChild(offscreenContainer);
 
-      await renderMillExecutiveCharts_(Chart, snapshot, offscreenEls);
+      // One chart per turn — avoids Chrome “Page Unresponsive”.
+      await renderMillExecutiveChartsAsync_(Chart, snapshot, offscreenEls);
+      await yieldMain_(24);
 
-      await new Promise(function(resolve) {
-        requestAnimationFrame(resolve);
-      });
-
-      const chartImages = collectMillExecutiveChartImages_(offscreenEls);
+      toastProgress_('Encoding chart images…');
+      const chartImages = await collectMillExecutiveChartImagesAsync_(offscreenEls);
       destroyMillExecutiveCharts_();
-      snapshot.quarterlyTrend = millBuildExecutiveQuarterlyTrend_(
+      await yieldMain_(8);
+
+      snapshot.quarterlyTrend = await millBuildExecutiveQuarterlyTrendAsync_(
         millExecYear,
         millRegistryProductView,
         millExecQuarter
@@ -7539,6 +7559,8 @@ function initDashboardApp() {
       const _asOfLabel = _maxDM
         ? _MONTH_NAMES[_maxDM - 1] + ' ' + millExecYear
         : quarterAsOfLabel_(millExecYear, millExecQuarter);
+
+      toastProgress_('Writing PDF…');
       await exportMillExecutivePdf_({
         year: millExecYear,
         quarter: millExecQuarter,

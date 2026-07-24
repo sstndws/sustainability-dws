@@ -120,9 +120,9 @@ export async function getMillExecutiveBackgroundDataUrl_() {
   if (loadPromise) return loadPromise;
 
   loadPromise = (async function() {
-    // ~120 DPI A4 landscape — sharp enough, keeps PDF under ~15 MB with JPEG charts
-    const w = 1120;
-    const h = 792;
+    // ~72–90 DPI A4 landscape — enough for soft wash, much cheaper than photo-native
+    const w = 840;
+    const h = 594;
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -137,7 +137,11 @@ export async function getMillExecutiveBackgroundDataUrl_() {
       drawProceduralPlantationBg_(ctx, w, h);
     }
 
-    cachedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+    // Yield once before the expensive toDataURL encode.
+    await new Promise(function(resolve) {
+      requestAnimationFrame(function() { setTimeout(resolve, 0); });
+    });
+    cachedDataUrl = canvas.toDataURL('image/jpeg', 0.62);
     return cachedDataUrl;
   })();
 

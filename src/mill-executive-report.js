@@ -6,8 +6,9 @@ import { mrdShowInMillOnboarding_ } from './monthly-report-labels.js';
 import { registerPdfFonts_, setPdfFont_, PDF_FONT_SANS } from './pdf-fonts.js';
 import { getMillExecutiveBackgroundDataUrl_ } from './mill-executive-bg.js';
 
-/** Offscreen render size for row-2 horizontal bar charts (~half A4 landscape card aspect). */
-export const MILL_EXEC_HBAR_CHART_SIZE = { w: 760, h: 332 };
+/** Offscreen render size for row-2 horizontal bar charts (PDF-scaled; keep modest to avoid main-thread stalls). */
+export const MILL_EXEC_HBAR_CHART_SIZE = { w: 520, h: 240 };
+
 
 export function quarterEndMonth_(quarter) {
   const q = parseInt(String(quarter || ''), 10);
@@ -570,7 +571,7 @@ export async function renderMillExecutiveChartsAsync_(Chart, snapshot, els) {
     const partial = {};
     partial[key] = els[key];
     renderMillExecutiveChartsBody_(Chart, snapshot, partial);
-    await yieldToBrowser_(20);
+    await yieldToBrowser_(32);
   }
 }
 
@@ -590,7 +591,7 @@ export const MILL_EXEC_CHART_CARD_FILLS = {
   facilityQty: [249, 246, 241],
 };
 
-const PDF_CHART_JPEG_Q = 0.78;
+const PDF_CHART_JPEG_Q = 0.62;
 
 function canvasToPdfChartImage_(canvas, cardFill) {
   const fill = cardFill || MILL_EXEC_CHART_CARD_FILLS.nbl;
@@ -632,7 +633,7 @@ export async function collectMillExecutiveChartImagesAsync_(els) {
     try {
       out[key] = canvasToPdfChartImage_(canvas, MILL_EXEC_CHART_CARD_FILLS[key]);
     } catch (_) { /* noop */ }
-    await yieldToBrowser_(24);
+    await yieldToBrowser_(32);
   }
   return out;
 }
@@ -892,10 +893,10 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   }
 
   const r1y = chartsY;
-  await chartPanel_('Risk level distribution', 'risk',         400, 400, M,                              r1y, col4W, row1H, PAL.blush);
-  await chartPanel_('No buy list status',      'nbl',          400, 400, M + col4W + col4Gap,             r1y, col4W, row1H, PAL.mist);
-  await chartPanel_('TTP supply traceability', 'traceability', 400, 400, M + (col4W + col4Gap) * 2,       r1y, col4W, row1H, PAL.mist);
-  await chartPanel_('Grievance progress', 'grievance',          400, 400, M + (col4W + col4Gap) * 3,       r1y, col4W, row1H, PAL.sand);
+  await chartPanel_('Risk level distribution', 'risk',         320, 320, M,                              r1y, col4W, row1H, PAL.blush);
+  await chartPanel_('No buy list status',      'nbl',          320, 320, M + col4W + col4Gap,             r1y, col4W, row1H, PAL.mist);
+  await chartPanel_('TTP supply traceability', 'traceability', 320, 320, M + (col4W + col4Gap) * 2,       r1y, col4W, row1H, PAL.mist);
+  await chartPanel_('Grievance progress', 'grievance',          320, 320, M + (col4W + col4Gap) * 3,       r1y, col4W, row1H, PAL.sand);
 
   const r2y = r1y + row1H + rowGap;
   await chartPanel_('Province distribution', 'province', hBarW, hBarH, M, r2y, col2W, row2H, PAL.mist);
@@ -926,6 +927,10 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
     pw / 2, ph - 2.5, { align: 'center' }
   );
 
-  await yieldToBrowser_(32);
+  await yieldToBrowser_(48);
+  // Save can freeze the UI briefly — yield once more so Chrome paints first.
+  await new Promise(function(resolve) {
+    requestAnimationFrame(function() { setTimeout(resolve, 0); });
+  });
   doc.save(meta.filename);
 }
