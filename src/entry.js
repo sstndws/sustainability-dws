@@ -26,7 +26,7 @@ import { mountOverviewLanding, updateOverviewWelcomeFromEmail } from './overview
 import { getSupabase } from './supabase-client.js';
 import {
   allowLocalLogin,
-  applyBridgeSession,
+  clearBridgeParamsFromUrl,
   extractBridgeTokens,
   isAuthBridgePath,
   isAuthGateEnabled,
@@ -73,6 +73,10 @@ async function boot_() {
     showHubGateShell_();
   }
 
+  // Capture bridge tokens BEFORE any other URL mutation.
+  const bridgeTokens = extractBridgeTokens();
+  const onBridgePath = isAuthBridgePath();
+
   // Synchronous mounts — login/overview DOM before main binds listeners.
   mountLoginPage(document.getElementById('login'));
   mountOverviewLanding(document.getElementById('overview-root'));
@@ -95,6 +99,7 @@ async function boot_() {
   }
 
   if (!authGate) {
+    if (bridgeTokens || onBridgePath) clearBridgeParamsFromUrl();
     await loadAppScripts_();
     return;
   }
@@ -109,14 +114,23 @@ async function boot_() {
     return;
   }
 
-  if (extractBridgeTokens() || isAuthBridgePath()) {
-    const bridge = await applyBridgeSession(sb);
-    if (!bridge.ok && isAuthBridgePath()) {
-      const st = document.getElementById('hubSsoStatus');
-      if (st) st.textContent = 'Could not verify Hub session. Redirecting…';
+  if (bridgeTokens) {
+    const statusEl = document.getElementById('hubSsoStatus');
+    if (statusEl) statusEl.textContent = 'Signing you in from Hub Portal…';
+    const { error } = await sb.auth.setSession({
+      access_token: bridgeTokens.access_token,
+      refresh_token: bridgeTokens.refresh_token,
+    });
+    clearBridgeParamsFromUrl();
+    if (error) {
+      if (statusEl) statusEl.textContent = 'Could not verify Hub session. Redirecting…';
+      console.warn('[hub-sso] setSession failed:', error.message || error);
       redirectToHubLogin();
       return;
     }
+  } else if (onBridgePath) {
+    // Opened /auth-bridge without tokens (plain link / failed Hub handoff).
+    clearBridgeParamsFromUrl();
   }
 
   const res = await sb.auth.getSession();
@@ -131,7 +145,11 @@ async function boot_() {
   }
 
   const statusEl = document.getElementById('hubSsoStatus');
-  if (statusEl) statusEl.textContent = 'Redirecting to Hub Portal…';
+  if (statusEl) {
+    statusEl.textContent = onBridgePath || bridgeTokens
+      ? 'Could not verify Hub session. Redirecting…'
+      : 'Redirecting to Hub Portal…';
+  }
   redirectToHubLogin();
 }
 

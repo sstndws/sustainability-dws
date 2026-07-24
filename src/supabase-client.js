@@ -17,7 +17,9 @@ export function getSupabase() {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // Hub SSO passes tokens via /auth-bridge hash/query — we apply them manually.
+      // If true, the client may clear the hash before our bridge code runs.
+      detectSessionInUrl: false,
     },
   });
   return _client;

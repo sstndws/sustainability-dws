@@ -2,10 +2,7 @@ import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
 import {
   allowLocalLogin,
-  applyBridgeSession,
-  extractBridgeTokens,
   getHubPortalOrigin,
-  isAuthBridgePath,
   isAuthGateEnabled,
   redirectToHubLogin,
 } from './hub-sso.js';
@@ -26175,20 +26172,7 @@ function initDashboardApp() {
       return;
     }
 
-    // Hub → Sustain token bridge (/auth-bridge or tokens in hash/query).
-    // Entry.js may already have applied bridge tokens; re-check is cheap.
-    var bridged = false;
-    if (extractBridgeTokens() || isAuthBridgePath()) {
-      var bridge = await applyBridgeSession(sb);
-      bridged = !!(bridge && bridge.ok);
-      if (!bridge.ok && isAuthBridgePath()) {
-        var st = document.getElementById('hubSsoStatus');
-        if (st) st.textContent = 'Could not verify Hub session. Redirecting…';
-        redirectToHubLogin();
-        return;
-      }
-    }
-
+    // Entry.js already applied Hub bridge tokens (if any). Just open or bounce.
     var res = await sb.auth.getSession();
     if (res.data.session && res.data.session.user) {
       var u = res.data.session.user;
@@ -26196,9 +26180,6 @@ function initDashboardApp() {
     } else if (allowLocalLogin()) {
       showPage('login');
     } else {
-      // Entry should have redirected already; keep as a hard fallback.
-      var statusEl = document.getElementById('hubSsoStatus');
-      if (statusEl) statusEl.textContent = 'Redirecting to Hub Portal…';
       redirectToHubLogin();
     }
 
