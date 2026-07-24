@@ -6,6 +6,9 @@ import { mrdShowInMillOnboarding_ } from './monthly-report-labels.js';
 import { registerPdfFonts_, setPdfFont_, PDF_FONT_SANS } from './pdf-fonts.js';
 import { getMillExecutiveBackgroundDataUrl_ } from './mill-executive-bg.js';
 
+/** Offscreen render size for row-2 horizontal bar charts (~half A4 landscape card aspect). */
+export const MILL_EXEC_HBAR_CHART_SIZE = { w: 760, h: 332 };
+
 export function quarterEndMonth_(quarter) {
   const q = parseInt(String(quarter || ''), 10);
   if (q >= 1 && q <= 4) return q * 3;
@@ -288,14 +291,23 @@ function barOptions_(horizontal, canvas, maxLabelLen) {
   const w = canvas ? canvas.width : 800;
   const h = canvas ? canvas.height : 500;
   const fs = Math.round(h * 0.036);
-  const maxLen = maxLabelLen || 18;
+  const maxLen = maxLabelLen || (horizontal ? 26 : 18);
+  const layoutPad = horizontal
+    ? { top: 6, right: 8, bottom: 6, left: 6 }
+    : { top: 10, right: 20, bottom: 10, left: 10 };
+  const valScale = {
+    beginAtZero: true,
+    ticks: { precision: 0, font: { size: fs, family: PDF_FONT_SANS } },
+    grid: { color: 'rgba(139,26,26,0.07)' },
+  };
+  if (horizontal) valScale.grace = 0;
   return {
     responsive: false,
     animation: false,
     backgroundColor: 'transparent',
     width: w,
     height: h,
-    layout: { padding: { top: 10, right: 20, bottom: 10, left: 10 } },
+    layout: { padding: layoutPad },
     indexAxis: horizontal ? 'y' : 'x',
     plugins: { legend: { display: false } },
     scales: {
@@ -312,11 +324,7 @@ function barOptions_(horizontal, canvas, maxLabelLen) {
           },
         },
       },
-      [valAxis]: {
-        beginAtZero: true,
-        ticks: { precision: 0, font: { size: fs, family: PDF_FONT_SANS } },
-        grid: { color: 'rgba(139,26,26,0.07)' },
-      },
+      [valAxis]: valScale,
     },
   };
 }
@@ -380,7 +388,7 @@ function renderMillExecutiveChartsBody_(Chart, snapshot, els) {
           borderRadius: 6,
         }],
       },
-      options: barOptions_(true, els.province, 20),
+      options: barOptions_(true, els.province, 26),
     });
   }
 
@@ -388,7 +396,7 @@ function renderMillExecutiveChartsBody_(Chart, snapshot, els) {
   if (els.facilityQty) {
     const palette = ['#991B1B','#B45309','#1D4ED8','#6366F1','#6D28D9','#9D174D','#0369A1','#7C3AED'];
     const top = topEntries_(snapshot.facilityQty, 8).filter(function(e) { return e[1] > 0; });
-    const barOpts = barOptions_(true, els.facilityQty, 20);
+    const barOpts = barOptions_(true, els.facilityQty, 26);
     barOpts.scales.x.ticks.callback = function(v) {
       const n = Number(v);
       if (isNaN(n)) return v;
@@ -847,8 +855,10 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   const col2Gap = 4;
   const col2W   = (W - col2Gap) / 2;
   const chartArea = chartsMaxY - chartsY;
-  const row1H = Math.floor(chartArea * 0.51);
+  const row1H = Math.floor(chartArea * 0.48);
   const row2H = chartArea - row1H - rowGap;
+  const hBarW = MILL_EXEC_HBAR_CHART_SIZE.w;
+  const hBarH = MILL_EXEC_HBAR_CHART_SIZE.h;
 
   /** Frosted chart card + title + chart image (matches executive mockup). */
   async function chartPanel_(title, imgKey, canvasW, canvasH, cx, cy, cw, ch, fill) {
@@ -884,8 +894,8 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   await chartPanel_('Grievance progress', 'grievance',          400, 400, M + (col4W + col4Gap) * 3,       r1y, col4W, row1H, PAL.sand);
 
   const r2y = r1y + row1H + rowGap;
-  await chartPanel_('Province distribution', 'province', 420, 375, M, r2y, col2W, row2H, PAL.mist);
-  await chartPanel_('Top supplier (supply qty, ton)', 'facilityQty', 420, 375, M + col2W + col2Gap, r2y, col2W, row2H, PAL.sand);
+  await chartPanel_('Province distribution', 'province', hBarW, hBarH, M, r2y, col2W, row2H, PAL.mist);
+  await chartPanel_('Top supplier (supply qty, ton)', 'facilityQty', hBarW, hBarH, M + col2W + col2Gap, r2y, col2W, row2H, PAL.sand);
 
   // ── SUMMARY — single bold line ───────────────────────────────────
   const insightsY = chartsMaxY + BOTTOM_PAD;
