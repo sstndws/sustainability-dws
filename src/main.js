@@ -5304,7 +5304,9 @@ function initDashboardApp() {
       root.className = 'page active';
       document.body.prepend(root);
     }
-    if (!document.getElementById('btn-login-submit')) mountLoginPage(root);
+    var hasLocal = !!document.getElementById('btn-login-submit');
+    var hasHub = !!document.getElementById('btn-hub-redirect');
+    if (!hasLocal && !hasHub) mountLoginPage(root);
   })();
 
   console.log('🚀 Sustainability Dashboard loaded and connected to Google Sheets backend');
@@ -26174,6 +26176,7 @@ function initDashboardApp() {
     }
 
     // Hub → Sustain token bridge (/auth-bridge or tokens in hash/query).
+    // Entry.js may already have applied bridge tokens; re-check is cheap.
     var bridged = false;
     if (extractBridgeTokens() || isAuthBridgePath()) {
       var bridge = await applyBridgeSession(sb);
@@ -26193,10 +26196,10 @@ function initDashboardApp() {
     } else if (allowLocalLogin()) {
       showPage('login');
     } else {
+      // Entry should have redirected already; keep as a hard fallback.
       var statusEl = document.getElementById('hubSsoStatus');
       if (statusEl) statusEl.textContent = 'Redirecting to Hub Portal…';
-      // Brief pause so the gate UI is visible before navigation.
-      setTimeout(function() { redirectToHubLogin(); }, bridged ? 0 : 400);
+      redirectToHubLogin();
     }
 
     sb.auth.onAuthStateChange(function(event) {
