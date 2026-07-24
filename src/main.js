@@ -14,10 +14,18 @@ import {
   mrdUniqueFacilityCompanyCount_,
   mrdCompanyIsEudrPotential_,
   mrdEudrPotentialLabel_,
+  mrdShowInMillOnboarding_,
 } from './monthly-report-labels.js';
 import { isSecureGasEnabled, isLocalDevGasProxyEnabled, usesGasProxy_, gasSecureRequest_, requireSupabaseAuth_ } from './gas-api-client.js';
 import { millRiskReason_, millRiskReasonTokens_ } from './mill-risk-reason.js';
 import { buildBrandedExcelSheet_, excelBrandPreambleRowCount_ } from './excel-brand-header.js';
+import {
+  NBL_REGISTRY_FIELDS,
+  UNILEVER_NBL_FIELDS,
+  nblFilterExportRows_,
+  nblExportToExcel_,
+  nblExportToPdf_,
+} from './nbl-export.js';
 import {
   dashDateFieldHtml,
   dashDateTableCellHtml,
@@ -35,7 +43,28 @@ import {
   grvNormalizeRiskRow_,
   grvRiskTableCellHtml_,
 } from './grievance-risk.js';
-import { dashLoadingHtml_, dashMountLoading_ } from './dash-loading.js';
+import {
+  dashLoadingHtml_,
+  dashMountLoading_,
+  dashSetButtonBusy_,
+  dashClearButtonBusy_,
+  dashProgressToastHtml_,
+  dashMessageLooksInProgress_,
+} from './dash-loading.js';
+import {
+  quarterEndMonth_,
+  quarterAsOfLabel_,
+  millExecutivePeriodLabel_,
+  millExecutiveFilename_,
+  aggregateMillExecutiveSnapshot_,
+  renderMillExecutiveCharts_,
+  renderMillExecutiveChartsAsync_,
+  destroyMillExecutiveCharts_,
+  collectMillExecutiveChartImages_,
+  collectMillExecutiveChartImagesAsync_,
+  exportMillExecutivePdf_,
+} from './mill-executive-report.js';
+import { getMillExecutiveBackgroundDataUrl_ } from './mill-executive-bg.js';
 
 /** Set VITE_AUTH_ENABLED=true di Vercel/.env untuk mengaktifkan login lagi. */
 const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
@@ -4067,7 +4096,11 @@ window.showSddToast = function(message, type) {
   el.style.background = type === 'error' ? '#fef2f2' : type === 'success' ? '#ecfdf5' : type === 'warning' ? '#fffbeb' : '#f1f5f9';
   el.style.color = type === 'error' ? '#991b1b' : type === 'success' ? '#065f46' : type === 'warning' ? '#92400e' : '#0f172a';
   el.style.border = type === 'error' ? '1px solid #fecaca' : type === 'success' ? '1px solid #a7f3d0' : type === 'warning' ? '1px solid #fcd34d' : '1px solid #e2e8f0';
-  el.textContent = message;
+  if (type === 'info' && dashMessageLooksInProgress_(message)) {
+    el.innerHTML = dashProgressToastHtml_(message);
+  } else {
+    el.textContent = message;
+  }
   el.style.opacity = '1';
   clearTimeout(window.showSddToast._t);
   window.showSddToast._t = setTimeout(function() {
@@ -6901,6 +6934,684 @@ function initDashboardApp() {
     return pickPeriodRows_(allData);
   }
 
+  // ─── Mill Executive Report (quarterly charts) ───────────────────────────
+  let millExecYear = 0;
+  let millExecQuarter = 0;
+  let millExecChartModule = null;
+  let millExecSnapshotCache = null;
+  let millExecPeriodInitialized = false;
+  let millExecPfTtpLoadPromise = null;
+
+  function isMillOnboardingPanelActive_() {
+    const panel = document.getElementById('panel-mill-onboarding');
+    return !!(panel && panel.classList.contains('active'));
+  }
+
+  function isPerformaFacilityPanelActive_() {
+    const panel = document.getElementById('panel-performa-facility');
+    return !!(panel && panel.classList.contains('active'));
+  }
+
+  async function millExecutiveWaitForPfIdle_(maxMs) {
+    const loading = document.getElementById('pf-loading');
+    const pkLoading = document.getElementById('pf-pk-loading');
+    const deadline = Date.now() + (maxMs || 120000);
+    while (Date.now() < deadline) {
+      const busy = (loading && loading.style.display !== 'none')
+        || (pkLoading && pkLoading.style.display !== 'none');
+      if (!busy) return true;
+      await new Promise(function(resolve) { setTimeout(resolve, 150); });
+    }
+    return false;
+  }
+
+  function millExecutiveSupplyTonFromRow_(row) {
+    if (!row) return 0;
+    const members = row._millGeneralMergeSources
+      || row._millTableMergeSources
+      || (row._millGeneralMerged || row._millTableMerged ? [row] : null);
+    const rows = members && members.length ? members : [row];
+    let total = 0;
+    rows.forEach(function(r) {
+      if (millRegistryProductView === 'waste') {
+        total += millWasteSupplyQty_(r, 'ISCC')
+          + millWasteSupplyQty_(r, 'INS')
+          + millWasteSupplyQty_(r, 'SHELL');
+      } else {
+        total += millSupplyCpoQty_(r) + millSupplyPkQty_(r);
+      }
+    });
+    return total;
+  }
+
+  function millExecutiveHelpers_() {
+    return {
+      entityKey: millRegistryEntityKey_,
+      resolveRisk: millResolvedRiskLevelForStats_,
+      isNbl: function(r) { return millIsNblYes_(r['BUYER NO BUY LIST']); },
+      pickGroup: pickMillGroupName_,
+      pickQty: millExecutiveSupplyTonFromRow_,
+      pickProvince: function(r) {
+        const p = String(r['PROVINCE'] || '').trim();
+        return p && p !== '—' && p !== '-' ? p : 'Unknown';
+      },
+      pickStatus: function(r) {
+        const s = String(r['SUPPLIER STATUS'] || '').trim();
+        return s && s !== '—' && s !== '-' ? s : 'Unknown';
+      },
+    };
+  }
+
+  function millCollectAvailableYears_() {
+    const years = new Set();
+    (allData || []).concat(allDataWaste || []).forEach(function(r) {
+      const y = parseMillYearSort(millYearVal(r));
+      if (y >= 2000 && y <= 2100) years.add(y);
+    });
+    if (!years.size) years.add(new Date().getFullYear());
+    return Array.from(years).sort(function(a, b) { return b - a; });
+  }
+
+  function millDefaultExecutivePeriod_() {
+    const years = millCollectAvailableYears_();
+    const year = years[0] || new Date().getFullYear();
+    let maxMonth = 0;
+    (allData || []).concat(allDataWaste || []).forEach(function(r) {
+      if (parseMillYearSort(millYearVal(r)) !== year) return;
+      const m = parseMillMonthSort(millMonthVal(r));
+      if (m > maxMonth) maxMonth = m;
+    });
+    const quarter = maxMonth
+      ? Math.min(4, Math.max(1, Math.ceil(maxMonth / 3)))
+      : Math.min(4, Math.max(1, Math.ceil((new Date().getMonth() + 1) / 3)));
+    return { year: year, quarter: quarter };
+  }
+
+  function millExecutiveGrievanceProgress_(year) {
+    const y = parseInt(String(year || ''), 10);
+    if (!y) return { year: year, total: 0, closed: 0, open: 0, invalid: 0, pct: 0 };
+    const rows = (grvData || []).filter(function(r) {
+      const iso = grvToInputDate_(r['Date Received'] || r['DATE RECEIVED'] || '');
+      if (!iso) return false;
+      return parseInt(iso.slice(0, 4), 10) === y;
+    });
+    let closed = 0;
+    let open = 0;
+    let invalid = 0;
+    rows.forEach(function(r) {
+      const st = String(r['Grievance Status'] || '').toLowerCase();
+      if (st.includes('closed')) closed++;
+      else if (st.includes('invalid')) invalid++;
+      else if (st.includes('open')) open++;
+    });
+    const total = rows.length;
+    const pct = total ? Math.round((closed / total) * 100) : 0;
+    return { year: y, total: total, closed: closed, open: open, invalid: invalid, pct: pct };
+  }
+
+  function millExecutivePfPeriodFilter_(year, quarter) {
+    const endMonth = quarterEndMonth_(quarter || 1);
+    return {
+      year: '',
+      month: '',
+      reportYear: String(year || ''),
+      reportMonth: String(endMonth),
+      millPickMode: 'as-of',
+    };
+  }
+
+  /** Same portfolio logic as Facility Performance: Σ traceable qty ÷ Σ supply qty (CPO/PK). */
+  function millExecutiveTtpFromFacilityBundles_(bundles) {
+    let cpoTrace = 0;
+    let cpoTotal = 0;
+    let pkTrace = 0;
+    let pkTotal = 0;
+    (bundles || []).forEach(function(b) {
+      const tc = b && b.traceCalc;
+      if (!tc || isNaN(tc.pct)) return;
+      const trace = Number(tc.traceableQty) || 0;
+      const total = Number(tc.totalQty) || 0;
+      if (total <= 0) return;
+      if (b.type === 'pk') {
+        pkTrace += trace;
+        pkTotal += total;
+      } else {
+        cpoTrace += trace;
+        cpoTotal += total;
+      }
+    });
+    const cpoPct = cpoTotal > 0 ? (cpoTrace / cpoTotal) * 100 : NaN;
+    const pkPct = pkTotal > 0 ? (pkTrace / pkTotal) * 100 : NaN;
+    let pct = NaN;
+    if (!isNaN(cpoPct) && !isNaN(pkPct)) pct = (cpoPct + pkPct) / 2;
+    else if (!isNaN(cpoPct)) pct = cpoPct;
+    else if (!isNaN(pkPct)) pct = pkPct;
+    if (isNaN(pct)) {
+      return { pct: NaN, cpoFmt: '—', pkFmt: '—', source: 'facility' };
+    }
+    pct = Math.min(100, Math.max(0, Math.round(pct * 10) / 10));
+    return {
+      pct: pct,
+      cpoFmt: !isNaN(cpoPct) ? ttpFormatTraceablePct_(cpoPct) : '—',
+      pkFmt: !isNaN(pkPct) ? ttpFormatTraceablePct_(pkPct) : '—',
+      source: 'facility',
+    };
+  }
+
+  async function millExecutiveEnrichSnapshot_(snapshot, year, quarter, opts) {
+    if (!snapshot) return snapshot;
+    opts = opts || {};
+    const useFacilityTtp = opts.useFacilityTtp === true;
+    let ttpSet = false;
+    if (useFacilityTtp) {
+      try {
+        if (isPerformaFacilityPanelActive_()) {
+          await millExecutiveWaitForPfIdle_(15000);
+        }
+        if (typeof window.mrdLoadFacilityBundlesForReport_ === 'function') {
+          const loadKey = JSON.stringify(millExecutivePfPeriodFilter_(year, quarter));
+          if (!millExecPfTtpLoadPromise || millExecPfTtpLoadPromise.key !== loadKey) {
+            millExecutiveKickoffFacilityTtpLoad_(year, quarter);
+          }
+          const ttpTimeoutMs = opts.facilityTtpTimeoutMs != null ? opts.facilityTtpTimeoutMs : 28000;
+          const bundles = await Promise.race([
+            millExecPfTtpLoadPromise.p,
+            new Promise(function(_resolve, reject) {
+              setTimeout(function() { reject(new Error('facility-ttp-timeout')); }, ttpTimeoutMs);
+            }),
+          ]);
+          const fromPf = millExecutiveTtpFromFacilityBundles_(bundles);
+          if (!isNaN(fromPf.pct)) {
+            snapshot.ttpTrace = fromPf;
+            snapshot.traceability = {
+              Traceable: fromPf.pct,
+              Untraceable: Math.max(0, 100 - fromPf.pct),
+            };
+            ttpSet = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[Mill Executive] Facility Performance TTP enrich failed:', e);
+        millExecPfTtpLoadPromise = null;
+      }
+    }
+    if (!ttpSet && !snapshot.ttpTrace) {
+      try {
+        const totals = mrdBuildTraceTotalsForReport_(String(year), String(year), '');
+        const cpo = totals.ttpCpoPct;
+        const pk = totals.ttpPkPct;
+        let pct = NaN;
+        if (!isNaN(cpo) && !isNaN(pk)) pct = (cpo + pk) / 2;
+        else if (!isNaN(cpo)) pct = cpo;
+        else if (!isNaN(pk)) pct = pk;
+        if (!isNaN(pct)) {
+          pct = Math.min(100, Math.max(0, Math.round(pct * 10) / 10));
+          snapshot.ttpTrace = {
+            pct: pct,
+            cpoFmt: totals.ttpCpoFmt,
+            pkFmt: totals.ttpPkFmt,
+            source: 'ttp-sheet',
+          };
+          snapshot.traceability = {
+            Traceable: pct,
+            Untraceable: Math.max(0, 100 - pct),
+          };
+        }
+      } catch (e) {
+        console.warn('[Mill Executive] TTP trace enrich failed:', e);
+      }
+    }
+    snapshot.grievanceProgress = millExecutiveGrievanceProgress_(year);
+    const grvSnap = snapshot.grievanceProgress || {};
+    snapshot.grievanceBuckets = {
+      Closed: grvSnap.closed || 0,
+      Open: grvSnap.open || 0,
+      Invalid: grvSnap.invalid || 0,
+    };
+    return snapshot;
+  }
+
+  function millExecutiveRowsForQuarter_(year, quarter, productView) {
+    const endMonth = quarterEndMonth_(quarter);
+    const rows = millRowsForReportPeriod_(year, endMonth, productView || millRegistryProductView);
+    return rows.filter(function(r) {
+      return millRowHasCompanyName_(r) && mrdShowInMillOnboarding_(r);
+    });
+  }
+
+  /** All onboarding rows whose period month falls inside the quarter (for Σ supply ton). */
+  function millExecutiveSupplyRowsForQuarter_(year, quarter, productView) {
+    const y = parseInt(String(year || ''), 10);
+    const q = parseInt(String(quarter || ''), 10) || 1;
+    const startM = (q - 1) * 3 + 1;
+    const endM = q * 3;
+    const view = String(productView || millRegistryProductView).trim().toLowerCase();
+
+    function rowInQuarter_(r) {
+      if (!millRowHasCompanyName_(r)) return false;
+      if (parseMillYearSort(millYearVal(r)) !== y) return false;
+      const m = parseMillMonthSort(millMonthVal(r));
+      return m >= startM && m <= endM;
+    }
+    function filterSrc_(src) {
+      return (src || []).filter(function(r) {
+        return rowInQuarter_(r) && mrdShowInMillOnboarding_(r);
+      });
+    }
+    if (view === 'waste') return filterSrc_(allDataWaste);
+    if (view === 'general') {
+      return filterSrc_(allData).concat(filterSrc_(allDataWaste));
+    }
+    return filterSrc_(allData);
+  }
+
+  function millExecutiveSnapshotOpts_(year, quarter, productView) {
+    const helpers = millExecutiveHelpers_();
+    const supplyRaw = millExecutiveSupplyRowsForQuarter_(year, quarter, productView);
+    const supplyRows = millCollapseRowsForTableDisplay_(supplyRaw);
+    return Object.assign({}, helpers, { supplyRows: supplyRows });
+  }
+
+  function millExecutiveBuildSnapshot_(year, quarter, productView) {
+    const rows = millExecutiveRowsForQuarter_(year, quarter, productView);
+    return aggregateMillExecutiveSnapshot_(rows, millExecutiveSnapshotOpts_(year, quarter, productView));
+  }
+
+  function millExecutiveKickoffFacilityTtpLoad_(year, quarter) {
+    if (typeof window.mrdLoadFacilityBundlesForReport_ !== 'function') return;
+    const loadKey = JSON.stringify(millExecutivePfPeriodFilter_(year, quarter));
+    if (!millExecPfTtpLoadPromise || millExecPfTtpLoadPromise.key !== loadKey) {
+      millExecPfTtpLoadPromise = {
+        key: loadKey,
+        p: window.mrdLoadFacilityBundlesForReport_(
+          millExecutivePfPeriodFilter_(year, quarter)
+        ),
+      };
+    }
+  }
+
+  async function millBuildExecutiveQuarterlyTrendAsync_(year, productView, activeQuarter) {
+    const helpers = millExecutiveHelpers_();
+    const out = [];
+    for (let q = 1; q <= 4; q++) {
+      const snap = aggregateMillExecutiveSnapshot_(
+        millExecutiveRowsForQuarter_(year, q, productView),
+        helpers
+      );
+      out.push({
+        label: 'Q' + q,
+        totalMills: snap.totalMills,
+        active: q === activeQuarter,
+      });
+      await new Promise(function(resolve) {
+        requestAnimationFrame(function() { setTimeout(resolve, 0); });
+      });
+    }
+    return out;
+  }
+
+  function millBuildExecutiveQuarterlyTrend_(year, productView, activeQuarter) {
+    const helpers = millExecutiveHelpers_();
+    return [1, 2, 3, 4].map(function(q) {
+      const snap = aggregateMillExecutiveSnapshot_(
+        millExecutiveRowsForQuarter_(year, q, productView),
+        helpers
+      );
+      return {
+        label: 'Q' + q,
+        totalMills: snap.totalMills,
+        active: q === activeQuarter,
+      };
+    });
+  }
+
+  function millMaxDataMonthForYear_(year) {
+    let maxMonth = 0;
+    (allData || []).concat(allDataWaste || []).forEach(function(r) {
+      if (parseMillYearSort(millYearVal(r)) !== year) return;
+      const m = parseMillMonthSort(millMonthVal(r));
+      if (m > maxMonth) maxMonth = m;
+    });
+    return maxMonth;
+  }
+
+  function millSyncExecutiveQuarterOptions_(year) {
+    const qSel = document.getElementById('millExecQuarter');
+    if (!qSel) return;
+    const maxMonth = millMaxDataMonthForYear_(year);
+    // quarterStartMonth: Q1=1, Q2=4, Q3=7, Q4=10
+    const qStarts = { 1: 1, 2: 4, 3: 7, 4: 10 };
+    let lastEnabled = 1;
+    Array.from(qSel.options).forEach(function(opt) {
+      const q = parseInt(opt.value, 10);
+      const startMonth = qStarts[q] || 1;
+      const disabled = maxMonth > 0 && startMonth > maxMonth;
+      opt.disabled = disabled;
+      if (!disabled) lastEnabled = q;
+    });
+    // If current selection is disabled, reset to last enabled
+    const cur = parseInt(qSel.value, 10);
+    const curOpt = qSel.querySelector('option[value="' + cur + '"]');
+    if (curOpt && curOpt.disabled) {
+      qSel.value = String(lastEnabled);
+      millExecQuarter = lastEnabled;
+    }
+  }
+
+  function millSyncExecutiveYearOptions_() {
+    const sel = document.getElementById('millExecYear');
+    if (!sel) return;
+    const years = millCollectAvailableYears_();
+    const prev = String(millExecYear || sel.value || '');
+    sel.innerHTML = years.map(function(y) {
+      return '<option value="' + y + '">' + y + '</option>';
+    }).join('');
+    if (years.indexOf(parseInt(prev, 10)) >= 0) sel.value = prev;
+    else if (years.length) sel.value = String(years[0]);
+    millExecYear = parseInt(sel.value, 10) || years[0] || new Date().getFullYear();
+  }
+
+  function millInitExecutivePeriodOnce_() {
+    if (millExecPeriodInitialized) return;
+    const def = millDefaultExecutivePeriod_();
+    millExecYear = def.year;
+    millExecQuarter = def.quarter;
+    millExecPeriodInitialized = true;
+    const qSel = document.getElementById('millExecQuarter');
+    if (qSel) qSel.value = String(millExecQuarter);
+  }
+
+  async function millEnsureChartModule_() {
+    if (millExecChartModule) return millExecChartModule;
+    const mod = await import('chart.js/auto');
+    millExecChartModule = mod.default || mod.Chart || mod;
+    return millExecChartModule;
+  }
+
+  function millExecutiveChartEls_() {
+    return {
+      risk: document.getElementById('millExecChartRisk'),
+      nbl: document.getElementById('millExecChartNbl'),
+      status: document.getElementById('millExecChartStatus'),
+      province: document.getElementById('millExecChartProvince'),
+      trend: document.getElementById('millExecChartTrend'),
+    };
+  }
+
+  function millProductViewLabel_() {
+    if (millRegistryProductView === 'waste') return 'Waste Product';
+    if (millRegistryProductView === 'main') return 'Main Product';
+    return 'General (main + waste)';
+  }
+
+  let millExecRefreshDebounceTimer = null;
+  let millExecRefreshIdleId = 0;
+
+  function millExecExportModal_() {
+    let modal = document.getElementById('mill-exec-export-modal');
+    if (modal && modal.parentNode !== document.body) {
+      document.body.appendChild(modal);
+    }
+    return modal;
+  }
+
+  function openMillExecutiveExportModal_() {
+    const modal = millExecExportModal_();
+    if (!modal) return;
+    if (currentFilter === 'Task List') {
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Switch out of Task List to export the executive report.', 'warning');
+      }
+      return;
+    }
+    if (!millDataLoaded) {
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Mill data is still loading. Try again in a moment.', 'info');
+      }
+      loadMillData().catch(function() {});
+      return;
+    }
+    millInitExecutivePeriodOnce_();
+    millSyncExecutiveYearOptions_();
+    millSyncExecutiveQuarterOptions_(millExecYear);
+    const yearSel = document.getElementById('millExecYear');
+    const qSel = document.getElementById('millExecQuarter');
+    if (yearSel) yearSel.value = String(millExecYear);
+    if (qSel) qSel.value = String(millExecQuarter);
+    refreshMillExecutiveReport_();
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeMillExecutiveExportModal_() {
+    const modal = document.getElementById('mill-exec-export-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function millExecutiveSyncPeriodFromModal_() {
+    const yearSel = document.getElementById('millExecYear');
+    const qSel = document.getElementById('millExecQuarter');
+    if (yearSel) millExecYear = parseInt(yearSel.value, 10) || millExecYear;
+    if (qSel) millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter;
+  }
+
+  async function refreshMillExecutiveReport_() {
+    if (!isMillOnboardingPanelActive_()) return;
+    const hint = document.getElementById('millExecPeriodHint');
+    if (currentFilter === 'Task List' || !millDataLoaded) {
+      millExecSnapshotCache = null;
+      destroyMillExecutiveCharts_();
+      if (hint) hint.textContent = 'Load mill data to generate the report.';
+      return;
+    }
+    millInitExecutivePeriodOnce_();
+    millSyncExecutiveYearOptions_();
+    millSyncExecutiveQuarterOptions_(millExecYear);
+
+    const qSel = document.getElementById('millExecQuarter');
+    if (qSel) millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter || 1;
+
+    const snapshot = millExecutiveBuildSnapshot_(millExecYear, millExecQuarter);
+    millExecSnapshotCache = snapshot;
+
+    if (hint) {
+      const maxDataMonth = millMaxDataMonthForYear_(millExecYear);
+      const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const asOfActual = maxDataMonth
+        ? MONTH_NAMES[maxDataMonth - 1] + ' ' + millExecYear
+        : quarterAsOfLabel_(millExecYear, millExecQuarter);
+      hint.textContent = millExecutivePeriodLabel_(millExecYear, millExecQuarter)
+        + '  ·  As-of ' + asOfActual + ' (latest data)'
+        + '  ·  ' + millProductViewLabel_()
+        + '  ·  ' + snapshot.entityCount + ' unique mills';
+    }
+    const trendYear = document.getElementById('millExecTrendYear');
+    if (trendYear) trendYear.textContent = '(' + millExecYear + ')';
+
+  }
+
+  function scheduleRefreshMillExecutiveReport_() {
+    if (millExecRefreshDebounceTimer) clearTimeout(millExecRefreshDebounceTimer);
+    millExecRefreshDebounceTimer = setTimeout(function() {
+      millExecRefreshDebounceTimer = null;
+      if (millExecRefreshIdleId && typeof cancelIdleCallback === 'function') {
+        cancelIdleCallback(millExecRefreshIdleId);
+        millExecRefreshIdleId = 0;
+      }
+      const run = function() {
+        millExecRefreshIdleId = 0;
+        refreshMillExecutiveReport_();
+      };
+      if (typeof requestIdleCallback === 'function') {
+        millExecRefreshIdleId = requestIdleCallback(run, { timeout: 2500 });
+      } else {
+        setTimeout(run, 16);
+      }
+    }, 350);
+  }
+
+  async function runMillExecutiveExportPdf_() {
+    millExecutiveSyncPeriodFromModal_();
+    const btn = document.getElementById('btn-mill-exec-export-pdf');
+    dashSetButtonBusy_(btn, 'Generating…');
+    const yieldMain_ = function(ms) {
+      const delay = ms == null ? 16 : ms;
+      return new Promise(function(resolve) {
+        requestAnimationFrame(function() { setTimeout(resolve, delay); });
+      });
+    };
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('Preparing PDF — charts and data load in the background. Please wait…', 'info');
+    }
+    let offscreenContainer = null;
+    try {
+      await yieldMain_(8);
+      millExecutiveKickoffFacilityTtpLoad_(millExecYear, millExecQuarter);
+      const snapshot = millExecutiveBuildSnapshot_(millExecYear, millExecQuarter);
+      millExecSnapshotCache = snapshot;
+      await yieldMain_(8);
+      const grvPromise = (!grvLoaded && typeof loadGrvData === 'function')
+        ? loadGrvData().catch(function() {})
+        : Promise.resolve();
+      const bgWarm = getMillExecutiveBackgroundDataUrl_();
+      await Promise.all([grvPromise, bgWarm]);
+      await millExecutiveEnrichSnapshot_(snapshot, millExecYear, millExecQuarter, {
+        useFacilityTtp: true,
+        facilityTtpTimeoutMs: 28000,
+      });
+      if (!snapshot) throw new Error('No executive report data available.');
+      const Chart = await millEnsureChartModule_();
+      await yieldMain_(16);
+
+      // Smaller offscreen canvases — enough for print, faster PNG encode (less main-thread freeze).
+      const CHART_SIZES = {
+        risk:        [400, 400],
+        nbl:         [400, 400],
+        traceability:[400, 400],
+        grievance:   [400, 400],
+        province:    [420, 375],
+        facilityQty: [420, 375],
+      };
+      offscreenContainer = document.createElement('div');
+      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:700px;visibility:hidden;pointer-events:none;z-index:-1;';
+      const offscreenEls = {};
+      Object.keys(CHART_SIZES).forEach(function(key) {
+        const sz = CHART_SIZES[key];
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:' + sz[0] + 'px;height:' + sz[1] + 'px;';
+        const canvas = document.createElement('canvas');
+        canvas.width = sz[0];
+        canvas.height = sz[1];
+        wrap.appendChild(canvas);
+        offscreenContainer.appendChild(wrap);
+        offscreenEls[key] = canvas;
+      });
+      document.body.appendChild(offscreenContainer);
+
+      await renderMillExecutiveCharts_(Chart, snapshot, offscreenEls);
+
+      await new Promise(function(resolve) {
+        requestAnimationFrame(resolve);
+      });
+
+      const chartImages = collectMillExecutiveChartImages_(offscreenEls);
+      destroyMillExecutiveCharts_();
+      snapshot.quarterlyTrend = millBuildExecutiveQuarterlyTrend_(
+        millExecYear,
+        millRegistryProductView,
+        millExecQuarter
+      );
+      await yieldMain_(8);
+
+      const _MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const _maxDM = millMaxDataMonthForYear_(millExecYear);
+      const _asOfLabel = _maxDM
+        ? _MONTH_NAMES[_maxDM - 1] + ' ' + millExecYear
+        : quarterAsOfLabel_(millExecYear, millExecQuarter);
+      await exportMillExecutivePdf_({
+        year: millExecYear,
+        quarter: millExecQuarter,
+        periodLabel: millExecutivePeriodLabel_(millExecYear, millExecQuarter),
+        asOfLabel: _asOfLabel,
+        productView: millProductViewLabel_(),
+        filename: millExecutiveFilename_(millExecYear, millExecQuarter),
+      }, snapshot, chartImages, getJsPDF);
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast('Executive report PDF downloaded.', 'success');
+      }
+      closeMillExecutiveExportModal_();
+    } catch (err) {
+      console.error('[Mill Executive] PDF export failed:', err);
+      if (typeof window.showSddToast === 'function') {
+        window.showSddToast(err && err.message ? err.message : 'PDF export failed.', 'error');
+      } else {
+        alert(err && err.message ? err.message : 'PDF export failed.');
+      }
+    } finally {
+      if (offscreenContainer && offscreenContainer.parentNode) {
+        offscreenContainer.parentNode.removeChild(offscreenContainer);
+      }
+      dashClearButtonBusy_(btn, 'Generate & Export PDF');
+    }
+  }
+
+  (function bindMillExecutiveReportOnce_() {
+    const openBtn = document.getElementById('btn-mill-exec-open-modal');
+    const yearSel = document.getElementById('millExecYear');
+    const qSel = document.getElementById('millExecQuarter');
+    const exportBtn = document.getElementById('btn-mill-exec-export-pdf');
+    const modal = millExecExportModal_();
+    const backdrop = document.getElementById('millExecModalBackdrop');
+    const closeBtn = document.getElementById('millExecModalClose');
+    const cancelBtn = document.getElementById('millExecModalCancel');
+
+    if (openBtn && !openBtn.dataset.bound) {
+      openBtn.dataset.bound = '1';
+      openBtn.addEventListener('click', function() { openMillExecutiveExportModal_(); });
+    }
+    if (backdrop && !backdrop.dataset.bound) {
+      backdrop.dataset.bound = '1';
+      backdrop.addEventListener('click', closeMillExecutiveExportModal_);
+    }
+    if (closeBtn && !closeBtn.dataset.bound) {
+      closeBtn.dataset.bound = '1';
+      closeBtn.addEventListener('click', closeMillExecutiveExportModal_);
+    }
+    if (cancelBtn && !cancelBtn.dataset.bound) {
+      cancelBtn.dataset.bound = '1';
+      cancelBtn.addEventListener('click', closeMillExecutiveExportModal_);
+    }
+    if (modal && !modal.dataset.boundEsc) {
+      modal.dataset.boundEsc = '1';
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        if (modal.style.display === 'none' || modal.getAttribute('aria-hidden') === 'true') return;
+        closeMillExecutiveExportModal_();
+      });
+    }
+    if (yearSel && !yearSel.dataset.bound) {
+      yearSel.dataset.bound = '1';
+      yearSel.addEventListener('change', function() {
+        millExecYear = parseInt(yearSel.value, 10) || millExecYear;
+        millSyncExecutiveQuarterOptions_(millExecYear);
+        scheduleRefreshMillExecutiveReport_();
+      });
+    }
+    if (qSel && !qSel.dataset.bound) {
+      qSel.dataset.bound = '1';
+      qSel.addEventListener('change', function() {
+        millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter;
+        scheduleRefreshMillExecutiveReport_();
+      });
+    }
+    if (exportBtn && !exportBtn.dataset.bound) {
+      exportBtn.dataset.bound = '1';
+      exportBtn.addEventListener('click', function() { runMillExecutiveExportPdf_(); });
+    }
+  })();
+
   function millPeriodFilterHintText_() {
     const pf = millSelectedPeriodFilter_();
     if (!pf.hasYear && !pf.hasMonth) {
@@ -7795,8 +8506,9 @@ function initDashboardApp() {
     }
 
     const btn = document.getElementById('btn-mill-export-pdf');
-    const prevHtml = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ttp-btn-icon">…</span> Generating…'; }
+    dashSetButtonBusy_(btn, 'Generating…', {
+      prefixHtml: '<span class="ttp-btn-icon">…</span> ',
+    });
 
     try {
       const nblLists = await ensureNblListsForCheck_();
@@ -7849,7 +8561,7 @@ function initDashboardApp() {
     } catch (err) {
       toastErr('PDF export failed: ' + (err.message || err));
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = prevHtml; }
+      dashClearButtonBusy_(btn);
     }
   }
 
@@ -8803,6 +9515,7 @@ function initDashboardApp() {
     millRegistryProductView = (m === 'main' || m === 'waste') ? m : 'general';
     millSyncProductViewUi_();
     scheduleRenderMillTable();
+    if (isMillOnboardingPanelActive_()) scheduleRefreshMillExecutiveReport_();
   }
 
   function millSupplyCpoCellText_(row) {
@@ -8841,6 +9554,10 @@ function initDashboardApp() {
     if (q <= 0 && (raw == null || String(raw).trim() === '' || String(raw).trim() === '—')) return '—';
     if (q <= 0) return '—';
     return millFormatSupplyQtyDisplay_(raw != null && String(raw).trim() !== '' ? raw : q);
+  }
+
+  function millWasteSupplyQty_(row, kind) {
+    return millParseSupplyQty_(millPickRawField_(row, millWasteSupplyQtyAliases_(kind)));
   }
 
   function millRegistryQtyCellText_(row) {
@@ -9686,7 +10403,7 @@ function initDashboardApp() {
       return;
     }
     const prevTxt = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Exporting...'; }
+    dashSetButtonBusy_(btn, 'Exporting…');
     try {
       const nblByInfo = await millResolveNblByInfo_(row);
       const JsPDFLib = getJsPDF();
@@ -9828,7 +10545,7 @@ function initDashboardApp() {
     } catch (e) {
       toastErr('PDF export failed: ' + (e && e.message ? e.message : e));
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = prevTxt || 'Export PDF'; }
+      dashClearButtonBusy_(btn, prevTxt || 'Export PDF');
     }
   }
 
@@ -20038,11 +20755,6 @@ function initDashboardApp() {
   })();
 
   // ─── NO BUY LIST (NBL + Unilever NBL) ────────────────────
-  const NBL_REGISTRY_FIELDS = ['Riser', 'Group Name NBL', 'Company Name NBL', 'SOURCE'];
-  const UNILEVER_NBL_FIELDS = [
-    'Riser', 'UML ID', 'COMPANY NAME', 'MILL NAME', 'COUNTRY', 'PROVINCE',
-    'DISTRICT / REGENCY', 'LAT.', 'LONG.',
-  ];
   let nblRegistryData = [];
   let nblUnileverData = [];
   let nblRegistryLoaded = false;
@@ -20059,6 +20771,66 @@ function initDashboardApp() {
   let nblModalPresetGroup = '';
   let nblExpandedGroupKeys_ = new Set();
   let nblScrollToGroupKey_ = '';
+  let nblExportInFlight_ = false;
+
+  function openNblExportModal_() {
+    if (nblExportInFlight_) {
+      if (typeof window.showSddToast === 'function') window.showSddToast('Export in progress — please wait.', 'info');
+      return;
+    }
+    const modal = document.getElementById('nbl-export-modal');
+    if (!modal) return;
+    const hint = document.getElementById('nblExportModalHint');
+    const title = document.getElementById('nblExportModalTitle');
+    const tabLabel = nblActiveSource === 'unilever' ? 'Unilever NBL' : 'NBL registry';
+    if (title) title.textContent = 'Export ' + tabLabel;
+    if (hint) {
+      hint.textContent = 'Choose a file format. Exports the current '
+        + tabLabel + ' tab' + (nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry ? ' (filtered by search)' : '') + '.';
+    }
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeNblExportModal_() {
+    const modal = document.getElementById('nbl-export-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function runNblExport_(format) {
+    if (nblExportInFlight_) return;
+    const source = nblActiveSource;
+    const fields = source === 'unilever' ? UNILEVER_NBL_FIELDS : NBL_REGISTRY_FIELDS;
+    const q = source === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
+    const allRows = source === 'unilever' ? nblUnileverData : nblRegistryData;
+    const rows = nblFilterExportRows_(allRows, q);
+    if (!rows.length) {
+      alert(q ? 'No NBL rows match the current search.' : 'No NBL data to export.');
+      return;
+    }
+    nblExportInFlight_ = true;
+    closeNblExportModal_();
+    const toast = typeof window.showSddToast === 'function' ? window.showSddToast : null;
+    try {
+      if (format === 'excel') {
+        if (toast) toast('Generating Excel…', 'info');
+        nblExportToExcel_(rows, source, fields);
+        if (toast) toast('Excel exported.', 'success');
+        return;
+      }
+      if (toast) toast('Generating PDF…', 'info');
+      await nblExportToPdf_(rows, source, fields, getJsPDF);
+      if (toast) toast('PDF exported.', 'success');
+    } catch (err) {
+      const msg = 'Export failed: ' + ((err && err.message) ? err.message : String(err));
+      if (toast) toast(msg, 'error');
+      else alert(msg);
+    } finally {
+      nblExportInFlight_ = false;
+    }
+  }
 
   function nblInvalidateListsCache_() {
     _nblListsCache = null;
@@ -20800,42 +21572,18 @@ function initDashboardApp() {
     });
 
     btnExport.addEventListener('click', function() {
-      var fields = nblActiveSource === 'unilever' ? UNILEVER_NBL_FIELDS : NBL_REGISTRY_FIELDS;
-      var q = nblActiveSource === 'unilever' ? nblSearchUnilever : nblSearchRegistry;
-      var allRows = nblActiveSource === 'unilever' ? nblUnileverData : nblRegistryData;
-      var rows = allRows.filter(function(d) {
-        return !q || (d._nblSearchBlob || '').includes(q);
-      });
-      if (!rows.length) {
-        alert(q ? 'No NBL rows match the current search.' : 'No NBL data to export.');
-        return;
-      }
-      var csv = '\uFEFF' + [fields].concat(
-        rows.map(function(d) {
-          return fields.map(function(f) {
-            if (nblActiveSource === 'unilever') {
-              if (f === 'Riser') return '"' + String(d._nblRiser || d._nblNo || '').replace(/"/g, '""') + '"';
-              if (f === 'UML ID') return '"' + String(d._nblUml || '').replace(/"/g, '""') + '"';
-              if (f === 'COMPANY NAME') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
-              if (f === 'MILL NAME') return '"' + String(d._nblMill || '').replace(/"/g, '""') + '"';
-              if (f === 'COUNTRY') return '"' + String(d._nblCountry || '').replace(/"/g, '""') + '"';
-              if (f === 'PROVINCE') return '"' + String(d._nblProvince || '').replace(/"/g, '""') + '"';
-              if (f === 'DISTRICT / REGENCY') return '"' + String(d._nblDistrict || '').replace(/"/g, '""') + '"';
-              if (f === 'LAT.') return '"' + String(d._nblLat || '').replace(/"/g, '""') + '"';
-              if (f === 'LONG.') return '"' + String(d._nblLong || '').replace(/"/g, '""') + '"';
-            }
-            if (f === 'Riser') return '"' + String(d._nblRiser || '').replace(/"/g, '""') + '"';
-            if (f === 'Group Name NBL') return '"' + String(d._nblGroup || '').replace(/"/g, '""') + '"';
-            if (f === 'Company Name NBL') return '"' + String(d._nblCompany || '').replace(/"/g, '""') + '"';
-            if (f === 'SOURCE') return '"' + String(d._nblSource || '').replace(/"/g, '""') + '"';
-            return '"' + String(d[f] || '').replace(/"/g, '""') + '"';
-          });
-        })
-      ).map(function(r) { return r.join(','); }).join('\n');
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      a.download = nblActiveSource === 'unilever' ? 'unilever_nbl.csv' : 'nbl_registry.csv';
-      a.click();
+      openNblExportModal_();
+    });
+
+    ['nblExportModalClose', 'nblExportCancel', 'nblExportModalBackdrop'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('click', closeNblExportModal_);
+    });
+    document.getElementById('nblExportPickPdf')?.addEventListener('click', function() {
+      runNblExport_('pdf');
+    });
+    document.getElementById('nblExportPickExcel')?.addEventListener('click', function() {
+      runNblExport_('excel');
     });
   })();
 
@@ -21311,6 +22059,15 @@ function initDashboardApp() {
         millSyncRegistryFiltersVisibility_();
       }
       scheduleRenderMillTable();
+      const warmExecutivePdfAssets_ = function() {
+        getMillExecutiveBackgroundDataUrl_().catch(function() {});
+        millEnsureChartModule_().catch(function() {});
+      };
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(warmExecutivePdfAssets_, { timeout: 6000 });
+      } else {
+        setTimeout(warmExecutivePdfAssets_, 500);
+      }
     }
     if (name === 'ttm-ttp' && !ttpLoaded) loadTTPData();
     if (name === 'grievance' && !grvLoaded) loadGrvData();
@@ -23888,7 +24645,7 @@ function initDashboardApp() {
       const exportBtn = document.getElementById('pfExportPdfBtn');
       const periodLabel = pfPeriodLabel_();
 
-      if (excelBtn) { excelBtn.disabled = true; excelBtn.textContent = 'Generating…'; }
+      dashSetButtonBusy_(excelBtn, 'Generating…');
       if (toolbarExcel) toolbarExcel.disabled = true;
       if (exportBtn) exportBtn.disabled = true;
 
@@ -24050,7 +24807,7 @@ function initDashboardApp() {
         console.error('[PF Excel]', err);
         alert('Excel export failed: ' + (err && err.message ? err.message : err));
       } finally {
-        if (excelBtn) { excelBtn.disabled = false; excelBtn.textContent = 'Generate Excel'; }
+        dashClearButtonBusy_(excelBtn, 'Generate Excel');
         if (toolbarExcel) toolbarExcel.disabled = false;
         if (exportBtn) exportBtn.disabled = false;
       }
@@ -24071,7 +24828,7 @@ function initDashboardApp() {
       const periodLabel = pfPeriodLabel_();
       const rowExportBtns = document.querySelectorAll('.pf-row-export-pdf');
 
-      if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+      dashSetButtonBusy_(btn, 'Generating…');
       if (exportBtn) exportBtn.disabled = true;
       rowExportBtns.forEach(function(b) { b.disabled = true; });
 
@@ -25040,7 +25797,7 @@ function initDashboardApp() {
         console.error('[PF PDF]', err);
         alert('PDF export failed: ' + (err && err.message ? err.message : err));
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Generate PDF'; }
+        dashClearButtonBusy_(btn, 'Generate PDF');
         if (exportBtn) exportBtn.disabled = false;
         rowExportBtns.forEach(function(b) { b.disabled = false; });
       }
@@ -25979,7 +26736,7 @@ function initDashboardApp() {
     }
 
     var pdfBtn = document.getElementById('sdd-export-pdf-btn');
-    if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.innerHTML = 'Generating…'; }
+    dashSetButtonBusy_(pdfBtn, 'Generating…');
 
     try {
       if (window._loadedPrimarySddRow && typeof window.restoreNblCheckResultFromRow_ === 'function') {
@@ -26755,10 +27512,7 @@ function initDashboardApp() {
       console.error('[sddExportPdf]', pdfErr);
       if (typeof window.showSddToast === 'function') window.showSddToast('Failed to generate PDF: ' + (pdfErr.message || pdfErr), 'error');
     } finally {
-      if (pdfBtn) {
-        pdfBtn.disabled = false;
-        pdfBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export PDF';
-      }
+      dashClearButtonBusy_(pdfBtn, '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export PDF');
     }
   }
   window.sddExportPdf = sddExportPdf;
@@ -32131,11 +32885,22 @@ function initDashboardApp() {
         millQuarterVal: millQuarterVal,
         millIsNblYes_: millIsNblYes_,
         millResolvedRiskLevel: millResolvedRiskLevelForStats_,
+        millEntityKey: millRegistryEntityKey_,
+        pickMillGroupName: pickMillGroupName_,
+        millSupplyCpoQty: millSupplyCpoQty_,
+        millSupplyPkQty: millSupplyPkQty_,
+        millWasteSupplyQty: millWasteSupplyQty_,
         millRiskReason: millRiskReasonForRow_,
         millRiskReasonTokens: function(r) {
           return millRiskReasonTokens_(r, { millIsNblYes: millIsNblYes_ });
         },
         getMillData: function() { return allData; },
+        getMillRawRows: function() {
+          return (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+        },
+        getMillWasteRawRows: function() {
+          return (allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []);
+        },
         getMillsForReportPeriod: function(year, month, productView) {
           return millRowsForReportPeriod_(year, month, productView);
         },

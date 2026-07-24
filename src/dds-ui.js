@@ -15,6 +15,7 @@ import {
   DDS_RA_RISK,
   DDS_FIELD_LABELS,
 } from './dds-constants.js';
+import { dashSetButtonBusy_, dashClearButtonBusy_, dashMountLoading_ } from './dash-loading.js';
 
 export {
   DDS_LIST_FIELDS,
@@ -274,18 +275,20 @@ export function initDdsPanel_(deps) {
       return;
     }
     body.innerHTML = filtered.map(function(d) {
-      const sd = escHtml(String(ddsPick_(d, 'SD NUMBER') || '—'));
+      const sdRaw = String(ddsPick_(d, 'SD NUMBER') || '').trim();
+      const sdDisplay = escHtml(sdRaw || '—');
+      const sdAttr = escHtml(sdRaw);
       const cells = DDS_LIST_FIELDS.map(function(f) {
         return '<td>' + escHtml(String(ddsPick_(d, f) || '—')) + '</td>';
       }).join('');
       return ''
-        + '<tr class="dds-row-clickable" data-sd="' + sd + '" data-row="' + String(d._row || '') + '">'
+        + '<tr class="dds-row-clickable" data-sd="' + sdAttr + '" data-row="' + String(d._row || '') + '">'
         + cells
         + '<td class="dds-actions-col"><div class="row-actions dds-row-actions">'
-        + '<button type="button" class="btn-row btn-export dds-row-export" data-sd="' + sd + '" title="Export PDF &amp; DOCX">'
+        + '<button type="button" class="btn-row btn-export dds-row-export" data-sd="' + sdAttr + '" title="Export">'
         + '<svg class="btn-row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         + 'Export</button>'
-        + '<button type="button" class="btn-row btn-edit dds-row-edit" data-sd="' + sd + '" title="Edit">'
+        + '<button type="button" class="btn-row btn-edit dds-row-edit" data-sd="' + sdAttr + '" title="Edit">'
         + '<svg class="btn-row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
         + 'Edit</button>'
         + '</div></td>'
@@ -520,7 +523,7 @@ export function initDdsPanel_(deps) {
       if (titleEl) titleEl.textContent = ddsFormMode === 'edit' ? 'Edit Due Diligence Statement' : 'New Due Diligence Statement';
       if (subEl) subEl.textContent = ddsFormMode === 'edit'
         ? ('SD Number: ' + (ddsPick_(master, 'SD NUMBER') || '—'))
-        : 'Enter shipment data — saved to Google Sheet. Export PDF & DOCX after Save.';
+        : 'Enter shipment data — saved to Google Sheet. Export after Save.';
 
       ddsRenderFieldGrids_(master);
       ddsRenderChildTables_(bundle);
@@ -620,7 +623,7 @@ export function initDdsPanel_(deps) {
     }
     ddsSaving = true;
     const saveBtn = document.getElementById('ddsFormSave');
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+    dashSetButtonBusy_(saveBtn, 'Saving…');
     try {
       await apiPost({
         action: 'upsertEudrDds',
@@ -638,7 +641,7 @@ export function initDdsPanel_(deps) {
       ddsToast_('Save failed: ' + (err.message || err), 'error');
     } finally {
       ddsSaving = false;
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save DDS'; }
+      dashClearButtonBusy_(saveBtn, 'Save DDS');
     }
   }
 
@@ -662,12 +665,131 @@ export function initDdsPanel_(deps) {
     return ddsBundleBySd_(sdNumber);
   }
 
-  async function exportDdsBothFromSheet_(sdNumber) {
+  let ddsExportPendingSd_ = '';
+  let ddsExportInFlight_ = false;
+
+  function openDdsExportModal_(sdNumber) {
+    const sd = String(sdNumber || '').trim();
+    if (!sd || sd === '—' || sd === '-') {
+      ddsToast_('SD Number is required.', 'warning');
+      return;
+    }
+    if (ddsExportInFlight_) {
+      ddsToast_('Export in progress — please wait.', 'info');
+      return;
+    }
+    ddsExportPendingSd_ = sd;
+    const modal = document.getElementById('dds-export-modal');
+    if (!modal) {
+      exportDdsFromSheet_(sd, 'pdf');
+      return;
+    }
+    modal.setAttribute('data-pending-sd', sd);
+    ddsSetExportModalBusy_(false);
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideDdsExportModal_() {
+    const modal = document.getElementById('dds-export-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function ddsSetExportModalBusy_(busy, label) {
+    const panel = document.getElementById('ddsExportFormatPanel');
+    const progress = document.getElementById('ddsExportProgress');
+    const closeBtn = document.getElementById('ddsExportModalClose');
+    const cancelBtn = document.getElementById('ddsExportCancel');
+    const pdfBtn = document.getElementById('ddsExportPickPdf');
+    const docxBtn = document.getElementById('ddsExportPickDocx');
+    if (busy) {
+      if (panel) panel.hidden = true;
+      if (progress) {
+        progress.hidden = false;
+        dashMountLoading_(progress, label || 'Preparing export…', { inline: true });
+      }
+      if (closeBtn) closeBtn.disabled = true;
+      if (cancelBtn) cancelBtn.disabled = true;
+      if (pdfBtn) pdfBtn.disabled = true;
+      if (docxBtn) docxBtn.disabled = true;
+    } else {
+      if (panel) panel.hidden = false;
+      if (progress) {
+        progress.hidden = true;
+        progress.innerHTML = '';
+      }
+      if (closeBtn) closeBtn.disabled = false;
+      if (cancelBtn) cancelBtn.disabled = false;
+      if (pdfBtn) pdfBtn.disabled = false;
+      if (docxBtn) docxBtn.disabled = false;
+    }
+  }
+
+  function closeDdsExportModal_() {
+    if (ddsExportInFlight_) {
+      ddsToast_('Export in progress — please wait.', 'info');
+      return;
+    }
+    hideDdsExportModal_();
+    ddsExportPendingSd_ = '';
+    const modal = document.getElementById('dds-export-modal');
+    if (modal) modal.removeAttribute('data-pending-sd');
+  }
+
+  function ddsExportPendingSdResolved_() {
+    const modal = document.getElementById('dds-export-modal');
+    const fromModal = modal && modal.getAttribute('data-pending-sd');
+    return String(ddsExportPendingSd_ || fromModal || '').trim();
+  }
+
+  function bindDdsExportFormatBtn_(btn, format) {
+    if (!btn || btn.dataset.ddsExportPickBound) return;
+    btn.dataset.ddsExportPickBound = '1';
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      pickDdsExportFormat_(format);
+    });
+  }
+
+  function bindDdsExportModalHandlers_() {
+    bindDdsExportFormatBtn_(document.getElementById('ddsExportPickPdf'), 'pdf');
+    bindDdsExportFormatBtn_(document.getElementById('ddsExportPickDocx'), 'docx');
+  }
+
+  function pickDdsExportFormat_(format) {
+    const sd = ddsExportPendingSdResolved_();
+    if (!sd) {
+      ddsToast_('SD Number missing — close the dialog and use Export on the row again.', 'warning');
+      return;
+    }
+    if (ddsExportInFlight_) {
+      ddsToast_('Export already in progress — please wait.', 'info');
+      return;
+    }
+    ddsSetExportModalBusy_(true, 'Starting export…');
+    void exportDdsFromSheet_(sd, format);
+  }
+
+  async function exportDdsFromSheet_(sdNumber, format) {
     const sd = String(sdNumber || '').trim();
     if (!sd) {
       ddsToast_('SD Number is required.', 'warning');
       return;
     }
+    if (ddsExportInFlight_) {
+      ddsToast_('Export already in progress — please wait.', 'info');
+      return;
+    }
+
+    ddsExportInFlight_ = true;
+    const fmt = format === 'docx' ? 'docx' : 'pdf';
+    ddsSetExportModalBusy_(true, 'Loading record from sheet…');
+    ddsToast_(fmt === 'docx' ? 'Loading record for DOCX…' : 'Loading record for PDF…', 'info');
+
     let bundle = null;
     try {
       bundle = await fetchDdsBundleFromSheet_(sd);
@@ -677,36 +799,43 @@ export function initDdsPanel_(deps) {
     }
     if (!bundle || !bundle.master) {
       ddsToast_('Record not found in sheet. Save the record first.', 'warning');
+      ddsExportInFlight_ = false;
+      ddsSetExportModalBusy_(false);
       return;
     }
+
     try {
-      ddsToast_('Generating PDF & DOCX from template…', 'info');
-      const [{ buildFilledDdsDocxBlob_ }, { exportDdsPdfFromBlob_ }, { downloadFilledDdsDocx_ }] = await Promise.all([
-        import('./dds-docx-fill.js'),
-        import('./dds-pdf.js'),
-        import('./dds-docx.js'),
-      ]);
+      ddsSetExportModalBusy_(true, 'Filling template from saved data…');
+      const { buildFilledDdsDocxBlob_ } = await import('./dds-docx-fill.js');
       const filled = await buildFilledDdsDocxBlob_(bundle);
 
-      let pdfOk = false;
-      let pdfErr = null;
-      try {
-        await exportDdsPdfFromBlob_(filled);
-        pdfOk = true;
-      } catch (err) {
-        pdfErr = err;
-        console.error('[DDS] PDF export failed:', err);
+      if (fmt === 'docx') {
+        ddsSetExportModalBusy_(true, 'Generating Word file…');
+        ddsToast_('Generating DOCX from template…', 'info');
+        const { downloadFilledDdsDocx_ } = await import('./dds-docx.js');
+        downloadFilledDdsDocx_(filled);
+        ddsToast_('DOCX exported.', 'success');
+        hideDdsExportModal_();
+        ddsExportPendingSd_ = '';
+        const modal = document.getElementById('dds-export-modal');
+        if (modal) modal.removeAttribute('data-pending-sd');
+        return;
       }
 
-      downloadFilledDdsDocx_(filled);
-
-      if (pdfOk) {
-        ddsToast_('PDF and DOCX exported.', 'success');
-      } else {
-        ddsToast_('DOCX exported. PDF failed: ' + (pdfErr && pdfErr.message ? pdfErr.message : pdfErr), 'warning');
-      }
+      ddsSetExportModalBusy_(true, 'Rendering PDF — please wait (about 1–3 min)…');
+      ddsToast_('Generating PDF from template…', 'info');
+      const { exportDdsPdfFromBlob_ } = await import('./dds-pdf.js');
+      await exportDdsPdfFromBlob_(filled);
+      ddsToast_('PDF exported.', 'success');
+      hideDdsExportModal_();
+      ddsExportPendingSd_ = '';
+      const modalOk = document.getElementById('dds-export-modal');
+      if (modalOk) modalOk.removeAttribute('data-pending-sd');
     } catch (err) {
       ddsToast_('Export failed: ' + (err.message || err), 'error');
+    } finally {
+      ddsExportInFlight_ = false;
+      ddsSetExportModalBusy_(false);
     }
   }
 
@@ -746,6 +875,17 @@ export function initDdsPanel_(deps) {
 
     if (btnAdd) btnAdd.addEventListener('click', function() { openDdsForm_('add'); });
 
+    const exportModal = mountOverlay
+      ? mountOverlay('dds-export-modal')
+      : document.getElementById('dds-export-modal');
+    if (exportModal && !exportModal.dataset.ddsExportBound) {
+      exportModal.dataset.ddsExportBound = '1';
+      exportModal.querySelector('.pf-export-modal-dialog')?.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+    }
+    bindDdsExportModalHandlers_();
+
     document.getElementById('ddsFormClose')?.addEventListener('click', closeDdsForm_);
     document.getElementById('ddsFormCancel')?.addEventListener('click', closeDdsForm_);
     document.getElementById('ddsFormSave')?.addEventListener('click', saveDdsForm_);
@@ -756,7 +896,11 @@ export function initDdsPanel_(deps) {
         ddsScrollToSection_('ddsSectionMain');
         return;
       }
-      exportDdsBothFromSheet_(master['SD NUMBER']);
+      openDdsExportModal_(master['SD NUMBER']);
+    });
+
+    ['ddsExportModalClose', 'ddsExportCancel', 'ddsExportModalBackdrop'].forEach(function(id) {
+      document.getElementById(id)?.addEventListener('click', closeDdsExportModal_);
     });
 
     document.getElementById('ddsAddSupplierRow')?.addEventListener('click', function() {
@@ -820,7 +964,7 @@ export function initDdsPanel_(deps) {
         const exportBtn = e.target.closest('.dds-row-export');
         if (exportBtn) {
           e.stopPropagation();
-          exportDdsBothFromSheet_(exportBtn.getAttribute('data-sd'));
+          openDdsExportModal_(exportBtn.getAttribute('data-sd'));
           return;
         }
         const editBtn = e.target.closest('.dds-row-edit');

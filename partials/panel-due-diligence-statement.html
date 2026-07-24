@@ -51,6 +51,38 @@
           </div>
           <div id="dds-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
         </div>
+
+        <!-- Export format picker -->
+        <div id="dds-export-modal" class="pf-export-modal dds-export-modal" style="display:none;" aria-hidden="true">
+          <div class="pf-export-modal-backdrop" id="ddsExportModalBackdrop"></div>
+          <div class="pf-export-modal-dialog" role="dialog" aria-labelledby="ddsExportModalTitle">
+            <div class="pf-export-modal-head">
+              <h3 id="ddsExportModalTitle">Export Due Diligence Statement</h3>
+              <button type="button" class="pf-export-modal-close" id="ddsExportModalClose" aria-label="Close">✕</button>
+            </div>
+            <div class="pf-export-modal-body">
+              <p class="pf-export-hint">Choose a file format. Data is taken from the saved sheet record.</p>
+              <div id="ddsExportFormatPanel">
+              <div class="dds-export-format-grid">
+                <button type="button" class="dds-export-format-card" id="ddsExportPickPdf">
+                  <span class="dds-export-format-icon" aria-hidden="true">PDF</span>
+                  <span class="dds-export-format-label">PDF</span>
+                  <span class="dds-export-format-desc">Print-ready document</span>
+                </button>
+                <button type="button" class="dds-export-format-card" id="ddsExportPickDocx">
+                  <span class="dds-export-format-icon" aria-hidden="true">DOC</span>
+                  <span class="dds-export-format-label">Word (DOCX)</span>
+                  <span class="dds-export-format-desc">Editable template file</span>
+                </button>
+              </div>
+              </div>
+              <div id="ddsExportProgress" class="dds-export-progress dash-loading-host" hidden aria-live="polite"></div>
+            </div>
+            <div class="pf-export-modal-foot">
+              <button type="button" class="pf-btn pf-btn--ghost" id="ddsExportCancel">Cancel</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- DDS add / edit (BL-style scroll form — no tab maze) -->
@@ -144,7 +176,7 @@
           </div>
           <div class="bl-form-foot dds-form-foot">
             <button type="button" class="btn-cancel" id="ddsFormCancel">Cancel</button>
-            <button type="button" class="btn-sm btn-outline" id="ddsExportBtn">Export PDF &amp; DOCX</button>
+            <button type="button" class="btn-sm btn-outline" id="ddsExportBtn">Export</button>
             <button type="button" class="btn-save" id="ddsFormSave">Save DDS</button>
           </div>
         </div>

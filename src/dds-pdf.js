@@ -46,6 +46,7 @@ function injectPdfCaptureStyles_(styleContainer) {
   style.textContent = [
     '.docx-wrapper{background:#fff!important;padding:0!important;align-items:flex-start!important;}',
     '.docx-wrapper>section.docx{box-shadow:none!important;margin:0!important;}',
+    '.docx table tr,.docx table td,.docx table th{page-break-inside:avoid!important;break-inside:avoid!important;}',
   ].join('');
   styleContainer.appendChild(style);
 }
@@ -122,26 +123,36 @@ function collectBlockElements_(rootEl) {
   return blocks.sort(function(a, b) { return a.top - b.top; });
 }
 
-function adjustSliceEnd_(start, candidateEnd, rows, blocks) {
+function adjustSliceEnd_(start, candidateEnd, rows, blocks, pageHeight) {
   let end = candidateEnd;
   const minSlice = 96;
+  const maxH = pageHeight || candidateEnd - start;
 
   rows.forEach(function(row) {
     if (row.top >= end || row.bottom <= start + 8) return;
     if (row.top < end && row.bottom > end) {
-      const onPage = end - row.top;
-      const overflow = row.bottom - end;
-      if (onPage >= row.height * 0.55) return;
-      if (overflow <= 28) {
-        end = row.bottom;
+      if (row.top > start + minSlice) {
+        end = Math.min(end, row.top);
         return;
       }
-      if (row.top > start + minSlice) end = Math.min(end, row.top);
+      if (row.bottom - start <= maxH + 4) {
+        end = Math.max(end, row.bottom);
+      }
     }
   });
 
   blocks.forEach(function(block) {
     const bottom = block.top + block.height;
+    if (block.top < end && bottom > end) {
+      if (block.top > start + minSlice) {
+        end = Math.min(end, block.top);
+        return;
+      }
+      if (bottom - start <= maxH + 4) {
+        end = Math.max(end, bottom);
+      }
+      return;
+    }
     const minFollow = block.minFollow || 80;
     if (block.top >= start + 8 && block.top < end && bottom <= end + 2) {
       if (end - bottom < minFollow && block.top > start + minSlice) {
@@ -172,7 +183,7 @@ function computePageSlices_(rootEl, pageHeight) {
       break;
     }
 
-    end = adjustSliceEnd_(start, end, rows, blocks);
+    end = adjustSliceEnd_(start, end, rows, blocks, pageHeight);
     slices.push({ y: start, h: end - start });
     start = end;
   }
@@ -193,13 +204,16 @@ function collectPages_(bodyContainer) {
 async function captureSectionPages_(snap, pdf, pageEl, startPdfPageIndex) {
   const pageWidth = pageEl.offsetWidth || pageEl.clientWidth;
   const pageHeight = parsePageHeightPx_(pageEl);
-  const slices = computePageSlices_(pageEl, pageHeight);
+  const contentHeight = pageEl.scrollHeight;
+  const slices = contentHeight <= pageHeight * 1.06
+    ? [{ y: 0, h: contentHeight }]
+    : computePageSlices_(pageEl, pageHeight);
   let pdfPageIndex = startPdfPageIndex;
 
   for (let i = 0; i < slices.length; i++) {
     const slice = slices[i];
     const canvas = await snap(pageEl, {
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
@@ -211,7 +225,7 @@ async function captureSectionPages_(snap, pdf, pageEl, startPdfPageIndex) {
       y: slice.y,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/jpeg', 0.88);
     if (pdfPageIndex > 0) pdf.addPage();
     const imgHeightPt = (canvas.height * A4_W_PT) / canvas.width;
     pdf.addImage(imgData, 'JPEG', 0, 0, A4_W_PT, Math.min(imgHeightPt, A4_H_PT), undefined, 'FAST');
@@ -258,7 +272,7 @@ export async function exportDdsPdfFromBlob_(filled) {
       useBase64URL: true,
     });
 
-    await waitForLayout_(180);
+    await waitForLayout_(100);
 
     const pages = collectPages_(hostInfo.bodyContainer);
     if (!pages.length) throw new Error('Gagal merender template DDS untuk PDF');

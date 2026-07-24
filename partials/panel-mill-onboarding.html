@@ -1,9 +1,15 @@
 <!-- ── MILL ONBOARDING PANEL ── -->
 <div class="panel" id="panel-mill-onboarding">
   <div class="breadcrumb">Dashboard <span>/ Mill Onboarding</span></div>
-  <div class="page-header">
-    <h1>Mill Onboarding</h1>
-    <p>Manage and track all mill profiles in your supply chain network</p>
+  <div class="page-header mill-page-header">
+    <div class="mill-page-header__text">
+      <h1>Mill Onboarding</h1>
+      <p>Manage and track all mill profiles in your supply chain network</p>
+    </div>
+    <button type="button" class="btn-sm btn-outline mill-exec-open-btn" id="btn-mill-exec-open-modal" aria-haspopup="dialog">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+      Executive Report
+    </button>
   </div>
 
   <div class="stats-row">
@@ -424,5 +430,41 @@
       </table>
     </div>
     <div id="mill-error" style="display:none;padding:32px;text-align:center;color:#c0392b;font-size:14px;"></div>
+  </div>
+
+  <div id="mill-exec-export-modal" class="pf-export-modal mill-exec-export-modal" style="display:none;" aria-hidden="true">
+    <div class="pf-export-modal-backdrop" id="millExecModalBackdrop"></div>
+    <div class="pf-export-modal-dialog" role="dialog" aria-labelledby="millExecModalTitle">
+      <div class="pf-export-modal-head">
+        <h3 id="millExecModalTitle">Mill Onboarding — Executive Report</h3>
+        <button type="button" class="pf-export-modal-close" id="millExecModalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="pf-export-modal-body">
+        <p class="pf-export-hint">Quarterly PDF for management (1 quarter = 3 months). Uses current product view and as-of quarter end.</p>
+        <div class="mill-exec-modal-fields">
+          <label class="mill-exec-field">
+            <span class="mill-exec-field__label">Year</span>
+            <select id="millExecYear" class="mill-exec-select" aria-label="Report year"></select>
+          </label>
+          <label class="mill-exec-field">
+            <span class="mill-exec-field__label">Quarter</span>
+            <select id="millExecQuarter" class="mill-exec-select" aria-label="Report quarter">
+              <option value="1">Q1 (Jan–Mar)</option>
+              <option value="2">Q2 (Apr–Jun)</option>
+              <option value="3">Q3 (Jul–Sep)</option>
+              <option value="4">Q4 (Oct–Dec)</option>
+            </select>
+          </label>
+        </div>
+        <p class="mill-executive-report__period mill-exec-modal-period" id="millExecPeriodHint">—</p>
+      </div>
+      <div class="pf-export-modal-foot">
+        <button type="button" class="pf-btn pf-btn--ghost" id="millExecModalCancel">Cancel</button>
+        <button type="button" class="btn-sm btn-filled" id="btn-mill-exec-export-pdf">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+          Generate &amp; Export PDF
+        </button>
+      </div>
+    </div>
   </div>
 </div>

@@ -174,21 +174,21 @@ export function buildDdsExportModel_(bundle) {
       s2: [
         ['Nama Perusahaan Eksportir', ddsSheetOr_(master, 'EXPORTER COMPANY NAME', ddsSheetOr_(master, 'PLANT', '[PT. ...]'))],
         ['Alamat Perusahaan', ddsSheetOr_(master, 'EXPORTER ADDRESS', '[Alamat lengkap, Kota, Indonesia]')],
-        ['Nomor Izin Usaha (NIB / SIUP)', ddsSheetOr_(master, 'EXPORTER NIB', '[Nomor NIB]')],
+        ['Nomor Izin Usaha (NIB)', ddsSheetOr_(master, 'EXPORTER NIB', '[Nomor NIB]')],
         ['Status terhadap sistem UE', DDS_EXPORT_STATIC.ueStatus],
-        ['Nama Perusahaan Pembeli/Importir UE', ddsSheetOr_(master, 'BUYER NAME', '[Nama buyer UE penerima dokumen ini]')],
-        ['Alamat Pembeli/Importir UE', ddsSheetOr_(master, 'BUYER ADDRESS', '[Alamat lengkap, Kota, Negara UE]')],
-        ['Nomor EORI Pembeli/Importir UE (opsional, bila diketahui)', ddsSheetOr_(master, 'BUYER EORI', '[... / Tidak diketahui]')],
+        ['Nama Perusahaan Pembeli', ddsSheetOr_(master, 'BUYER NAME', '[Nama buyer UE penerima dokumen ini]')],
+        ['Alamat Pembeli', ddsSheetOr_(master, 'BUYER ADDRESS', '[Alamat lengkap, Kota, Negara UE]')],
+        ['Nomor Pembeli (opsional, bila diketahui)', ddsSheetOr_(master, 'BUYER EORI', '[... / Tidak diketahui]')],
       ],
       s3: [
-        ['Kode HS / Kode CN', ddsSheetOr_(master, 'HS CODE', '[1511.10 / 1511.90 / 1513.21 / 1513.29]')],
+        ['Kode HS', ddsSheetOr_(master, 'HS CODE', '[1511.10 / 1511.90 / 1513.21 / 1513.29]')],
         ['Deskripsi Produk', ddsSheetOr_(master, 'PRODUCT', '[CPO / RBDPO / RBD Palm Olein / RBD Palm Stearin / CPKO / RBDPKO]')],
         ['Nama Dagang (Trade Name)', ddsSheetOr_(master, 'TRADE NAME', '[Nama produk persis sesuai sales contract/invoice — cth: "RBDPO", "RBD Palm Olein IV58", "CPO SumSel Grade"]')],
         ['Komoditas Relevan EUDR', DDS_EXPORT_STATIC.commodity],
         ['Kuantitas (net mass, KG)', qtyKg_(master)],
       ],
       s4: [
-        ['Nomor Invoice Komersial / Kontrak', ddsSheetOr_(master, 'CONTRACT NUMBER', '[Nomor Invoice]')],
+        ['Nomor Invoice / Kontrak', ddsSheetOr_(master, 'CONTRACT NUMBER', '[Nomor Invoice]')],
         ['Nomor Bill of Lading (B/L)', ddsSheetOr_(master, 'BL NUMBER', '[Nomor B/L]')],
         ['Nama Kapal / Nomor Tangki / Nomor Batch', vessel_(master)],
         ['Pelabuhan Muat (Port of Loading)', ddsSheetOr_(master, 'PORT OF LOADING', '[Nama Pelabuhan, Indonesia]')],
@@ -241,8 +241,6 @@ export function buildDdsExportModel_(bundle) {
           ddsSheetCell_(r['SUPPLIER NAME']),
           ddsSheetCell_(r['SUPPLIER ADDRESS']),
           ddsSheetCell_(r['SUPPLIER TYPE']),
-          ddsSheetCell_(r['SUPPLIER DDS REF']),
-          ddsSheetCell_(r['PROOF DOC']),
         ];
       }),
       3,
@@ -252,8 +250,6 @@ export function buildDdsExportModel_(bundle) {
           '',
           '',
           (supEmpty && n === 1) ? 'Kebun Inti / PKS / Plasma / Swadaya / Trader' : '',
-          '',
-          '',
         ];
       }
     ),

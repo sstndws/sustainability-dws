@@ -7,6 +7,10 @@
         <div class="pf-period-bar mrd-period-bar">
           <div class="pf-period-toolbar">
             <span class="pf-filter-label">Reporting</span>
+            <div class="mrd-view-mode" role="group" aria-label="Report view mode">
+              <button type="button" class="mrd-view-mode-btn active" data-mrd-view="executive">Executive</button>
+              <button type="button" class="mrd-view-mode-btn" data-mrd-view="detail">Detail</button>
+            </div>
             <div class="pf-period-fields">
               <div class="pf-period-group">
                 <label class="pf-period-label" for="mrdYearSel">Year</label>
@@ -39,7 +43,8 @@
               <input type="search" id="mrdSearch" class="pf-search mrd-search" placeholder="Find across all sections…" autocomplete="off" />
             </div>
             <div class="pf-period-actions mrd-period-actions">
-              <button type="button" class="pf-export-btn mrd-export-btn" id="mrdBtnExport" title="Export report to PDF">Export PDF</button>
+              <button type="button" class="pf-export-btn mrd-export-btn" id="mrdBtnExecExport" title="Export executive summary PDF">Export Executive PDF</button>
+              <button type="button" class="pf-export-btn mrd-export-btn mrd-export-btn--secondary" id="mrdBtnExport" title="Export full report to PDF">Export Detail PDF</button>
               <button type="button" class="pf-reset-btn" id="mrdBtnRefresh" title="Reload data">Refresh</button>
             </div>
           </div>
@@ -52,6 +57,23 @@
 
         <div id="mrdContent" class="mrd-content">
           <div class="mrd-kpi-row stats-row" id="mrdKpiRow"></div>
+          <section class="mrd-executive-view" id="mrdExecutiveView" aria-label="Executive report">
+            <div class="mrd-exec-block">
+              <div class="mrd-exec-block__head">
+                <h3 class="mrd-exec-block__title">Quarter growth</h3>
+                <p class="mrd-exec-block__hint" id="mrdExecQoqHint">—</p>
+              </div>
+              <div class="mrd-exec-qoq-cards" id="mrdExecQoqCards"></div>
+            </div>
+            <div class="mrd-exec-block">
+              <div class="mrd-exec-block__head">
+                <h3 class="mrd-exec-block__title">Supply quantity</h3>
+                <p class="mrd-exec-block__hint" id="mrdExecSupplyHint">From Mill Onboarding sheet columns for selected month &amp; year</p>
+              </div>
+              <div class="mrd-executive-kpis" id="mrdExecutiveKpis"></div>
+            </div>
+            <p class="mrd-exec-export-hint">Klik <strong>Export Executive PDF</strong> untuk mengunduh laporan lengkap dengan chart.</p>
+          </section>
           <div class="mrd-sections" id="mrdSections"></div>
         </div>
 
