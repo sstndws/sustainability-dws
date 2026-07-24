@@ -23,6 +23,15 @@ window.XLSX = XLSX;
 
 import { mountLoginPage } from './login-ui.js';
 import { mountOverviewLanding, updateOverviewWelcomeFromEmail } from './overview-ui.js';
+import { isAuthGateEnabled } from './hub-sso.js';
+
+// Hide dashboard until Hub SSO / local auth succeeds (avoids content flash).
+if (isAuthGateEnabled()) {
+  const dash = document.getElementById('dashboard');
+  const login = document.getElementById('login');
+  if (dash) dash.classList.remove('active');
+  if (login) login.classList.add('active');
+}
 
 // Synchronous — must run before main.js binds #btn-login-submit (no async gap before dynamic import).
 mountLoginPage(document.getElementById('login'));

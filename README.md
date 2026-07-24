@@ -2,7 +2,7 @@
 
 Internal dashboard for mill onboarding, supply task lists, supplier due diligence (SDD), declaration / BL monitoring, grievances, monthly reports, and related sustainability workflows.
 
-**Stack:** Vite frontend · Google Sheets via Google Apps Script (GAS) · Vercel (`/api/gas-proxy`) · optional Supabase login
+**Stack:** Vite frontend · Google Sheets via Google Apps Script (GAS) · Vercel (`/api/gas-proxy`) · optional Supabase auth via **Hub Portal SSO**
 
 ---
 
@@ -43,8 +43,13 @@ See [`.env.example`](.env.example).
 | `GAS_WEBAPP_URL` | Vercel + `.env.local` | Apps Script web app `…/exec` URL (**required**) |
 | `GAS_API_SECRET` | Vercel (optional) | Must match GAS Script Property `API_SECRET` if enabled |
 | `VITE_SECURE_GAS` | Build | `true` in production — browser talks only to `/api/gas-proxy` |
-| `VITE_AUTH_ENABLED` | Build | Set `true` only if using Supabase login |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Build | Only when auth is enabled |
+| `VITE_AUTH_ENABLED` | Build | `true` = require Hub SSO session (blocks direct open) |
+| `VITE_HUB_PORTAL_URL` | Build | Hub origin, e.g. `https://sustainability-hub-portal-eight.vercel.app` |
+| `VITE_HUB_LOGIN_PATH` | Build | Hub login path (default `/login`) |
+| `VITE_ALLOW_LOCAL_LOGIN` | Build | Dev only — show local email/password form |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Build | Same Supabase project as Hub |
+
+Hub SSO setup: [docs/HUB_SSO.md](docs/HUB_SSO.md).
 
 After a new Apps Script **Deploy → New deployment**, update `GAS_WEBAPP_URL` in Vercel **and** redeploy the project.
 

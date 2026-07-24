@@ -1,7 +1,11 @@
 import './login-shell.css';
 import { BRAND_TAGLINE } from './brand.js';
-
-const HUB_PORTAL_URL = 'https://sustainability-hub-portal-eight.vercel.app/';
+import {
+  allowLocalLogin,
+  getHubLoginUrl,
+  getHubPortalOrigin,
+  isAuthGateEnabled,
+} from './hub-sso.js';
 
 function el(tag, className, props = {}) {
   const n = document.createElement(tag);
@@ -17,20 +21,7 @@ function el(tag, className, props = {}) {
   return n;
 }
 
-/** Mounts the sign-in form into `#login` (Vite-built DOM, minimal HTML partial). */
-export function mountLoginPage(loginRoot) {
-  if (!loginRoot) return;
-  loginRoot.textContent = '';
-
-  const backLink = el('a', 'login-shell__back', {
-    href: HUB_PORTAL_URL,
-    textContent: '← Back to Sustainability Hub Portal',
-  });
-
-  const glow = el('div', 'login-shell__glow');
-  const shell = el('div', 'login-shell');
-  const card = el('div', 'login-shell__card');
-
+function mountBrandCard_(card, headline, hint) {
   const brand = el('div', 'login-shell__brand');
   const logoWrap = el('div', 'login-shell__logo');
   logoWrap.innerHTML = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2L14 6V10L8 14L2 10V6L8 2Z" fill="white" opacity="0.9"/><path d="M8 5L11 7V9L8 11L5 9V7L8 5Z" fill="#7a1515"/></svg>`;
@@ -43,11 +34,67 @@ export function mountLoginPage(loginRoot) {
 
   card.appendChild(brand);
   card.appendChild(el('hr', 'login-shell__divider', { 'aria-hidden': 'true' }));
-  card.appendChild(el('h1', 'login-shell__headline', { textContent: 'Sign in' }));
-  card.appendChild(
-    el('p', 'login-shell__hint', {
-      textContent: 'Use your authorized account to access the sustainability dashboard.',
-    })
+  card.appendChild(el('h1', 'login-shell__headline', { textContent: headline }));
+  card.appendChild(el('p', 'login-shell__hint', { textContent: hint }));
+}
+
+/** Hub-only gate — no local password form. */
+function mountHubRedirectGate_(loginRoot) {
+  const hubLogin = getHubLoginUrl(
+    typeof location !== 'undefined' ? location.origin + '/' : undefined
+  );
+  const hubHome = getHubPortalOrigin() + '/';
+
+  const backLink = el('a', 'login-shell__back', {
+    href: hubHome,
+    textContent: '← Back to Sustainability Hub Portal',
+  });
+
+  const glow = el('div', 'login-shell__glow');
+  const shell = el('div', 'login-shell');
+  const card = el('div', 'login-shell__card');
+
+  mountBrandCard_(
+    card,
+    'Sign in via Hub Portal',
+    'This dashboard does not accept direct login. Open the Sustainability Hub Portal, sign in there, then launch Downstream from the menu.'
+  );
+
+  const btn = el('a', 'login-submit', {
+    href: hubLogin,
+    id: 'btn-hub-redirect',
+    textContent: 'Go to Hub Portal login',
+    style: 'display:inline-flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box;',
+  });
+  const status = el('p', 'login-shell__hint', {
+    id: 'hubSsoStatus',
+    textContent: 'Redirecting to Hub Portal…',
+    style: 'margin-top:16px;',
+  });
+
+  card.appendChild(btn);
+  card.appendChild(status);
+  shell.appendChild(card);
+  loginRoot.appendChild(backLink);
+  loginRoot.appendChild(glow);
+  loginRoot.appendChild(shell);
+}
+
+function mountLocalLoginForm_(loginRoot) {
+  const hubHome = getHubPortalOrigin() + '/';
+  const backLink = el('a', 'login-shell__back', {
+    href: hubHome,
+    textContent: '← Back to Sustainability Hub Portal',
+  });
+
+  const glow = el('div', 'login-shell__glow');
+  const shell = el('div', 'login-shell');
+  const card = el('div', 'login-shell__card');
+
+  mountBrandCard_(
+    card,
+    'Sign in',
+    'Use your authorized account to access the sustainability dashboard.'
   );
 
   const fgEmail = el('div', 'form-group');
@@ -86,4 +133,17 @@ export function mountLoginPage(loginRoot) {
   loginRoot.appendChild(backLink);
   loginRoot.appendChild(glow);
   loginRoot.appendChild(shell);
+}
+
+/** Mounts sign-in / Hub gate into `#login`. */
+export function mountLoginPage(loginRoot) {
+  if (!loginRoot) return;
+  loginRoot.textContent = '';
+
+  if (isAuthGateEnabled() && !allowLocalLogin()) {
+    mountHubRedirectGate_(loginRoot);
+    return;
+  }
+
+  mountLocalLoginForm_(loginRoot);
 }

@@ -1,5 +1,14 @@
 import { mountLoginPage } from './login-ui.js';
 import { getSupabase } from './supabase-client.js';
+import {
+  allowLocalLogin,
+  applyBridgeSession,
+  extractBridgeTokens,
+  getHubPortalOrigin,
+  isAuthBridgePath,
+  isAuthGateEnabled,
+  redirectToHubLogin,
+} from './hub-sso.js';
 import { getJsPDF } from './pdf-libs.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
 import { createSdMonitoringController_ } from './sd-monitoring-ui.js';
@@ -63,11 +72,12 @@ import {
   collectMillExecutiveChartImages_,
   collectMillExecutiveChartImagesAsync_,
   exportMillExecutivePdf_,
+  MILL_EXEC_HBAR_CHART_SIZE,
 } from './mill-executive-report.js';
 import { getMillExecutiveBackgroundDataUrl_ } from './mill-executive-bg.js';
 
-/** Set VITE_AUTH_ENABLED=true di Vercel/.env untuk mengaktifkan login lagi. */
-const AUTH_GATE_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
+/** Set VITE_AUTH_ENABLED=true di Vercel/.env — gate via Hub Portal SSO (or local login if allowed). */
+const AUTH_GATE_ENABLED = isAuthGateEnabled();
 
 // ─── GLOBAL NAVIGATION NOTE: switchPanel is defined later in the file. ────
   let supplierWorkbook = null;
@@ -7491,11 +7501,11 @@ function initDashboardApp() {
         nbl:         [400, 400],
         traceability:[400, 400],
         grievance:   [400, 400],
-        province:    [420, 375],
-        facilityQty: [420, 375],
+        province:    [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
+        facilityQty: [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
       };
       offscreenContainer = document.createElement('div');
-      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:700px;visibility:hidden;pointer-events:none;z-index:-1;';
+      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;visibility:hidden;pointer-events:none;z-index:-1;';
       const offscreenEls = {};
       Object.keys(CHART_SIZES).forEach(function(key) {
         const sz = CHART_SIZES[key];
@@ -25973,9 +25983,15 @@ function initDashboardApp() {
   // ─── END PERFORMA FACILITY ────────────────────────────────────────────────────
 
   // ─── LOGIN (simple page, no modal needed) ─────────────────────────────────────────
-  if (AUTH_GATE_ENABLED) {
+  if (AUTH_GATE_ENABLED && allowLocalLogin()) {
     setTimeout(() => { const e = document.getElementById('loginEmail'); if (e) e.focus(); }, 100);
   }
+
+  // Keep Hub portal sidebar link in sync with env.
+  (function syncPortalHubLink_() {
+    var hubLink = document.getElementById('btn-portal-hub');
+    if (hubLink) hubLink.setAttribute('href', getHubPortalOrigin() + '/');
+  })();
 
   // ─── LOGIN / LOGOUT ─────────────────────────────────────
   function resolveSddRoleFromSupabaseUser_(user) {
@@ -26082,7 +26098,7 @@ function initDashboardApp() {
         }
       }
     });
-  } else {
+  } else if (AUTH_GATE_ENABLED && allowLocalLogin()) {
     console.warn('[dashboard] Login form nodes missing (#btn-login-submit / #loginPass). Check entry mounts before main.js.');
   }
 
@@ -26134,7 +26150,11 @@ function initDashboardApp() {
     window._sddAllRowsCache      = null;
     supplierWorkbook             = null;
     applyDefaultPanel_();
-    showPage('login');
+    if (allowLocalLogin()) {
+      showPage('login');
+    } else {
+      redirectToHubLogin();
+    }
   }
 
   (async function bootstrapAuth_() {
@@ -26142,13 +26162,43 @@ function initDashboardApp() {
       await finalizeSuccessfulLogin_('User', 'STAFF');
       return;
     }
+
     var sb = getSupabase();
-    if (!sb) return;
+    if (!sb) {
+      if (allowLocalLogin()) {
+        showPage('login');
+        return;
+      }
+      redirectToHubLogin();
+      return;
+    }
+
+    // Hub → Sustain token bridge (/auth-bridge or tokens in hash/query).
+    var bridged = false;
+    if (extractBridgeTokens() || isAuthBridgePath()) {
+      var bridge = await applyBridgeSession(sb);
+      bridged = !!(bridge && bridge.ok);
+      if (!bridge.ok && isAuthBridgePath()) {
+        var st = document.getElementById('hubSsoStatus');
+        if (st) st.textContent = 'Could not verify Hub session. Redirecting…';
+        redirectToHubLogin();
+        return;
+      }
+    }
+
     var res = await sb.auth.getSession();
     if (res.data.session && res.data.session.user) {
       var u = res.data.session.user;
       await finalizeSuccessfulLogin_(u.email || '', resolveSddRoleFromSupabaseUser_(u));
+    } else if (allowLocalLogin()) {
+      showPage('login');
+    } else {
+      var statusEl = document.getElementById('hubSsoStatus');
+      if (statusEl) statusEl.textContent = 'Redirecting to Hub Portal…';
+      // Brief pause so the gate UI is visible before navigation.
+      setTimeout(function() { redirectToHubLogin(); }, bridged ? 0 : 400);
     }
+
     sb.auth.onAuthStateChange(function(event) {
       if (event === 'SIGNED_OUT') clearClientSessionForLogout_();
     });
