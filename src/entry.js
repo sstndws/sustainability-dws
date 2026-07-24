@@ -123,8 +123,13 @@ async function boot_() {
     });
     clearBridgeParamsFromUrl();
     if (error) {
-      if (statusEl) statusEl.textContent = 'Could not verify Hub session. Redirecting…';
-      console.warn('[hub-sso] setSession failed:', error.message || error);
+      const msg = error.message || String(error);
+      if (statusEl) {
+        statusEl.textContent =
+          'Hub session handoff failed. Check both apps use the same Supabase project. ' + msg;
+      }
+      console.warn('[hub-sso] setSession failed:', msg);
+      await new Promise(function(resolve) { setTimeout(resolve, 2500); });
       redirectToHubLogin();
       return;
     }

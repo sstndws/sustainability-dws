@@ -23,34 +23,19 @@ Redeploy after changing `VITE_*` vars (they are baked in at build time).
 
 ## Hub Portal — open Sustain with session
 
-Use the **same** Supabase project. On menu click (not a plain `<a href>` to the dashboard root):
+Use the **same** Supabase project. Preferred handoff (server-side):
 
-```js
-async function openSustainDashboard(supabase) {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) {
-    window.location.href = '/login'
-    return
-  }
-
-  const params = new URLSearchParams({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
-  })
-
-  // Hash keeps tokens out of most server access logs
-  window.location.href =
-    'https://sustainability-dws-psi.vercel.app/auth-bridge#' + params.toString()
-}
+```text
+https://sustainability-hub-portal-eight.vercel.app/launch/sustainability-dashboard
 ```
 
-Query-string also works:
+Hub reads the logged-in cookie session and redirects to:
 
 ```text
 https://sustainability-dws-psi.vercel.app/auth-bridge?access_token=...&refresh_token=...
 ```
 
-Prefer the hash form when possible.
+App cards with `ssoBridge: true` already link to `/launch/<appId>`.
 
 ## Supabase URL Configuration
 
