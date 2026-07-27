@@ -1,0 +1,145 @@
+      <div class="panel" id="panel-risk-analysis-mitigation">
+        <div class="breadcrumb">Dashboard <span>/ Risk Analysis And Mitigation</span></div>
+        <div class="page-header">
+          <h1>Risk Analysis And Mitigation</h1>
+          <p>Central register for supply-chain risks, mitigation plans, and compliance drivers. Select a row to review details, then edit when needed.</p>
+        </div>
+
+        <div class="stats-row ram-stats-row">
+          <div class="stat-card"><div class="stat-card-num" id="ramStatTotal">—</div><div class="stat-card-label">Total risks</div></div>
+          <div class="stat-card stat-card--danger"><div class="stat-card-num" id="ramStatHigh">—</div><div class="stat-card-label">High level</div></div>
+          <div class="stat-card stat-card--warning"><div class="stat-card-num" id="ramStatUrgent">—</div><div class="stat-card-label">Urgent priority</div></div>
+          <div class="stat-card stat-card--success"><div class="stat-card-num" id="ramStatActive">—</div><div class="stat-card-label">In progress</div></div>
+        </div>
+
+        <div class="table-card ram-card">
+          <div class="table-header ram-table-header">
+            <h3>Risk register</h3>
+            <div class="table-actions ram-table-actions">
+              <button type="button" class="btn-sm btn-filled" id="ramBtnAdd">+ Add risk</button>
+              <button type="button" class="btn-sm btn-outline" id="ramBtnRefresh" title="Reload data">Refresh</button>
+            </div>
+          </div>
+
+          <div class="ram-toolbar">
+            <label class="ram-toolbar-search" for="ramSearch">
+              <span class="ram-toolbar-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+              </span>
+              <input type="search" id="ramSearch" placeholder="Search category, issue, regulation…" autocomplete="off" />
+            </label>
+            <div class="ram-toolbar-filters">
+              <label class="ram-filter">
+                <span>Category</span>
+                <select id="ramFilterKategori"><option value="">All categories</option></select>
+              </label>
+              <label class="ram-filter">
+                <span>Level</span>
+                <select id="ramFilterLevel"><option value="">All levels</option></select>
+              </label>
+              <label class="ram-filter">
+                <span>Status</span>
+                <select id="ramFilterStatus"><option value="">All statuses</option></select>
+              </label>
+            </div>
+          </div>
+
+          <div class="ram-table-wrap" id="ramTableWrap">
+            <div id="ramLoading" class="ram-loading-overlay" hidden aria-hidden="true">
+              <div class="dash-loading" role="status" aria-live="polite">
+                <div class="dash-loading__visual" aria-hidden="true"><span class="dash-loading__ring"></span><span class="dash-loading__dot"></span></div>
+                <p class="dash-loading__label">Loading risk register…</p>
+              </div>
+            </div>
+            <div id="ramError" class="ram-error" hidden></div>
+            <div class="ram-table-scroll">
+              <table class="ram-data-table" id="ramTable">
+                <thead>
+                  <tr>
+                    <th class="ram-th-no">No</th>
+                    <th>Category</th>
+                    <th class="ram-th-issue">Sub-issue / risk topic</th>
+                    <th>Level</th>
+                    <th>Probability</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th class="ram-th-reg">Regulation</th>
+                    <th class="ram-th-act">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ramTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="ram-modal-overlay" id="ramModalOverlay" aria-hidden="true">
+          <div class="ram-modal" id="ramModalDialog" role="dialog" aria-labelledby="ramModalTitle" aria-modal="true">
+            <div class="ram-modal-header">
+              <div>
+                <h3 id="ramModalTitle">Risk entry</h3>
+                <p class="ram-modal-sub" id="ramModalSub"></p>
+              </div>
+              <button type="button" class="ram-modal-close" id="ramModalClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="ram-modal-body">
+              <div id="ramViewPanel" class="ram-view-panel" hidden></div>
+              <div id="ramFormPanel" class="ram-form-panel" hidden>
+                <div class="ram-form-grid">
+                  <label class="ram-field ram-field--narrow">
+                    <span>No</span>
+                    <input type="text" id="ramFieldNo" readonly title="Auto-number on save" />
+                  </label>
+                  <label class="ram-field">
+                    <span>Category *</span>
+                    <select id="ramFieldKategori"></select>
+                  </label>
+                  <label class="ram-field ram-field--wide">
+                    <span>Sub-issue / risk topic *</span>
+                    <input type="text" id="ramFieldSubIsu" autocomplete="off" placeholder="Short risk topic" />
+                  </label>
+                  <label class="ram-field">
+                    <span>Risk level *</span>
+                    <select id="ramFieldLevel"></select>
+                  </label>
+                  <label class="ram-field">
+                    <span>Probability *</span>
+                    <select id="ramFieldProb"></select>
+                  </label>
+                  <label class="ram-field">
+                    <span>Priority *</span>
+                    <select id="ramFieldPrioritas"></select>
+                  </label>
+                  <label class="ram-field">
+                    <span>Status *</span>
+                    <select id="ramFieldStatus"></select>
+                  </label>
+                  <label class="ram-field ram-field--wide">
+                    <span>Risk source</span>
+                    <textarea id="ramFieldSumber" rows="2" placeholder="Origin or trigger of the risk"></textarea>
+                  </label>
+                  <label class="ram-field ram-field--wide">
+                    <span>Business impact</span>
+                    <textarea id="ramFieldDampak" rows="2" placeholder="Impact on operations and reputation"></textarea>
+                  </label>
+                  <label class="ram-field ram-field--wide">
+                    <span>Related regulation / standard</span>
+                    <input type="text" id="ramFieldRegulasi" autocomplete="off" placeholder="Separate with ; e.g. RSPO P&amp;C 2018; EUDR Art.3" />
+                    <span class="ram-field-hint">Shown as pills in the register.</span>
+                  </label>
+                  <label class="ram-field ram-field--wide">
+                    <span>Mitigation plan</span>
+                    <textarea id="ramFieldMitigasi" rows="3" placeholder="Planned handling actions"></textarea>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="ram-modal-footer">
+              <button type="button" class="btn-sm btn-outline" id="ramModalBtnClose" hidden>Close</button>
+              <button type="button" class="btn-sm btn-filled" id="ramModalBtnEdit" hidden>Edit</button>
+              <button type="button" class="btn-sm btn-outline" id="ramModalBtnCancel" hidden>Cancel</button>
+              <button type="button" class="btn-sm btn-filled" id="ramModalBtnSave" hidden>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>

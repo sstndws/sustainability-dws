@@ -8,6 +8,10 @@ import {
 } from './hub-sso.js';
 import { getJsPDF } from './pdf-libs.js';
 import { initMonthlyReport_ } from './monthly-report-ui.js';
+import {
+  setupRiskAnalysisMitigationPanel_,
+  ensureRiskAnalysisMitigationPanel_,
+} from './risk-analysis-mitigation-ui.js';
 import { createSdMonitoringController_ } from './sd-monitoring-ui.js';
 import { initDdsPanel_ } from './dds-ui.js';
 import {
@@ -3992,8 +3996,8 @@ const AUTH_GATE_ENABLED = isAuthGateEnabled();
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyn7QsagneVRVhfTCls2U1jq5YwRolVXxuE4i9X8vHKuxlzQwwbGAuMjJ8klwnBGidmrQ/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyn7QsagneVRVhfTCls2U1jq5YwRolVXxuE4i9X8vHKuxlzQwwbGAuMjJ8klwnBGidmrQ';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyo6o0_eC54qOL6bt5d0UnHDUESWQPt6yoQZ1Og2jyJUzw7yfTcOHHJHzC8vYti6eiUQA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyo6o0_eC54qOL6bt5d0UnHDUESWQPt6yoQZ1Og2jyJUzw7yfTcOHHJHzC8vYti6eiUQA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -4078,9 +4082,9 @@ async function migrateSddApiUrlToLatest_() {
     return def;
   }
   var pingCurrent = await sddPingApiUrl_(current);
-  if (pingCurrent && pingCurrent.blMonitoring) return current;
+  if (pingCurrent && pingCurrent.blMonitoring && pingCurrent.riskAnalysisMitigation) return current;
   var pingDef = await sddPingApiUrl_(def);
-  if (pingDef && pingDef.blMonitoring) {
+  if (pingDef && pingDef.blMonitoring && pingDef.riskAnalysisMitigation) {
     try { localStorage.setItem('SDD_WEBAPP_URL', def); } catch (e) { /* ignore */ }
     return def;
   }
@@ -18527,6 +18531,13 @@ function initDashboardApp() {
     mountOverlay: mountDdsOverlay_,
   });
 
+  setupRiskAnalysisMitigationPanel_({
+    apiGet: apiGet,
+    apiPost: apiPost,
+    dashSetButtonBusy_: dashSetButtonBusy_,
+    dashClearButtonBusy_: dashClearButtonBusy_,
+  });
+
   // ─── EUDR POTENTIAL ──────────────────────────────────────
   let eudrRows = [];
   let eudrLoaded = false;
@@ -22256,6 +22267,48 @@ function initDashboardApp() {
     if (lo && aid) lo.inert = aid !== 'login';
   })();
 
+  // ─── SIDEBAR NAV GROUPS (accordion) ─────────────────────
+  const NAV_PANEL_GROUP_MAP_ = {
+    'monthly-report-detail': 'navGroupMonitoring',
+    'performa-facility': 'navGroupMonitoring',
+    'questionnaire-monitoring': 'navGroupMonitoring',
+    'supplier-dd': 'navGroupSupplier',
+    'mill-onboarding': 'navGroupSupplier',
+    'no-buy-list': 'navGroupSupplier',
+    'grievance': 'navGroupSupplier',
+    'contact-list-supplier': 'navGroupSupplier',
+    'company-profile-list': 'navGroupSupplier',
+    'ttm-ttp': 'navGroupTraceability',
+    'bl-monitoring': 'navGroupTraceability',
+    'risk-analysis-mitigation': 'navGroupRisk',
+    'eudr-potential': 'navGroupRisk',
+    'due-diligence-statement': 'navGroupTraceability',
+  };
+
+  function syncNavGroupAria_() {
+    document.querySelectorAll('#mainSidebar .nav-group').forEach(function(g) {
+      const header = g.querySelector('.nav-group-header');
+      if (!header) return;
+      header.setAttribute('aria-expanded', g.classList.contains('open') ? 'true' : 'false');
+    });
+  }
+
+  function closeAllNavGroups_() {
+    document.querySelectorAll('#mainSidebar .nav-group').forEach(function(g) {
+      g.classList.remove('open');
+    });
+    syncNavGroupAria_();
+  }
+
+  function openNavGroupForPanel_(panelName) {
+    const groupId = NAV_PANEL_GROUP_MAP_[panelName];
+    if (!groupId) return;
+    document.querySelectorAll('#mainSidebar .nav-group').forEach(function(g) {
+      g.classList.toggle('open', g.id === groupId);
+    });
+    syncNavGroupAria_();
+  }
+
   function switchPanel(name) {
     panelEls.forEach(function(p) { p.classList.remove('active'); });
     navPanelEls.forEach(function(n) { n.classList.remove('active'); });
@@ -22263,8 +22316,7 @@ function initDashboardApp() {
     const navItem = document.querySelector('[data-panel="' + name + '"]');
     if (panel) panel.classList.add('active');
     if (navItem) navItem.classList.add('active');
-    const grp = document.getElementById('navGroupTrace');
-    if (grp && !grp.classList.contains('open')) grp.classList.add('open');
+    openNavGroupForPanel_(name);
     if (name === 'mill-onboarding') {
       if (!millDataLoaded || !allData.length) {
         loadMillData({ force: !millDataLoaded });
@@ -22305,6 +22357,7 @@ function initDashboardApp() {
     if (name === 'no-buy-list') loadNoBuyListData();
     if (name === 'performa-facility') initPerformaFacility_();
     if (name === 'monthly-report-detail') initMonthlyReportDetail_();
+    if (name === 'risk-analysis-mitigation') ensureRiskAnalysisMitigationPanel_();
     resetScrollToTopEverywhere();
   }
   // expose globally for onclick handlers
@@ -26506,13 +26559,35 @@ function initDashboardApp() {
     MOBILE_NAV_MQ.addListener(onMobileNavMqChange_);
   }
 
-  // ─── TRACEABILITY GROUP TOGGLE ──────────────────────────
-  const navGroupTraceHeader = document.getElementById('navGroupTraceHeader');
-  const navGroupTrace = document.getElementById('navGroupTrace');
-  if (navGroupTraceHeader && navGroupTrace) {
-    navGroupTraceHeader.addEventListener('click', function() {
-      navGroupTrace.classList.toggle('open');
+  // ─── SIDEBAR NAV GROUP ACCORDION ──────────────────────────
+  if (sidebar) {
+    sidebar.querySelectorAll('.nav-group-header').forEach(function(header) {
+      header.setAttribute('role', 'button');
+      header.tabIndex = 0;
+      function toggleNavGroup_() {
+        const group = header.closest('.nav-group');
+        if (!group) return;
+        if (!sidebar.classList.contains('expanded') && !sidebar.classList.contains('mobile-open')) {
+          sidebar.classList.add('expanded');
+        }
+        const willOpen = !group.classList.contains('open');
+        closeAllNavGroups_();
+        if (willOpen) group.classList.add('open');
+        syncNavGroupAria_();
+      }
+      header.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleNavGroup_();
+      });
+      header.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleNavGroup_();
+        }
+      });
     });
+    syncNavGroupAria_();
   }
 
   // ─── FILTERS ────────────────────────────────────────────

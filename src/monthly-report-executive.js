@@ -27,11 +27,20 @@ const BAR_MED = { w: 420, h: 300 };
 
 const PIE_COLORS = {
   Draft: '#D4A017',
-  Submitted: '#2E7D32',
-  High: '#C03030',
-  Medium: '#D4A017',
-  Low: '#2E7D32',
+  Submitted: '#059669',
+  High: '#DC2626',
+  Medium: '#F59E0B',
+  Low: '#38BDF8',
+  Open: '#DC2626',
+  Closed: '#059669',
+  Invalid: '#94A3B8',
+  'No Buy List': '#EA580C',
+  'Other mills': '#32B0EB',
+  Potential: '#0D9488',
+  'Non-potential': '#CBD5E1',
 };
+
+const MRD_DONUT_SECTIONS = { sdd: 1, mill: 1, grv: 1, nbl: 1, eudr: 1 };
 
 const CHART_TITLE_OVERRIDE = {
   sdd: 'SDD status',
@@ -41,7 +50,7 @@ const CHART_TITLE_OVERRIDE = {
 const CHART_CAPTION_OVERRIDE = {
   sdd: '01 · Draft vs submitted screenings',
   mill: '02 · Result risk level mix',
-  facility: '06 · NBL % per facility (unique companies supplying each facility)',
+  facility: 'NBL % per facility (unique companies supplying each facility)',
 };
 
 const METRIC_BAR_COLORS = [
@@ -106,9 +115,22 @@ function barOptions_(pctMode, canvas) {
   };
 }
 
-function hbarOptions_(canvas) {
+function hbarOptions_(canvas, pctMode, xAxisMax) {
   const w = canvas ? canvas.width : BAR_WIDE.w;
   const h = canvas ? canvas.height : BAR_WIDE.h;
+  const xScale = {
+    beginAtZero: true,
+    ticks: {
+      font: { size: 11, family: PDF_FONT_SANS },
+      callback: pctMode ? function(v) { return v + '%'; } : undefined,
+    },
+    grid: { color: 'rgba(139, 26, 26, 0.08)' },
+  };
+  if (pctMode && xAxisMax != null && !isNaN(xAxisMax)) {
+    xScale.max = xAxisMax;
+  } else if (pctMode) {
+    xScale.suggestedMax = 100;
+  }
   return {
     responsive: false,
     animation: false,
@@ -124,17 +146,51 @@ function hbarOptions_(canvas) {
           autoSkip: false,
         },
       },
-      x: {
-        beginAtZero: true,
-        suggestedMax: 100,
-        ticks: {
-          font: { size: 11, family: PDF_FONT_SANS },
-          callback: function(v) { return v + '%'; },
-        },
-        grid: { color: 'rgba(139, 26, 26, 0.08)' },
-      },
+      x: xScale,
     },
   };
+}
+
+/** X-axis cap for facility NBL % — scales to data so bars are readable (not pinned to 0–100). */
+function facilityNblXAxisMax_(values) {
+  let peak = 0;
+  (values || []).forEach(function(v) {
+    const n = Number(v);
+    if (!isNaN(n) && n > peak) peak = n;
+  });
+  if (peak <= 0) return 100;
+  const padded = peak * 1.14 + 0.4;
+  let step = 10;
+  if (padded <= 24) step = 2;
+  else if (padded <= 55) step = 5;
+  const max = Math.min(100, Math.ceil(padded / step) * step);
+  return Math.max(max, step);
+}
+
+function traceBarColorForLabel_(label) {
+  const L = String(label || '').toUpperCase();
+  if (L.indexOf('TTM') >= 0 && L.indexOf('CPO') >= 0) return 'rgba(139, 26, 26, 0.88)';
+  if (L.indexOf('TTM') >= 0 && L.indexOf('PK') >= 0) return 'rgba(46, 125, 50, 0.88)';
+  if (L.indexOf('TTP') >= 0 && L.indexOf('CPO') >= 0) return 'rgba(230, 81, 0, 0.88)';
+  if (L.indexOf('TTP') >= 0 && L.indexOf('PK') >= 0) return 'rgba(21, 101, 192, 0.88)';
+  return METRIC_BAR_COLORS[0];
+}
+
+function metricByLabel_(section, label) {
+  let found = null;
+  (section.metrics || []).some(function(m) {
+    if (String(m.label || '').trim() === label) {
+      found = m;
+      return true;
+    }
+    return false;
+  });
+  return found;
+}
+
+function metricValue_(section, label) {
+  const m = metricByLabel_(section, label);
+  return m ? parseMetricNumber_(m.value) : 0;
 }
 
 /** Same numbers/captions as Summary PDF — one bar chart per section. */
@@ -158,7 +214,7 @@ export function mrdExecutiveChartSizes_(data) {
   const sizes = {};
   (data.sections || []).forEach(function(section) {
     const key = sectionChartKey_(section.id);
-    if (section.id === 'sdd' || section.id === 'mill') {
+    if (MRD_DONUT_SECTIONS[section.id]) {
       sizes[key] = [PIE_SIZE.w, PIE_SIZE.h];
     } else if (section.id === 'trace') {
       sizes[key] = [BAR_WIDE.w, BAR_WIDE.h];
@@ -203,6 +259,30 @@ const PIE_PCT_PLUGIN = {
   },
 };
 
+const HBAR_END_LABEL_PLUGIN = {
+  id: 'mrdHbarEndLabel',
+  afterDatasetsDraw: function(chart) {
+    if (chart.config.options.indexAxis !== 'y') return;
+    const ctx = chart.ctx;
+    const dataset = chart.data.datasets[0];
+    if (!dataset) return;
+    const meta = chart.getDatasetMeta(0);
+    meta.data.forEach(function(bar, i) {
+      const val = dataset.data[i];
+      if (val == null || val === '') return;
+      const n = Number(val);
+      const label = isNaN(n) ? String(val) : (Math.round(n * 10) / 10) + '%';
+      ctx.save();
+      ctx.font = '600 11px ' + PDF_FONT_SANS;
+      ctx.fillStyle = '#44403c';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, bar.x + 5, bar.y);
+      ctx.restore();
+    });
+  },
+};
+
 const PIE_CENTER_TEXT_PLUGIN = {
   id: 'mrdPieCenterText',
   afterDraw: function(chart) {
@@ -224,10 +304,10 @@ const PIE_CENTER_TEXT_PLUGIN = {
   },
 };
 
-function pieOptions_(canvas, centerText) {
+function pieOptions_(canvas, centerText, cutout) {
   const w = canvas ? canvas.width : PIE_SIZE.w;
   const h = canvas ? canvas.height : PIE_SIZE.h;
-  return {
+  const opts = {
     responsive: false,
     animation: false,
     width: w,
@@ -244,14 +324,18 @@ function pieOptions_(canvas, centerText) {
       mrdCenterText: centerText || '',
     },
   };
+  if (cutout) opts.cutout = cutout;
+  return opts;
 }
 
-function renderPieBuckets_(Chart, key, canvas, buckets, colorMap, emptyCenterText) {
+function renderPieBuckets_(Chart, key, canvas, buckets, colorMap, emptyCenterText, asDonut) {
   if (!Chart || !canvas) return;
   const entries = Object.entries(buckets || {}).filter(function(e) {
     return e[1] > 0;
   });
   const total = entries.reduce(function(s, e) { return s + e[1]; }, 0);
+  const chartType = asDonut ? 'doughnut' : 'pie';
+  const cutout = asDonut ? '58%' : undefined;
   if (!total) {
     chartInstances[key] = new Chart(canvas, {
       type: 'doughnut',
@@ -264,13 +348,13 @@ function renderPieBuckets_(Chart, key, canvas, buckets, colorMap, emptyCenterTex
           borderColor: '#fff',
         }],
       },
-      options: pieOptions_(canvas, emptyCenterText || '0 / 0'),
+      options: pieOptions_(canvas, emptyCenterText || '0 / 0', '58%'),
       plugins: [PIE_CENTER_TEXT_PLUGIN, PIE_PCT_PLUGIN],
     });
     return;
   }
   chartInstances[key] = new Chart(canvas, {
-    type: 'pie',
+    type: chartType,
     data: {
       labels: entries.map(function(e) { return e[0]; }),
       datasets: [{
@@ -280,9 +364,27 @@ function renderPieBuckets_(Chart, key, canvas, buckets, colorMap, emptyCenterTex
         borderColor: '#fff',
       }],
     },
-    options: pieOptions_(canvas),
-    plugins: [PIE_PCT_PLUGIN],
+    options: pieOptions_(canvas, asDonut ? (emptyCenterText || '') : '', cutout),
+    plugins: asDonut && emptyCenterText
+      ? [PIE_CENTER_TEXT_PLUGIN, PIE_PCT_PLUGIN]
+      : [PIE_PCT_PLUGIN],
   });
+}
+
+function renderShareDonut_(Chart, key, canvas, partLabel, restLabel, partVal, wholeVal, partColor, restColor, centerText) {
+  if (!Chart || !canvas) return;
+  const part = Math.max(0, partVal || 0);
+  const whole = Math.max(part, wholeVal || 0);
+  const rest = Math.max(0, whole - part);
+  const buckets = {};
+  const colorMap = {};
+  buckets[partLabel] = part;
+  colorMap[partLabel] = partColor;
+  if (rest > 0 || !whole) {
+    buckets[restLabel] = rest;
+    colorMap[restLabel] = restColor;
+  }
+  renderPieBuckets_(Chart, key, canvas, buckets, colorMap, centerText || String(part), true);
 }
 
 function buildMillRiskBuckets_(mills) {
@@ -373,17 +475,52 @@ function renderSectionChart_(Chart, section, canvas, data) {
   const key = sectionChartKey_(section.id);
   if (section.id === 'sdd') {
     const buckets = buildSddStatusBuckets_(data && data.stats);
-    renderPieBuckets_(Chart, key, canvas, buckets, PIE_COLORS, '0 / 0');
+    renderPieBuckets_(Chart, key, canvas, buckets, PIE_COLORS, '0 / 0', true);
     return;
   }
   if (section.id === 'mill') {
     const buckets = buildMillRiskBuckets_(data && data.mills);
-    renderPieBuckets_(Chart, key, canvas, buckets, PIE_COLORS);
+    renderPieBuckets_(Chart, key, canvas, buckets, PIE_COLORS, '', false);
+    return;
+  }
+  if (section.id === 'grv') {
+    const buckets = {
+      Open: metricValue_(section, 'Open'),
+      Closed: metricValue_(section, 'Closed'),
+      Invalid: metricValue_(section, 'Invalid'),
+    };
+    const total = metricValue_(section, 'Total') || (buckets.Open + buckets.Closed + buckets.Invalid);
+    renderPieBuckets_(Chart, key, canvas, buckets, PIE_COLORS, total ? String(total) : '0', true);
+    return;
+  }
+  if (section.id === 'nbl') {
+    const nbl = metricValue_(section, 'Active NBL Mills');
+    const total = metricValue_(section, 'Total Mills');
+    renderShareDonut_(
+      Chart, key, canvas,
+      'No Buy List', 'Other mills', nbl, total,
+      PIE_COLORS['No Buy List'], PIE_COLORS['Other mills'],
+      nbl + ' NBL'
+    );
+    return;
+  }
+  if (section.id === 'eudr') {
+    const pot = metricValue_(section, 'Potential');
+    const total = metricValue_(section, 'Total Mills');
+    renderShareDonut_(
+      Chart, key, canvas,
+      'Potential', 'Non-potential', pot, total,
+      PIE_COLORS.Potential, PIE_COLORS['Non-potential'],
+      pot + ' EUDR'
+    );
     return;
   }
   if (section.id === 'facility') {
     const fac = buildFacilityNblPctChart_(data && data.facilityBundles);
     if (!fac.labels.length) return;
+    const xMax = facilityNblXAxisMax_(fac.values);
+    const facOpts = hbarOptions_(canvas, true, xMax);
+    facOpts.layout = { padding: { right: 44 } };
     chartInstances[key] = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -393,9 +530,31 @@ function renderSectionChart_(Chart, section, canvas, data) {
           data: fac.values,
           backgroundColor: fac.colors,
           borderRadius: 4,
+          barThickness: 22,
+          maxBarThickness: 26,
         }],
       },
-      options: hbarOptions_(canvas),
+      options: facOpts,
+      plugins: [HBAR_END_LABEL_PLUGIN],
+    });
+    return;
+  }
+  if (section.id === 'trace') {
+    const chartData = metricsToChart_(section);
+    if (!chartData.labels.length) return;
+    chartInstances[key] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: chartData.labels,
+        datasets: [{
+          data: chartData.values,
+          backgroundColor: chartData.labels.map(function(lbl) {
+            return traceBarColorForLabel_(lbl);
+          }),
+          borderRadius: 5,
+        }],
+      },
+      options: hbarOptions_(canvas, true),
     });
     return;
   }
@@ -512,11 +671,12 @@ function buildMrdExecutiveSummaryLine_(data) {
 function sectionPanelCfg_(section, data) {
   const id = section.id;
   const wide = id === 'trace' || id === 'facility';
-  const isPie = id === 'sdd' || id === 'mill';
+  const isDonut = !!MRD_DONUT_SECTIONS[id];
+  const isPie = id === 'mill';
   const titleOverride = CHART_TITLE_OVERRIDE[id];
   const capOverride = CHART_CAPTION_OVERRIDE[id];
-  let w = isPie ? PIE_SIZE.w : (wide ? BAR_WIDE.w : BAR_MED.w);
-  let h = isPie ? PIE_SIZE.h : (wide ? BAR_WIDE.h : BAR_MED.h);
+  let w = (isDonut || isPie) ? PIE_SIZE.w : (wide ? BAR_WIDE.w : BAR_MED.w);
+  let h = (isDonut || isPie) ? PIE_SIZE.h : (wide ? BAR_WIDE.h : BAR_MED.h);
   if (id === 'facility') {
     const fac = buildFacilityNblPctChart_(data && data.facilityBundles);
     const n = Math.max(fac.labels.length, 1);
@@ -597,11 +757,11 @@ export async function exportMrdExecutivePdf_(meta, data, chartImages, getJsPDF) 
   }
 
   const FOOTER_H = 5;
-  const SUMMARY_H = 14;
+  const SUMMARY_H = 12;
 
   const HERO_Y = 6;
-  const HERO_H = 32;
-  const HERO_PAD = 6;
+  const HERO_H = 28;
+  const HERO_PAD = 5;
   const innerX = M + HERO_PAD;
   softCard_(M, HERO_Y, W, HERO_H, PAL.hero, 6);
 
@@ -614,22 +774,22 @@ export async function exportMrdExecutivePdf_(meta, data, chartImages, getJsPDF) 
   const kpiBoxY = HERO_Y + HERO_PAD;
 
   setPdfFont_(doc, 'serif');
-  doc.setFontSize(26);
+  doc.setFontSize(23);
   doc.setTextColor(15, 12, 10);
-  doc.text('Monthly Report', innerX, HERO_Y + 12);
+  doc.text('Monthly Report', innerX, HERO_Y + 10);
 
   setPdfFont_(doc, 'sans-bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(55, 48, 45);
-  doc.text('Executive report  ·  ' + (meta.periodLine || '').replace(/^Reporting period:\s*/i, ''), innerX, HERO_Y + 19);
+  doc.text('Executive report  ·  ' + (meta.periodLine || '').replace(/^Reporting period:\s*/i, ''), innerX, HERO_Y + 16);
 
   setPdfFont_(doc, 'sans');
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(120, 100, 100);
   const metaLine = [meta.dataPeriodLine, meta.cutoffLine].filter(Boolean).join('  ·  ');
   if (metaLine) {
     const lines = doc.splitTextToSize(metaLine, heroInnerW - kpiAreaW - 8);
-    doc.text(lines.slice(0, 2), innerX, HERO_Y + 24);
+    doc.text(lines.slice(0, 1), innerX, HERO_Y + 21);
   }
 
   const overview = data.overview || mrdOverviewKpiItems_(stats);
@@ -637,35 +797,42 @@ export async function exportMrdExecutivePdf_(meta, data, chartImages, getJsPDF) 
     const boxX = kpiAreaX + i * (kpiBoxW + kpiBoxGap);
     softCard_(boxX, kpiBoxY, kpiBoxW, kpiBoxH, [255, 255, 252], 4);
     setPdfFont_(doc, 'sans-bold');
-    doc.setFontSize(16);
+    doc.setFontSize(14);
     doc.setTextColor(139, 26, 26);
     doc.text(String(k.value != null ? k.value : '—'), boxX + kpiBoxW / 2, kpiBoxY + kpiBoxH / 2 - 1, { align: 'center' });
     setPdfFont_(doc, 'sans');
-    doc.setFontSize(6.5);
+    doc.setFontSize(6);
     doc.setTextColor(87, 83, 78);
     doc.text(String(k.label || ''), boxX + kpiBoxW / 2, kpiBoxY + kpiBoxH / 2 + 5, { align: 'center' });
   });
 
-  const chartsY = HERO_Y + HERO_H + 4;
-  const rowGap = 3.5;
-  const TITLE_H = 9;
-  const CAPTION_H = 5;
-  const IMG_PAD = 3;
+  const chartsY = HERO_Y + HERO_H + 3;
+  const rowGap = 3;
+  const TITLE_H = 7;
+  const CAPTION_H = 3.5;
+  const IMG_PAD = 2.5;
+  const chartsMaxY = ph - FOOTER_H - SUMMARY_H - 5;
+  const chartAreaH = chartsMaxY - chartsY;
+  const row1H = Math.floor(chartAreaH * 0.47);
+  const row2H = chartAreaH - row1H - rowGap;
+  const col4Gap = 3;
+  const col4W = (W - col4Gap * 3) / 4;
+  const col3Gap = 3.5;
+  const col3W = (W - col3Gap * 2) / 3;
   const col2Gap = 4;
   const col2W = (W - col2Gap) / 2;
-  const chartsMaxY = ph - FOOTER_H - SUMMARY_H - 6;
 
   async function chartPanel_(cfg, cx, cy, cw, ch) {
     softCard_(cx, cy, cw, ch, PAL.mist, 5);
     setPdfFont_(doc, 'sans-bold');
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(41, 37, 36);
-    doc.text(cfg.title, cx + 5, cy + 6);
+    doc.text(cfg.title, cx + 4, cy + 5);
     setPdfFont_(doc, 'sans');
-    doc.setFontSize(6.2);
+    doc.setFontSize(5.8);
     doc.setTextColor(120, 100, 100);
-    const cap = doc.splitTextToSize(cfg.caption || '', cw - 10);
-    doc.text(cap.slice(0, 2), cx + 5, cy + 10.5);
+    const cap = doc.splitTextToSize(cfg.caption || '', cw - 8);
+    doc.text(cap.slice(0, 1), cx + 4, cy + 8.5);
 
     if (!imgs[cfg.key]) return;
     const bx = cx + IMG_PAD;
@@ -684,26 +851,28 @@ export async function exportMrdExecutivePdf_(meta, data, chartImages, getJsPDF) 
     await yieldToBrowser_(8);
   }
 
-  let panelIdx = 0;
-  let pageStartY = chartsY;
-  const rowH = Math.floor((chartsMaxY - chartsY - rowGap) / 2);
-
-  while (panelIdx < panels.length) {
-    if (panelIdx > 0 && panelIdx % 4 === 0) {
-      doc.addPage();
-      paintPageBg_();
-      pageStartY = 12;
-    }
-    const localIdx = panelIdx % 4;
-    const row = Math.floor(localIdx / 2);
-    const col = localIdx % 2;
-    const cy = pageStartY + row * (rowH + rowGap);
-    const cx = M + col * (col2W + col2Gap);
-    await chartPanel_(panels[panelIdx], cx, cy, col2W, rowH);
-    panelIdx += 1;
+  const r1y = chartsY;
+  const row1Panels = panels.slice(0, 4);
+  for (let i = 0; i < row1Panels.length; i += 1) {
+    const cx = M + i * (col4W + col4Gap);
+    await chartPanel_(row1Panels[i], cx, r1y, col4W, row1H);
   }
 
-  const summaryY = ph - SUMMARY_H - 4;
+  const r2y = r1y + row1H + rowGap;
+  const row2Panels = panels.slice(4);
+  if (row2Panels.length === 3) {
+    for (let j = 0; j < 3; j += 1) {
+      const cx = M + j * (col3W + col3Gap);
+      await chartPanel_(row2Panels[j], cx, r2y, col3W, row2H);
+    }
+  } else if (row2Panels.length === 2) {
+    await chartPanel_(row2Panels[0], M, r2y, col2W, row2H);
+    await chartPanel_(row2Panels[1], M + col2W + col2Gap, r2y, col2W, row2H);
+  } else if (row2Panels.length === 1) {
+    await chartPanel_(row2Panels[0], M, r2y, W, row2H);
+  }
+
+  const summaryY = ph - SUMMARY_H - 3;
   setPdfFont_(doc, 'serif');
   doc.setFontSize(9);
   doc.setTextColor(168, 162, 158);
@@ -713,7 +882,7 @@ export async function exportMrdExecutivePdf_(meta, data, chartImages, getJsPDF) 
   doc.setTextColor(41, 37, 36);
   const summaryText = buildMrdExecutiveSummaryLine_(data);
   const summaryLines = doc.splitTextToSize(summaryText, W);
-  doc.text(summaryLines.slice(0, 3), pw / 2, summaryY + 5, { align: 'center' });
+  doc.text(summaryLines.slice(0, 2), pw / 2, summaryY + 4.5, { align: 'center' });
 
   setPdfFont_(doc, 'sans');
   doc.setFontSize(6);

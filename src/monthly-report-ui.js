@@ -1015,6 +1015,8 @@ function buildSnapshotSync(opts) {
   });
   const emptyMillsSorted = mrdSortEmptyMillItems_(emptyMills);
 
+  const uniqueMillCount = millKeys.size;
+
   const millRows = mills.map(function(r) {
     const product = mrdMillProductLabel_(r);
     const cacheKey = [r['GROUP NAME'], r['COMPANY NAME'], r['MILL NAME'], product].join('|');
@@ -1070,6 +1072,23 @@ function buildSnapshotSync(opts) {
   const light = mrdUseLightSnapshot_(opts);
   const prevSnap = _snapshot || {};
   const prevStats = prevSnap.stats || {};
+
+  let emptyTraceMillsStat = emptyMills.length;
+  if (ttpData.length > 0 && ttpFiltered.length === 0) {
+    emptyTraceMillsStat = null;
+  } else if (!ttpData.length && !light) {
+    emptyTraceMillsStat = null;
+  } else if (!light && _deps.buildTraceRows && ttpFiltered.length > 0 && uniqueMillCount > 0) {
+    const dedupedMills = Array.from(millKeys.values());
+    const traceRowsForCount = _deps.buildTraceRows(
+      dedupedMills,
+      ttpFiltered,
+      ttpByMill,
+      supplierCol
+    );
+    const withoutSupplier = traceRowsForCount.filter(function(tr) { return !tr.hasSupplier; }).length;
+    emptyTraceMillsStat = withoutSupplier;
+  }
 
   const facility = light
     ? (prevSnap.facility || { cpo: [], pk: [] })
@@ -1130,11 +1149,16 @@ function buildSnapshotSync(opts) {
       sddDone: sddFiltered.filter(function(r) {
         return String(r['SCR - Screening Status'] || '').toLowerCase() === 'submitted';
       }).length,
-      totalMills: mills.length,
+      totalMills: uniqueMillCount || mills.length,
       totalGroups: new Set(mills.map(function(r) { return r['GROUP NAME']; }).filter(Boolean)).size,
       highRisk: mills.filter(function(r) { return mrdIsHighRiskItem_(r); }).length,
       nblMills: mills.filter(function(r) { return isNblYes(r['BUYER NO BUY LIST']); }).length,
-      emptyTraceMills: emptyMills.length,
+      emptyTraceMills: emptyTraceMillsStat != null
+        ? emptyTraceMillsStat
+        : (light && prevStats.emptyTraceMills != null ? prevStats.emptyTraceMills : 0),
+      emptyTraceMillsKnown: emptyTraceMillsStat != null,
+      traceYear: traceYear,
+      ttpRowsTraceYear: ttpFiltered.length,
       grievances: grvRows.length,
       nblEntries: nblAll.length,
       eudrPotential: eudrInput.length,
@@ -1153,7 +1177,19 @@ function renderKpis(stats, opts) {
   if (!el) return;
   const tracePending = !!opts.tracePending;
   const eudrPending = !!opts.eudrPending;
-  const untraceN = tracePending ? '…' : stats.emptyTraceMills;
+  const traceKnown = stats.emptyTraceMillsKnown !== false;
+  const noTtpForTraceYear = !tracePending && stats.ttpRowsTraceYear === 0 && stats.traceYear;
+  let untraceN = tracePending || !traceKnown || noTtpForTraceYear
+    ? '…'
+    : stats.emptyTraceMills;
+  let untraceSub = tracePending
+    ? 'loading traceability…'
+    : (noTtpForTraceYear
+      ? ('no TTP rows for ' + stats.traceYear)
+      : (!traceKnown ? 'traceability not loaded' : 'no FFB supplier in TTP (trace year)'));
+  if (!tracePending && traceKnown && !noTtpForTraceYear && stats.totalMills > 0) {
+    untraceSub = stats.emptyTraceMills + ' of ' + stats.totalMills + ' mills · ' + untraceSub;
+  }
   const eudrN = eudrPending ? '…' : stats.eudrPotential;
   const items = [
       { n: stats.sddRequested != null ? stats.sddRequested : stats.sddTotal, l: 'SDD Requested', s: (stats.sddDone != null ? stats.sddDone : stats.sddSubmitted) + ' done' },
@@ -1161,8 +1197,8 @@ function renderKpis(stats, opts) {
       {
         n: untraceN,
         l: 'Untraceable Mills',
-        s: tracePending ? 'loading traceability…' : 'mills without suppliers',
-        hot: !tracePending && stats.emptyTraceMills > 0,
+        s: untraceSub,
+        hot: !tracePending && traceKnown && !noTtpForTraceYear && stats.emptyTraceMills > 0,
       },
       {
         n: eudrN,
@@ -1191,7 +1227,10 @@ function syncMrdViewModeUi_() {
   const execBtn = document.getElementById('mrdBtnExecExport');
   const detailBtn = document.getElementById('mrdBtnExport');
   if (execBtn) execBtn.hidden = _viewMode !== 'executive';
-  if (detailBtn) detailBtn.classList.toggle('mrd-export-btn--secondary', _viewMode === 'executive');
+  if (detailBtn) {
+    detailBtn.hidden = _viewMode !== 'detail';
+    detailBtn.classList.remove('mrd-export-btn--secondary');
+  }
   const searchWrap = document.querySelector('#panel-monthly-report-detail .mrd-toolbar-search-wrap');
   if (searchWrap) searchWrap.hidden = _viewMode === 'executive';
 }
@@ -2066,7 +2105,8 @@ async function loadSupplementalInBackground(gen) {
     if (gen !== _loadGen) return;
     updateScopeText('supplemental data: timeout — click Refresh to try again');
   } finally {
-    _ttpFetchOk = true;
+    const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
+    _ttpFetchOk = ttpLen > 0;
     if (_snapshot) {
       _snapshot.supplementalLoading = false;
       scheduleRenderAll();
@@ -2282,9 +2322,11 @@ export function initMonthlyReport_(deps) {
     const eudrStale = !_eudrFetchOk && !_eudrPending;
     const ttpStale = ttpLen !== _lastTtpCount || !_ttpFetchOk;
     const traceSuspicious = _snapshot && _snapshot.stats
+      && _snapshot.stats.emptyTraceMillsKnown !== false
       && _snapshot.stats.totalMills > 0
       && _snapshot.stats.emptyTraceMills >= _snapshot.stats.totalMills
-      && ttpLen > 0;
+      && ttpLen > 0
+      && (_snapshot.stats.ttpRowsTraceYear || 0) > 0;
     const pendingInactiveRebuild = _mrdRebuildWhenInactive;
     if (pendingInactiveRebuild) _mrdRebuildWhenInactive = false;
     if (!opts.force && _snapshot && !ttpStale && !eudrStale && !traceSuspicious && !pendingInactiveRebuild) {

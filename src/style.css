@@ -403,6 +403,10 @@
      overflow: hidden;
      transition: max-height var(--sb-dur) var(--sb-ease);
    }
+   #mainSidebar.sidebar.expanded .nav-group:not(.open) > .nav-group-children,
+   #mainSidebar.sidebar.mobile-open .nav-group:not(.open) > .nav-group-children {
+     display: none;
+   }
    
    /* â”€â”€ Tooltip (collapsed only) â”€â”€ */
    #mainSidebar.sidebar:not(.expanded) [data-tooltip]::after {
@@ -10190,13 +10194,8 @@ body.eudr-ffb-modal-open { overflow: hidden; }
   padding: 0 12px;
   font-size: 11px;
 }
-#panel-monthly-report-detail .mrd-export-btn--secondary {
-  background: #fff;
-  color: #8B1A1A;
-  border: 1px solid rgba(139, 26, 26, 0.35);
-}
-#panel-monthly-report-detail .mrd-export-btn--secondary:hover {
-  background: rgba(139, 26, 26, 0.06);
+#panel-monthly-report-detail .mrd-export-btn[hidden] {
+  display: none !important;
 }
 #panel-monthly-report-detail .mrd-view-mode {
   display: inline-flex;

@@ -65,6 +65,7 @@ const SHEETS = {
   eudrDdsSuppliers        : 'EUDR DDS Suppliers',
   eudrDdsGeolocation      : 'EUDR DDS Geolocation',
   eudrDdsDocuments        : 'EUDR DDS Documents',
+  riskAnalysisMitigation  : 'Risk Analysis & Mitigation',
 };
 
 /** Tab name for BL Monitoring (must match spreadsheet tab exactly). */
@@ -82,6 +83,8 @@ const SHEET_TAB_ALIASES = {
   sdMonitoring: SD_MONITORING_TAB,
   sd: SD_MONITORING_TAB,
   'SD Monitoring': SD_MONITORING_TAB,
+  riskAnalysisMitigation: 'Risk Analysis & Mitigation',
+  'Risk Analysis & Mitigation': 'Risk Analysis & Mitigation',
 };
 
 /**
@@ -388,6 +391,20 @@ const QUESTIONNAIRE_MONITORING_HEADERS = [
   'DATE SEND BACK WITH FEEDBACK',
   'DATE COMPLETED',
   'UPDATED BY',
+];
+
+const RISK_ANALYSIS_MITIGATION_HEADERS = [
+  'No',
+  'Kategori',
+  'Sub-Isu / Topik Risiko',
+  'Level Risiko',
+  'Probabilitas',
+  'Sumber Risiko',
+  'Dampak ke Perusahaan',
+  'Regulasi / Standar Terkait',
+  'Rencana Penanganan / Mitigasi',
+  'Prioritas',
+  'Status',
 ];
 
 const EUDR_POTENTIAL_HEADERS = [
@@ -858,6 +875,7 @@ function doGet(e) {
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
+        riskAnalysisMitigation: !!resolveSheetTabName_('riskAnalysisMitigation'),
         eudrPotential: !!resolveSheetTabName_('eudrPotential'),
         eudrStatusFormula: !!resolveSheetTabName_('eudrStatusFormula'),
         eudrDds: !!resolveSheetTabName_('eudrDds'),
@@ -1647,6 +1665,62 @@ function millRowHasContent_(obj) {
 
 function ensureQuestionnaireMonitoringHeaders_() {
   return ensureSheetHeadersGeneric_('questionnaireMonitoring', QUESTIONNAIRE_MONITORING_HEADERS);
+}
+
+function isRiskAnalysisHeaderRow_(row) {
+  if (!row || !row.length) return false;
+  var a = String(row[0] || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  var b = String(row[1] || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return a === 'no' && b === 'kategori';
+}
+
+function getRiskAnalysisHeaderInfo_(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  var i;
+  for (i = 0; i < Math.min(rows.length, 25); i++) {
+    if (isRiskAnalysisHeaderRow_(rows[i])) {
+      return {
+        headerRow: i + 1,
+        headers: rows[i].map(function(h) {
+          return String(h || '').replace(/\s+/g, ' ').trim();
+        }),
+      };
+    }
+  }
+  return { headerRow: 1, headers: RISK_ANALYSIS_MITIGATION_HEADERS.slice() };
+}
+
+function riskAnalysisRowHasContent_(obj) {
+  if (!obj) return false;
+  var sub = String(obj['Sub-Isu / Topik Risiko'] || '').trim();
+  var kat = String(obj['Kategori'] || '').trim();
+  if (sub || kat) return true;
+  var no = obj['No'];
+  if (no === '' || no == null) return false;
+  var n = Number(no);
+  return !isNaN(n) && n > 0;
+}
+
+function nextRiskAnalysisNo_(sheet, info) {
+  info = info || getRiskAnalysisHeaderInfo_(sheet);
+  var last = sheet.getLastRow();
+  if (last <= info.headerRow) return 1;
+  var colNo = 1;
+  var vals = sheet.getRange(info.headerRow + 1, colNo, last - info.headerRow, 1).getValues();
+  var max = 0;
+  vals.forEach(function(r) {
+    var n = Number(r[0]);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return max + 1;
+}
+
+function riskAnalysisExpandRow_(headers, data, current) {
+  return headers.map(function(h, j) {
+    var v = data[h];
+    if (v === undefined && current && current.length) v = current[j];
+    return v !== undefined && v !== null ? v : '';
+  });
 }
 
 function ensureEudrPotentialHeaders_() {
@@ -4479,7 +4553,15 @@ function getData(sheetKey) {
     headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
   }
 
-  // Preserve display formatting (Mill, BL Monitoring, SD Monitoring, TTP %/volume cells).
+  if (sheetKey === 'riskAnalysisMitigation') {
+    const info = getRiskAnalysisHeaderInfo_(sheet);
+    headerRowNum = info.headerRow;
+    headers = info.headers;
+    dataRows = rows.slice(headerRowNum);
+    headers = headers.map(function(h) { return String(h || '').replace(/\s+/g, ' ').trim(); });
+  }
+
+  // Preserve display formatting
   const dispRows = (isMillLikeSheetKey_(sheetKey) || sheetKey === 'blMonitoring' || sheetKey === 'sdMonitoring' || sheetKey === 'ttp')
     ? range.getDisplayValues()
     : null;
@@ -4544,6 +4626,7 @@ function getData(sheetKey) {
     // TTP: drop KPI/summary rows and header echo; detail filter on dashboard (ttpIsDataRow_).
     if (sheetKey === 'ttp') return !ttpRowLooksLikeKpiData_(obj) && !ttpRowLooksLikeHeaderEcho_(obj);
     if (sheetKey === 'sdMonitoring') return sdRowHasContent_(obj);
+    if (sheetKey === 'riskAnalysisMitigation') return riskAnalysisRowHasContent_(obj);
     if (sheetKey === 'eudrDds') return eudrDdsMasterHasContent_(obj);
     if (sheetKey !== 'blMonitoring') return true;
     return blRowHasContent_(obj);
@@ -4671,6 +4754,18 @@ function addRow(sheetKey, data, insertAfter) {
     sheet.appendRow(newRow);
     return { success: true };
   }
+  if (sheetKey === 'riskAnalysisMitigation') {
+    const info = getRiskAnalysisHeaderInfo_(sheet);
+    headers = info.headers;
+    const payload = data || {};
+    if (payload['No'] === undefined || payload['No'] === '' || payload['No'] == null) {
+      payload['No'] = nextRiskAnalysisNo_(sheet, info);
+    }
+    const targetRow = Math.max(sheet.getLastRow(), info.headerRow) + 1;
+    const newRow = riskAnalysisExpandRow_(headers, payload, null);
+    sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
+    return { success: true, row: targetRow };
+  }
   if (sheetKey === 'mill') {
     resolveMillQuarterYearKeys_(data, headers);
     const newRow = headers.map(function(h) { return data[h] !== undefined ? data[h] : ''; });
@@ -4755,6 +4850,14 @@ function updateRow(sheetKey, rowNum, data) {
     ensureEudrPotentialHeaders_();
     headers = EUDR_POTENTIAL_HEADERS;
     stampEudrRowMeta_(data, callerEmail_(), nowIso_());
+  }
+  if (sheetKey === 'riskAnalysisMitigation') {
+    const info = getRiskAnalysisHeaderInfo_(sheet);
+    headers = info.headers;
+    const current = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
+    const updated = riskAnalysisExpandRow_(headers, data || {}, current);
+    sheet.getRange(r, 1, 1, updated.length).setValues([updated]);
+    return { success: true };
   }
   if (sheetKey === 'mill') resolveMillQuarterYearKeys_(data, headers);
   if (sheetKey === 'grievance') resolveGrvGroupFieldKeys_(data, headers);
