@@ -49,19 +49,13 @@ import {
 } from './dash-loading.js';
 import {
   buildMrdExecutiveData_,
-  buildMillPeriodKpis_,
-  buildQuarterComparison_,
-  renderMrdExecutiveCharts_,
+  renderMrdExecutiveChartsAsync_,
   destroyMrdExecutiveCharts_,
   collectMrdExecutiveChartImages_,
   exportMrdExecutivePdf_,
   mrdExecutiveFilename_,
   mrdExecutiveHeaderMeta_,
-  monthToQuarter_,
-  previousQuarter_,
-  quarterEndMonth_,
-  formatDelta_,
-  formatQtyDisplay_,
+  mrdExecutiveChartSizes_,
 } from './monthly-report-executive.js';
 
 const MRD_ROW_LIMIT = 5000;
@@ -89,9 +83,36 @@ let _eudrFetchOk = false;
 let _ttpFetchOk = false;
 let _renderRaf = 0;
 let _viewMode = 'executive';
-let _mrdExecChartModule = null;
-let _mrdExecDataCache = null;
 let _mrdExecExportInFlight = false;
+let _mrdExecChartModule = null;
+let _rebuildDebounceTimer = null;
+let _rebuildInProgress = false;
+let _rebuildPendingOpts = null;
+let _rebuildDirty = false;
+let _mrdRebuildWhenInactive = false;
+
+function mrdPanelIsActive_() {
+  const p = document.getElementById('panel-monthly-report-detail');
+  return !!(p && p.classList.contains('active'));
+}
+
+function mrdIsExecutiveView_() {
+  return _viewMode === 'executive';
+}
+
+function mrdUseLightSnapshot_(opts) {
+  opts = opts || {};
+  if (opts.fullDetail || opts.lightweight === false) return false;
+  if (opts.lightweight === true) return true;
+  return mrdIsExecutiveView_();
+}
+
+async function mrdEnsureChartModule_() {
+  if (_mrdExecChartModule) return _mrdExecChartModule;
+  const mod = await import('chart.js/auto');
+  _mrdExecChartModule = mod.default || mod.Chart || mod;
+  return _mrdExecChartModule;
+}
 
 function mrdDataPeriodShortLabel_(dataPeriod) {
   const y = String((dataPeriod && dataPeriod.year) || '').trim();
@@ -135,6 +156,53 @@ function scheduleRenderAll() {
     _renderRaf = 0;
     renderAll();
   });
+}
+
+function mergeRebuildOpts_(a, b) {
+  const out = Object.assign({}, a || {});
+  const add = b || {};
+  Object.keys(add).forEach(function(k) {
+    if (add[k] !== undefined) out[k] = add[k];
+  });
+  if (add.fullDetail) out.lightweight = false;
+  return out;
+}
+
+async function runRebuildAsync_() {
+  if (_rebuildInProgress) {
+    _rebuildDirty = true;
+    return;
+  }
+  _rebuildInProgress = true;
+  try {
+    do {
+      _rebuildDirty = false;
+      const opts = _rebuildPendingOpts || {};
+      _rebuildPendingOpts = null;
+      await new Promise(function(r) { requestAnimationFrame(r); });
+      if (!_deps) break;
+      _snapshot = rebuildSnapshot_(opts);
+      scheduleRenderAll();
+      await new Promise(function(r) { setTimeout(r, 0); });
+    } while (_rebuildDirty && _rebuildPendingOpts);
+  } finally {
+    _rebuildInProgress = false;
+    if (_rebuildDirty || _rebuildPendingOpts) {
+      void runRebuildAsync_();
+    }
+  }
+}
+
+/**
+ * Debounced async rebuild — avoids stacking heavy snapshot work on the main thread.
+ */
+function scheduleRebuildAndRender_(opts) {
+  _rebuildPendingOpts = mergeRebuildOpts_(_rebuildPendingOpts, opts);
+  if (_rebuildDebounceTimer) clearTimeout(_rebuildDebounceTimer);
+  _rebuildDebounceTimer = setTimeout(function() {
+    _rebuildDebounceTimer = null;
+    void runRebuildAsync_();
+  }, 150);
 }
 
 function withTimeout(promise, ms, label) {
@@ -223,28 +291,47 @@ function mrdFindLatestDataMonthForYear_(year) {
   return maxMonth;
 }
 
-/** Disable month options with no data and auto-select latest month if current selection is empty. */
+/** Disable month options with no data; auto-select latest month only on first load. */
 function mrdSyncMonthOptions_() {
   const monthSel = document.getElementById('mrdMonthSel');
   if (!monthSel) return;
+  syncPeriodFromUi_();
   const latestMonth = mrdFindLatestDataMonthForYear_(_year);
   Array.from(monthSel.options).forEach(function(opt) {
     const v = parseInt(opt.value, 10);
-    if (!v) { opt.disabled = false; return; } // "Full year" always enabled
+    if (!v) { opt.disabled = false; return; }
     opt.disabled = latestMonth > 0 && v > latestMonth;
   });
-  // Auto-select latest data month on first load if no selection made yet
-  const cur = parseInt(_month, 10);
-  const curOpt = cur ? monthSel.querySelector('option[value="' + cur + '"]') : null;
-  if (!_month || (curOpt && curOpt.disabled) || !_monthAutoSelected) {
+
+  if (_monthAutoSelected && _month === '') {
+    monthSel.value = '';
+    return;
+  }
+
+  if (!_monthAutoSelected) {
     if (latestMonth > 0) {
       _month = String(latestMonth);
       monthSel.value = _month;
-    } else if (!_month) {
+    } else {
       _month = '';
       monthSel.value = '';
     }
     _monthAutoSelected = true;
+    return;
+  }
+
+  const cur = parseInt(_month, 10);
+  const curOpt = cur ? monthSel.querySelector('option[value="' + cur + '"]') : null;
+  if (cur && curOpt && curOpt.disabled && latestMonth > 0) {
+    _month = String(latestMonth);
+    monthSel.value = _month;
+    return;
+  }
+
+  if (_month === '') {
+    monthSel.value = '';
+  } else if (monthSel.value !== String(_month)) {
+    monthSel.value = String(_month);
   }
 }
 
@@ -672,7 +759,12 @@ async function exportMonthlyReport_(exportOpts) {
       facilityPeriod: facilityPeriod,
     });
 
-    _snapshot = rebuildSnapshot_({ reportPeriod: pageDataPeriod, sddRows: _sddCache, sddLoading: false });
+    _snapshot = rebuildSnapshot_({
+      reportPeriod: pageDataPeriod,
+      sddRows: _sddCache,
+      sddLoading: false,
+      fullDetail: true,
+    });
     await resolveNblMillsForSnapshot_();
 
     const prevEudr = (_snapshot && _snapshot.eudrPotential) || [];
@@ -689,6 +781,7 @@ async function exportMonthlyReport_(exportOpts) {
     _snapshot = rebuildSnapshot_({
       reportPeriod: pageDataPeriod,
       eudrPotential: bestEudr.length ? bestEudr : undefined,
+      fullDetail: true,
     });
     const s = _snapshot;
 
@@ -974,12 +1067,35 @@ function buildSnapshotSync(opts) {
     });
   });
 
-  const facility = _deps.buildFacilitySummary(mills, ttpFiltered);
-  const traceTotals = _deps.buildTraceTotals
-    ? _deps.buildTraceTotals(traceYear, periodYear, periodMonth)
-    : {};
+  const light = mrdUseLightSnapshot_(opts);
+  const prevSnap = _snapshot || {};
+  const prevStats = prevSnap.stats || {};
+
+  const facility = light
+    ? (prevSnap.facility || { cpo: [], pk: [] })
+    : _deps.buildFacilitySummary(mills, ttpFiltered);
+  const traceTotals = light
+    ? (prevSnap.traceTotals || {})
+    : (_deps.buildTraceTotals
+      ? _deps.buildTraceTotals(traceYear, periodYear, periodMonth)
+      : {});
+  const traceRowsBuilt = light
+    ? (prevSnap.traceRows || [])
+    : mrdSortMillItems_(_deps.buildTraceRows ? _deps.buildTraceRows(mills, ttpFiltered, ttpByMill, supplierCol) : []);
 
   const highRiskMillRows = millRows.filter(mrdIsHighRiskItem_);
+
+  const statsTrace = light ? {
+    ttmCpoPct: prevStats.ttmCpoPct || '—',
+    ttmPkPct: prevStats.ttmPkPct || '—',
+    ttpCpoPct: prevStats.ttpCpoPct || '—',
+    ttpPkPct: prevStats.ttpPkPct || '—',
+  } : {
+    ttmCpoPct: traceTotals.ttmCpoFmt || '—',
+    ttmPkPct: traceTotals.ttmPkFmt || '—',
+    ttpCpoPct: traceTotals.ttpCpoFmt || '—',
+    ttpPkPct: traceTotals.ttpPkFmt || '—',
+  };
 
   return {
     reportPeriod: { year: String(periodYear || ''), month: String(periodMonth || '') },
@@ -990,7 +1106,7 @@ function buildSnapshotSync(opts) {
     millEffectiveYear: millEffectiveYear,
     millEffectiveMonth: millEffectiveMonth,
     emptyMills: emptyMillsSorted,
-    traceRows: mrdSortMillItems_(_deps.buildTraceRows ? _deps.buildTraceRows(mills, ttpFiltered, ttpByMill, supplierCol) : []),
+    traceRows: traceRowsBuilt,
     traceTotals: traceTotals,
     traceYear: traceYear,
     ttpByMill: ttpByMill,
@@ -1023,10 +1139,10 @@ function buildSnapshotSync(opts) {
       nblEntries: nblAll.length,
       eudrPotential: eudrInput.length,
       facilities: facility.cpo.length + facility.pk.length,
-      ttmCpoPct: traceTotals.ttmCpoFmt || '—',
-      ttmPkPct: traceTotals.ttmPkFmt || '—',
-      ttpCpoPct: traceTotals.ttpCpoFmt || '—',
-      ttpPkPct: traceTotals.ttpPkFmt || '—',
+      ttmCpoPct: statsTrace.ttmCpoPct,
+      ttmPkPct: statsTrace.ttmPkPct,
+      ttpCpoPct: statsTrace.ttpCpoPct,
+      ttpPkPct: statsTrace.ttpPkPct,
     },
   };
 }
@@ -1039,18 +1155,7 @@ function renderKpis(stats, opts) {
   const eudrPending = !!opts.eudrPending;
   const untraceN = tracePending ? '…' : stats.emptyTraceMills;
   const eudrN = eudrPending ? '…' : stats.eudrPotential;
-  const items = _viewMode === 'executive'
-    ? [
-      { n: stats.sddRequested != null ? stats.sddRequested : stats.sddTotal, l: 'SDD Requested', s: (stats.sddDone != null ? stats.sddDone : stats.sddSubmitted) + ' submitted' },
-      { n: stats.totalMills, l: 'Total Mills', s: stats.totalGroups + ' groups' },
-      { n: stats.highRisk, l: 'High Risk', s: 'Result Risk Level = HIGH', hot: stats.highRisk > 0 },
-      { n: stats.nblMills, l: 'NBL Mills', s: stats.nblEntries + ' registry entries', hot: stats.nblMills > 0 },
-      { n: untraceN, l: 'Untraceable', s: tracePending ? 'loading…' : 'no supplier data', hot: !tracePending && stats.emptyTraceMills > 0 },
-      { n: stats.grievances, l: 'Grievances', s: 'Date Received · report year' },
-      { n: eudrN, l: 'EUDR Potential', s: eudrPending ? 'loading…' : 'by formula', hot: !eudrPending && stats.eudrPotential > 0 },
-      { n: stats.ttmCpoPct || '—', l: 'TTM CPO', s: 'TTM PK ' + (stats.ttmPkPct || '—') },
-    ]
-    : [
+  const items = [
       { n: stats.sddRequested != null ? stats.sddRequested : stats.sddTotal, l: 'SDD Requested', s: (stats.sddDone != null ? stats.sddDone : stats.sddSubmitted) + ' done' },
       { n: stats.totalMills, l: 'Total Mills', s: stats.totalGroups + ' groups' },
       {
@@ -1074,195 +1179,6 @@ function renderKpis(stats, opts) {
   }).join('');
 }
 
-async function mrdEnsureChartModule_() {
-  if (_mrdExecChartModule) return _mrdExecChartModule;
-  const mod = await import('chart.js/auto');
-  _mrdExecChartModule = mod.default || mod.Chart || mod;
-  return _mrdExecChartModule;
-}
-
-function mrdExecutiveChartEls_() {
-  return {
-    qoq: document.getElementById('mrdExecChartQoq'),
-    trend: document.getElementById('mrdExecChartTrend'),
-    supply: document.getElementById('mrdExecChartSupply'),
-    sdd: document.getElementById('mrdExecChartSdd'),
-    risk: document.getElementById('mrdExecChartRisk'),
-    nbl: document.getElementById('mrdExecChartNbl'),
-    traceGap: document.getElementById('mrdExecChartTraceGap'),
-    trace: document.getElementById('mrdExecChartTrace'),
-    sddCat: document.getElementById('mrdExecChartSddCat'),
-    grv: document.getElementById('mrdExecChartGrv'),
-  };
-}
-
-function mrdExecQtyHelpers_() {
-  return {
-    cpo: function(r) {
-      return _deps && _deps.millSupplyCpoQty ? _deps.millSupplyCpoQty(r) : 0;
-    },
-    pk: function(r) {
-      return _deps && _deps.millSupplyPkQty ? _deps.millSupplyPkQty(r) : 0;
-    },
-    pomeIscc: function(r) {
-      return _deps && _deps.millWasteSupplyQty ? _deps.millWasteSupplyQty(r, 'ISCC') : 0;
-    },
-    pomeIns: function(r) {
-      return _deps && _deps.millWasteSupplyQty ? _deps.millWasteSupplyQty(r, 'INS') : 0;
-    },
-    shell: function(r) {
-      return _deps && _deps.millWasteSupplyQty ? _deps.millWasteSupplyQty(r, 'SHELL') : 0;
-    },
-  };
-}
-
-function mrdExecKpiOpts_() {
-  return {
-    entityKey: _deps && _deps.millEntityKey
-      ? _deps.millEntityKey
-      : function(r) {
-        return String(r['MILL NAME'] || r['COMPANY NAME'] || '').trim().toUpperCase();
-      },
-    resolveRisk: function(r) {
-      return _deps && _deps.millResolvedRiskLevel
-        ? (_deps.millResolvedRiskLevel(r) || '')
-        : String(r['RESULT RISK LEVEL'] || r['RISK LEVEL'] || '').trim();
-    },
-    isNbl: function(r) {
-      return isNblYes(r['BUYER NO BUY LIST']);
-    },
-    pickGroup: function(r) {
-      return _deps && _deps.pickMillGroupName
-        ? _deps.pickMillGroupName(r)
-        : String(r['GROUP NAME'] || '').trim();
-    },
-  };
-}
-
-function mrdCollectMillsForPeriod_(year, month) {
-  if (!_deps || !_deps.getMillsForReportPeriod || !year) return [];
-  const main = (_deps.getMillsForReportPeriod(year, month, 'main') || []).map(function(r) {
-    const copy = Object.assign({}, r);
-    copy._mrdProduct = 'main';
-    return copy;
-  });
-  const waste = (_deps.getMillsForReportPeriod(year, month, 'waste') || []).map(function(r) {
-    const copy = Object.assign({}, r);
-    copy._mrdProduct = 'waste';
-    return copy;
-  });
-  return main.concat(waste);
-}
-
-/** Exact month+year rows from sheet (no as-of) — for supply quantity totals. */
-function mrdCollectExactMonthRows_(year, month) {
-  const y = String(year || '');
-  const m = parseInt(String(month || ''), 10);
-  if (!y || m < 1 || m > 12) return [];
-  const millYear = _deps.millYearVal;
-  const millMonth = _deps.millMonthVal;
-  const mainSrc = (_deps.getMillRawRows ? _deps.getMillRawRows() : (_deps.getMillData ? _deps.getMillData() : [])) || [];
-  const wasteSrc = (_deps.getMillWasteRawRows ? _deps.getMillWasteRawRows() : []) || [];
-  function match_(r) {
-    if (!r || !mrdShowInMillOnboarding_(r)) return false;
-    const ry = parseYear(millYear(r));
-    if (ry && ry !== y) return false;
-    const rm = millMonth(r);
-    return mrdMonthMatchesFilter_(rm, String(m));
-  }
-  return mainSrc.filter(match_).concat(wasteSrc.filter(match_));
-}
-
-function mrdBuildExecutiveExtras_() {
-  const report = getReportPeriod_();
-  const year = parseInt(String(report.year || ''), 10);
-  const month = parseInt(String(report.month || ''), 10);
-  const kpiOpts = mrdExecKpiOpts_();
-  const qtyHelpers = mrdExecQtyHelpers_();
-  const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  // Supply qty: exact MONTH + YEAR from sheet columns (not as-of carry-forward).
-  let supplyRows = [];
-  let supplyPeriodLabel = 'selected period';
-  if (year && month >= 1 && month <= 12) {
-    supplyRows = mrdCollectExactMonthRows_(year, month);
-    // Fall back to latest available month if selected month has no data
-    if (!supplyRows.length) {
-      const fallbackM = mrdFindLatestDataMonthForYear_(year);
-      if (fallbackM && fallbackM !== month) {
-        supplyRows = mrdCollectExactMonthRows_(year, fallbackM);
-        supplyPeriodLabel = (monthNames[fallbackM] || fallbackM) + ' ' + year + ' (latest available)';
-      } else {
-        supplyPeriodLabel = (monthNames[month] || month) + ' ' + year + ' (no data)';
-      }
-    } else {
-      supplyPeriodLabel = (monthNames[month] || month) + ' ' + year + ' (exact month)';
-    }
-  } else if (year) {
-    // Full year: sum all months in that year from sheet
-    const mainSrc = (_deps.getMillRawRows ? _deps.getMillRawRows() : (_deps.getMillData ? _deps.getMillData() : [])) || [];
-    const wasteSrc = (_deps.getMillWasteRawRows ? _deps.getMillWasteRawRows() : []) || [];
-    const y = String(year);
-    function yearMatch_(r) {
-      if (!r || !mrdShowInMillOnboarding_(r)) return false;
-      const ry = parseYear(_deps.millYearVal(r));
-      return !ry || ry === y;
-    }
-    supplyRows = mainSrc.filter(yearMatch_).concat(wasteSrc.filter(yearMatch_));
-    supplyPeriodLabel = 'Full year ' + year + ' (all months)';
-  }
-
-  const supplyKpis = buildMillPeriodKpis_(supplyRows, Object.assign({}, kpiOpts, { qtyHelpers: qtyHelpers }));
-
-  // Quarter comparison: use selected month's quarter but cap to latest quarter with actual data.
-  const latestDataMonth = mrdFindLatestDataMonthForYear_(year);
-  const latestDataQuarter = latestDataMonth ? monthToQuarter_(latestDataMonth) : 4;
-  const rawQuarter = month >= 1 && month <= 12 ? monthToQuarter_(month) : (year ? 4 : 0);
-  const activeQuarter = Math.min(rawQuarter, latestDataQuarter);
-  let quarterComparison = null;
-  const quarterlyTrend = [];
-
-  if (year && activeQuarter >= 1 && activeQuarter <= 4) {
-    const curEnd = quarterEndMonth_(activeQuarter);
-    const curRows = mrdCollectMillsForPeriod_(year, curEnd);
-    const curKpis = buildMillPeriodKpis_(curRows, kpiOpts);
-
-    const prev = previousQuarter_(year, activeQuarter);
-    let prevKpis = { totalMills: 0, groupCount: 0, highRisk: 0, nbl: 0, entityKeys: new Set() };
-    if (prev) {
-      const prevEnd = quarterEndMonth_(prev.quarter);
-      const prevRows = mrdCollectMillsForPeriod_(prev.year, prevEnd);
-      prevKpis = buildMillPeriodKpis_(prevRows, kpiOpts);
-    }
-
-    quarterComparison = buildQuarterComparison_(curKpis, prevKpis, {
-      currentLabel: 'Q' + activeQuarter + ' ' + year,
-      previousLabel: prev ? ('Q' + prev.quarter + ' ' + prev.year) : '—',
-    });
-
-    [1, 2, 3, 4].forEach(function(q) {
-      const endM = quarterEndMonth_(q);
-      const rows = mrdCollectMillsForPeriod_(year, endM);
-      const snap = buildMillPeriodKpis_(rows, kpiOpts);
-      quarterlyTrend.push({
-        label: 'Q' + q,
-        totalMills: snap.totalMills,
-        active: q === activeQuarter,
-      });
-    });
-  }
-
-  return {
-    supply: supplyKpis.supply,
-    supplyPeriodLabel: supplyPeriodLabel,
-    quarterComparison: quarterComparison,
-    quarterlyTrend: quarterlyTrend,
-    activeQuarter: activeQuarter,
-    year: year,
-    month: month,
-  };
-}
-
 function syncMrdViewModeUi_() {
   document.querySelectorAll('[data-mrd-view]').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-mrd-view') === _viewMode);
@@ -1280,154 +1196,160 @@ function syncMrdViewModeUi_() {
   if (searchWrap) searchWrap.hidden = _viewMode === 'executive';
 }
 
-async function renderMrdExecutiveView_() {
-  if (!_snapshot) return;
-  const execEl = document.getElementById('mrdExecutiveView');
-  if (!execEl) return;
-
-  const extras = mrdBuildExecutiveExtras_();
-  const data = buildMrdExecutiveData_(_snapshot, extras);
-  _mrdExecDataCache = data;
-
-  const qoqHint = document.getElementById('mrdExecQoqHint');
-  const qoqCards = document.getElementById('mrdExecQoqCards');
-  if (qoqHint) {
-    if (data.quarterComparison) {
-      const qc = data.quarterComparison;
-      qoqHint.textContent = qc.previousLabel + ' → ' + qc.currentLabel
-        + ' · as-of end of quarter · unique mills (excl. Trader/Refinery)';
-    } else {
-      qoqHint.textContent = 'Select a month to derive the active quarter (Q1–Q4).';
-    }
-  }
-  if (qoqCards) {
-    if (data.quarterComparison) {
-      const qc = data.quarterComparison;
-      const d = qc.delta;
-      const cards = [
-        { n: qc.current.totalMills, l: 'Mills · ' + qc.currentLabel, s: formatDelta_(d.totalMills) + ' vs ' + qc.previousLabel, hot: d.totalMills > 0 },
-        { n: d.millsAdded, l: 'Mills added', s: 'new vs previous quarter', hot: d.millsAdded > 0 },
-        { n: d.millsRemoved, l: 'Mills removed', s: 'no longer in snapshot', hot: d.millsRemoved > 0 },
-        { n: qc.current.groupCount, l: 'Groups', s: formatDelta_(d.groupCount) + ' QoQ' },
-        { n: qc.current.highRisk, l: 'High Risk', s: formatDelta_(d.highRisk) + ' QoQ', hot: d.highRisk > 0 },
-        { n: qc.current.nbl, l: 'NBL Mills', s: formatDelta_(d.nbl) + ' QoQ', hot: d.nbl > 0 },
-      ];
-      qoqCards.innerHTML = cards.map(function(it) {
-        return '<div class="mrd-exec-qoq-card' + (it.hot ? ' is-hot' : '') + '">'
-          + '<div class="mrd-exec-qoq-card__num">' + esc(it.n) + '</div>'
-          + '<div class="mrd-exec-qoq-card__label">' + esc(it.l) + '</div>'
-          + '<div class="mrd-exec-qoq-card__sub">' + esc(it.s) + '</div></div>';
-      }).join('');
-    } else {
-      qoqCards.innerHTML = '<p class="mrd-empty">Choose Year + Month to see quarter growth.</p>';
-    }
-  }
-
-  const supplyHint = document.getElementById('mrdExecSupplyHint');
-  if (supplyHint) {
-    supplyHint.textContent = 'Sheet columns SUPPLY CPO / PK / POME ISCC / INS / SHELL · '
-      + (data.supplyPeriodLabel || 'selected period') + ' · ton';
-  }
-
-  const kpisEl = document.getElementById('mrdExecutiveKpis');
-  if (kpisEl) {
-    const supply = data.supply || {};
-    const items = [
-      { n: formatQtyDisplay_(supply.cpo), l: 'CPO (ton)' },
-      { n: formatQtyDisplay_(supply.pk), l: 'PK (ton)' },
-      { n: formatQtyDisplay_(supply.pomeIscc), l: 'POME ISCC (ton)' },
-      { n: formatQtyDisplay_(supply.pomeIns), l: 'POME INS (ton)' },
-      { n: formatQtyDisplay_(supply.shell), l: 'SHELL GGL (ton)' },
-      { n: (_snapshot.stats && _snapshot.stats.ttmCpoPct) || '—', l: 'TTM CPO' },
-      { n: (_snapshot.stats && _snapshot.stats.ttmPkPct) || '—', l: 'TTM PK' },
-      { n: (_snapshot.stats && _snapshot.stats.ttpCpoPct) || '—', l: 'TTP CPO' },
-    ];
-    kpisEl.innerHTML = items.map(function(it) {
-      return '<div class="mrd-exec-kpi"><div class="mrd-exec-kpi__num">' + esc(it.n)
-        + '</div><div class="mrd-exec-kpi__label">' + esc(it.l) + '</div></div>';
-    }).join('');
-  }
-
-  const trendYear = document.getElementById('mrdExecTrendYear');
-  if (trendYear) {
-    trendYear.textContent = extras.year ? '(' + extras.year + ')' : '';
-  }
-
-}
-
-const scheduleRenderMrdExecutive_ = (function() {
-  let raf = 0;
-  return function() {
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(function() {
-      raf = 0;
-      renderMrdExecutiveView_();
-    });
-  };
-})();
-
 async function exportMrdExecutiveReport_() {
   if (_mrdExecExportInFlight) return;
+  if (!_snapshot) {
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('Data not loaded yet — wait a moment and try again.', 'warning');
+    }
+    return;
+  }
+  if (!_deps || !_deps.getJsPDF) {
+    alert('PDF library is not ready.');
+    return;
+  }
+
+  const reportPeriod = getReportPeriod_();
+  if (!reportPeriod.year) {
+    if (typeof window.showSddToast === 'function') {
+      window.showSddToast('Select a reporting year before exporting.', 'warning');
+    }
+    return;
+  }
+
   _mrdExecExportInFlight = true;
   const btn = document.getElementById('mrdBtnExecExport');
   dashSetButtonBusy_(btn, 'Generating…');
   if (typeof window.showSddToast === 'function') {
-    window.showSddToast('Generating charts for PDF…', 'info');
+    window.showSddToast('Building executive PDF…', 'info');
   }
-  let offscreenContainer = null;
+
   try {
-    if (!_snapshot) throw new Error('No report data loaded.');
-    if (!_mrdExecDataCache) await renderMrdExecutiveView_();
-    const data = _mrdExecDataCache;
+    const sections = MRD_PDF_SECTIONS.map(function(s) { return s.id; });
+    const exportSections = mrdPdfSectionsNoDupHighRisk_(sections);
+
+    _year = String(reportPeriod.year || _year);
+    _month = reportPeriod.month != null ? String(reportPeriod.month) : '';
+    const pageDataPeriod = { year: _year, month: _month };
+    const facilityPeriod = getFacilityReportContext_();
+
+    if (exportSections.includes('sdd') && _sddCache.length === 0 && _deps.fetchSddList) {
+      try {
+        const rows = await withTimeout(_deps.fetchSddList(), 25000, 'SDD');
+        _sddCache = Array.isArray(rows) ? rows : [];
+      } catch (_) { /* continue */ }
+    }
+
+    dashSetButtonBusy_(btn, 'Loading data…');
+    const extra = await _deps.preparePdfExport({
+      sections: exportSections,
+      dataPeriod: pageDataPeriod,
+      facilityPeriod: facilityPeriod,
+    });
+
+    _snapshot = rebuildSnapshot_({
+      reportPeriod: pageDataPeriod,
+      sddRows: _sddCache,
+      sddLoading: false,
+      fullDetail: true,
+    });
+    await resolveNblMillsForSnapshot_();
+
+    const prevEudr = (_snapshot.eudrPotential || []).slice();
+    const extraEudr = (extra && (extra.eudrPotential || extra.eudr)) ? (extra.eudrPotential || extra.eudr) : [];
+    let bestEudr = prevEudr.length >= extraEudr.length ? prevEudr : extraEudr.slice();
+    if (exportSections.includes('eudr') && _deps.fetchEudrPotential) {
+      try {
+        const fetched = await withTimeout(_deps.fetchEudrPotential(), 120000, 'EUDR');
+        if (Array.isArray(fetched) && fetched.length) bestEudr = fetched;
+      } catch (_) { /* keep best */ }
+    }
+    _snapshot = rebuildSnapshot_({
+      reportPeriod: pageDataPeriod,
+      eudrPotential: bestEudr.length ? bestEudr : undefined,
+      fullDetail: true,
+    });
+
+    const s = _snapshot;
+    const allMillsResolved = await resolveAllNblForExport_(mrdSortMillItems_(s.mills || []));
+    const highRiskMills = mrdSortMillItems_(allMillsResolved.filter(function(item) {
+      return mrdIsHighRiskItem_(item) && mrdShowInMillOnboarding_(item);
+    }));
+    const nblMills = mrdSortMillItems_(allMillsResolved.filter(function(item) {
+      return isNblYes(item.nbl);
+    }));
+
+    let facilityBundles = [];
+    if (exportSections.includes('facility')) {
+      if (_deps.loadFacilityBundlesForReport) {
+        facilityBundles = await withTimeout(
+          _deps.loadFacilityBundlesForReport(facilityPeriod),
+          120000,
+          'Facility performance'
+        );
+      } else if (_deps.getFacilityBundles) {
+        if (_deps.preparePfDataForReport) {
+          await withTimeout(_deps.preparePfDataForReport(facilityPeriod), 120000, 'Facility performance');
+        }
+        facilityBundles = _deps.getFacilityBundles(facilityPeriod) || [];
+      }
+    }
+
+    _snapshot.stats = Object.assign({}, s.stats, {
+      highRisk: highRiskMills.length,
+      nblMills: nblMills.length,
+      eudrPotential: (s.eudrPotential || []).length,
+    });
+    if (facilityBundles.length) _snapshot.facilityBundles = facilityBundles;
+
+    const execData = buildMrdExecutiveData_(_snapshot, {
+      year: pageDataPeriod.year,
+      sections: exportSections.concat(['kpi']),
+    });
     const Chart = await mrdEnsureChartModule_();
 
-    // Offscreen canvases — fixed size so Chart.js renders correctly
-    const CHART_SIZES = {
-      sdd:      [700, 420],
-      risk:     [700, 420],
-      nbl:      [700, 420],
-      traceGap: [700, 420],
-      trace:    [800, 420],
-      sddCat:   [820, 460],
-      grv:      [700, 420],
-      qoq:      [900, 440],
-      trend:    [900, 380],
-      supply:   [900, 440],
-    };
-    offscreenContainer = document.createElement('div');
-    offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;visibility:hidden;pointer-events:none;z-index:-1;';
-    const offscreenEls = {};
-    Object.keys(CHART_SIZES).forEach(function(key) {
-      const sz = CHART_SIZES[key];
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'width:' + sz[0] + 'px;height:' + sz[1] + 'px;';
-      const canvas = document.createElement('canvas');
-      canvas.width = sz[0];
-      canvas.height = sz[1];
-      wrap.appendChild(canvas);
-      offscreenContainer.appendChild(wrap);
-      offscreenEls[key] = canvas;
-    });
-    document.body.appendChild(offscreenContainer);
+    dashSetButtonBusy_(btn, 'Rendering charts…');
+    let offscreenContainer = null;
+    try {
+      offscreenContainer = document.createElement('div');
+      offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;visibility:hidden;pointer-events:none;z-index:-1;';
+      const offscreenEls = {};
+      const chartSizes = mrdExecutiveChartSizes_(execData);
+      Object.keys(chartSizes).forEach(function(key) {
+        const sz = chartSizes[key];
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:' + sz[0] + 'px;height:' + sz[1] + 'px;';
+        const canvas = document.createElement('canvas');
+        canvas.width = sz[0];
+        canvas.height = sz[1];
+        wrap.appendChild(canvas);
+        offscreenContainer.appendChild(wrap);
+        offscreenEls[key] = canvas;
+      });
+      document.body.appendChild(offscreenContainer);
 
-    renderMrdExecutiveCharts_(Chart, data, offscreenEls);
+      await renderMrdExecutiveChartsAsync_(Chart, execData, offscreenEls);
+      await new Promise(function(resolve) {
+        requestAnimationFrame(function() { requestAnimationFrame(resolve); });
+      });
 
-    // Wait 2 frames for Chart.js to finish rendering
-    await new Promise(function(resolve) {
-      requestAnimationFrame(function() { requestAnimationFrame(resolve); });
-    });
+      const chartImages = collectMrdExecutiveChartImages_(offscreenEls);
+      destroyMrdExecutiveCharts_();
 
-    const chartImages = collectMrdExecutiveChartImages_(offscreenEls);
-    destroyMrdExecutiveCharts_();
+      dashSetButtonBusy_(btn, 'Generating PDF…');
+      const header = mrdExecutiveHeaderMeta_(reportPeriod.year, reportPeriod.month);
+      await exportMrdExecutivePdf_({
+        periodLine: header.periodLine,
+        dataPeriodLine: header.dataPeriodLine,
+        cutoffLine: header.cutoffLine,
+        filename: mrdExecutiveFilename_(reportPeriod.year, reportPeriod.month),
+      }, execData, chartImages, _deps.getJsPDF);
+    } finally {
+      if (offscreenContainer && offscreenContainer.parentNode) {
+        offscreenContainer.parentNode.removeChild(offscreenContainer);
+      }
+    }
 
-    const report = getReportPeriod_();
-    const header = mrdExecutiveHeaderMeta_(report.year, report.month);
-    await exportMrdExecutivePdf_({
-      periodLine: header.periodLine,
-      dataPeriodLine: header.dataPeriodLine,
-      cutoffLine: header.cutoffLine,
-      filename: mrdExecutiveFilename_(report.year, report.month),
-    }, data, chartImages, _deps && _deps.getJsPDF);
     if (typeof window.showSddToast === 'function') {
       window.showSddToast('Executive report PDF downloaded.', 'success');
     }
@@ -1439,9 +1361,6 @@ async function exportMrdExecutiveReport_() {
       alert(err && err.message ? err.message : 'PDF export failed.');
     }
   } finally {
-    if (offscreenContainer && offscreenContainer.parentNode) {
-      offscreenContainer.parentNode.removeChild(offscreenContainer);
-    }
     _mrdExecExportInFlight = false;
     dashClearButtonBusy_(btn, 'Export Executive PDF');
   }
@@ -1449,9 +1368,16 @@ async function exportMrdExecutiveReport_() {
 
 function setMrdViewMode_(mode) {
   const m = String(mode || '').trim().toLowerCase();
-  _viewMode = m === 'detail' ? 'detail' : 'executive';
+  const next = m === 'detail' ? 'detail' : 'executive';
+  const wasExecutive = mrdIsExecutiveView_();
+  _viewMode = next;
   syncMrdViewModeUi_();
-  renderAll();
+  if (wasExecutive && next === 'detail') {
+    scheduleRebuildAndRender_({ fullDetail: true });
+    scheduleNblRiserResolve_();
+  } else {
+    renderAll();
+  }
 }
 
 function renderDetailSections_() {
@@ -1820,6 +1746,7 @@ function renderEudrSection(rows, loading) {
 
 function renderAll() {
   if (!_snapshot) return;
+  mrdEnsureContentVisible_();
   syncPeriodFromUi_();
   syncMrdViewModeUi_();
   renderKpis(_snapshot.stats, {
@@ -1832,9 +1759,7 @@ function renderAll() {
   if (_viewMode === 'executive') {
     if (sections) sections.hidden = true;
     if (execEl) execEl.hidden = false;
-    scheduleRenderMrdExecutive_();
   } else {
-    destroyMrdExecutiveCharts_();
     if (execEl) execEl.hidden = true;
     if (sections) {
       sections.hidden = false;
@@ -1867,6 +1792,14 @@ function setUiLoading(show) {
   if (content) content.hidden = show;
 }
 
+/** Full-page MRD spinner is only for empty state; never block KPI + sections once we have a snapshot. */
+function mrdEnsureContentVisible_() {
+  const loading = document.getElementById('mrdLoading');
+  const content = document.getElementById('mrdContent');
+  if (loading) loading.hidden = true;
+  if (content) content.hidden = false;
+}
+
 async function loadFacilityInBackground(gen, opts) {
   opts = opts || {};
   const facilityPeriod = getFacilityReportContext_();
@@ -1881,10 +1814,7 @@ async function loadFacilityInBackground(gen, opts) {
     return;
   }
   _facilityPending = true;
-  if (_snapshot) {
-    _snapshot.facilityLoading = true;
-    scheduleRenderAll();
-  }
+  if (_snapshot) { _snapshot.facilityLoading = true; scheduleRenderAll(); }
   try {
     if (_deps.loadFacilityBundlesForReport) {
       _facilityBundles = mrdSortFacilityBundles_(await _deps.loadFacilityBundlesForReport(facilityPeriod) || []);
@@ -1894,6 +1824,9 @@ async function loadFacilityInBackground(gen, opts) {
       _facilityBundles = mrdSortFacilityBundles_(_deps.getFacilityBundles(facilityPeriod) || []);
     }
     _facilityBundlesPeriodKey = periodKey;
+    if (gen !== _loadGen) return;
+    // Yield to browser before updating snapshot
+    await new Promise(function(r) { setTimeout(r, 0); });
     if (gen !== _loadGen) return;
     if (_snapshot) {
       _snapshot.facilityBundles = _facilityBundles;
@@ -1912,8 +1845,7 @@ async function loadFacilityInBackground(gen, opts) {
     }
   } finally {
     _facilityPending = false;
-    if (gen === _loadGen) mrdRebuildIfMillsLoaded_();
-    // Guard: always clear loading flag so it can't get permanently stuck
+    if (gen === _loadGen) setTimeout(function() { mrdRebuildIfMillsLoaded_(); }, 0);
     if (_snapshot && _snapshot.facilityLoading) {
       _snapshot.facilityLoading = false;
       scheduleRenderAll();
@@ -1983,19 +1915,19 @@ function mrdRebuildIfMillsLoaded_() {
   if (!millData.length) return false;
   const prevTotal = (_snapshot.stats && _snapshot.stats.totalMills) || 0;
   if (prevTotal > 0) return false;
-  _snapshot = rebuildSnapshot_({
+  scheduleRebuildAndRender_({
     facilityBundles: _facilityBundles,
     facilityLoading: false,
     sddRows: _sddCache,
     sddLoading: false,
   });
-  scheduleRenderAll();
   updateScopeText();
   scheduleNblRiserResolve_();
   return true;
 }
 
 function scheduleNblRiserResolve_() {
+  if (mrdIsExecutiveView_()) return _loadGen;
   const gen = _loadGen;
   resolveNblMillsForSnapshot_().catch(function() {});
   return gen;
@@ -2003,6 +1935,11 @@ function scheduleNblRiserResolve_() {
 
 function rebuildSnapshot_(opts) {
   opts = opts || {};
+  if (opts.fullDetail) {
+    opts = Object.assign({}, opts, { lightweight: false });
+  } else if (opts.lightweight == null && mrdIsExecutiveView_()) {
+    opts = Object.assign({}, opts, { lightweight: true });
+  }
   const prev = _snapshot || {};
   const snap = buildSnapshotSync({
     reportPeriod: opts.reportPeriod || getReportPeriod_(),
@@ -2012,6 +1949,8 @@ function rebuildSnapshot_(opts) {
     sddLoading: opts.sddLoading != null ? opts.sddLoading : !!prev.sddLoading,
     facilityBundles: opts.facilityBundles != null ? opts.facilityBundles : (prev.facilityBundles || _facilityBundles),
     facilityLoading: opts.facilityLoading != null ? opts.facilityLoading : !!prev.facilityLoading,
+    lightweight: opts.lightweight,
+    fullDetail: opts.fullDetail,
   });
   syncNblCacheToSnapshot_(snap);
   _lastTtpCount = (_deps && _deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
@@ -2020,15 +1959,18 @@ function rebuildSnapshot_(opts) {
 
 function rebuildMonthlyReportSnapshot_() {
   if (!_deps) return;
+  if (!mrdPanelIsActive_()) {
+    _mrdRebuildWhenInactive = true;
+    return;
+  }
   const ttpLen = (_deps.getTtpData ? (_deps.getTtpData() || []).length : 0);
   _ttpFetchOk = ttpLen > 0;
   if (_eudrFetchOk && ttpLen > 0 && ttpLen !== _lastEudrTtpCount) {
     if (_deps.clearEudrCache) _deps.clearEudrCache();
   }
-  _snapshot = rebuildSnapshot_({});
-  scheduleRenderAll();
+  scheduleRebuildAndRender_({});
   updateScopeText();
-  if (!_eudrFetchOk && !_eudrPending && _deps.fetchEudrPotential) {
+  if (!_eudrFetchOk && !_eudrPending && _deps.fetchEudrPotential && mrdPanelIsActive_()) {
     loadEudrInBackground(_loadGen, {});
   }
 }
@@ -2037,13 +1979,15 @@ async function loadMillInBackground(gen) {
   const loadMill = _deps.ensureMillData || _deps.ensureCoreData;
   if (!loadMill) return;
   try {
-    await withTimeout(loadMill(), 90000, 'Mill data');
+    await withTimeout(loadMill(), 45000, 'Mill data');
     if (gen !== _loadGen) return;
-    _snapshot = rebuildSnapshot_({});
-    scheduleRenderAll();
+    scheduleRebuildAndRender_({});
     updateScopeText();
     populateYearSelect();
-    await resolveNblMillsForSnapshot_();
+    // Resolve NBL after rebuild settles
+    setTimeout(function() {
+      if (gen === _loadGen) resolveNblMillsForSnapshot_().catch(function() {});
+    }, 120);
   } catch (err) {
     if (gen !== _loadGen) return;
     updateScopeText('mill: ' + (err && err.message ? err.message : String(err)));
@@ -2066,6 +2010,7 @@ function millNeedsNblRiserResolve_(item) {
 
 async function resolveNblMillsForSnapshot_(preloadedLists) {
   if (!_snapshot || !_deps.ensureNblLists || !_deps.resolveNblBy) return;
+  if (mrdIsExecutiveView_() && !preloadedLists) return;
   const loadGen = _loadGen;
   try {
     const lists = preloadedLists || await _deps.ensureNblLists();
@@ -2075,10 +2020,15 @@ async function resolveNblMillsForSnapshot_(preloadedLists) {
       syncNblCacheToSnapshot_();
       return;
     }
-    pending.forEach(function(item) {
+    for (let i = 0; i < pending.length; i++) {
+      const item = pending[i];
       const info = _deps.resolveNblBy(item.row, lists);
       if (item.cacheKey) _nblByCache.set(item.cacheKey, info);
-    });
+      if (i > 0 && i % 20 === 0) {
+        await new Promise(function(r) { setTimeout(r, 0); });
+        if (loadGen !== _loadGen || !_snapshot) return;
+      }
+    }
     syncNblCacheToSnapshot_();
     scheduleRenderAll();
   } catch (err) {
@@ -2102,13 +2052,16 @@ async function loadSupplementalInBackground(gen) {
     scheduleRenderAll();
   }
   try {
-    await withTimeout(_deps.ensureSupplementalData(), 120000, 'Traceability & grievance');
+    await withTimeout(_deps.ensureSupplementalData(), 45000, 'Traceability & grievance');
     if (gen !== _loadGen) return;
-    _snapshot = rebuildSnapshot_({});
-    await resolveNblMillsForSnapshot_();
+    // Yield to browser before heavy rebuild
+    await new Promise(function(r) { setTimeout(r, 0); });
     if (gen !== _loadGen) return;
-    scheduleRenderAll();
+    scheduleRebuildAndRender_({});
     updateScopeText();
+    setTimeout(function() {
+      if (gen === _loadGen) resolveNblMillsForSnapshot_().catch(function() {});
+    }, 200);
   } catch (err) {
     if (gen !== _loadGen) return;
     updateScopeText('supplemental data: timeout — click Refresh to try again');
@@ -2126,24 +2079,20 @@ async function loadSddInBackground(gen, opts) {
   if (!_deps.fetchSddList) return;
   if (!opts.force && _sddCache.length) {
     if (_snapshot) {
-      _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
-      scheduleRenderAll();
+      scheduleRebuildAndRender_({ sddRows: _sddCache, sddLoading: false });
     }
     return;
   }
-  _snapshot = rebuildSnapshot_({ sddLoading: true });
-  scheduleRenderAll();
+  if (_snapshot) { _snapshot.sddLoading = true; scheduleRenderAll(); }
   try {
     const rows = await withTimeout(_deps.fetchSddList(), 20000, 'SDD');
     if (gen !== _loadGen) return;
     _sddCache = Array.isArray(rows) ? rows : [];
-    _snapshot = rebuildSnapshot_({ sddRows: _sddCache, sddLoading: false });
-    scheduleRenderAll();
+    scheduleRebuildAndRender_({ sddRows: _sddCache, sddLoading: false });
     updateScopeText();
   } catch (err) {
     if (gen !== _loadGen) return;
-    _snapshot = rebuildSnapshot_({ sddLoading: false });
-    scheduleRenderAll();
+    if (_snapshot) { _snapshot.sddLoading = false; scheduleRenderAll(); }
     updateScopeText('SDD: ' + (err && err.message ? err.message : 'failed to load'));
   }
 }
@@ -2181,8 +2130,10 @@ async function loadAndRender(opts) {
   if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
 
   try {
+    mrdEnsureContentVisible_();
     // Selalu tampilkan UI dari cache memori — jangan blokir menunggu network
     // Reset loading flags so they don't stay stuck from a previous generation
+    await new Promise(function(r) { requestAnimationFrame(r); });
     _snapshot = rebuildSnapshot_({ eudrLoading: false, facilityLoading: false });
     mrdSyncMonthOptions_();
     syncPeriodFromUi_(); // re-read _month after auto-correct
@@ -2244,6 +2195,7 @@ function bindOnce() {
     monthSel._mrdBound = true;
     monthSel.addEventListener('change', function() {
       syncPeriodFromUi_();
+      _monthAutoSelected = true;
       _nblByCache.clear();
       _facilityBundles = [];
       _facilityBundlesPeriodKey = '';
@@ -2333,9 +2285,17 @@ export function initMonthlyReport_(deps) {
       && _snapshot.stats.totalMills > 0
       && _snapshot.stats.emptyTraceMills >= _snapshot.stats.totalMills
       && ttpLen > 0;
-    if (!opts.force && _snapshot && !ttpStale && !eudrStale && !traceSuspicious) {
+    const pendingInactiveRebuild = _mrdRebuildWhenInactive;
+    if (pendingInactiveRebuild) _mrdRebuildWhenInactive = false;
+    if (!opts.force && _snapshot && !ttpStale && !eudrStale && !traceSuspicious && !pendingInactiveRebuild) {
       renderAll();
       updateScopeText();
+      return;
+    }
+    if (pendingInactiveRebuild && _snapshot && !opts.force) {
+      scheduleRebuildAndRender_({});
+      updateScopeText();
+      renderAll();
       return;
     }
     loadAndRender(opts);

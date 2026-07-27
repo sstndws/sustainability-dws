@@ -10224,16 +10224,26 @@ body.eudr-ffb-modal-open { overflow: hidden; }
 #panel-monthly-report-detail.mrd-panel--executive .mrd-kpi-row.stats-row {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-@media (min-width: 1100px) {
-  #panel-monthly-report-detail.mrd-panel--executive .mrd-kpi-row.stats-row {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
+#panel-monthly-report-detail #mrdLoading[hidden] {
+  display: none !important;
 }
 #panel-monthly-report-detail .mrd-executive-view[hidden] {
   display: none !important;
 }
 #panel-monthly-report-detail .mrd-executive-view {
   margin-bottom: 16px;
+}
+#panel-monthly-report-detail .mrd-exec-intro {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid #E6DCDC;
+  background: linear-gradient(180deg, #FFFBFB 0%, #FAF6F6 100%);
+}
+#panel-monthly-report-detail .mrd-exec-intro__lead {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #3D2A2A;
 }
 #panel-monthly-report-detail .mrd-exec-block {
   margin-bottom: 14px;

@@ -1716,6 +1716,101 @@ function drawSummaryReportBody_(ctx, data, sections, stats, year, eudrCompanySet
   });
 }
 
+/** Executive PDF — same section KPI cards as Summary, without detail tables. */
+function drawExecutiveContextLines_(ctx) {
+  if (!ctx.dataPeriodText && !ctx.cutoffText) return;
+  const doc = ctx.doc;
+  ctx.ensureSpace_(12);
+  let y = ctx.getY() + 1;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor.apply(doc, INK_MUTED);
+  if (ctx.dataPeriodText) {
+    doc.text(ctx.dataPeriodText, ctx.mL, y);
+    y += 4;
+  }
+  if (ctx.cutoffText) {
+    doc.text(ctx.cutoffText, ctx.mL, y);
+    y += 5;
+  }
+  ctx.setY(y);
+  ctx.markContent_(y);
+}
+
+function drawExecutiveSummaryBody_(ctx, data, sections, stats, year) {
+  const bodySections = mrdPdfSectionsNoDupHighRisk_(sections.filter(function(id) { return id !== 'kpi'; }));
+  bodySections.forEach(function(id) {
+    const cfg = sectionSummaryConfig_(id, stats, data, year);
+    if (!cfg) return;
+    drawSectionSummaryBlock_(ctx, id, cfg);
+  });
+}
+
+/** Same section metrics/captions as Summary & Executive card PDF — for chart executive export. */
+export function mrdBuildExecutiveChartBundle_(data, opts) {
+  opts = opts || {};
+  const stats = (data && data.stats) || {};
+  const year = opts.year != null ? opts.year : ((data && data.reportPeriod && data.reportPeriod.year) || '');
+  const sections = (opts.sections && opts.sections.length)
+    ? opts.sections
+    : ['kpi', 'sdd', 'highRisk', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'];
+  const bodySections = mrdPdfSectionsNoDupHighRisk_(sections.filter(function(id) { return id !== 'kpi'; }));
+  return bodySections.map(function(id) {
+    const cfg = sectionSummaryConfig_(id, stats, data, year);
+    if (!cfg) return null;
+    return {
+      id: id,
+      num: cfg.num,
+      title: cfg.title,
+      caption: cfg.desc,
+      metrics: cfg.metrics || [],
+    };
+  }).filter(Boolean);
+}
+
+export function mrdOverviewKpiItems_(stats) {
+  return websiteKpiItems_(stats);
+}
+
+export function buildExecutivePdfDoc_(jsPDFLib, opts) {
+  const data = opts.data || {};
+  const stats = data.stats || {};
+  const sections = (opts.sections && opts.sections.length) ? opts.sections : DEFAULT_SECTIONS.slice();
+  const ctx = createPdfContext_(jsPDFLib, { pdfMode: 'summary' });
+  applyReportHeaderMeta_(ctx, opts.year, opts.month, {
+    year: opts.dataYear,
+    month: opts.dataMonth,
+  });
+  ctx.reportTitle = 'Monthly Report — Executive Summary';
+  ctx.reportSubtitle = '';
+
+  const headerEnd = ctx.drawMainHeader_();
+  ctx.setY(headerEnd + PDF_LAYOUT.bodyGap);
+  drawExecutiveContextLines_(ctx);
+
+  if (sections.indexOf('kpi') !== -1) {
+    docSetSubhead_(ctx, 'Overview');
+    drawMetricCardGrid_(ctx, websiteKpiItems_(stats), {
+      cols: 4,
+      cardH: OVERVIEW_KPI_CARD_H,
+      gap: PDF_LAYOUT.cardGap,
+      gapAfter: PDF_LAYOUT.sectionGap,
+    });
+  }
+
+  const bodyYear = opts.dataYear != null ? opts.dataYear : opts.year;
+  drawExecutiveSummaryBody_(ctx, data, sections, stats, bodyYear);
+  return finalizePdf_(ctx);
+}
+
+export async function buildAndSaveMrdExecutivePdf_(opts) {
+  const jsPDFLib = typeof opts.getJsPDF === 'function' ? opts.getJsPDF() : null;
+  if (!jsPDFLib) throw new Error('PDF library is not ready.');
+  const doc = buildExecutivePdfDoc_(jsPDFLib, opts);
+  const filename = opts.filename || 'Monthly Report Executive.pdf';
+  doc.save(filename);
+}
+
 function drawDetailReportBody_(ctx, data, sections, year, eudrCompanySet) {
   const ordered = mrdPdfSectionsNoDupHighRisk_(['sdd', 'highRisk', 'mill', 'trace', 'grv', 'nbl', 'facility', 'eudr'])
     .filter(function(id) { return sections.indexOf(id) !== -1; });

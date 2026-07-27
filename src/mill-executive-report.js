@@ -34,10 +34,14 @@ export function quarterAsOfLabel_(year, quarter) {
 }
 
 export function millExecutivePeriodLabel_(year, quarter) {
+  if (String(quarter) === 'full') return 'Full Year ' + year;
   return 'Q' + quarter + ' ' + year + ' (' + quarterMonthRangeLabel_(quarter) + ')';
 }
 
 export function millExecutiveFilename_(year, quarter) {
+  if (String(quarter) === 'full') {
+    return 'Mill Onboarding Executive Report - ' + year + ' Full Year.pdf';
+  }
   return 'Mill Onboarding Executive Report - ' + year + ' Q' + quarter + '.pdf';
 }
 
@@ -330,6 +334,75 @@ function barOptions_(horizontal, canvas, maxLabelLen) {
   };
 }
 
+/** Grouped / stacked bar charts for full-year quarter comparison (small PDF panels). */
+function quarterCompareBarOptions_(canvas, opts) {
+  opts = opts || {};
+  const w = canvas ? canvas.width : 320;
+  const h = canvas ? canvas.height : 320;
+  const fs = Math.round(Math.min(w, h) * 0.028);
+  const stacked = opts.stacked === true;
+  const yScale = {
+    stacked: stacked,
+    beginAtZero: true,
+    grid: { color: 'rgba(139, 26, 26, 0.08)' },
+    ticks: {
+      font: { size: Math.max(8, fs - 1), family: PDF_FONT_SANS },
+      precision: opts.yPct ? 0 : undefined,
+      callback: opts.yPct
+        ? function(v) { return v + '%'; }
+        : (opts.yTon
+          ? function(v) {
+            const n = Number(v);
+            if (isNaN(n)) return v;
+            if (n >= 1000) return (Math.round(n / 100) / 10) + 'k';
+            return n;
+          }
+          : undefined),
+    },
+  };
+  if (opts.yMax != null) yScale.max = opts.yMax;
+
+  return {
+    responsive: false,
+    animation: false,
+    width: w,
+    height: h,
+    layout: { padding: { top: 4, right: 6, bottom: 2, left: 4 } },
+    plugins: {
+      legend: {
+        display: opts.legend !== false,
+        position: 'bottom',
+        labels: {
+          boxWidth: 10,
+          padding: opts.legendCompact ? 4 : 8,
+          font: { size: Math.max(7, fs - 1), family: PDF_FONT_SANS },
+        },
+      },
+    },
+    scales: {
+      x: {
+        stacked: stacked,
+        grid: { display: false },
+        ticks: { font: { size: Math.max(9, fs), family: PDF_FONT_SANS } },
+      },
+      y: yScale,
+    },
+  };
+}
+
+function quarterCompareGroupedDatasets_(keys, seriesMap, palette) {
+  return keys.map(function(name, i) {
+    const c = palette[i % palette.length];
+    return {
+      label: truncLabel_(name, 16),
+      data: seriesMap[name],
+      backgroundColor: c + (c.length === 7 ? 'D9' : ''),
+      borderRadius: 3,
+      borderSkipped: false,
+    };
+  });
+}
+
 export function renderMillExecutiveCharts_(Chart, snapshot, els) {
   destroyMillExecutiveCharts_();
   if (!Chart || !snapshot || !els) return;
@@ -575,6 +648,412 @@ export async function renderMillExecutiveChartsAsync_(Chart, snapshot, els) {
   }
 }
 
+function lineChartOptions_(canvas, yAxisPct) {
+  const w = canvas ? canvas.width : 760;
+  const h = canvas ? canvas.height : 380;
+  const opts = {
+    responsive: false,
+    animation: false,
+    width: w,
+    height: h,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          boxWidth: 14,
+          padding: h <= 320 ? 8 : 14,
+          font: { size: Math.round(h * (h <= 320 ? 0.028 : 0.032)), family: PDF_FONT_SANS },
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { size: h <= 320 ? 10 : 12, family: PDF_FONT_SANS } },
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          font: { size: h <= 320 ? 9 : 11, family: PDF_FONT_SANS },
+          precision: 0,
+          callback: yAxisPct
+            ? function(v) { return v + '%'; }
+            : undefined,
+        },
+        grid: { color: 'rgba(139, 26, 26, 0.08)' },
+      },
+    },
+  };
+  if (yAxisPct) opts.scales.y.max = 100;
+  return opts;
+}
+
+function millExecTtpPctFromSnapshot_(snapshot) {
+  const ttpPct = snapshot.ttpTrace && !isNaN(snapshot.ttpTrace.pct)
+    ? Math.min(100, Math.max(0, snapshot.ttpTrace.pct))
+    : null;
+  if (ttpPct != null) return Math.round(ttpPct * 10) / 10;
+  const t = snapshot.traceability || {};
+  const traceTotal = (t.Traceable || 0) + (t.Untraceable || 0);
+  if (!traceTotal) return null;
+  return Math.round(((t.Traceable || 0) / traceTotal) * 1000) / 10;
+}
+
+function millExecGrvPctFromSnapshot_(snapshot) {
+  const grv = snapshot.grievanceProgress || {};
+  if (!grv.total) return grv.year ? 0 : null;
+  return grv.pct != null ? grv.pct : Math.round((grv.closed / grv.total) * 100);
+}
+
+/**
+ * Build series for full-year comparison charts (same metrics as quarterly executive).
+ * @param {Array<{ quarter, label, snapshot }>} quarterRows — ordered Q1…Q4 with data
+ */
+export function buildMillExecutiveQuarterlyComparison_(quarterRows) {
+  const rows = (quarterRows || []).filter(function(r) { return r && r.snapshot; });
+  const labels = rows.map(function(r) { return r.label || ('Q' + r.quarter); });
+
+  function pickTopKeys_(key, limit) {
+    const totals = {};
+    rows.forEach(function(r) {
+      const obj = r.snapshot[key] || {};
+      Object.keys(obj).forEach(function(k) {
+        totals[k] = (totals[k] || 0) + (obj[k] || 0);
+      });
+    });
+    return topEntries_(totals, limit || 4).map(function(e) { return e[0]; });
+  }
+
+  const kpis = { totalMills: [], groupCount: [], highRisk: [], nbl: [] };
+  const riskHigh = [];
+  const riskMedium = [];
+  const riskLow = [];
+  const nblCount = [];
+  const nblPct = [];
+  const nonNblCount = [];
+  const ttpPct = [];
+  const grvClosedPct = [];
+
+  rows.forEach(function(r) {
+    const s = r.snapshot;
+    const total = s.totalMills || 0;
+    kpis.totalMills.push(total);
+    kpis.groupCount.push(s.groupCount != null ? s.groupCount : s.groups.size);
+    kpis.highRisk.push(s.highRisk || 0);
+    kpis.nbl.push(s.nbl || 0);
+    riskHigh.push(s.riskBuckets.High || 0);
+    riskMedium.push(s.riskBuckets.Medium || 0);
+    riskLow.push(s.riskBuckets.Low || 0);
+    nblCount.push(s.nbl || 0);
+    nonNblCount.push(Math.max(0, total - (s.nbl || 0)));
+    nblPct.push(total ? Math.round(((s.nbl || 0) / total) * 100) : 0);
+    const tp = millExecTtpPctFromSnapshot_(s);
+    ttpPct.push(tp != null ? tp : null);
+    const gp = millExecGrvPctFromSnapshot_(s);
+    grvClosedPct.push(gp != null ? gp : null);
+  });
+
+  const provinceKeys = pickTopKeys_('provinces');
+  const supplierKeys = pickTopKeys_('facilityQty');
+  const provinceSeries = {};
+  const supplierSeries = {};
+  provinceKeys.forEach(function(name) {
+    provinceSeries[name] = rows.map(function(r) {
+      return (r.snapshot.provinces && r.snapshot.provinces[name]) || 0;
+    });
+  });
+  supplierKeys.forEach(function(name) {
+    supplierSeries[name] = rows.map(function(r) {
+      return (r.snapshot.facilityQty && r.snapshot.facilityQty[name]) || 0;
+    });
+  });
+
+  return {
+    labels: labels,
+    quarters: rows.map(function(r) { return r.quarter; }),
+    kpis: kpis,
+    riskHigh: riskHigh,
+    riskMedium: riskMedium,
+    riskLow: riskLow,
+    nblCount: nblCount,
+    nonNblCount: nonNblCount,
+    nblPct: nblPct,
+    ttpPct: ttpPct,
+    grvClosedPct: grvClosedPct,
+    provinceSeries: provinceSeries,
+    supplierSeries: supplierSeries,
+  };
+}
+
+function quarterCompareLineOptions_(canvas, opts) {
+  opts = opts || {};
+  const o = lineChartOptions_(canvas, opts.yPct);
+  if (canvas && canvas.height <= 320) {
+    o.plugins.legend.labels.font.size = Math.max(7, Math.round(canvas.height * 0.026));
+    o.plugins.legend.labels.padding = 6;
+    o.plugins.legend.labels.boxWidth = 10;
+  }
+  if (opts.yPct && o.scales && o.scales.y) {
+    // Headroom so 100% points / markers are not clipped at the chart top
+    o.scales.y.max = 110;
+    o.scales.y.grace = '8%';
+    const prevTickCb = o.scales.y.ticks.callback;
+    o.scales.y.ticks.callback = function(v) {
+      const n = Number(v);
+      if (!isNaN(n) && n > 100) return '';
+      if (prevTickCb) return prevTickCb.call(this, v);
+      return v + '%';
+    };
+  }
+  o.layout = Object.assign({ padding: { top: 14, right: 8, bottom: 2, left: 4 } }, o.layout || {});
+  return o;
+}
+
+function renderMillExecutiveFullYearComparisonBody_(Chart, bundle, els) {
+  if (!Chart || !bundle || !els) return;
+  const labels = bundle.labels || [];
+  const barPalette = ['#2563EB', '#C03030', '#E67E22', '#7C3AED', '#0D9488', '#B45309'];
+  const nblQuarterColors = ['#C2410C', '#EA580C', '#F97316', '#FB923C'];
+
+  // 1) Risk — stacked bar (composition per quarter)
+  if (els.risk && labels.length) {
+    chartInstances.risk = new Chart(els.risk, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'High', data: bundle.riskHigh, backgroundColor: CHART_COLORS.High, stack: 'risk', borderRadius: 2 },
+          { label: 'Medium', data: bundle.riskMedium, backgroundColor: CHART_COLORS.Medium, stack: 'risk', borderRadius: 2 },
+          { label: 'Low', data: bundle.riskLow, backgroundColor: CHART_COLORS.Low, stack: 'risk', borderRadius: 2 },
+        ],
+      },
+      options: quarterCompareBarOptions_(els.risk, { stacked: true, legendCompact: true }),
+    });
+  }
+
+  // 2) NBL — pie (share of NBL mills across quarters)
+  if (els.nbl && labels.length) {
+    const nblData = (bundle.nblCount || []).map(function(v) { return v || 0; });
+    const hasNbl = nblData.some(function(v) { return v > 0; });
+    chartInstances.nbl = new Chart(els.nbl, {
+      type: 'pie',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: hasNbl ? nblData : [1],
+          backgroundColor: hasNbl
+            ? nblQuarterColors.slice(0, labels.length)
+            : ['#E2E8F0'],
+          borderWidth: 2,
+          borderColor: '#fff',
+        }],
+      },
+      options: Object.assign({}, pieOptions_(els.nbl), {
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              boxWidth: Math.round(els.nbl.width * 0.022),
+              padding: Math.round(els.nbl.height * 0.018),
+              font: { size: Math.round(els.nbl.height * 0.032), family: PDF_FONT_SANS },
+            },
+          },
+        },
+      }),
+      plugins: hasNbl ? [PIE_PCT_PLUGIN] : [],
+    });
+  }
+
+  // 3) TTP — area chart (trend % traceable)
+  if (els.traceability && labels.length) {
+    chartInstances.traceability = new Chart(els.traceability, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '% traceable',
+          data: bundle.ttpPct,
+          borderColor: '#2563EB',
+          backgroundColor: 'rgba(37, 99, 235, 0.32)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: '#2563EB',
+          tension: 0.35,
+          fill: true,
+          clip: false,
+        }],
+      },
+      options: quarterCompareLineOptions_(els.traceability, { yPct: true }),
+    });
+  }
+
+  // 4) Grievance — line (% closed by quarter)
+  if (els.grievance && labels.length) {
+    chartInstances.grievance = new Chart(els.grievance, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '% closed',
+          data: bundle.grvClosedPct,
+          borderColor: '#0EA5E9',
+          backgroundColor: 'rgba(14, 165, 233, 0.15)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointHoverRadius: 4,
+          tension: 0.2,
+          fill: false,
+          clip: false,
+        }],
+      },
+      options: quarterCompareLineOptions_(els.grievance, { yPct: true }),
+    });
+  }
+
+  // 5) Province — horizontal grouped bar (top 3 provinces)
+  if (els.province && labels.length) {
+    const provKeys = Object.keys(bundle.provinceSeries || {}).slice(0, 3);
+    const hOpts = barOptions_(true, els.province, 12);
+    hOpts.plugins.legend = {
+      display: true,
+      position: 'bottom',
+      labels: {
+        boxWidth: 10,
+        padding: 6,
+        font: { size: Math.round(els.province.height * 0.032), family: PDF_FONT_SANS },
+      },
+    };
+    chartInstances.province = new Chart(els.province, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: quarterCompareGroupedDatasets_(provKeys, bundle.provinceSeries, barPalette),
+      },
+      options: hOpts,
+    });
+  }
+
+  // 6) Top supplier — vertical grouped bar
+  if (els.facilityQty && labels.length) {
+    const supKeys = Object.keys(bundle.supplierSeries || {});
+    chartInstances.facilityQty = new Chart(els.facilityQty, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: quarterCompareGroupedDatasets_(supKeys, bundle.supplierSeries, barPalette),
+      },
+      options: quarterCompareBarOptions_(els.facilityQty, { yTon: true, legendCompact: true }),
+    });
+  }
+}
+
+/** Full-year — six slots; mixed chart types (bar / pie / area / line). */
+export async function renderMillExecutiveFullYearComparisonChartsAsync_(Chart, bundle, els) {
+  destroyMillExecutiveCharts_();
+  if (!Chart || !bundle || !els) return;
+  const order = ['risk', 'nbl', 'traceability', 'grievance', 'province', 'facilityQty'];
+  for (let i = 0; i < order.length; i++) {
+    const key = order[i];
+    const partial = {};
+    partial[key] = els[key];
+    renderMillExecutiveFullYearComparisonBody_(Chart, bundle, partial);
+    await yieldToBrowser_(32);
+  }
+}
+
+export function buildMillExecutiveFullYearInsights_(bundle, meta) {
+  const insights = [];
+  const labels = bundle.labels || [];
+  const k = bundle.kpis || {};
+  if (labels.length && k.totalMills && k.totalMills.length) {
+    const a = k.totalMills[0];
+    const b = k.totalMills[k.totalMills.length - 1];
+    insights.push({
+      label: 'Mills',
+      value: labels[0] + ' ' + a + ' → ' + labels[labels.length - 1] + ' ' + b
+        + (b !== a ? (' (' + (b >= a ? '+' : '') + (b - a) + ')') : ''),
+      tone: 'neutral',
+    });
+  }
+  if (bundle.ttpPct && bundle.ttpPct.filter(function(v) { return v != null; }).length) {
+    const vals = bundle.ttpPct.filter(function(v) { return v != null; });
+    insights.push({
+      label: 'TTP',
+      value: 'Traceable ' + vals[0] + '% → ' + vals[vals.length - 1] + '% by quarter',
+      tone: 'neutral',
+    });
+  }
+  if (k.highRisk && k.highRisk.length) {
+    insights.push({
+      label: 'High risk',
+      value: labels[0] + ' ' + k.highRisk[0] + ' → ' + labels[labels.length - 1] + ' ' + k.highRisk[k.highRisk.length - 1] + ' mills',
+      tone: 'neutral',
+    });
+  }
+  if (k.nbl && k.nbl.length) {
+    insights.push({
+      label: 'NBL',
+      value: labels[0] + ' ' + k.nbl[0] + ' → ' + labels[labels.length - 1] + ' ' + k.nbl[k.nbl.length - 1] + ' mills on NBL',
+      tone: 'neutral',
+    });
+  }
+  const provNames = Object.keys(bundle.provinceSeries || {});
+  if (provNames.length) {
+    const top = provNames[0];
+    const ser = bundle.provinceSeries[top];
+    insights.push({
+      label: 'Top province',
+      value: truncLabel_(top, 22) + ' · ' + ser[0] + ' → ' + ser[ser.length - 1] + ' mills',
+      tone: 'neutral',
+    });
+  }
+  insights.push({
+    label: 'Scope',
+    value: 'Full year ' + (meta.year || '') + ' · ' + labels.join(', ') + ' compared',
+    tone: 'neutral',
+  });
+  return insights.slice(0, 6);
+}
+
+/** @deprecated — use full-year comparison grid instead */
+export function renderMillExecutiveQuarterlyLineChart_(Chart, canvas, trend) {
+  if (!Chart || !canvas || !trend || !trend.length) return;
+  const labels = trend.map(function(t) { return t.label; });
+  function series_(key) {
+    return trend.map(function(t) {
+      if (t.hasData === false) return null;
+      const v = t[key];
+      return v == null ? null : v;
+    });
+  }
+  const lineDs = function(label, key, color, bg) {
+    return {
+      label: label,
+      data: series_(key),
+      borderColor: color,
+      backgroundColor: bg,
+      borderWidth: 2.5,
+      pointRadius: 5,
+      tension: 0.25,
+      fill: false,
+      spanGaps: false,
+    };
+  };
+  chartInstances.quarterlyLine = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        lineDs('Total mills', 'totalMills', '#2563EB', 'rgba(37, 99, 235, 0.12)'),
+        lineDs('High risk', 'highRisk', '#C03030', 'rgba(192, 48, 48, 0.1)'),
+        lineDs('No buy list', 'nbl', '#E67E22', 'rgba(230, 126, 34, 0.1)'),
+        lineDs('Groups', 'groupCount', '#7C3AED', 'rgba(124, 58, 237, 0.08)'),
+      ],
+    },
+    options: lineChartOptions_(canvas),
+  });
+}
+
 function pdfDataUrlFormat_(dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string') return 'JPEG';
   if (dataUrl.indexOf('data:image/png') === 0) return 'PNG';
@@ -589,6 +1068,7 @@ export const MILL_EXEC_CHART_CARD_FILLS = {
   grievance: [249, 246, 241],
   province: [246, 249, 253],
   facilityQty: [249, 246, 241],
+  quarterlyLine: [246, 249, 253],
 };
 
 const PDF_CHART_JPEG_Q = 0.62;
@@ -722,24 +1202,46 @@ export function buildMillExecutiveInsights_(snapshot, meta) {
   return insights.slice(0, 6);
 }
 
-export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJsPDF) {
-  const JsPDF = typeof getJsPDF === 'function' ? getJsPDF() : null;
-  if (!JsPDF) throw new Error('PDF library not loaded. Refresh the page and try again.');
+const MILL_EXEC_PDF_PAL = {
+  hero: [252, 250, 246],
+  blush: [252, 248, 246],
+  mist: [246, 249, 253],
+  sand: [249, 246, 241],
+};
+const MILL_EXEC_PDF_CARD_ALPHA = 0.86;
 
-  const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
-  await registerPdfFonts_(doc);
+function millExecPdfWithCardAlpha_(doc, fn) {
+  const canAlpha = typeof doc.setGState === 'function' && typeof doc.GState === 'function';
+  if (canAlpha) {
+    doc.saveGraphicsState();
+    doc.setGState(new doc.GState({ opacity: MILL_EXEC_PDF_CARD_ALPHA }));
+  }
+  fn();
+  if (canAlpha) doc.restoreGraphicsState();
+}
 
-  const pw = doc.internal.pageSize.getWidth();
-  const ph = doc.internal.pageSize.getHeight();
-  const M  = 14;
-  const W  = pw - M * 2;
-  const imgs = chartImages || {};
+function millExecPdfSoftCard_(doc, cx, cy, cw, ch, fill, radius) {
+  radius = radius || 5;
+  millExecPdfWithCardAlpha_(doc, function() {
+    const sh = [
+      Math.max(0, fill[0] - 14),
+      Math.max(0, fill[1] - 14),
+      Math.max(0, fill[2] - 14),
+    ];
+    doc.setFillColor(sh[0], sh[1], sh[2]);
+    doc.roundedRect(cx + 0.4, cy + 0.6, cw, ch, radius, radius, 'F');
+    doc.setFillColor(fill[0], fill[1], fill[2]);
+    doc.roundedRect(cx, cy, cw, ch, radius, radius, 'F');
+  });
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(cx, cy, cw, ch, radius, radius, 'S');
+}
 
-  const pageBg = await getMillExecutiveBackgroundDataUrl_();
+async function millExecPdfApplyPageBackground_(doc, pw, ph, pageBg) {
   if (pageBg) {
     try {
-      const bgFmt = pdfDataUrlFormat_(pageBg);
-      doc.addImage(pageBg, bgFmt, 0, 0, pw, ph, undefined, 'FAST');
+      doc.addImage(pageBg, pdfDataUrlFormat_(pageBg), 0, 0, pw, ph, undefined, 'FAST');
       await yieldToBrowser_(16);
     } catch (err) {
       console.warn('[Mill Executive] Page background skipped:', err);
@@ -750,77 +1252,44 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
     doc.setFillColor(250, 247, 242);
     doc.rect(0, 0, pw, ph, 'F');
   }
+}
 
-  const CARD_ALPHA = 0.86;
-  function withCardAlpha_(fn) {
-    const canAlpha = typeof doc.setGState === 'function' && typeof doc.GState === 'function';
-    if (canAlpha) {
-      doc.saveGraphicsState();
-      doc.setGState(new doc.GState({ opacity: CARD_ALPHA }));
-    }
-    fn();
-    if (canAlpha) doc.restoreGraphicsState();
-  }
+/** One landscape executive page (hero KPIs + chart grid + summary). */
+async function paintMillExecutiveReportPage_(doc, pw, ph, meta, snapshot, chartImages) {
+  const M = 14;
+  const W = pw - M * 2;
+  const imgs = chartImages || {};
+  const PAL = MILL_EXEC_PDF_PAL;
 
-  // Muted card palette — soft tints, not flat white
-  const PAL = {
-    hero: [252, 250, 246],
-    blush: [252, 248, 246],
-    mist: [246, 249, 253],
-    sand: [249, 246, 241],
-  };
+  const FOOTER_H = 5;
+  const INSIGHTS_H = 13;
+  const BOTTOM_PAD = 3;
+  const chartsMaxY = ph - FOOTER_H - BOTTOM_PAD - INSIGHTS_H - BOTTOM_PAD;
 
-  function softCard_(cx, cy, cw, ch, fill, radius) {
-    radius = radius || 5;
-    withCardAlpha_(function() {
-      const sh = [
-        Math.max(0, fill[0] - 14),
-        Math.max(0, fill[1] - 14),
-        Math.max(0, fill[2] - 14),
-      ];
-      doc.setFillColor(sh[0], sh[1], sh[2]);
-      doc.roundedRect(cx + 0.4, cy + 0.6, cw, ch, radius, radius, 'F');
-      doc.setFillColor(fill[0], fill[1], fill[2]);
-      doc.roundedRect(cx, cy, cw, ch, radius, radius, 'F');
-    });
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(0.35);
-    doc.roundedRect(cx, cy, cw, ch, radius, radius, 'S');
-  }
-
-  // Reserve bottom area first so nothing gets clipped
-  const FOOTER_H    = 5;
-  const INSIGHTS_H  = 13;
-  const BOTTOM_PAD  = 3;
-  const chartsMaxY  = ph - FOOTER_H - BOTTOM_PAD - INSIGHTS_H - BOTTOM_PAD;
-
-  // ── HERO CARD — title + meta + KPI in one soft box ───────────────
-  const HERO_Y  = 6;
-  const HERO_H  = 33;
+  const HERO_Y = 6;
+  const HERO_H = 33;
   const HERO_PAD = 6;
-  const innerX  = M + HERO_PAD;
+  const innerX = M + HERO_PAD;
 
-  softCard_(M, HERO_Y, W, HERO_H, PAL.hero, 6);
+  millExecPdfSoftCard_(doc, M, HERO_Y, W, HERO_H, PAL.hero, 6);
 
   const heroInnerW = W - HERO_PAD * 2;
-  const kpiAreaW   = heroInnerW * 0.44;
-  const textAreaW  = heroInnerW - kpiAreaW - 5;
-  const kpiAreaX   = innerX + textAreaW + 5;
+  const kpiAreaW = heroInnerW * 0.44;
+  const textAreaW = heroInnerW - kpiAreaW - 5;
+  const kpiAreaX = innerX + textAreaW + 5;
 
-  // Right — KPI mini boxes (colours match charts below)
   const kpis = [
     { label: 'Total mills', value: snapshot.totalMills, style: KPI_STYLES.totalMills },
-    { label: 'Groups',      value: snapshot.groupCount, style: KPI_STYLES.groups },
-    { label: 'High risk',   value: snapshot.highRisk,   style: KPI_STYLES.highRisk },
-    { label: 'No buy list', value: snapshot.nbl,        style: KPI_STYLES.noBuyList },
+    { label: 'Groups', value: snapshot.groupCount, style: KPI_STYLES.groups },
+    { label: 'High risk', value: snapshot.highRisk, style: KPI_STYLES.highRisk },
+    { label: 'No buy list', value: snapshot.nbl, style: KPI_STYLES.noBuyList },
   ];
   const kpiBoxGap = 2.5;
-  const kpiBoxW   = (kpiAreaW - kpiBoxGap * 3) / 4;
-  const kpiBoxH   = HERO_H - HERO_PAD * 2;
-  const kpiBoxY   = HERO_Y + HERO_PAD;
-  const kpiFill   = [255, 255, 252];
+  const kpiBoxW = (kpiAreaW - kpiBoxGap * 3) / 4;
+  const kpiBoxH = HERO_H - HERO_PAD * 2;
+  const kpiBoxY = HERO_Y + HERO_PAD;
+  const kpiFill = [255, 255, 252];
 
-  // Title block vertically centered with the KPI row (same optical midline).
   const titleLineGap = 7;
   const titleBlockH = 14;
   const titleTop = kpiBoxY + (kpiBoxH - titleBlockH) / 2;
@@ -833,10 +1302,16 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   doc.setFontSize(10);
   doc.setTextColor(55, 48, 45);
   doc.text('Executive report  ·  ' + meta.periodLabel, innerX, titleTop + 8 + titleLineGap);
+  if (meta.kpiCaption) {
+    setPdfFont_(doc, 'sans');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 100, 100);
+    doc.text(meta.kpiCaption, innerX, titleTop + 8 + titleLineGap + 4);
+  }
 
   kpis.forEach(function(k, i) {
     const boxX = kpiAreaX + i * (kpiBoxW + kpiBoxGap);
-    softCard_(boxX, kpiBoxY, kpiBoxW, kpiBoxH, kpiFill, 4);
+    millExecPdfSoftCard_(doc, boxX, kpiBoxY, kpiBoxW, kpiBoxH, kpiFill, 4);
 
     const st = k.style;
     setPdfFont_(doc, 'sans-bold');
@@ -850,24 +1325,38 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
     doc.text(k.label, boxX + kpiBoxW / 2, kpiBoxY + kpiBoxH / 2 + 5.5, { align: 'center' });
   });
 
-  // ── CHART GRID — soft cards, generous gaps ───────────────────────
   const chartsY = HERO_Y + HERO_H + 5;
-  const rowGap  = 4;
+  const rowGap = 4;
   const TITLE_H = 8;
   const IMG_PAD = 3;
   const col4Gap = 3.5;
-  const col4W   = (W - col4Gap * 3) / 4;
+  const col4W = (W - col4Gap * 3) / 4;
   const col2Gap = 4;
-  const col2W   = (W - col2Gap) / 2;
+  const col2W = (W - col2Gap) / 2;
   const chartArea = chartsMaxY - chartsY;
   const row1H = Math.floor(chartArea * 0.48);
   const row2H = chartArea - row1H - rowGap;
   const hBarW = MILL_EXEC_HBAR_CHART_SIZE.w;
   const hBarH = MILL_EXEC_HBAR_CHART_SIZE.h;
+  const compare = meta.fullYearComparison === true;
+  const chartTitles = compare ? {
+    risk: 'Risk level distribution',
+    nbl: 'No buy list status',
+    traceability: 'TTP supply traceability',
+    grievance: 'Grievance progress',
+    province: 'Province distribution',
+    facilityQty: 'Top supplier (supply qty, ton)',
+  } : {
+    risk: 'Risk level distribution',
+    nbl: 'No buy list status',
+    traceability: 'TTP supply traceability',
+    grievance: 'Grievance progress',
+    province: 'Province distribution',
+    facilityQty: 'Top supplier (supply qty, ton)',
+  };
 
-  /** Frosted chart card + title + chart image (matches executive mockup). */
   async function chartPanel_(title, imgKey, canvasW, canvasH, cx, cy, cw, ch, fill) {
-    softCard_(cx, cy, cw, ch, fill || PAL.mist, 5);
+    millExecPdfSoftCard_(doc, cx, cy, cw, ch, fill || PAL.mist, 5);
 
     setPdfFont_(doc, 'sans-bold');
     doc.setFontSize(8.5);
@@ -881,8 +1370,8 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
     const bw = cw - IMG_PAD * 2;
     const bh = ch - TITLE_H - IMG_PAD;
     const ratio = canvasW / canvasH;
-    const boxR  = bw / bh;
-    let dw, dh, dx, dy;
+    const boxR = bw / bh;
+    let dw; let dh; let dx; let dy;
     if (ratio > boxR) {
       dw = bw; dh = bw / ratio; dx = bx; dy = by + (bh - dh) / 2;
     } else {
@@ -893,18 +1382,18 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   }
 
   const r1y = chartsY;
-  await chartPanel_('Risk level distribution', 'risk',         320, 320, M,                              r1y, col4W, row1H, PAL.blush);
-  await chartPanel_('No buy list status',      'nbl',          320, 320, M + col4W + col4Gap,             r1y, col4W, row1H, PAL.mist);
-  await chartPanel_('TTP supply traceability', 'traceability', 320, 320, M + (col4W + col4Gap) * 2,       r1y, col4W, row1H, PAL.mist);
-  await chartPanel_('Grievance progress', 'grievance',          320, 320, M + (col4W + col4Gap) * 3,       r1y, col4W, row1H, PAL.sand);
+  await chartPanel_(chartTitles.risk, 'risk', 320, 320, M, r1y, col4W, row1H, PAL.blush);
+  await chartPanel_(chartTitles.nbl, 'nbl', 320, 320, M + col4W + col4Gap, r1y, col4W, row1H, PAL.mist);
+  await chartPanel_(chartTitles.traceability, 'traceability', 320, 320, M + (col4W + col4Gap) * 2, r1y, col4W, row1H, PAL.mist);
+  await chartPanel_(chartTitles.grievance, 'grievance', 320, 320, M + (col4W + col4Gap) * 3, r1y, col4W, row1H, PAL.sand);
 
   const r2y = r1y + row1H + rowGap;
-  await chartPanel_('Province distribution', 'province', hBarW, hBarH, M, r2y, col2W, row2H, PAL.mist);
-  await chartPanel_('Top supplier (supply qty, ton)', 'facilityQty', hBarW, hBarH, M + col2W + col2Gap, r2y, col2W, row2H, PAL.sand);
+  await chartPanel_(chartTitles.province, 'province', hBarW, hBarH, M, r2y, col2W, row2H, PAL.mist);
+  await chartPanel_(chartTitles.facilityQty, 'facilityQty', hBarW, hBarH, M + col2W + col2Gap, r2y, col2W, row2H, PAL.sand);
 
-  // ── SUMMARY — single bold line ───────────────────────────────────
   const insightsY = chartsMaxY + BOTTOM_PAD;
-  const insights = buildMillExecutiveInsights_(snapshot, meta);
+  const insights = meta.customInsights
+    || buildMillExecutiveInsights_(snapshot, meta);
 
   setPdfFont_(doc, 'serif');
   doc.setFontSize(9);
@@ -918,17 +1407,61 @@ export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJs
   const summaryLines = doc.splitTextToSize(summaryText, W);
   doc.text(summaryLines.slice(0, 2), pw / 2, insightsY + 11, { align: 'center' });
 
-  // ── Footer — minimal, no bar ─────────────────────────────────────
   setPdfFont_(doc, 'sans');
   doc.setFontSize(6);
   doc.setTextColor(168, 162, 158);
-  doc.text(
-    'Unique mills (excl. Trader / Refinery)  ·  Deduplicated by mill name  ·  ' + meta.productView,
-    pw / 2, ph - 2.5, { align: 'center' }
-  );
+  const footerParts = [
+    meta.footerNote || '',
+    'Unique mills (excl. Trader / Refinery)',
+    'Deduplicated by mill name',
+    meta.productView || '',
+  ].filter(Boolean);
+  doc.text(footerParts.join('  ·  '), pw / 2, ph - 2.5, { align: 'center' });
+}
+
+export async function exportMillExecutivePdf_(meta, snapshot, chartImages, getJsPDF) {
+  const JsPDF = typeof getJsPDF === 'function' ? getJsPDF() : null;
+  if (!JsPDF) throw new Error('PDF library not loaded. Refresh the page and try again.');
+
+  const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  await registerPdfFonts_(doc);
+
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const pageBg = await getMillExecutiveBackgroundDataUrl_();
+  await millExecPdfApplyPageBackground_(doc, pw, ph, pageBg);
+  await paintMillExecutiveReportPage_(doc, pw, ph, meta, snapshot, chartImages);
 
   await yieldToBrowser_(48);
-  // Save can freeze the UI briefly — yield once more so Chrome paints first.
+  await new Promise(function(resolve) {
+    requestAnimationFrame(function() { setTimeout(resolve, 0); });
+  });
+  doc.save(meta.filename);
+}
+
+/**
+ * Full-year PDF — one page, same grid as quarterly; each chart compares Q1–Q4.
+ */
+export async function exportMillExecutiveFullYearPdf_(meta, snapshot, chartImages, getJsPDF) {
+  const JsPDF = typeof getJsPDF === 'function' ? getJsPDF() : null;
+  if (!JsPDF) throw new Error('PDF library not loaded. Refresh the page and try again.');
+  if (!snapshot) throw new Error('No executive report data available.');
+
+  const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  await registerPdfFonts_(doc);
+
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const pageBg = await getMillExecutiveBackgroundDataUrl_();
+  await millExecPdfApplyPageBackground_(doc, pw, ph, pageBg);
+
+  const pageMeta = Object.assign({}, meta, {
+    fullYearComparison: true,
+    footerNote: 'Full year ' + (meta.year || '') + ' · quarterly comparison (as-of each quarter end)',
+  });
+  await paintMillExecutiveReportPage_(doc, pw, ph, pageMeta, snapshot, chartImages);
+
+  await yieldToBrowser_(48);
   await new Promise(function(resolve) {
     requestAnimationFrame(function() { setTimeout(resolve, 0); });
   });

@@ -440,7 +440,7 @@
         <button type="button" class="pf-export-modal-close" id="millExecModalClose" aria-label="Close">✕</button>
       </div>
       <div class="pf-export-modal-body">
-        <p class="pf-export-hint">Quarterly PDF for management (1 quarter = 3 months). Uses current product view and as-of quarter end.</p>
+        <p class="pf-export-hint">Quarterly PDF (one quarter) or <strong>Full year</strong> — same six points; chart types vary (bar, pie, area, line) to compare Q1–Q4.</p>
         <div class="mill-exec-modal-fields">
           <label class="mill-exec-field">
             <span class="mill-exec-field__label">Year</span>
@@ -449,6 +449,7 @@
           <label class="mill-exec-field">
             <span class="mill-exec-field__label">Quarter</span>
             <select id="millExecQuarter" class="mill-exec-select" aria-label="Report quarter">
+              <option value="full">Full year (Q1–Q4 comparison)</option>
               <option value="1">Q1 (Jan–Mar)</option>
               <option value="2">Q2 (Apr–Jun)</option>
               <option value="3">Q3 (Jul–Sep)</option>

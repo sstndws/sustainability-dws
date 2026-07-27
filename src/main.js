@@ -69,6 +69,10 @@ import {
   collectMillExecutiveChartImages_,
   collectMillExecutiveChartImagesAsync_,
   exportMillExecutivePdf_,
+  exportMillExecutiveFullYearPdf_,
+  buildMillExecutiveQuarterlyComparison_,
+  renderMillExecutiveFullYearComparisonChartsAsync_,
+  buildMillExecutiveFullYearInsights_,
   MILL_EXEC_HBAR_CHART_SIZE,
 } from './mill-executive-report.js';
 import { getMillExecutiveBackgroundDataUrl_ } from './mill-executive-bg.js';
@@ -6945,7 +6949,20 @@ function initDashboardApp() {
 
   // ─── Mill Executive Report (quarterly charts) ───────────────────────────
   let millExecYear = 0;
-  let millExecQuarter = 0;
+  /** @type {number|'full'} */
+  let millExecQuarter = 1;
+
+  function millExecutiveQuarterIsFull_(quarter) {
+    return String(quarter) === 'full';
+  }
+
+  function millExecutiveReadQuarterFromSelect_(qSel) {
+    if (!qSel) return millExecQuarter;
+    const v = String(qSel.value || '').trim();
+    if (v === 'full') return 'full';
+    const n = parseInt(v, 10);
+    return (n >= 1 && n <= 4) ? n : millExecQuarter;
+  }
   let millExecChartModule = null;
   let millExecSnapshotCache = null;
   let millExecPeriodInitialized = false;
@@ -7247,11 +7264,7 @@ function initDashboardApp() {
         millExecutiveRowsForQuarter_(year, q, productView),
         helpers
       );
-      out.push({
-        label: 'Q' + q,
-        totalMills: snap.totalMills,
-        active: q === activeQuarter,
-      });
+      out.push(millExecutiveTrendPointFromSnap_(q, snap, activeQuarter));
       await new Promise(function(resolve) {
         requestAnimationFrame(function() { setTimeout(resolve, 0); });
       });
@@ -7266,11 +7279,7 @@ function initDashboardApp() {
         millExecutiveRowsForQuarter_(year, q, productView),
         helpers
       );
-      return {
-        label: 'Q' + q,
-        totalMills: snap.totalMills,
-        active: q === activeQuarter,
-      };
+      return millExecutiveTrendPointFromSnap_(q, snap, activeQuarter);
     });
   }
 
@@ -7284,21 +7293,84 @@ function initDashboardApp() {
     return maxMonth;
   }
 
+  /** Distinct period months present in mill registry for a year (main + waste). */
+  function millExecutiveMonthsWithDataInYear_(year) {
+    const months = new Set();
+    (allData || []).concat(allDataWaste || []).forEach(function(r) {
+      if (parseMillYearSort(millYearVal(r)) !== year) return;
+      const m = parseMillMonthSort(millMonthVal(r));
+      if (m >= 1 && m <= 12) months.add(m);
+    });
+    return Array.from(months).sort(function(a, b) { return a - b; });
+  }
+
+  function millExecutiveTrendPointFromSnap_(q, snap, activeQuarter) {
+    const hasData = (snap.entityCount || 0) > 0;
+    return {
+      label: 'Q' + q,
+      hasData: hasData,
+      totalMills: hasData ? snap.totalMills : null,
+      highRisk: hasData ? snap.highRisk : null,
+      nbl: hasData ? snap.nbl : null,
+      groupCount: hasData
+        ? (snap.groupCount != null ? snap.groupCount : snap.groups.size)
+        : null,
+      active: !millExecutiveQuarterIsFull_(activeQuarter) && q === activeQuarter,
+    };
+  }
+
+  /** Quarters with a non-empty as-of snapshot (needed for meaningful Q1–Q4 line trend). */
+  function millExecutiveCountQuartersWithSnapshot_(year, productView) {
+    let n = 0;
+    for (let q = 1; q <= 4; q++) {
+      const snap = millExecutiveBuildSnapshot_(year, q, productView);
+      if ((snap.entityCount || 0) > 0) n++;
+    }
+    return n;
+  }
+
+  function millExecutiveDataCoverageHint_(year) {
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = millExecutiveMonthsWithDataInYear_(year);
+    if (!months.length) return '';
+    if (months.length === 1) {
+      return 'Registry rows: ' + MONTH_NAMES[months[0] - 1] + ' ' + year + ' only';
+    }
+    const first = MONTH_NAMES[months[0] - 1];
+    const last = MONTH_NAMES[months[months.length - 1] - 1];
+    return 'Registry months: ' + first + '–' + last + ' ' + year;
+  }
+
   function millSyncExecutiveQuarterOptions_(year) {
     const qSel = document.getElementById('millExecQuarter');
     if (!qSel) return;
     const maxMonth = millMaxDataMonthForYear_(year);
+    const trendQuarters = millExecutiveCountQuartersWithSnapshot_(year, millRegistryProductView);
     // quarterStartMonth: Q1=1, Q2=4, Q3=7, Q4=10
     const qStarts = { 1: 1, 2: 4, 3: 7, 4: 10 };
     let lastEnabled = 1;
     Array.from(qSel.options).forEach(function(opt) {
+      if (String(opt.value) === 'full') {
+        const disableFull = trendQuarters < 2;
+        opt.disabled = disableFull;
+        opt.textContent = disableFull
+          ? 'Full year (need ≥2 quarters with data)'
+          : 'Full year (compare Q1–Q4, same layout)';
+        return;
+      }
       const q = parseInt(opt.value, 10);
       const startMonth = qStarts[q] || 1;
       const disabled = maxMonth > 0 && startMonth > maxMonth;
       opt.disabled = disabled;
       if (!disabled) lastEnabled = q;
     });
-    // If current selection is disabled, reset to last enabled
+    if (String(qSel.value) === 'full') {
+      if (trendQuarters < 2) {
+        qSel.value = String(lastEnabled);
+        millExecQuarter = lastEnabled;
+      }
+      return;
+    }
     const cur = parseInt(qSel.value, 10);
     const curOpt = qSel.querySelector('option[value="' + cur + '"]');
     if (curOpt && curOpt.disabled) {
@@ -7406,7 +7478,7 @@ function initDashboardApp() {
     const yearSel = document.getElementById('millExecYear');
     const qSel = document.getElementById('millExecQuarter');
     if (yearSel) millExecYear = parseInt(yearSel.value, 10) || millExecYear;
-    if (qSel) millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter;
+    if (qSel) millExecQuarter = millExecutiveReadQuarterFromSelect_(qSel);
   }
 
   async function refreshMillExecutiveReport_() {
@@ -7423,9 +7495,10 @@ function initDashboardApp() {
     millSyncExecutiveQuarterOptions_(millExecYear);
 
     const qSel = document.getElementById('millExecQuarter');
-    if (qSel) millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter || 1;
+    if (qSel) millExecQuarter = millExecutiveReadQuarterFromSelect_(qSel);
 
-    const snapshot = millExecutiveBuildSnapshot_(millExecYear, millExecQuarter);
+    const snapshotQuarter = millExecutiveQuarterIsFull_(millExecQuarter) ? 'full' : millExecQuarter;
+    const snapshot = millExecutiveBuildSnapshot_(millExecYear, snapshotQuarter);
     millExecSnapshotCache = snapshot;
 
     if (hint) {
@@ -7434,10 +7507,16 @@ function initDashboardApp() {
       const asOfActual = maxDataMonth
         ? MONTH_NAMES[maxDataMonth - 1] + ' ' + millExecYear
         : quarterAsOfLabel_(millExecYear, millExecQuarter);
-      hint.textContent = millExecutivePeriodLabel_(millExecYear, millExecQuarter)
+      const labelQuarter = millExecutiveQuarterIsFull_(millExecQuarter) ? 'full' : millExecQuarter;
+      const coverage = millExecutiveDataCoverageHint_(millExecYear);
+      const trendQ = millExecutiveCountQuartersWithSnapshot_(millExecYear, millRegistryProductView);
+      hint.textContent = millExecutivePeriodLabel_(millExecYear, labelQuarter)
         + '  ·  As-of ' + asOfActual + ' (latest data)'
+        + (coverage ? ('  ·  ' + coverage) : '')
         + '  ·  ' + millProductViewLabel_()
-        + '  ·  ' + snapshot.entityCount + ' unique mills';
+        + (millExecutiveQuarterIsFull_(millExecQuarter)
+          ? ('  ·  PDF: mixed charts (bar / pie / area / line) per Q1–Q4')
+          : ('  ·  ' + snapshot.entityCount + ' unique mills'));
     }
     const trendYear = document.getElementById('millExecTrendYear');
     if (trendYear) trendYear.textContent = '(' + millExecYear + ')';
@@ -7483,8 +7562,117 @@ function initDashboardApp() {
     let offscreenContainer = null;
     try {
       await yieldMain_(8);
-      // Warm background early (cached after first export).
+      const isFullYear = millExecutiveQuarterIsFull_(millExecQuarter);
       const bgWarm = getMillExecutiveBackgroundDataUrl_();
+
+      if (isFullYear) {
+        const grvPromise = (!grvLoaded && typeof loadGrvData === 'function')
+          ? Promise.race([
+            loadGrvData().catch(function() {}),
+            new Promise(function(resolve) { setTimeout(resolve, 4000); }),
+          ])
+          : Promise.resolve();
+
+        toastProgress_('Loading metrics for full year…');
+        await Promise.all([grvPromise, bgWarm]);
+        await yieldMain_(8);
+
+        const Chart = await millEnsureChartModule_();
+        await yieldMain_(8);
+
+        const MILL_EXEC_CHART_SIZES_ = {
+          risk: [320, 320],
+          nbl: [320, 320],
+          traceability: [320, 320],
+          grievance: [320, 320],
+          province: [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
+          facilityQty: [MILL_EXEC_HBAR_CHART_SIZE.w, MILL_EXEC_HBAR_CHART_SIZE.h],
+        };
+
+        const quarterRows = [];
+        for (let q = 1; q <= 4; q++) {
+          const snapshot = millExecutiveBuildSnapshot_(millExecYear, q, millRegistryProductView);
+          if ((snapshot.entityCount || 0) === 0) continue;
+
+          toastProgress_('Q' + q + ' — metrics…');
+          millExecutiveKickoffFacilityTtpLoad_(millExecYear, q);
+          await millExecutiveEnrichSnapshot_(snapshot, millExecYear, q, {
+            useFacilityTtp: true,
+            facilityTtpTimeoutMs: 8000,
+          });
+          quarterRows.push({ quarter: q, label: 'Q' + q, snapshot: snapshot });
+          await yieldMain_(16);
+        }
+
+        if (quarterRows.length < 2) {
+          const cov = millExecutiveDataCoverageHint_(millExecYear);
+          throw new Error(
+            'Full year comparison needs at least 2 quarters with mill data.'
+            + (cov ? ' ' + cov + '.' : '')
+          );
+        }
+
+        const comparison = buildMillExecutiveQuarterlyComparison_(quarterRows);
+        const latestSnap = quarterRows[quarterRows.length - 1].snapshot;
+        latestSnap.quarterlyTrend = await millBuildExecutiveQuarterlyTrendAsync_(
+          millExecYear,
+          millRegistryProductView,
+          'full'
+        );
+
+        toastProgress_('Drawing comparison charts…');
+        await yieldMain_(8);
+
+        offscreenContainer = document.createElement('div');
+        offscreenContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:560px;visibility:hidden;pointer-events:none;z-index:-1;';
+        const offscreenEls = {};
+        Object.keys(MILL_EXEC_CHART_SIZES_).forEach(function(key) {
+          const sz = MILL_EXEC_CHART_SIZES_[key];
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'width:' + sz[0] + 'px;height:' + sz[1] + 'px;';
+          const canvas = document.createElement('canvas');
+          canvas.width = sz[0];
+          canvas.height = sz[1];
+          wrap.appendChild(canvas);
+          offscreenContainer.appendChild(wrap);
+          offscreenEls[key] = canvas;
+        });
+        document.body.appendChild(offscreenContainer);
+
+        await renderMillExecutiveFullYearComparisonChartsAsync_(Chart, comparison, offscreenEls);
+        await yieldMain_(24);
+
+        const chartImages = await collectMillExecutiveChartImagesAsync_(offscreenEls);
+        destroyMillExecutiveCharts_();
+        await yieldMain_(8);
+
+        const heroSnap = Object.assign({}, latestSnap, {
+          totalMills: comparison.kpis.totalMills[comparison.kpis.totalMills.length - 1],
+          groupCount: comparison.kpis.groupCount[comparison.kpis.groupCount.length - 1],
+          highRisk: comparison.kpis.highRisk[comparison.kpis.highRisk.length - 1],
+          nbl: comparison.kpis.nbl[comparison.kpis.nbl.length - 1],
+        });
+
+        const lastQ = quarterRows[quarterRows.length - 1];
+        toastProgress_('Writing PDF…');
+        await exportMillExecutiveFullYearPdf_({
+          year: millExecYear,
+          quarter: 'full',
+          periodLabel: millExecutivePeriodLabel_(millExecYear, 'full') + ' · by quarter',
+          productView: millProductViewLabel_(),
+          coverageNote: millExecutiveDataCoverageHint_(millExecYear),
+          filename: millExecutiveFilename_(millExecYear, 'full'),
+          kpiCaption: 'KPIs shown: latest quarter (' + lastQ.label + ' as-of)',
+          customInsights: buildMillExecutiveFullYearInsights_(comparison, { year: millExecYear }),
+        }, heroSnap, chartImages, getJsPDF);
+        if (typeof window.showSddToast === 'function') {
+          window.showSddToast('Full-year comparison PDF downloaded.', 'success');
+        }
+        closeMillExecutiveExportModal_();
+        return;
+      }
+
+      // Warm background early (cached after first export).
       millExecutiveKickoffFacilityTtpLoad_(millExecYear, millExecQuarter);
       await yieldMain_(8);
       const snapshot = millExecutiveBuildSnapshot_(millExecYear, millExecQuarter);
@@ -7633,7 +7821,7 @@ function initDashboardApp() {
     if (qSel && !qSel.dataset.bound) {
       qSel.dataset.bound = '1';
       qSel.addEventListener('change', function() {
-        millExecQuarter = parseInt(qSel.value, 10) || millExecQuarter;
+        millExecQuarter = millExecutiveReadQuarterFromSelect_(qSel);
         scheduleRefreshMillExecutiveReport_();
       });
     }
