@@ -813,7 +813,8 @@ function renderMillExecutiveFullYearComparisonBody_(Chart, bundle, els) {
   if (!Chart || !bundle || !els) return;
   const labels = bundle.labels || [];
   const barPalette = ['#2563EB', '#C03030', '#E67E22', '#7C3AED', '#0D9488', '#B45309'];
-  const nblQuarterColors = ['#C2410C', '#EA580C', '#F97316', '#FB923C'];
+  // Distinct quarter colors (avoid all-orange — hard to read in PDF)
+  const nblQuarterColors = ['#2563EB', '#DC2626', '#059669', '#7C3AED'];
 
   // 1) Risk — stacked bar (composition per quarter)
   if (els.risk && labels.length) {
