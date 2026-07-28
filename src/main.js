@@ -11,6 +11,7 @@ import { initMonthlyReport_ } from './monthly-report-ui.js';
 import {
   setupRiskAnalysisMitigationPanel_,
   ensureRiskAnalysisMitigationPanel_,
+  reloadRiskAnalysisMitigation_,
 } from './risk-analysis-mitigation-ui.js';
 import { createSdMonitoringController_ } from './sd-monitoring-ui.js';
 import { initDdsPanel_ } from './dds-ui.js';
@@ -6554,6 +6555,8 @@ function initDashboardApp() {
       } else if (pendingDelete.sheet === 'facilityProfile') {
         cplLoaded = false;
         await loadCompanyProfileListData(true);
+      } else if (pendingDelete.sheet === 'riskAnalysisMitigation') {
+        await reloadRiskAnalysisMitigation_(true);
       }
       pendingDelete = null;
     } catch(err) {
@@ -18536,6 +18539,7 @@ function initDashboardApp() {
     apiPost: apiPost,
     dashSetButtonBusy_: dashSetButtonBusy_,
     dashClearButtonBusy_: dashClearButtonBusy_,
+    openConfirm: openConfirm,
   });
 
   // ─── EUDR POTENTIAL ──────────────────────────────────────
@@ -22272,6 +22276,7 @@ function initDashboardApp() {
     'monthly-report-detail': 'navGroupMonitoring',
     'performa-facility': 'navGroupMonitoring',
     'questionnaire-monitoring': 'navGroupMonitoring',
+    'eudr-potential': 'navGroupMonitoring',
     'supplier-dd': 'navGroupSupplier',
     'mill-onboarding': 'navGroupSupplier',
     'no-buy-list': 'navGroupSupplier',
@@ -22281,7 +22286,6 @@ function initDashboardApp() {
     'ttm-ttp': 'navGroupTraceability',
     'bl-monitoring': 'navGroupTraceability',
     'risk-analysis-mitigation': 'navGroupRisk',
-    'eudr-potential': 'navGroupRisk',
     'due-diligence-statement': 'navGroupTraceability',
   };
 

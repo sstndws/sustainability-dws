@@ -389,12 +389,32 @@
    }
    
    /* â”€â”€ Group children (expanded) â”€â”€ */
-   #mainSidebar.sidebar.expanded .nav-group-children .nav-item {
-     padding-left: 16px;
-     margin-left: 0;
-     margin-right: 8px;
+   #mainSidebar.sidebar.expanded .nav-group-children,
+   #mainSidebar.sidebar.mobile-open .nav-group-children {
+     margin: 2px 10px 8px 18px;
+     padding: 4px 0 6px 12px;
+     border-left: 2px solid rgba(74, 28, 28, 0.12);
    }
-   #mainSidebar.sidebar.expanded .nav-group-children .nav-item .nav-label {
+   #mainSidebar.sidebar.expanded .nav-group-children .nav-item,
+   #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item {
+     padding-left: 8px;
+     margin-left: 0;
+     margin-right: 4px;
+     min-height: 38px;
+   }
+   #mainSidebar.sidebar.expanded .nav-group-children .nav-item .nav-icon,
+   #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item .nav-icon {
+     width: 30px;
+     min-width: 30px;
+     height: 30px;
+   }
+   #mainSidebar.sidebar.expanded .nav-group-children .nav-item .nav-icon svg,
+   #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item .nav-icon svg {
+     width: 17px;
+     height: 17px;
+   }
+   #mainSidebar.sidebar.expanded .nav-group-children .nav-item .nav-label,
+   #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item .nav-label {
      font-size: 12.5px;
    }
    
@@ -4744,7 +4764,7 @@
    #mainSidebar .nav-group + .nav-group {
      margin-top: 6px;
      padding-top: 6px;
-     border-top: 1px solid rgba(74, 28, 28, 0.06);
+     border-top: 1px solid rgba(74, 28, 28, 0.08);
    }
 
    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

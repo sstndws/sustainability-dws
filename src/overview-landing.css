@@ -190,7 +190,7 @@
   border-radius: 14px;
   padding: 14px 15px 17px;
   position: relative;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   border: 1px solid rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(8px);
@@ -198,7 +198,7 @@
   opacity: 0;
   transform: translateY(18px);
   animation: ovLdRiseCard 0.55s ease forwards;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease, background 0.28s ease, border-color 0.28s ease;
+  transition: box-shadow 0.28s ease, background 0.28s ease;
   font: inherit;
   color: inherit;
   width: 100%;
@@ -236,13 +236,9 @@
   animation-delay: 0.7s;
 }
 
-.ov-ld__card:hover,
-.ov-ld__card:focus-visible {
-  transform: translateY(-6px);
-  box-shadow: 0 18px 40px rgba(80, 20, 10, 0.09), 0 4px 12px rgba(80, 20, 10, 0.05);
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(255, 255, 255, 1);
-  outline: none;
+.ov-ld__card:hover {
+  box-shadow: 0 8px 24px rgba(80, 20, 10, 0.06);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .ov-ld__card-icon {
@@ -250,12 +246,6 @@
   top: 14px;
   right: 15px;
   color: #d1b8b8;
-  transition: color 0.28s ease;
-}
-
-.ov-ld__card:hover .ov-ld__card-icon,
-.ov-ld__card:focus-visible .ov-ld__card-icon {
-  color: #8b2020;
 }
 
 .ov-ld__card-body {
@@ -367,11 +357,6 @@
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.95);
     box-shadow: 0 2px 12px rgba(72, 38, 32, 0.06);
-  }
-
-  .ov-ld__card:active {
-    transform: scale(0.985);
-    background: #fff;
   }
 
   .ov-ld__card-icon {

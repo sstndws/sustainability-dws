@@ -282,21 +282,13 @@ table td {
   letter-spacing: 0.01em;
 }
 
-.ov-ld__card {
-  transition:
-    transform 0.28s ease,
-    box-shadow 0.28s ease,
-    background-color var(--dur-med) var(--ease-smooth),
-    border-color var(--dur-med) var(--ease-smooth);
-}
-
 .ov-ld__card-title {
   letter-spacing: -0.01em;
   line-height: 1.25;
 }
 
 .ov-ld__card-desc {
-  line-height: 1.5;
+  line-height: 1.45;
   letter-spacing: 0.012em;
 }
 

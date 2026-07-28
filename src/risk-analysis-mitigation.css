@@ -408,6 +408,14 @@ body > .ram-modal-overlay.is-open {
   padding: 12px 20px 18px;
   border-top: 1px solid rgba(139, 26, 26, 0.08);
 }
+.ram-modal-footer .ram-modal-btn-delete {
+  margin-right: auto;
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.25);
+}
+.ram-modal-footer .ram-modal-btn-delete:hover {
+  background: rgba(192, 57, 43, 0.06);
+}
 .ram-view-panel {
   display: flex;
   flex-direction: column;

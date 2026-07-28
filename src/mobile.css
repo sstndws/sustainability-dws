@@ -45,10 +45,16 @@
     display: block !important;
   }
 
+  #mainSidebar.sidebar.mobile-open .nav-group-children {
+    margin-left: 16px !important;
+    padding-left: 10px !important;
+    border-left: 2px solid rgba(74, 28, 28, 0.12);
+  }
+
   #mainSidebar.sidebar.mobile-open .nav-group-children .nav-item {
-    padding-left: 14px !important;
-    margin-left: 4px !important;
-    margin-right: 8px !important;
+    padding-left: 8px !important;
+    margin-left: 0 !important;
+    margin-right: 6px !important;
   }
 
   #mainSidebar.sidebar.mobile-open .sidebar-section {
@@ -714,11 +720,9 @@
     gap: 8px;
   }
 
-  /* ── Overview: full-bleed bg horizontal only (top spacing in overview-landing.css) ── */
+  /* Overview stays inside main column — no negative margin under sidebar */
   #panel-overview {
-    margin-top: 0;
-    margin-left: calc(-1 * max(14px, env(safe-area-inset-left, 14px)));
-    margin-right: calc(-1 * max(14px, env(safe-area-inset-right, 14px)));
+    margin: 0 !important;
   }
 
   /* ── Monthly report sections ── */

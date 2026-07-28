@@ -1,5 +1,5 @@
 /**
- * Risk Analysis & Mitigation — list + add/edit (Google Sheet tab).
+ * Risk Analysis & Mitigation — list + add/edit/delete (Google Sheet tab).
  */
 import './risk-analysis-mitigation.css';
 
@@ -262,17 +262,20 @@ function ensureRamModalMounted_() {
 }
 
 function syncModalFooter_(ui) {
+  const btnDelete = document.getElementById('ramModalBtnDelete');
   const btnClose = document.getElementById('ramModalBtnClose');
   const btnEdit = document.getElementById('ramModalBtnEdit');
   const btnCancel = document.getElementById('ramModalBtnCancel');
   const btnSave = document.getElementById('ramModalBtnSave');
   const isView = ui === 'view';
   const isForm = ui === 'add' || ui === 'edit';
+  if (btnDelete) btnDelete.hidden = !isView;
   if (btnClose) btnClose.hidden = !isView;
   if (btnEdit) btnEdit.hidden = !isView;
   if (btnCancel) btnCancel.hidden = !isForm;
   if (btnSave) btnSave.hidden = !isForm;
   if (ui === 'closed') {
+    if (btnDelete) btnDelete.hidden = true;
     if (btnClose) btnClose.hidden = true;
     if (btnEdit) btnEdit.hidden = true;
     if (btnCancel) btnCancel.hidden = true;
@@ -355,7 +358,7 @@ function openViewModal_(row) {
   const title = document.getElementById('ramModalTitle');
   const sub = document.getElementById('ramModalSub');
   if (title) title.textContent = 'View risk entry';
-  if (sub) sub.textContent = 'Review details below. Use Edit to change this record.';
+  if (sub) sub.textContent = 'Review details below. Use Edit to change, or Delete to remove this record.';
   renderViewPanel_(row);
   showModalPanels_('view');
   syncModalFooter_('view');
@@ -580,6 +583,14 @@ function bindUiOnce_() {
   document.getElementById('ramModalBtnCancel')?.addEventListener('click', cancelFormModal_);
   document.getElementById('ramModalBtnEdit')?.addEventListener('click', function() {
     if (_modalRow) openFormModal_('edit', _modalRow, true);
+  });
+  document.getElementById('ramModalBtnDelete')?.addEventListener('click', function() {
+    const row = _modalRow;
+    if (!row || !row._row) return;
+    closeModal_();
+    if (_deps && typeof _deps.openConfirm === 'function') {
+      _deps.openConfirm(SHEET_KEY, row._row);
+    }
   });
   document.getElementById('ramModalBtnSave')?.addEventListener('click', function() { saveModal_(); });
   document.getElementById('ramModalOverlay')?.addEventListener('click', function(e) {

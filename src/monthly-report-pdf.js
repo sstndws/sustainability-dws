@@ -1565,8 +1565,8 @@ function sectionSummaryConfig_(id, stats, data, year) {
       desc: (s.sddRequested || s.sddTotal || 0) + ' requested · ' + (s.sddDone || s.sddSubmitted || 0) + ' done',
       metrics: [
         { label: 'Requested', value: String(s.sddRequested || s.sddTotal || 0) },
-        { label: 'Done', value: String(s.sddDone || s.sddSubmitted || 0) },
         { label: 'Draft', value: String(s.sddDraft || 0) },
+        { label: 'Done', value: String(s.sddDone || s.sddSubmitted || 0) },
       ],
     },
     mill: {
