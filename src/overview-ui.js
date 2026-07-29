@@ -1,5 +1,4 @@
 import './overview-landing.css';
-import { BRAND_TAGLINE } from './brand.js';
 
 let refreshBusy = false;
 let welcomeName = 'there';
@@ -66,62 +65,14 @@ function bindQuarterCacheWatch_() {
 bindQuarterCacheWatch_.bound = false;
 
 const MODULES = [
-  {
-    id: 'ndpe',
-    title: 'NDPE & Forest protection',
-    desc: 'No deforestation, peat, or exploitation — mills screened against cut-off dates and buyer NDPE policies.',
-    icon: 'forest',
-    footerKey: 'millsScreened',
-  },
-  {
-    id: 'trace',
-    title: 'Traceability to source',
-    desc: 'TTM links mills to coordinates; TTP tracks FFB to estates and dealers.',
-    icon: 'trace',
-    footerKey: 'traceGap',
-  },
-  {
-    id: 'eudr',
-    title: 'EUDR readiness',
-    desc: 'Due diligence for deforestation-free EU placement — geolocation, risk assessment, and statements.',
-    icon: 'eudr',
-    footerKey: 'eudrReview',
-  },
-  {
-    id: 'grievance',
-    title: 'Grievance & remediation',
-    desc: 'Cases logged, triaged, and closed with evidence. Trends inform supplier engagement.',
-    icon: 'grievance',
-    footerKey: 'grievanceOpen',
-  },
-  {
-    id: 'nbl',
-    title: 'No Buy List',
-    desc: 'Suppliers or mills on the NBL stay blocked until remediation criteria are met.',
-    icon: 'nbl',
-    footerKey: 'nblBlocked',
-  },
-  {
-    id: 'cert',
-    title: 'Standards & certification',
-    desc: 'RSPO, ISPO, and internal criteria tracked with onboarding and facility performance.',
-    icon: 'cert',
-    footerKey: 'certMills',
-  },
-  {
-    id: 'supply',
-    title: 'Responsible supply base',
-    desc: 'CPO, PK, and selected waste streams monitored across refinery supply bases.',
-    icon: 'supply',
-    footerKey: 'suppliersActive',
-  },
-  {
-    id: 'report',
-    title: 'Monthly reporting',
-    desc: 'Snapshots for mills, SDD, traceability, grievance, NBL, and facility KPIs.',
-    icon: 'report',
-    footerKey: 'nextReport',
-  },
+  { id: 'ndpe', title: 'NDPE & Forest protection', icon: 'forest' },
+  { id: 'trace', title: 'Traceability to source', icon: 'trace' },
+  { id: 'eudr', title: 'EUDR readiness', icon: 'eudr' },
+  { id: 'grievance', title: 'Grievance & remediation', icon: 'grievance' },
+  { id: 'nbl', title: 'No Buy List', icon: 'nbl' },
+  { id: 'cert', title: 'Standards & certification', icon: 'cert' },
+  { id: 'supply', title: 'Responsible supply base', icon: 'supply' },
+  { id: 'report', title: 'Monthly reporting', icon: 'report' },
 ];
 
 const ICONS = {
@@ -133,6 +84,11 @@ const ICONS = {
   cert: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="5"/><path d="M8.5 14.5L7 22l5-2.5L17 22l-1.5-7.5"/></svg>',
   supply: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
   report: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+};
+
+const PANEL_ICONS = {
+  kpi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  snapshot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>',
 };
 
 function formatWelcomeName(emailRaw) {
@@ -200,15 +156,15 @@ function buildHubModel_(payload) {
     report: { text: 'Ready', tone: 'blue' },
   };
 
-  const footers = {
-    millsScreened: 'Mills screened: ' + total,
-    traceGap: 'Traceable supply: ' + tracePct + '%',
-    eudrReview: 'Potential mills: ' + eudrP,
-    grievanceOpen: 'Open cases: ' + grvOpen,
-    nblBlocked: 'Re-entries: monitoring',
-    certMills: 'Certified: ' + certCount + ' mills',
-    suppliersActive: 'Suppliers: ' + supplierCount + ' active',
-    nextReport: 'Next report: ' + nextReportLabel_(),
+  const moduleStats = {
+    ndpe: { value: String(total), sub: ndpePct + '% compliant · ' + high + ' high risk' },
+    trace: { value: tracePct + '%', sub: 'traceable supply' },
+    eudr: { value: String(eudrP), sub: eudrPct + '% potential · ' + (eudrTotal - eudrP) + ' not' },
+    grievance: { value: String(grvOpen), sub: grvResolved + '% resolved YTD' },
+    nbl: { value: String(nbl), sub: nbl ? 'blocked suppliers' : 'none blocked' },
+    cert: { value: String(certCount), sub: 'certified mills' },
+    supply: { value: String(supplierCount), sub: 'active suppliers' },
+    report: { value: nextReportLabel_(), sub: payload && payload.periodLabel ? payload.periodLabel : currentPeriodKey_() },
   };
 
   return {
@@ -218,58 +174,32 @@ function buildHubModel_(payload) {
       nbl: nbl,
     },
     progress: [
-      { label: 'NDPE compliance', pct: ndpePct, tone: 'burgundy' },
-      { label: 'Traceability coverage', pct: tracePct, tone: 'teal' },
-      { label: 'EUDR readiness', pct: eudrPct, tone: 'blue' },
-      { label: 'Grievance resolution', pct: grvResolved, tone: 'amber' },
+      { label: 'NDPE', pct: ndpePct, tone: 'burgundy' },
+      { label: 'Traceability', pct: tracePct, tone: 'teal' },
+      { label: 'EUDR', pct: eudrPct, tone: 'blue' },
+      { label: 'Grievance closed', pct: grvResolved, tone: 'amber' },
     ],
     pills: pills,
-    footers: footers,
-    activity: buildActivity_(payload, tracePct, nbl, grvOpen),
+    moduleStats: moduleStats,
+    activity: buildActivity_(payload, tracePct, nbl, grvOpen, ndpePct),
   };
 }
 
-function buildActivity_(payload, tracePct, nbl, grvOpen) {
-  const now = new Date();
+function buildActivity_(payload, tracePct, nbl, grvOpen, ndpePct) {
   const items = [
-    {
-      tone: 'green',
-      title: 'Overview refreshed',
-      desc: 'Live metrics synced from mill registry and monitoring modules.',
-      time: 'Just now',
-    },
+    { tone: 'green', title: 'NDPE ' + ndpePct + '% · TTP ' + tracePct + '%', time: 'Snapshot' },
   ];
-  if (tracePct > 0 && tracePct < 80) {
-    items.push({
-      tone: 'amber',
-      title: 'Traceability gap flagged',
-      desc: 'TTP traceability at ' + tracePct + '% — review Facility Performance.',
-      time: 'Today',
-    });
-  }
   if (nbl > 0) {
-    items.push({
-      tone: 'red',
-      title: 'NBL status updated',
-      desc: nbl + ' supplier(s) on No Buy List require governance review.',
-      time: 'Today',
-    });
+    items.push({ tone: 'red', title: 'NBL: ' + nbl, time: 'Now' });
   }
   if (grvOpen > 0) {
-    items.push({
-      tone: 'blue',
-      title: 'Grievance cases open',
-      desc: grvOpen + ' active grievance case(s) in the current year.',
-      time: 'This week',
-    });
+    items.push({ tone: 'blue', title: 'Grievances open: ' + grvOpen, time: 'YTD' });
+  }
+  if (tracePct > 0 && tracePct < 80) {
+    items.push({ tone: 'amber', title: 'TTP below 80% (' + tracePct + '%)', time: 'Flag' });
   }
   if (payload && payload.periodLabel) {
-    items.push({
-      tone: 'green',
-      title: 'Reporting period',
-      desc: 'Snapshot basis: ' + payload.periodLabel,
-      time: now.getFullYear().toString(),
-    });
+    items.push({ tone: 'green', title: payload.periodLabel, time: String(new Date().getFullYear()) });
   }
   return items.slice(0, 4);
 }
@@ -294,7 +224,7 @@ function renderHub_(root, model) {
     grid.textContent = '';
     MODULES.forEach(function(m) {
       const pill = model.pills[m.id] || { text: '—', tone: 'blue' };
-      const foot = model.footers[m.footerKey] || '';
+      const st = (model.moduleStats && model.moduleStats[m.id]) || { value: '—', sub: '' };
       const art = document.createElement('article');
       art.className = 'ov-hub__mod';
       art.innerHTML =
@@ -303,8 +233,9 @@ function renderHub_(root, model) {
         + '<span class="ov-hub__pill ov-hub__pill--' + pill.tone + '">' + pill.text + '</span>'
         + '</div>'
         + '<h3 class="ov-hub__mod-title">' + m.title + '</h3>'
-        + '<p class="ov-hub__mod-desc">' + m.desc + '</p>'
-        + '<footer class="ov-hub__mod-foot"><span>' + foot + '</span><span class="ov-hub__mod-arrow" aria-hidden="true">→</span></footer>';
+        + '<div class="ov-hub__mod-stat"><span class="ov-hub__mod-stat-val">' + st.value + '</span>'
+        + (st.sub ? '<span class="ov-hub__mod-stat-sub">' + st.sub + '</span>' : '')
+        + '</div>';
       grid.appendChild(art);
     });
   }
@@ -324,8 +255,7 @@ function renderHub_(root, model) {
     act.innerHTML = model.activity.map(function(a) {
       return '<li class="ov-hub__act-item">'
         + '<span class="ov-hub__act-dot ov-hub__act-dot--' + a.tone + '"></span>'
-        + '<div><div class="ov-hub__act-title">' + a.title + '</div>'
-        + '<div class="ov-hub__act-desc">' + a.desc + '</div></div>'
+        + '<div class="ov-hub__act-title">' + a.title + '</div>'
         + '<time class="ov-hub__act-time">' + a.time + '</time></li>';
     }).join('');
   }
@@ -388,15 +318,12 @@ export function mountOverviewLanding(container) {
   root.className = 'ov-hub';
   root.innerHTML = `
     <section class="ov-hub__hero">
-      <div class="ov-hub__hero-glow" aria-hidden="true"></div>
       <div class="ov-hub__hero-inner">
         <div class="ov-hub__hero-copy">
           <p class="ov-hub__welcome" id="ovHubWelcome">Welcome back, there</p>
-          <h1 class="ov-hub__title">Sustainability Dashboard</h1>
-          <p class="ov-hub__tagline">${BRAND_TAGLINE}</p>
-          <p class="ov-hub__chip"><span aria-hidden="true">◎</span> Palm Oil Supply Chain Monitoring</p>
+          <h1 class="ov-hub__title">Overview</h1>
           <div class="ov-hub__actions">
-            <button type="button" class="ov-hub__refresh ov-hub__glass-btn" id="ovHubRefresh">Refresh metrics</button>
+            <button type="button" class="ov-hub__refresh ov-hub__glass-btn" id="ovHubRefresh">Refresh</button>
           </div>
         </div>
         <div class="ov-hub__hero-stats" id="ovHubHeroStats"></div>
@@ -404,18 +331,17 @@ export function mountOverviewLanding(container) {
     </section>
 
     <div class="ov-hub__section-head">
-      <h2 class="ov-hub__section-title">Monitoring modules</h2>
-      <span class="ov-hub__section-meta">8 active modules</span>
+      <h2 class="ov-hub__section-title">Modules</h2>
     </div>
     <div class="ov-hub__modules" id="ovHubModules"></div>
 
     <div class="ov-hub__bottom">
       <section class="ov-hub__panel">
-        <h3 class="ov-hub__panel-title"><span aria-hidden="true">▥</span> Module completion</h3>
+        <h3 class="ov-hub__panel-title"><span class="ov-hub__panel-icon ov-hub__panel-icon--kpi">${PANEL_ICONS.kpi}</span> KPI progress</h3>
         <div class="ov-hub__progress" id="ovHubProgress"></div>
       </section>
       <section class="ov-hub__panel">
-        <h3 class="ov-hub__panel-title"><span aria-hidden="true">↻</span> Recent activity</h3>
+        <h3 class="ov-hub__panel-title"><span class="ov-hub__panel-icon ov-hub__panel-icon--snapshot">${PANEL_ICONS.snapshot}</span> Snapshot</h3>
         <ul class="ov-hub__activity" id="ovHubActivity"></ul>
       </section>
     </div>
