@@ -22321,6 +22321,9 @@ function initDashboardApp() {
     if (panel) panel.classList.add('active');
     if (navItem) navItem.classList.add('active');
     openNavGroupForPanel_(name);
+    if (name === 'overview' && typeof window.__overviewMetricsRefresh === 'function') {
+      window.__overviewMetricsRefresh();
+    }
     if (name === 'mill-onboarding') {
       if (!millDataLoaded || !allData.length) {
         loadMillData({ force: !millDataLoaded });
@@ -33382,6 +33385,47 @@ function initDashboardApp() {
     }
   }
   window.initMonthlyReportDetail_ = initMonthlyReportDetail_;
+
+  window.refreshOverviewMetricsData_ = async function refreshOverviewMetricsData_() {
+    if (!millDataLoaded || !allData.length) {
+      await loadMillData({ force: !millDataLoaded });
+    }
+    const now = new Date();
+    const year = now.getFullYear();
+    const quarter = Math.ceil((now.getMonth() + 1) / 3);
+    const snapshot = millExecutiveBuildSnapshot_(year, quarter, millRegistryProductView);
+    await millExecutiveEnrichSnapshot_(snapshot, year, quarter, {
+      useFacilityTtp: true,
+      facilityTtpTimeoutMs: 12000,
+    });
+    let eudrPotential = 0;
+    let eudrNotPotential = 0;
+    if (!grvLoaded && typeof loadGrvData === 'function') {
+      try {
+        await loadGrvData();
+      } catch (_e) { /* optional */ }
+    }
+    if (!eudrLoaded && typeof loadEudrData === 'function') {
+      try {
+        await loadEudrData();
+      } catch (_e) { /* optional */ }
+    }
+    if (typeof eudrGetDisplayStatus_ === 'function' && eudrRows && eudrRows.length) {
+      eudrRows.forEach(function(d) {
+        const s = eudrGetDisplayStatus_(d);
+        if (s === 'Potential') eudrPotential++;
+        else if (s === 'Not Potential') eudrNotPotential++;
+      });
+    }
+    return {
+      ok: true,
+      year: year,
+      quarter: quarter,
+      periodLabel: millExecutivePeriodLabel_(year, quarter),
+      snapshot: snapshot,
+      eudr: { potential: eudrPotential, notPotential: eudrNotPotential },
+    };
+  };
 
   applyDefaultPanel_();
 

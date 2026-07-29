@@ -1,420 +1,678 @@
-/* Overview landing — adapted from index (4).html; scoped under .ov-ld */
+/* Overview hub — aligned with main column (no bleed into sidebar) */
 #panel-overview {
-  padding: 0 !important;
-  margin: calc(-1 * var(--main-pad-y)) calc(-1 * var(--main-pad-x));
-  position: relative;
-  overflow: hidden;
+  margin: 0 !important;
+  padding: var(--main-pad-y, 28px) var(--main-pad-x, 32px) clamp(28px, 3vh, 48px) !important;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
-/* Fill the entire main column (flex parent: .main-content) */
-#panel-overview.panel.active {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
+#panel-overview.panel.active,
 #overview-root {
-  flex: 1 1 auto;
   display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.ov-ld {
-  position: relative;
+.ov-hub {
+  flex: 1 1 auto;
   width: 100%;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
   font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
-  overflow: hidden auto;
-  background: #e8ddd8;
+  box-sizing: border-box;
 }
 
-/* Bottom wash so empty space below cards feels intentional */
-.ov-ld::after {
+/* ── Hero gradient card ── */
+.ov-hub__hero {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: clamp(18px, 2.5vh, 26px);
+  box-shadow: 0 16px 40px rgba(72, 28, 20, 0.22);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ov-hub__hero-copy {
+  min-width: 0;
+}
+
+.ov-hub__hero-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(255, 180, 100, 0.35) 0%, transparent 45%),
+    radial-gradient(circle at 10% 90%, rgba(60, 12, 12, 0.5) 0%, transparent 50%),
+    linear-gradient(125deg, #3d0f0f 0%, #6b1818 38%, #8b2818 62%, #c45a28 100%);
+}
+
+.ov-hub__hero-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: clamp(14px, 2vw, 24px);
+  padding: clamp(18px, 2.5vh, 28px) clamp(16px, 2vw, 24px);
+  align-items: end;
+  min-width: 0;
+}
+
+.ov-hub__welcome {
+  margin: 0 0 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 220, 200, 0.88);
+}
+
+.ov-hub__title {
+  margin: 0 0 0.45rem;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(1.5rem, 2.6vw, 2.35rem);
+  font-weight: 700;
+  line-height: 1.08;
+  color: #fff8f4;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.ov-hub__tagline {
+  margin: 0 0 0.85rem;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  font-style: italic;
+  font-weight: 600;
+  color: rgba(255, 240, 232, 0.92);
+}
+
+.ov-hub__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 248, 244, 0.95);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+.ov-hub__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 0.25rem;
+}
+
+.ov-hub__glass-btn {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    background 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.ov-hub__glass-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.ov-hub__refresh {
+  padding: 0.42rem 0.95rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b1818;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ov-hub__refresh:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ov-hub__hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-self: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ov-hub__glass {
+  padding: clamp(10px, 1.4vh, 14px) clamp(8px, 1vw, 12px);
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff8f4;
+  min-width: 0;
+  overflow: hidden;
+  transition:
+    transform 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.ov-hub__glass:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+}
+
+.ov-hub__glass-val {
+  font-size: clamp(1.1rem, 2vw, 1.65rem);
+  font-weight: 700;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-hub__glass-lbl {
+  margin-top: 0.25rem;
+  font-size: clamp(0.55rem, 0.85vw, 0.62rem);
+  font-weight: 600;
+  opacity: 0.88;
+  line-height: 1.25;
+}
+
+/* ── Modules grid ── */
+.ov-hub__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ov-hub__section-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #2a0e0e;
+}
+
+.ov-hub__section-meta {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #9a7070;
+}
+
+.ov-hub__modules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(12px, 1.4vw, 18px);
+  margin-bottom: clamp(18px, 2.2vh, 26px);
+  min-width: 0;
+  width: 100%;
+  padding: clamp(12px, 1.4vw, 16px);
+  border-radius: 20px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 248, 246, 0.22) 55%,
+    rgba(139, 26, 26, 0.05) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+@media (min-width: 1280px) {
+  .ov-hub__modules {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ov-hub__mod {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: clamp(10.5rem, 18vh, 13.5rem);
+  padding: clamp(14px, 1.6vh, 18px) clamp(14px, 1.5vw, 18px);
+  border-radius: 16px;
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(255, 255, 255, 0.34) 48%,
+    rgba(255, 250, 248, 0.28) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow:
+    0 10px 28px rgba(72, 38, 32, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1px 0 rgba(139, 26, 26, 0.04);
+  transition:
+    transform 0.26s cubic-bezier(0.22, 0.92, 0.26, 1),
+    box-shadow 0.26s ease,
+    border-color 0.26s ease,
+    background 0.26s ease;
+}
+
+.ov-hub__mod::before {
   content: '';
   position: absolute;
-  inset: auto 0 0 0;
-  height: min(52vh, 520px);
+  inset: 0;
+  border-radius: inherit;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
   background: linear-gradient(
-    to top,
-    rgba(72, 38, 32, 0.07) 0%,
-    rgba(72, 38, 32, 0.02) 45%,
-    transparent 100%
+    155deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    transparent 62%
   );
 }
 
-.ov-ld__glow {
+.ov-hub__mod::after {
+  content: '';
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  background:
-    radial-gradient(ellipse 65% 55% at 78% 38%, rgba(130, 55, 30, 0.08) 0%, transparent 65%),
-    radial-gradient(ellipse 45% 65% at 12% 80%, rgba(80, 20, 10, 0.05) 0%, transparent 60%);
-}
-
-/* Layer of faint building silhouettes (multiple copies, varied placement). */
-.ov-ld__bg-buildings {
-  position: absolute;
-  inset: 0;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
   pointer-events: none;
   z-index: 0;
-  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
 }
 
-.ov-ld__bg-svg {
-  position: absolute;
-  pointer-events: none;
-}
-
-.ov-ld__bg-svg--1 {
-  right: -2%;
-  top: -4%;
-  width: min(360px, 52vw);
-  opacity: 0.055;
-}
-
-.ov-ld__bg-svg--2 {
-  left: -6%;
-  bottom: 6%;
-  width: min(300px, 46vw);
-  opacity: 0.04;
-  transform: scaleX(-1);
-}
-
-.ov-ld__bg-svg--3 {
-  left: 18%;
-  top: 22%;
-  width: min(220px, 34vw);
-  opacity: 0.032;
-  transform: rotate(-2deg) scale(0.72);
-}
-
-.ov-ld__bg-svg--4 {
-  right: 22%;
-  bottom: -2%;
-  width: min(260px, 38vw);
-  opacity: 0.038;
-  transform: scaleX(-1) scale(0.85);
-}
-
-.ov-ld__main {
+.ov-hub__mod > * {
   position: relative;
-  z-index: 2;
+  z-index: 1;
+}
+
+.ov-hub__mod:hover {
+  transform: translateY(-4px);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 252, 250, 0.45) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 18px 40px rgba(72, 38, 32, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(139, 26, 26, 0.06);
+}
+
+.ov-hub__mod:hover .ov-hub__mod-icon {
+  transform: scale(1.06);
+}
+
+.ov-hub__mod-head {
   display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  /*
-   * #panel-overview cancels main-content padding via negative margin (full-bleed bg).
-   * Re-apply a generous inset here so the hero matches app rhythm and isn’t glued to edges.
-   */
-  padding-block-start: clamp(2.25rem, 5vw + 0.25rem, 3.75rem);
-  padding-block-end: clamp(1.5rem, 3vw, 2.5rem);
-  padding-inline: clamp(1.75rem, 4.5vw + 0.5rem, 3.5rem);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.ov-ld__header {
-  margin-bottom: clamp(1.15rem, 2.4vw, 1.85rem);
-  opacity: 0;
-  animation: ovLdFadeUp 0.55s 0.08s ease forwards;
+.ov-hub__mod-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  color: #8b3a2a;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: transform 0.26s cubic-bezier(0.22, 0.92, 0.26, 1);
 }
 
-.ov-ld__welcome {
-  font-size: 13px;
-  font-weight: 500;
-  color: #8b2020;
-  letter-spacing: 0.02em;
-  margin: 0 0 0.5rem;
+.ov-hub__mod-icon svg {
+  width: 24px;
+  height: 24px;
 }
 
-.ov-ld__title {
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-size: clamp(30px, 4.2vw, 42px);
+.ov-hub__mod-icon--forest { color: #8b3a2a; }
+.ov-hub__mod-icon--trace { color: #2e7d32; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--eudr { color: #1565c0; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--grievance { color: #e65100; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--nbl { color: #c62828; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--cert { color: #6a1b9a; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--supply { color: #2e7d32; background: rgba(255, 255, 255, 0.5); }
+.ov-hub__mod-icon--report { color: #546e7a; background: rgba(255, 255, 255, 0.5); }
+
+.ov-hub__pill {
+  flex-shrink: 0;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: #2a0e0e;
-  line-height: 1.12;
-  margin: 0 0 0.65rem;
-}
-
-.ov-ld__tagline {
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-size: clamp(16px, 2.2vw, 22px);
-  font-weight: 600;
-  font-style: italic;
-  color: #8b2020;
-  letter-spacing: 0.025em;
-  line-height: 1.35;
-  margin: 0 0 0.45rem;
+  border-radius: 999px;
   white-space: nowrap;
 }
 
-.ov-ld__subtitle {
-  font-size: 14px;
-  font-weight: 300;
-  color: #7a5a5a;
-  line-height: 1.45;
-  margin: 0;
-}
+.ov-hub__pill--green { color: #1b5e20; background: #e8f5e9; }
+.ov-hub__pill--amber { color: #e65100; background: #fff3e0; }
+.ov-hub__pill--blue { color: #1565c0; background: #e3f2fd; }
 
-.ov-ld__cards {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  width: 100%;
-  /* Always 4×2 on wide main column; equal tracks fill space to the right (no 5+3). */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(10px, 1.3vw, 14px);
-}
-
-@media (max-width: 900px) {
-  .ov-ld__cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 480px) {
-  .ov-ld__cards {
-    grid-template-columns: 1fr;
-  }
-}
-
-.ov-ld__card {
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 14px;
-  padding: 14px 15px 17px;
-  position: relative;
-  cursor: default;
-  text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
-  opacity: 0;
-  transform: translateY(18px);
-  animation: ovLdRiseCard 0.55s ease forwards;
-  transition: box-shadow 0.28s ease, background 0.28s ease;
-  font: inherit;
-  color: inherit;
-  width: 100%;
-  min-height: 8.5rem;
-}
-
-@media (min-width: 901px) {
-  .ov-ld__card {
-    min-height: clamp(9.75rem, 15vw, 11rem);
-  }
-}
-
-.ov-ld__card:nth-child(1) {
-  animation-delay: 0.14s;
-}
-.ov-ld__card:nth-child(2) {
-  animation-delay: 0.22s;
-}
-.ov-ld__card:nth-child(3) {
-  animation-delay: 0.3s;
-}
-.ov-ld__card:nth-child(4) {
-  animation-delay: 0.38s;
-}
-.ov-ld__card:nth-child(5) {
-  animation-delay: 0.46s;
-}
-.ov-ld__card:nth-child(6) {
-  animation-delay: 0.54s;
-}
-.ov-ld__card:nth-child(7) {
-  animation-delay: 0.62s;
-}
-.ov-ld__card:nth-child(8) {
-  animation-delay: 0.7s;
-}
-
-.ov-ld__card:hover {
-  box-shadow: 0 8px 24px rgba(80, 20, 10, 0.06);
-  background: rgba(255, 255, 255, 0.95);
-}
-
-.ov-ld__card-icon {
-  position: absolute;
-  top: 14px;
-  right: 15px;
-  color: #d1b8b8;
-}
-
-.ov-ld__card-body {
-  margin-top: 32px;
-}
-
-.ov-ld__card-title {
-  font-size: 14px;
-  font-weight: 600;
+.ov-hub__mod-title {
+  margin: 0 0 0.45rem;
+  font-size: clamp(0.9rem, 1.05vw, 1.02rem);
+  font-weight: 700;
   color: #2a0e0e;
-  margin-bottom: 5px;
   line-height: 1.3;
 }
 
-.ov-ld__card-desc {
-  font-size: 12px;
-  font-weight: 400;
-  color: #806060;
+.ov-hub__mod-desc {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: clamp(0.78rem, 0.95vw, 0.875rem);
+  line-height: 1.5;
+  color: #6a5252;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ov-hub__mod-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  font-size: clamp(0.75rem, 0.88vw, 0.8125rem);
+  font-weight: 600;
+  color: #5c4545;
+}
+
+.ov-hub__mod-arrow {
+  opacity: 0.45;
+}
+
+/* ── Bottom panels (same glass system as monitoring modules) ── */
+.ov-hub__bottom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(12px, 1.5vw, 18px);
+  min-width: 0;
+  width: 100%;
+  padding: clamp(12px, 1.4vw, 16px);
+  border-radius: 20px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 248, 246, 0.22) 55%,
+    rgba(139, 26, 26, 0.05) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.ov-hub__panel {
+  position: relative;
+  padding: clamp(16px, 1.9vh, 20px) clamp(16px, 1.6vw, 20px);
+  border-radius: 16px;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 0;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(255, 255, 255, 0.34) 48%,
+    rgba(255, 250, 248, 0.28) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow:
+    0 10px 28px rgba(72, 38, 32, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1px 0 rgba(139, 26, 26, 0.04);
+  transition:
+    transform 0.26s cubic-bezier(0.22, 0.92, 0.26, 1),
+    box-shadow 0.26s ease,
+    border-color 0.26s ease,
+    background 0.26s ease;
+}
+
+.ov-hub__panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0.08) 38%,
+    transparent 62%
+  );
+}
+
+.ov-hub__panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
+}
+
+.ov-hub__panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.ov-hub__panel:hover {
+  transform: translateY(-3px);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 252, 250, 0.45) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 18px 40px rgba(72, 38, 32, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(139, 26, 26, 0.06);
+}
+
+.ov-hub__panel-title {
+  margin: 0 0 14px;
+  font-size: clamp(0.85rem, 1vw, 0.95rem);
+  font-weight: 700;
+  color: #2a0e0e;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ov-hub__prog-row + .ov-hub__prog-row {
+  margin-top: 10px;
+}
+
+.ov-hub__prog-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(0.75rem, 0.9vw, 0.8125rem);
+  font-weight: 600;
+  color: #5c4545;
+  margin-bottom: 0.35rem;
+}
+
+.ov-hub__prog-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(72, 38, 32, 0.06);
+}
+
+.ov-hub__prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.ov-hub__prog-fill--burgundy { background: #8b1a1a; }
+.ov-hub__prog-fill--teal { background: #2e7d32; }
+.ov-hub__prog-fill--blue { background: #1976d2; }
+.ov-hub__prog-fill--amber { background: #ef6c00; }
+
+.ov-hub__activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ov-hub__act-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.22s ease, transform 0.22s ease;
+}
+
+.ov-hub__act-item:hover {
+  background: rgba(255, 255, 255, 0.55);
+  transform: translateX(2px);
+}
+
+.ov-hub__act-item:last-child {
+  margin-bottom: 0;
+}
+
+.ov-hub__act-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.ov-hub__act-dot--green { background: #2e7d32; }
+.ov-hub__act-dot--amber { background: #ef6c00; }
+.ov-hub__act-dot--red { background: #c62828; }
+.ov-hub__act-dot--blue { background: #1976d2; }
+
+.ov-hub__act-title {
+  font-size: clamp(0.78rem, 0.92vw, 0.84rem);
+  font-weight: 700;
+  color: #2a0e0e;
+}
+
+.ov-hub__act-desc {
+  font-size: clamp(0.72rem, 0.85vw, 0.78rem);
+  color: #6a5252;
   line-height: 1.45;
+  margin-top: 2px;
 }
 
-@keyframes ovLdFadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.ov-hub__act-time {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #a08080;
+  white-space: nowrap;
 }
 
-@keyframes ovLdRiseCard {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 640px) {
-  .ov-ld__tagline {
-    white-space: normal;
-  }
-}
-
-/* ── Mobile home (overview) — app-style list cards ── */
-@media (max-width: 768px) {
-  /* Jangan tarik panel ke atas — biar hero tidak menempel header merah */
-  #panel-overview {
-    margin-top: 0 !important;
-  }
-
-  .ov-ld__main {
-    padding-block-start: 2.35rem;
-    padding-block-end: max(1.75rem, env(safe-area-inset-bottom, 0px));
-    padding-inline: max(22px, calc(18px + env(safe-area-inset-left, 0px))) max(22px, calc(18px + env(safe-area-inset-right, 0px)));
-  }
-
-  .ov-ld__header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 1.75rem;
-    padding: 0.25rem 2px 0.5rem;
-  }
-
-  /* Title already in top bar — avoid repeating a huge heading */
-  .ov-ld__title {
-    display: none;
-  }
-
-  .ov-ld__welcome {
-    font-size: 12.5px;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .ov-ld__tagline {
-    font-size: clamp(16px, 4.5vw, 18px);
-    line-height: 1.5;
-    white-space: normal;
-    margin: 0;
-    padding-top: 0.1rem;
-  }
-
-  .ov-ld__subtitle {
-    font-size: 13px;
-    line-height: 1.55;
-    color: #8a7070;
-    margin: 0;
-    padding-top: 0.15rem;
-    max-width: 36ch;
-  }
-
-  .ov-ld__cards {
+@media (max-width: 1320px) {
+  .ov-hub__hero-inner {
     grid-template-columns: 1fr;
-    gap: 12px;
+  }
+}
+
+/* Sidebar expanded = narrower main column — keep 2-col modules for readability */
+#dashboard .dash-body:has(#mainSidebar.sidebar.expanded) .ov-hub__modules {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#dashboard .dash-body:has(#mainSidebar.sidebar.expanded) .ov-hub__hero-inner {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 1100px) {
+  .ov-hub__bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .ov-hub__hero-stats {
+    grid-template-columns: 1fr;
   }
 
-  .ov-ld__card {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-height: 0;
-    padding: 14px 16px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.95);
-    box-shadow: 0 2px 12px rgba(72, 38, 32, 0.06);
-  }
-
-  .ov-ld__card-icon {
-    position: static;
-    flex-shrink: 0;
-    width: 42px;
-    height: 42px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 11px;
-    background: rgba(139, 32, 32, 0.07);
-    color: #9a4040;
-  }
-
-  .ov-ld__card-body {
-    margin-top: 0;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .ov-ld__card-title {
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 3px;
-    line-height: 1.25;
-  }
-
-  .ov-ld__card-desc {
-    font-size: 12px;
-    line-height: 1.4;
-    color: #7a6262;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  /* Quieter decorative bg on small screens */
-  .ov-ld__bg-svg--3,
-  .ov-ld__bg-svg--4 {
-    display: none;
-  }
-
-  .ov-ld__bg-svg--1,
-  .ov-ld__bg-svg--2 {
-    opacity: 0.03;
+  .ov-hub__modules {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ov-ld__header,
-  .ov-ld__card {
-    animation: none !important;
-    opacity: 1;
-    transform: none;
+  .ov-hub__glass,
+  .ov-hub__glass-btn,
+  .ov-hub__mod,
+  .ov-hub__mod-icon,
+  .ov-hub__panel,
+  .ov-hub__act-item,
+  .ov-hub__prog-fill {
+    transition: none !important;
   }
-  .ov-ld__card {
-    transition: none;
+
+  .ov-hub__glass:hover,
+  .ov-hub__mod:hover,
+  .ov-hub__panel:hover,
+  .ov-hub__act-item:hover,
+  .ov-hub__glass-btn:hover:not(:disabled) {
+    transform: none;
   }
 }

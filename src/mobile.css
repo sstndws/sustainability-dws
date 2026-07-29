@@ -720,9 +720,10 @@
     gap: 8px;
   }
 
-  /* Overview stays inside main column — no negative margin under sidebar */
+  /* Overview — keep main column padding (do not zero out) */
   #panel-overview {
     margin: 0 !important;
+    padding: var(--main-pad-y) var(--main-pad-x) clamp(24px, 3vh, 36px) !important;
   }
 
   /* ── Monthly report sections ── */
