@@ -714,7 +714,7 @@ const CANONICAL_ALIASES = {
 };
 
 const TTP_HEADERS = [
-  'NO', 'Year', 'COMPANY CODE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
+  'NO', 'Year', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
   'FFB SUPPLIER GROUP NAME', 'FFB SUPPLIER NAME', 'CATEGORY', 'LAT', 'LONG',
   'VILLAGE ID', 'VILLAGE', 'SUBDISTRICT', 'DISTRICT', 'PROVINCE',
   'CONCESION AREA', 'PLANTED AREA', 'NUMBER OD SMALLHOLDERS', 'TAHUN TANAM',
@@ -1295,7 +1295,7 @@ function millFindNextAppendRow_(sheet, headers) {
 
 var TTP_IDENTITY_HEADERS_ = [
   'VILLAGE', 'FFB SUPPLIER NAME', 'FFB SUPPLIER GROUP NAME', 'CATEGORY',
-  'UML ID', 'MILL NAME', 'COMPANY NAME', 'GROUP NAME', 'COMPANY CODE'
+  'UML ID', 'MILL NAME', 'COMPANY NAME', 'GROUP NAME', 'TRADER NAME', 'COMPANY CODE'
 ];
 
 var TTP_NON_IDENTITY_HEADERS_ = {
@@ -1633,6 +1633,7 @@ function ttpRowHasContent_(obj) {
   if (String(obj['COMPANY NAME'] || obj['Company Name'] || '').trim()) return true;
   if (String(obj['MILL NAME'] || '').trim()) return true;
   if (String(obj['FFB SUPPLIER NAME'] || '').trim()) return true;
+  if (String(obj['TRADER NAME'] || '').trim()) return true;
   if (String(obj['GROUP NAME'] || '').trim()) return true;
   if (String(obj['UML ID'] || '').trim()) return true;
   var q = String(obj['Quarter'] || obj['QUARTER'] || '').trim();
@@ -2692,6 +2693,18 @@ function mergeTtpPreserveMonitoring_(existingRow, patch) {
   return out;
 }
 
+function millTraderNameForTtpPatch_(identity, main, supplierType) {
+  identity = identity || {};
+  main = main || {};
+  var fromIdentity = String(identity['TRADER NAME'] || '').trim();
+  if (fromIdentity) return fromIdentity;
+  var st = String(supplierType || readSddMainSupplierType_(main) || '').trim().toUpperCase();
+  if (st === 'TRADER') {
+    return String(main['Company Name'] || main['Group Name'] || '').trim();
+  }
+  return '';
+}
+
 function buildTtpPatchFromSddFfb_(main, ffb, sid, user, now, millIdentity) {
   const identity = millIdentity || {};
   const supplierType = readSddMainSupplierType_(main);
@@ -2706,6 +2719,7 @@ function buildTtpPatchFromSddFfb_(main, ffb, sid, user, now, millIdentity) {
   if (isBlankTtpCell_(lng)) lng = String(main['Longitude'] || '').trim();
 
   return Object.assign({
+    'TRADER NAME'             : millTraderNameForTtpPatch_(identity, main, supplierType),
     'GROUP NAME'              : String(identity['GROUP NAME'] || main['Group Name'] || '').trim(),
     'COMPANY NAME'            : String(identity['COMPANY NAME'] || main['Company Name'] || '').trim(),
     'MILL NAME'               : millName,
@@ -2743,6 +2757,7 @@ function buildTtpMillHeaderPatch_(main, millIdentity, sid, user, now) {
     millName = String(identity['COMPANY NAME'] || main['Company Name'] || '').trim();
   }
   return Object.assign({
+    'TRADER NAME'   : millTraderNameForTtpPatch_(identity, main, supplierType),
     'GROUP NAME'    : String(identity['GROUP NAME'] || main['Group Name'] || '').trim(),
     'COMPANY NAME'  : String(identity['COMPANY NAME'] || main['Company Name'] || '').trim(),
     'MILL NAME'     : millName,
@@ -2777,6 +2792,7 @@ function sanitizeMillTtpIdentity_(raw) {
     return String(v === undefined || v === null ? '' : v).trim().slice(0, MAX);
   }
   const out = {
+    'TRADER NAME'  : clip(raw['TRADER NAME']),
     'GROUP NAME'   : clip(raw['GROUP NAME']),
     'COMPANY NAME' : clip(raw['COMPANY NAME']),
     'MILL NAME'    : clip(raw['MILL NAME']),
@@ -2810,9 +2826,11 @@ function sanitizeMillTtpMirrorFromOnboarding_(raw) {
   return out;
 }
 
-function buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now) {
+function buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now, mainObj) {
   const identity = millIdentity || {};
+  const main = mainObj || {};
   return Object.assign({
+    'TRADER NAME'   : millTraderNameForTtpPatch_(identity, main, 'TRADER'),
     'GROUP NAME'    : String(identity['GROUP NAME'] || '').trim(),
     'COMPANY NAME'  : String(identity['COMPANY NAME'] || '').trim(),
     'MILL NAME'     : String(identity['MILL NAME'] || '').trim(),
@@ -2852,7 +2870,7 @@ function syncTtpMirrorTraderMillFromOnboarding_(sid, tmlLineId, millIdentity, ma
     return { synced: false, skipped: true, reason: 'not_trader', supplier_type: supplierType };
   }
 
-  const patch = buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now);
+  const patch = buildTtpTraderMillMirrorPatch_(millIdentity, sid, tmlLineId, user, now, merged);
   const ttpResult = readTtpRows_();
   const mirrorLineId = ttpTraderMirrorLineId_(tmlLineId);
   let inserted = 0;
@@ -3176,6 +3194,10 @@ function normalizeTtpLegacyHeaders_(ws) {
     if (/^group\s*name$/i.test(trimmed)) {
       changed = true;
       return 'GROUP NAME';
+    }
+    if (/^trader\s*name$/i.test(trimmed)) {
+      changed = true;
+      return 'TRADER NAME';
     }
     return trimmed;
   });

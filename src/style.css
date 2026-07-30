@@ -1166,41 +1166,49 @@
    }
    #panel-ttm-ttp #ttpTable.ttp-registry-table > thead > tr > .ttp-th-group,
    #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(1) {
-     width: 17%;
+     width: 14%;
+   }
+   #panel-ttm-ttp #ttpTable.ttp-registry-table > thead > tr > .ttp-th-trader,
+   #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(2) {
+     width: 14%;
    }
    #panel-ttm-ttp #ttpTable.ttp-registry-table > thead > tr > .ttp-th-company,
-   #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(2) {
-     width: 22%;
+   #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(3) {
+     width: 18%;
    }
    #panel-ttm-ttp #ttpTable.ttp-registry-table > thead > tr > .ttp-th-mill,
-   #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(3) {
-     width: 28%;
+   #panel-ttm-ttp #ttpTable.ttp-registry-table > tbody > tr:not(.ttp-group-detail-row) > td:nth-child(4) {
+     width: 22%;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-group,
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(1) {
-     width: 15%;
+     width: 13%;
+   }
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-trader,
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(2) {
+     width: 13%;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-company,
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(2) {
-     width: 18%;
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(3) {
+     width: 16%;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-mill,
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(3) {
-     width: 26%;
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(4) {
+     width: 22%;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-pct,
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(4),
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(5) {
-     width: 10%;
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(5),
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(6) {
+     width: 9%;
      text-align: right;
      font-variant-numeric: tabular-nums;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-category,
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(6) {
-     width: 14%;
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(7) {
+     width: 12%;
    }
    #panel-ttm-ttp #ttpTable.ttp-table-grouped > thead > tr > .ttp-th-actions,
-   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(7) {
+   #panel-ttm-ttp #ttpTable.ttp-table-grouped > tbody > tr.ttp-group-row > td:nth-child(8) {
      width: 88px;
      white-space: nowrap;
    }
@@ -2566,11 +2574,11 @@
    #ttpTable .ttp-flat-row:hover td {
      background: rgba(139, 26, 26, 0.05);
    }
-   #ttpTable.ttp-registry-table:not(.ttp-table-grouped) .ttp-flat-row td:nth-child(6) {
+   #ttpTable.ttp-registry-table:not(.ttp-table-grouped) .ttp-flat-row td:nth-child(7) {
      position: relative;
      padding-right: 22px;
    }
-   #ttpTable.ttp-registry-table:not(.ttp-table-grouped) .ttp-flat-row td:nth-child(6)::after {
+   #ttpTable.ttp-registry-table:not(.ttp-table-grouped) .ttp-flat-row td:nth-child(7)::after {
      content: '›';
      position: absolute;
      right: 8px;
@@ -2802,7 +2810,7 @@
      overflow: visible;
    }
    #panel-mill-onboarding {
-     padding-bottom: 80px;
+     padding-bottom: 24px;
    }
 
    #panel-mill-onboarding .mill-export-toolbar {
@@ -2824,7 +2832,8 @@
    /* Mill Registry: scroll body + frozen column headers */
    #panel-mill-onboarding .mill-registry-table-scroll {
      overflow: auto !important;
-     max-height: min(65vh, calc(100dvh - 280px));
+     min-height: 220px;
+     max-height: min(72vh, calc(100dvh - 200px));
      -webkit-overflow-scrolling: touch;
      position: relative;
      scrollbar-width: thin;
@@ -2846,7 +2855,7 @@
      top: 0;
      z-index: 5;
      vertical-align: top;
-     padding: 10px 12px 9px;
+     padding: 7px 10px 6px;
      background-color: #faf6f6;
      background-image: linear-gradient(180deg, #f3eaea 0%, #faf6f6 100%);
      border-bottom: 1px solid rgba(139, 26, 26, 0.12);
@@ -2858,8 +2867,8 @@
      flex-direction: column;
      align-items: flex-start;
      justify-content: flex-start;
-     gap: 7px;
-     min-height: 48px;
+     gap: 5px;
+     min-height: 36px;
      padding-right: 28px;
      position: relative;
    }
@@ -2890,9 +2899,9 @@
    }
    #panel-mill-onboarding #millTable tbody td.mill-td {
      vertical-align: top;
-     padding: 10px 12px;
-     font-size: 12.5px;
-     line-height: 1.45;
+     padding: 6px 10px;
+     font-size: 12px;
+     line-height: 1.4;
      color: #2a1010;
      background: #fff;
    }
@@ -2907,7 +2916,7 @@
      vertical-align: middle;
    }
    #panel-mill-onboarding #millTable .mill-risk-reason-pill-list {
-     gap: 5px;
+     gap: 4px;
    }
    #panel-mill-onboarding #millTable .mill-risk-reason-pill {
      white-space: normal;
@@ -2956,6 +2965,16 @@
    #panel-mill-onboarding #millTable .mill-td--province { min-width: 104px; width: 104px; }
    #panel-mill-onboarding #millTable .mill-th--product,
    #panel-mill-onboarding #millTable .mill-td--product { min-width: 118px; width: 118px; }
+   #panel-mill-onboarding #millTable .mill-th--qty,
+   #panel-mill-onboarding #millTable .mill-td--qty {
+     min-width: 120px;
+     max-width: 152px;
+     width: 136px;
+   }
+   #panel-mill-onboarding #millTable .mill-td--qty .mill-cell-wrap {
+     -webkit-line-clamp: 2;
+     font-size: 11.5px;
+   }
    #panel-mill-onboarding #millTable .mill-th--priority,
    #panel-mill-onboarding #millTable .mill-td--priority { min-width: 132px; width: 132px; }
    #panel-mill-onboarding #millTable .mill-th--nbl,
@@ -3013,11 +3032,11 @@
    #panel-mill-onboarding #millTable .mill-cell-wrap {
      display: -webkit-box;
      -webkit-box-orient: vertical;
-     -webkit-line-clamp: 3;
+     -webkit-line-clamp: 2;
      overflow: hidden;
      word-break: break-word;
      overflow-wrap: anywhere;
-     line-height: 1.45;
+     line-height: 1.38;
    }
    #panel-mill-onboarding #millTable tbody tr.mill-row-clickable:hover td {
      background: #fdf8f8;

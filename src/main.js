@@ -3997,8 +3997,8 @@ const AUTH_GATE_ENABLED = isAuthGateEnabled();
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyo6o0_eC54qOL6bt5d0UnHDUESWQPt6yoQZ1Og2jyJUzw7yfTcOHHJHzC8vYti6eiUQA/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyo6o0_eC54qOL6bt5d0UnHDUESWQPt6yoQZ1Og2jyJUzw7yfTcOHHJHzC8vYti6eiUQA';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyY5XQofvUy0iCBVk27_6NWBs0BvuxWgyqqi0js_Gfejpbw4B9FAdBw62op_EGLb6Fg/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyY5XQofvUy0iCBVk27_6NWBs0BvuxWgyqqi0js_Gfejpbw4B9FAdBw62op_EGLb6Fg';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -6830,7 +6830,7 @@ function initDashboardApp() {
     });
     merged._row = Math.max(base._row || 0, incoming._row || 0);
     merged._millRegistryMerged = true;
-    merged._millQtySummary = millBuildQtySummaryFromRows_([base, incoming]);
+    merged._millQtySummary = millBuildQtySummaryFromRow_(merged);
     return merged;
   }
 
@@ -6869,7 +6869,7 @@ function initDashboardApp() {
         const toks = millJoinProductSupplyTokens_([newer, existing]);
         if (toks) newer['PRODUCT SUPPLY'] = toks;
       }
-      newer._millQtySummary = millBuildQtySummaryFromRows_([newer, existing]) || newer._millQtySummary;
+      newer._millQtySummary = millBuildQtySummaryFromRow_(newer) || '';
       return newer;
     }
     if (sk < skOld) {
@@ -6879,7 +6879,7 @@ function initDashboardApp() {
         const toks = millJoinProductSupplyTokens_([newer, incoming]);
         if (toks) newer['PRODUCT SUPPLY'] = toks;
       }
-      newer._millQtySummary = millBuildQtySummaryFromRows_([newer, incoming]) || newer._millQtySummary;
+      newer._millQtySummary = millBuildQtySummaryFromRow_(newer) || '';
       return newer;
     }
     if (sk > 0) return millMergeRegistrySupplyRows_(existing, incoming);
@@ -9283,6 +9283,39 @@ function initDashboardApp() {
     }
   }
 
+  let millRegistryScrollLayoutBound = false;
+
+  /** Size registry tbody to fill visible main column (not a fixed vh from page top). */
+  function syncMillRegistryTableScrollHeight_() {
+    const panel = document.getElementById('panel-mill-onboarding');
+    if (!panel || !panel.classList.contains('active')) return;
+    const tableCard = panel.querySelector('.table-card');
+    const scrollEl = panel.querySelector('.mill-registry-table-scroll');
+    if (!tableCard || !scrollEl || tableCard.style.display === 'none') return;
+    const mainContent = document.querySelector('#dashboard .main-content');
+    const bottomRef = mainContent
+      ? mainContent.getBoundingClientRect().bottom
+      : window.innerHeight;
+    const available = Math.floor(bottomRef - scrollEl.getBoundingClientRect().top - 12);
+    scrollEl.style.maxHeight = Math.max(220, available) + 'px';
+  }
+
+  function bindMillRegistryScrollLayoutOnce_() {
+    if (millRegistryScrollLayoutBound) return;
+    millRegistryScrollLayoutBound = true;
+    const onLayout = function() { syncMillRegistryTableScrollHeight_(); };
+    window.addEventListener('resize', onLayout);
+    const mainContent = document.querySelector('#dashboard .main-content');
+    if (mainContent) mainContent.addEventListener('scroll', onLayout, { passive: true });
+    const sidebar = document.getElementById('mainSidebar');
+    if (sidebar) sidebar.addEventListener('transitionend', onLayout);
+    if (typeof ResizeObserver !== 'undefined') {
+      const panel = document.getElementById('panel-mill-onboarding');
+      const tableCard = panel && panel.querySelector('.table-card');
+      if (tableCard) new ResizeObserver(onLayout).observe(tableCard);
+    }
+  }
+
   async function reloadMillDataSoft_() {
     if (millSoftReloadPromise_) return millSoftReloadPromise_;
     const scrollEl = document.querySelector('#panel-mill-onboarding .table-scroll');
@@ -9635,8 +9668,9 @@ function initDashboardApp() {
 
   function millMergeGeneralMemberRow_(g) {
     const merged = Object.assign({}, g.primary);
+    (g.members || []).forEach(function(m) { millFillEmptySupplyFields_(merged, m); });
     merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(g.members);
-    merged._millQtySummary = millBuildQtySummaryFromRows_(g.members);
+    merged._millQtySummary = millBuildQtySummaryFromRow_(merged);
     if (!String(millMonthVal(merged) || '').trim()) {
       const m = g.members.map(function(r) { return parseMillMonthSort(millMonthVal(r)); }).find(function(x) { return x > 0; });
       if (m) merged.MONTH = String(m);
@@ -9787,9 +9821,11 @@ function initDashboardApp() {
   }
 
   function millRegistryQtyCellText_(row) {
-    if (row && row._millQtySummary) return row._millQtySummary;
-    const s = millBuildQtySummaryFromRow_(row);
-    return s || '—';
+    if (!row) return '—';
+    const fromRow = millBuildQtySummaryFromRow_(row);
+    if (fromRow) return fromRow;
+    if (row._millQtySummary) return row._millQtySummary;
+    return '—';
   }
 
   /** View-only: collapse duplikat periode di tabel Mill Onboarding. */
@@ -9829,7 +9865,7 @@ function initDashboardApp() {
       merged['FACILITY NAME SHELL'] = millJoinUniqueSplitValues_(members, 'FACILITY NAME SHELL');
       const toks = millJoinProductSupplyTokens_(members);
       merged['PRODUCT SUPPLY'] = toks || millJoinUniqueSplitValues_(members, 'PRODUCT SUPPLY');
-      merged._millQtySummary = millBuildQtySummaryFromRows_(members);
+      merged._millQtySummary = millBuildQtySummaryFromRow_(merged);
       merged._millTableMerged = true;
       merged._millTableMergeCount = members.length;
       merged._millTableMergeSources = members.slice();
@@ -9924,6 +9960,8 @@ function initDashboardApp() {
           <td class="mill-td mill-td--supplier">${supplierBadge(d['SUPPLIER STATUS'])}</td>
         </tr>`;
       }).join('');
+    bindMillRegistryScrollLayoutOnce_();
+    requestAnimationFrame(syncMillRegistryTableScrollHeight_);
   }
 
   const btnAddMill = document.getElementById('btn-add-mill');
@@ -11926,7 +11964,7 @@ function initDashboardApp() {
   }
 
   function ttpMainTableColspan_(grouped) {
-    return 6;
+    return 7;
   }
 
   function ttpGroupAvgPctHtml_(rows, product, subCount) {
@@ -11943,7 +11981,7 @@ function initDashboardApp() {
   ]);
 
   const TTP_MODAL_SELECT_KEYS_ = new Set([
-    'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'COMPANY CODE', 'UML ID',
+    'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'COMPANY CODE', 'UML ID', 'TRADER NAME',
     'YEAR', 'QUARTER',
   ]);
 
@@ -12482,7 +12520,7 @@ function initDashboardApp() {
     if (yearCol && ttpPeriodYear) prefill[yearCol] = ttpPeriodYear;
     if (quarterCol && ttpPeriodQuarter) prefill[quarterCol] = ttpPeriodQuarter;
     if (sampleRow) {
-      ['COMPANY CODE', 'UML ID'].forEach(function(pattern) {
+      ['COMPANY CODE', 'UML ID', 'TRADER NAME'].forEach(function(pattern) {
         const col = ttpPickField_([pattern]);
         if (!col) return;
         const v = sampleRow[col];
@@ -12611,6 +12649,7 @@ function initDashboardApp() {
     const pkLabel = ttpPkPctCol || '% PK TRACEABLE';
     return '<tr>'
       + '<th class="ttp-th ttp-th-group">Group Name</th>'
+      + '<th class="ttp-th ttp-th-trader">Trader Name</th>'
       + '<th class="ttp-th ttp-th-company">Company Name</th>'
       + '<th class="ttp-th ttp-th-mill">Mill Name</th>'
       + '<th class="ttp-th ttp-th-pct ttp-th-pct-cpo">' + cpoLabel + '</th>'
@@ -12848,7 +12887,7 @@ function initDashboardApp() {
     const no = String(row['NO'] || '').trim().toUpperCase();
     if (no === 'NO' || no === 'NO.') return true;
     const co = String(row['COMPANY NAME'] || row['Company Name'] || '').trim().toUpperCase();
-    if (co === 'COMPANY NAME' || co === 'COMPANY CODE' || co === 'GROUP NAME') return true;
+    if (co === 'COMPANY NAME' || co === 'COMPANY CODE' || co === 'GROUP NAME' || co === 'TRADER NAME') return true;
     const mill = String(row['MILL NAME'] || '').trim().toUpperCase();
     if (/^GROUP\s*NAME$/i.test(mill) || mill === 'COMPANY NAME') return true;
     const cc = String(row['COMPANY CODE'] || '').trim();
@@ -12906,6 +12945,46 @@ function initDashboardApp() {
     return row;
   }
 
+  function ttpSortFieldKeys_(keys) {
+    const preferred = [
+      'NO', 'Year', 'YEAR', 'QUARTER', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
+      'PROVINCE', 'COORDINATE1', 'PRODUCT SUPP',
+    ];
+    const order = new Map(preferred.map(function(k, i) { return [normalizeTtpHeaderKey_(k), i]; }));
+    return (keys || []).slice().sort(function(a, b) {
+      const ia = order.has(normalizeTtpHeaderKey_(a)) ? order.get(normalizeTtpHeaderKey_(a)) : 999;
+      const ib = order.has(normalizeTtpHeaderKey_(b)) ? order.get(normalizeTtpHeaderKey_(b)) : 999;
+      if (ia !== ib) return ia - ib;
+      return String(a).localeCompare(String(b));
+    });
+  }
+
+  function ttpEnrichTraderFromMill_(row) {
+    if (!row || typeof row !== 'object') return row;
+    const existing = String(row['TRADER NAME'] || row['Trader Name'] || '').trim();
+    if (existing) return row;
+    if (!Array.isArray(allData) || !allData.length) return row;
+    const co = String(row['COMPANY NAME'] || row['Company Name'] || '').trim().toLowerCase();
+    const mi = String(row['MILL NAME'] || row['Mill Name'] || '').trim().toLowerCase();
+    if (!co && !mi) return row;
+    for (let i = 0; i < allData.length; i++) {
+      const r = allData[i];
+      const rc = String(r['COMPANY NAME'] || '').trim().toLowerCase();
+      const rm = String(r['MILL NAME'] || '').trim().toLowerCase();
+      const trader = String(r['TRADER NAME'] || r['Trader Name'] || '').trim();
+      if (!trader) continue;
+      if (co && mi && rc === co && rm === mi) {
+        row['TRADER NAME'] = trader;
+        return row;
+      }
+      if (co && rc === co && (!mi || rm === mi)) {
+        row['TRADER NAME'] = trader;
+        return row;
+      }
+    }
+    return row;
+  }
+
   function ttpRebuildFieldsFromData_() {
     const keys = [];
     const seen = new Set();
@@ -12917,7 +12996,7 @@ function initDashboardApp() {
       });
     });
     if (keys.length) {
-      ttpFields = keys;
+      ttpFields = ttpSortFieldKeys_(keys);
       if (!ttpFields.includes('GROUP NAME') && (ttpData || []).some(function(r) { return r['GROUP NAME']; })) {
         const codeIdx = ttpFields.findIndex(function(h) { return normalizeTtpHeaderKey_(h) === 'COMPANY CODE'; });
         ttpFields.splice(codeIdx >= 0 ? codeIdx + 1 : 0, 0, 'GROUP NAME');
@@ -12941,7 +13020,7 @@ function initDashboardApp() {
       return normalizeTtpApiRow_(row);
     });
     ttpData = ttpData.map(function(row) {
-      return ttpEnrichGroupFromMill_(row);
+      return ttpEnrichTraderFromMill_(ttpEnrichGroupFromMill_(row));
     });
     ttpRebuildFieldsFromData_();
     ttpData = ttpData.map(function(row) {
@@ -13221,6 +13300,7 @@ function initDashboardApp() {
 
       html += `<tr class="ttp-group-row" data-group="${groupId}" data-expanded="0">
         <td>${groupName}</td>
+        <td>${escHtml(ttpRowField_(first, ['TRADER NAME']))}</td>
         <td>${compName}</td>
         <td>
           <div class="ttp-mill-name-cell">
@@ -13286,6 +13366,7 @@ function initDashboardApp() {
       return ''
         + '<tr class="mill-row-clickable ttp-flat-row" data-flat-idx="' + i + '"' + titleAttr + '>'
         + '<td>' + escHtml(ttpGroupNameForRow_(d)) + '</td>'
+        + '<td>' + escHtml(ttpRowField_(d, ['TRADER NAME'])) + '</td>'
         + '<td>' + escHtml(ttpRowField_(d, ['COMPANY NAME'])) + '</td>'
         + '<td><span class="mill-name">' + escHtml(ttpRowField_(d, ['MILL NAME'])) + '</span></td>'
         + '<td><span class="ttp-pct-val">' + escHtml(String(cpoPct)) + '</span></td>'
@@ -14414,7 +14495,7 @@ function initDashboardApp() {
     { key: 'MILL CATEGORY', label: 'Mill Category' },
   ];
   const BL_TTM_EXPORT_FALLBACK_KEYS = [
-    'NO', 'COMPANY CODE', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
+    'NO', 'COMPANY CODE', 'TRADER NAME', 'GROUP NAME', 'COMPANY NAME', 'MILL NAME', 'UML ID',
     'LAT', 'LONG', 'MILL CATEGORY',
   ];
   const BL_TTP_EXPORT_FALLBACK_KEYS = [
@@ -22337,6 +22418,9 @@ function initDashboardApp() {
         millSyncRegistryFiltersVisibility_();
       }
       scheduleRenderMillTable();
+      requestAnimationFrame(function() {
+        requestAnimationFrame(syncMillRegistryTableScrollHeight_);
+      });
       const warmExecutivePdfAssets_ = function() {
         getMillExecutiveBackgroundDataUrl_().catch(function() {});
         millEnsureChartModule_().catch(function() {});
