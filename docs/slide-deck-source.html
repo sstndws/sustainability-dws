@@ -40,21 +40,36 @@
   .slide-header h1 { font-size: 26px; font-weight: 700; }
   .slide-header p { font-size: 13px; color: #c8e6c9; margin-top: 4px; }
 
-  .slide-body { flex: 1; padding: 22px 36px 40px; display: flex; flex-direction: column; gap: 14px; }
+  .slide-body {
+    flex: 1;
+    padding: 18px 36px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .slide-body--fill { justify-content: stretch; }
+  .slide-body--fill > .cards,
+  .slide-body--fill > .cols,
+  .slide-body--fill > .table-wrap,
+  .slide-body--fill > .flow-stack,
+  .slide-body--fill > table.data { flex: 1; }
 
   .slide-footer {
     position: absolute; bottom: 0; left: 0; right: 0;
-    padding: 8px 36px; font-size: 10px; color: #90a4ae;
+    padding: 7px 36px; font-size: 10px; color: #90a4ae;
     display: flex; justify-content: space-between;
     border-top: 1px solid #eceff1; background: #fafafa;
+    height: 28px;
   }
 
-  .cols { display: flex; gap: 24px; flex: 1; }
-  .col { flex: 1; }
-  ul.clean { list-style: none; }
+  .cols { display: flex; gap: 24px; flex: 1; min-height: 0; }
+  .col { flex: 1; display: flex; flex-direction: column; }
+  ul.clean { list-style: none; flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }
+  ul.clean.flat { justify-content: flex-start; }
   ul.clean li {
-    padding: 7px 0 7px 22px; position: relative;
-    font-size: 13.5px; line-height: 1.45; border-bottom: 1px solid #f0f0f0;
+    padding: 10px 0 10px 22px; position: relative;
+    font-size: 14px; line-height: 1.5; border-bottom: 1px solid #f0f0f0;
   }
   ul.clean li::before {
     content: ''; position: absolute; left: 0; top: 13px;
@@ -81,24 +96,39 @@
 
   table.data {
     width: 100%; border-collapse: separate; border-spacing: 0;
-    border-radius: 10px; overflow: hidden; font-size: 12px;
+    border-radius: 10px; overflow: hidden; font-size: 13px;
     box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    flex: 1;
   }
   table.data th {
-    background: #2e7d32; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600;
+    background: #2e7d32; color: #fff; padding: 14px 14px; text-align: left; font-weight: 600;
+    font-size: 13px;
   }
-  table.data td { padding: 9px 12px; border-bottom: 1px solid #eceff1; vertical-align: top; }
+  table.data td { padding: 13px 14px; border-bottom: 1px solid #eceff1; vertical-align: middle; line-height: 1.45; }
   table.data tr:nth-child(even) td { background: #f1f8f4; }
   table.data tr:last-child td { border-bottom: none; }
+  .table-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .card { border-radius: 12px; overflow: hidden; box-shadow: 0 3px 12px rgba(0,0,0,.1); }
-  .card-head { background: #1b5e20; color: #fff; padding: 10px 14px; font-size: 13px; font-weight: 700; }
-  .card-body { background: #f1f8f4; padding: 12px 14px; font-size: 12px; line-height: 1.55; color: #37474f; }
+  .cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    flex: 1; align-content: stretch; grid-auto-rows: 1fr; min-height: 0;
+  }
+  .card {
+    border-radius: 12px; overflow: hidden; box-shadow: 0 3px 12px rgba(0,0,0,.1);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .card-head { background: #1b5e20; color: #fff; padding: 14px 16px; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .card-body {
+    background: #f1f8f4; padding: 18px 18px; font-size: 13.5px; line-height: 1.65;
+    color: #37474f; flex: 1; display: flex; flex-direction: column; justify-content: center;
+  }
+  .cards.single { grid-template-columns: 1fr; }
+  .cards.single .card-body { justify-content: flex-start; padding: 22px 24px; font-size: 14px; }
 
   .note {
     background: #e8f5e9; border-left: 4px solid #388e3c;
-    padding: 10px 14px; font-size: 12px; color: #1b5e20; border-radius: 0 8px 8px 0;
+    padding: 14px 18px; font-size: 13px; color: #1b5e20; border-radius: 0 8px 8px 0;
+    flex-shrink: 0;
   }
   .note b { color: #2e7d32; }
 
@@ -113,6 +143,28 @@
   .slide-end p { font-size: 16px; color: #c8e6c9; }
 
   .toc-num { color: #2e7d32; font-weight: 800; margin-right: 8px; min-width: 24px; display: inline-block; }
+
+  .flow-stack {
+    flex: 1; display: flex; flex-direction: column; gap: 10px;
+    justify-content: space-evenly; min-height: 0;
+  }
+  .flow-stack .flow-box {
+    width: 100%; text-align: left; padding: 14px 18px;
+    font-size: 13px; line-height: 1.45; flex: 1;
+    display: flex; align-items: center;
+  }
+  .panel-fill {
+    flex: 1; background: linear-gradient(180deg, #f1f8f4, #e8f5e9);
+    border: 2px solid #c8e6c9; border-radius: 12px;
+    padding: 20px 24px; font-size: 14px; line-height: 1.65;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .panel-fill h3 { color: #1b5e20; font-size: 15px; margin-bottom: 10px; }
+  .formula-line {
+    background: #fff; border-left: 4px solid #388e3c;
+    padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0;
+    font-family: Consolas, 'Courier New', monospace; font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -129,7 +181,7 @@
 <!-- SLIDE 2 TOC -->
 <div class="slide">
   <div class="slide-header"><h1>Table of Contents</h1><p>24 slides — data flows, traceability formulas &amp; connections</p></div>
-  <div class="slide-body">
+  <div class="slide-body slide-body--fill">
     <div class="cols">
       <div class="col"><ul class="clean">
         <li><span class="toc-num">01</span> System Architecture</li>
@@ -315,8 +367,8 @@
 <!-- SLIDE 11 TRACE OVERVIEW -->
 <div class="slide">
   <div class="slide-header"><h1>09 · Traceability Data Overview</h1><p>Panel #panel-ttm-ttp — Year filter drives all KPI cards</p></div>
-  <div class="slide-body">
-    <table class="data" style="margin-bottom:12px;">
+  <div class="slide-body slide-body--fill">
+    <table class="data" style="flex:0 0 auto;margin-bottom:4px;">
       <tr><th></th><th>CPO</th><th>PK</th></tr>
       <tr><td><b>TTM Traceable</b><br><span style="font-size:10px;color:#546e7a;">Mill Onboarding sheet</span></td><td>Coordinate-based supply %</td><td>Coordinate-based supply %</td></tr>
       <tr><td><b>TTP Traceable</b><br><span style="font-size:10px;color:#546e7a;">Monitoring TTP/TTM sheet</span></td><td>FFB → CPO traceability %</td><td>FFB → PK traceability %</td></tr>
@@ -341,19 +393,19 @@
 <!-- SLIDE 12 TTM FORMULA -->
 <div class="slide">
   <div class="slide-header"><h1>10 · TTM Traceable % — Formula</h1><p>ttpCalcTtmCoordinatePct_() · Supply-weighted coordinate check</p></div>
-  <div class="slide-body">
-    <div class="cards" style="margin-bottom:12px;">
+  <div class="slide-body slide-body--fill">
+    <div class="cards" style="flex:1;">
       <div class="card"><div class="card-head">CPO TTM %</div><div class="card-body">
-        <b>Pool:</b> SOURCE TYPE = MILL / TRADER / REFINERY (never KCP)<br>
-        PRODUCT SUPPLY contains CPO — or blank with SUPPLY CPO &gt; 0<br>
-        <b>Traceable row:</b> valid lat/lng coordinate<br>
-        <b>Formula:</b> Σ(SUPPLY CPO traceable) ÷ Σ(SUPPLY CPO total) × 100
+        <div class="formula-line">Σ(SUPPLY CPO traceable) ÷ Σ(SUPPLY CPO total) × 100</div>
+        <p style="margin-top:10px;"><b>Pool:</b> SOURCE TYPE = MILL / TRADER / REFINERY (never KCP)</p>
+        <p><b>Include row if:</b> PRODUCT SUPPLY contains CPO — or blank with SUPPLY CPO &gt; 0</p>
+        <p><b>Traceable:</b> valid lat/lng coordinate on mill row</p>
       </div></div>
       <div class="card"><div class="card-head">PK TTM %</div><div class="card-body">
-        <b>Pool:</b> same SOURCE TYPE filter<br>
-        SUPPLY PK column &gt; 0 (full-year total, not per quarter)<br>
-        <b>Traceable row:</b> valid lat/lng coordinate<br>
-        <b>Formula:</b> Σ(SUPPLY PK traceable) ÷ Σ(SUPPLY PK total) × 100
+        <div class="formula-line">Σ(SUPPLY PK traceable) ÷ Σ(SUPPLY PK total) × 100</div>
+        <p style="margin-top:10px;"><b>Pool:</b> same SOURCE TYPE filter (MILL / TRADER / REFINERY)</p>
+        <p><b>Include row if:</b> SUPPLY PK column &gt; 0 (full-year total, all quarters)</p>
+        <p><b>Traceable:</b> valid lat/lng coordinate on mill row</p>
       </div></div>
     </div>
     <div class="note"><b>Per-mill shortcut (Monthly Report):</b> mrdMillTtmRowPct_() → 100% if valid coordinate, else 0% (binary per row).</div>
@@ -364,18 +416,20 @@
 <!-- SLIDE 13 TTP FORMULA -->
 <div class="slide">
   <div class="slide-header"><h1>11 · TTP Traceable % — Formula</h1><p>ttpAggregateTotalTraceablePct_() · Matches sheet footer totals</p></div>
-  <div class="slide-body">
+  <div class="slide-body slide-body--fill">
+    <div class="table-wrap">
     <table class="data">
-      <tr><th>Product</th><th>Numerator (Σ)</th><th>Denominator (Σ)</th><th>Display</th></tr>
+      <tr><th>Product</th><th>Numerator (Σ)</th><th>Denominator (Σ)</th><th>UI Element</th></tr>
       <tr><td><b>CPO</b></td><td>CPO TRACEABLE VOLUME</td><td>CPO SUPPLY TO REFINERY</td><td>#ttp-stat-cpo-traceable</td></tr>
       <tr><td><b>PK</b></td><td>PK TRACEABLE VOLUME</td><td>PK SUPPLY TO KCP</td><td>#ttp-stat-pk-traceable</td></tr>
     </table>
-    <ul class="clean" style="margin-top:12px;">
-      <li><b>Primary method:</b> SUM(numerator) ÷ SUM(denominator) × 100 — same as Google Sheet footer</li>
-      <li><b>Fallback:</b> if volume columns missing → average of <b>% CPO TRACEABLE</b> or <b>% PK TRACEABLE</b> per row</li>
-      <li><b>Format:</b> 2 decimal places (e.g. 94.13%) via ttpFormatTraceablePct_()</li>
-      <li><b>Row filter:</b> ttpIsDataRow_() excludes header echoes and "Total Traceable" footer rows</li>
-    </ul>
+    </div>
+    <div class="panel-fill" style="flex:1;">
+      <h3>Calculation rules</h3>
+      <p><b>Primary:</b> SUM(numerator) ÷ SUM(denominator) × 100 — identical to Google Sheet footer row</p>
+      <p style="margin-top:8px;"><b>Fallback:</b> if volume columns missing → average of <b>% CPO TRACEABLE</b> or <b>% PK TRACEABLE</b> per row</p>
+      <p style="margin-top:8px;"><b>Format:</b> 2 decimal places (e.g. 94.13%) · <b>Filter:</b> ttpIsDataRow_() excludes footer/total rows</p>
+    </div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 13</span></div>
 </div>
@@ -383,21 +437,27 @@
 <!-- SLIDE 14 TTP COLUMNS -->
 <div class="slide">
   <div class="slide-header"><h1>12 · TTP Sheet — Key Columns &amp; Conversions</h1><p>Per FFB supplier row in Monitoring TTP/TTM registry</p></div>
-  <div class="slide-body"><div class="cols">
-    <div class="col"><ul class="clean">
+  <div class="slide-body slide-body--fill"><div class="cols">
+    <div class="col"><div class="panel-fill">
+      <h3>Supply chain columns</h3>
+      <ul class="clean flat">
       <li><b>Input:</b> FFB SUPPLY to MILL (TON)</li>
       <li><b>Conversion:</b> FFB → CPO (20%) · FFB → PK (5%)</li>
-      <li><b>Output supply:</b> CPO SUPPLY TO REFINERY · PK SUPPLY TO KCP</li>
-      <li><b>Traceable volume:</b> CPO/PK TRACEABLE VOLUME</li>
+      <li><b>Output:</b> CPO SUPPLY TO REFINERY · PK SUPPLY TO KCP</li>
+      <li><b>Traceable vol:</b> CPO/PK TRACEABLE VOLUME</li>
       <li><b>Per-row %:</b> % CPO TRACEABLE · % PK TRACEABLE</li>
-    </ul></div>
-    <div class="col"><ul class="clean">
-      <li><b>Sheet totals:</b> Total CPO % Traceable · Total PK % Traceable</li>
+      </ul>
+    </div></div>
+    <div class="col"><div class="panel-fill">
+      <h3>Identity &amp; sync</h3>
+      <ul class="clean flat">
+      <li><b>Totals:</b> Total CPO/PK % Traceable (sheet footer)</li>
       <li><b>Identity:</b> GROUP / COMPANY / MILL / UML ID</li>
-      <li><b>FFB context:</b> SUPPLIER GROUP/NAME · CATEGORY · LAT/LONG</li>
-      <li><b>Sync metadata:</b> submission_id · ffb_line_id · synced_at</li>
-      <li><b>Monitoring preserved on re-sync:</b> MSD · trace volumes · % columns</li>
-    </ul></div>
+      <li><b>FFB:</b> SUPPLIER GROUP/NAME · CATEGORY · LAT/LONG</li>
+      <li><b>Metadata:</b> submission_id · ffb_line_id · synced_at</li>
+      <li><b>Preserved on re-sync:</b> MSD · trace volumes · % columns</li>
+      </ul>
+    </div></div>
   </div></div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 14</span></div>
 </div>
@@ -405,21 +465,21 @@
 <!-- SLIDE 15 CATEGORY MIX -->
 <div class="slide">
   <div class="slide-header"><h1>13 · Category Mix &amp; Group Averages</h1><p>Supplier type breakdown on Traceability panel</p></div>
-  <div class="slide-body">
-    <div class="cards" style="margin-bottom:10px;">
-      <div class="card"><div class="card-head">Category Mix (TTP panel bar)</div><div class="card-body">
-        <b>Function:</b> ttpSupplierPctByCategory_()<br>
-        Weight = FFB SUPPLY to MILL (fallback weight = 1 per row)<br>
-        <b>% per bucket</b> = bucket supply ÷ total supply × 100<br>
-        <b>Buckets:</b> Owned Estate · External Estate · Dealer · Plasma · Cooperative
+  <div class="slide-body slide-body--fill">
+    <div class="cards">
+      <div class="card"><div class="card-head">Category Mix (panel bar chart)</div><div class="card-body">
+        <div class="formula-line">bucket % = bucket FFB supply ÷ total FFB supply × 100</div>
+        <p style="margin-top:12px;"><b>Function:</b> ttpSupplierPctByCategory_()</p>
+        <p><b>Weight:</b> FFB SUPPLY to MILL (fallback = 1 row count)</p>
+        <p><b>Buckets:</b> Owned Estate · External Estate · Dealer · Plasma · Cooperative</p>
       </div></div>
       <div class="card"><div class="card-head">Registry Group Average</div><div class="card-body">
-        <b>Function:</b> ttpGroupAvgPctHtml_()<br>
-        Uses same ttpAggregateTotalTraceablePct_() per company group<br>
-        Shows CPO/PK aggregate % in grouped table rows
+        <div class="formula-line">group % = ttpAggregateTotalTraceablePct_(group rows)</div>
+        <p style="margin-top:12px;"><b>Function:</b> ttpGroupAvgPctHtml_()</p>
+        <p>Shows CPO/PK aggregate % in grouped table rows</p>
+        <p><b>Row count mix:</b> ttpComputeCategoryMix_() — labels sum to 100%</p>
       </div></div>
     </div>
-    <div class="note"><b>Category record count mix:</b> ttpComputeCategoryMix_() — % of rows by supplier category (largest-remainder rounding, labels sum to 100%).</div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 15</span></div>
 </div>
@@ -427,7 +487,8 @@
 <!-- SLIDE 16 REPORT FACILITY TRACE -->
 <div class="slide">
   <div class="slide-header"><h1>14 · Monthly Report &amp; Facility Performance</h1><p>Downstream consumers of TTM/TTP formulas</p></div>
-  <div class="slide-body">
+  <div class="slide-body slide-body--fill">
+    <div class="table-wrap">
     <table class="data">
       <tr><th>Module</th><th>Function</th><th>Formula</th></tr>
       <tr><td>Monthly Report KPI</td><td>mrdBuildTraceTotalsForReport_()</td><td>TTM + TTP aggregate for report year (TTP year = report year − 1)</td></tr>
@@ -437,6 +498,7 @@
       <tr><td>ISPO supply %</td><td>pfCalcIspoSupplyPct_()</td><td>Σ(ISPO-certified qty) ÷ total supply × 100</td></tr>
       <tr><td>Untraceable mills</td><td>Monthly Report §03</td><td>Mills with no FFB supplier in TTP for trace year</td></tr>
     </table>
+    </div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 16</span></div>
 </div>
@@ -487,7 +549,7 @@
 <!-- SLIDE 19 APP FORMULAS -->
 <div class="slide">
   <div class="slide-header"><h1>17 · Other App Formulas</h1><p>Grievance · EUDR · Mill risk — computed in frontend</p></div>
-  <div class="slide-body">
+  <div class="slide-body slide-body--fill">
     <div class="cards">
       <div class="card"><div class="card-head">Grievance Risk Score</div><div class="card-body">Total = sum of 6 indicators (score 1–3)<br>≤ 8 → Low · ≤ 11 → Medium · &gt; 11 → High<br><i>src/grievance-risk.js</i></div></div>
       <div class="card"><div class="card-head">EUDR Potential Status</div><div class="card-body">All enabled criteria pass → Potential<br>Any fail → Not Potential<br>FFB % by TTP category vs threshold (default 70%)<br><i>eudrComputeStatus_()</i></div></div>
@@ -520,15 +582,16 @@
 <!-- SLIDE 21 MODULE MAP -->
 <div class="slide">
   <div class="slide-header"><h1>19 · Full Module Connection Map</h1><p>How data flows across the entire dashboard</p></div>
-  <div class="slide-body" style="gap:6px;font-size:11px;">
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>SDD</b> (APPROVED) → Contact List · Task List → Mill Profile → <b>TTP sync</b> (FFB rows)</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Supply Excel</b> → Supply Draft → Mill Profile → <b>TTM %</b> (SUPPLY CPO/PK + coordinates)</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Mill Profile</b> → EUDR Potential · Questionnaire · Monthly Report §02 · Executive Report</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>TTP sheet</b> → Traceability panel <b>TTP %</b> · Category mix · Monthly Report · Facility Performance</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>TTP FFB rows</b> → EUDR FFB % by category · Untraceable mills detection</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>NBL sheets</b> → SDD screening check · Mill BUYER NO BUY LIST (sheet formula)</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Grievance</b> → Monthly Report · EUDR criteria · Mill grievance flags</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Supplied CPO/PK</b> → Facility Performance weighted TTP/TTM/ISPO %</div>
+  <div class="slide-body slide-body--fill">
+    <div class="flow-stack">
+    <div class="flow-box"><b>SDD</b> (APPROVED) → Contact List · Task List → Mill Profile → <b>TTP sync</b> (FFB rows)</div>
+    <div class="flow-box"><b>Supply Excel</b> → Supply Draft → Mill Profile → <b>TTM %</b> (SUPPLY CPO/PK + coordinates)</div>
+    <div class="flow-box"><b>Mill Profile</b> → EUDR Potential · Questionnaire · Monthly Report §02 · Executive Report</div>
+    <div class="flow-box"><b>TTP sheet</b> → Traceability panel <b>TTP %</b> · Category mix · Monthly Report · Facility Performance</div>
+    <div class="flow-box"><b>TTP FFB rows</b> → EUDR FFB % by category · Untraceable mills detection</div>
+    <div class="flow-box"><b>NBL sheets</b> → SDD screening · Mill BUYER NO BUY LIST &nbsp;|&nbsp; <b>Grievance</b> → Report · EUDR</div>
+    <div class="flow-box"><b>Supplied CPO/PK</b> → Facility Performance weighted TTP / TTM / ISPO %</div>
+    </div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 21</span></div>
 </div>
