@@ -1,645 +1,552 @@
 #!/usr/bin/env python3
-"""Generate Sustainability Dashboard data-flow documentation as PDF."""
+"""Generate slide-style PDF (landscape, PPT-like) for Sustainability Dashboard data flows."""
 
+import textwrap
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm, mm
-from reportlab.platypus import (
-    HRFlowable,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 
 OUTPUT = "/workspace/docs/Sustainability-Dashboard-Data-Flow.pdf"
 
-DARK_GREEN = colors.HexColor("#1B5E20")
-MID_GREEN = colors.HexColor("#2E7D32")
-LIGHT_GREEN = colors.HexColor("#E8F5E9")
-ACCENT = colors.HexColor("#FF8F00")
-DARK_TEXT = colors.HexColor("#212121")
-GRAY = colors.HexColor("#757575")
+# Widescreen slide 13.333" × 7.5" (standard PowerPoint 16:9)
+SW, SH = 13.333 * inch, 7.5 * inch
+MARGIN = 0.55 * inch
+HEADER_H = 0.95 * inch
+FOOTER_H = 0.38 * inch
+
+C_DARK = colors.HexColor("#1B5E20")
+C_MID = colors.HexColor("#2E7D32")
+C_LIGHT = colors.HexColor("#E8F5E9")
+C_ACCENT = colors.HexColor("#F57C00")
+C_WHITE = colors.white
+C_TEXT = colors.HexColor("#263238")
+C_MUTED = colors.HexColor("#607D8B")
+C_LINE = colors.HexColor("#CFD8DC")
 
 
-def build_styles():
-    base = getSampleStyleSheet()
-    return {
-        "cover_title": ParagraphStyle(
-            "cover_title",
-            parent=base["Title"],
-            fontSize=26,
-            leading=32,
-            textColor=colors.white,
-            alignment=TA_CENTER,
-            spaceAfter=14,
-        ),
-        "cover_sub": ParagraphStyle(
-            "cover_sub",
-            parent=base["Normal"],
-            fontSize=13,
-            leading=18,
-            textColor=colors.HexColor("#C8E6C9"),
-            alignment=TA_CENTER,
-        ),
-        "h1": ParagraphStyle(
-            "h1",
-            parent=base["Heading1"],
-            fontSize=18,
-            leading=24,
-            textColor=DARK_GREEN,
-            spaceBefore=16,
-            spaceAfter=8,
-        ),
-        "h2": ParagraphStyle(
-            "h2",
-            parent=base["Heading2"],
-            fontSize=13,
-            leading=18,
-            textColor=MID_GREEN,
-            spaceBefore=12,
-            spaceAfter=6,
-        ),
-        "body": ParagraphStyle(
-            "body",
-            parent=base["Normal"],
-            fontSize=10,
-            leading=14,
-            textColor=DARK_TEXT,
-            spaceAfter=6,
-        ),
-        "bullet": ParagraphStyle(
-            "bullet",
-            parent=base["Normal"],
-            fontSize=10,
-            leading=14,
-            textColor=DARK_TEXT,
-            leftIndent=14,
-            bulletIndent=6,
-            spaceAfter=4,
-        ),
-        "note": ParagraphStyle(
-            "note",
-            parent=base["Normal"],
-            fontSize=9,
-            leading=12,
-            textColor=GRAY,
-            spaceAfter=6,
-        ),
-        "mono": ParagraphStyle(
-            "mono",
-            parent=base["Code"],
-            fontSize=9,
-            leading=12,
-            textColor=DARK_TEXT,
-            backColor=LIGHT_GREEN,
-            leftIndent=8,
-            rightIndent=8,
-            spaceBefore=4,
-            spaceAfter=8,
-        ),
-    }
+class SlideDeck:
+    def __init__(self, path):
+        self.c = canvas.Canvas(path, pagesize=(SW, SH))
+        self.page = 0
+        self.footer_left = "Sustainability Dashboard — Data Flow Documentation"
 
+    def _styles(self):
+        return {
+            "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=C_WHITE),
+            "subtitle": ParagraphStyle("s", fontName="Helvetica", fontSize=11, leading=14, textColor=colors.HexColor("#C8E6C9")),
+            "h2": ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=C_MID),
+            "body": ParagraphStyle("b", fontName="Helvetica", fontSize=10.5, leading=14, textColor=C_TEXT),
+            "small": ParagraphStyle("sm", fontName="Helvetica", fontSize=9, leading=12, textColor=C_MUTED),
+            "bullet": ParagraphStyle("bu", fontName="Helvetica", fontSize=10, leading=13.5, textColor=C_TEXT, leftIndent=14),
+            "box": ParagraphStyle("bx", fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=C_WHITE, alignment=TA_CENTER),
+            "box_dark": ParagraphStyle("bxd", fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=C_TEXT, alignment=TA_CENTER),
+        }
 
-def section_header(st, title, subtitle=None):
-    out = [Paragraph(title, st["h1"])]
-    if subtitle:
-        out.append(Paragraph(subtitle, st["note"]))
-        out.append(Spacer(1, 4))
-    out.append(HRFlowable(width="100%", thickness=1, color=MID_GREEN, spaceAfter=10))
-    return out
+    def finish(self):
+        self.c.save()
 
+    def _footer(self):
+        self.c.setFont("Helvetica", 8)
+        self.c.setFillColor(C_MUTED)
+        self.c.drawString(MARGIN, 0.22 * inch, self.footer_left)
+        self.c.drawRightString(SW - MARGIN, 0.22 * inch, f"Slide {self.page}")
 
-def bullets(st, items):
-    out = []
-    for item in items:
-        if isinstance(item, tuple):
-            text, level = item
-            indent = 14 + level * 12
+    def _header(self, title, subtitle=None):
+        self.c.setFillColor(C_DARK)
+        self.c.rect(0, SH - HEADER_H, SW, HEADER_H, fill=1, stroke=0)
+        self.c.setFillColor(C_MID)
+        self.c.rect(0, SH - HEADER_H, 0.12 * inch, HEADER_H, fill=1, stroke=0)
+        st = self._styles()
+        p = Paragraph(title, st["title"])
+        w, h = p.wrap(SW - 2 * MARGIN, HEADER_H)
+        p.drawOn(self.c, MARGIN, SH - HEADER_H + (HEADER_H - h) / 2 + (8 if subtitle else 0))
+        if subtitle:
+            ps = Paragraph(subtitle, st["subtitle"])
+            _, sh = ps.wrap(SW - 2 * MARGIN, 20)
+            ps.drawOn(self.c, MARGIN, SH - HEADER_H + (HEADER_H - h) / 2 - sh + 2)
+
+    def new_slide(self, title=None, subtitle=None):
+        if self.page:
+            self._footer()
+            self.c.showPage()
+        self.page += 1
+        self.c.setFillColor(C_WHITE)
+        self.c.rect(0, 0, SW, SH, fill=1, stroke=0)
+        if title:
+            self._header(title, subtitle)
+        return SH - HEADER_H - 0.35 * inch  # top y for content
+
+    def cover(self, title, subtitle, lines):
+        self.page += 1
+        self.c.setFillColor(C_DARK)
+        self.c.rect(0, 0, SW, SH, fill=1, stroke=0)
+        # accent strip
+        self.c.setFillColor(C_MID)
+        self.c.rect(0, SH * 0.42, SW, 0.06 * inch, fill=1, stroke=0)
+        st = self._styles()
+        pt = ParagraphStyle("ct", parent=st["title"], fontSize=34, leading=40, alignment=TA_CENTER)
+        ps = ParagraphStyle("cs", parent=st["subtitle"], fontSize=16, leading=22, alignment=TA_CENTER)
+        pb = ParagraphStyle("cb", parent=st["subtitle"], fontSize=11, leading=16, alignment=TA_CENTER, textColor=colors.HexColor("#A5D6A7"))
+
+        p = Paragraph(title, pt)
+        w, h = p.wrap(SW - 2 * MARGIN, 120)
+        p.drawOn(self.c, MARGIN, SH * 0.58)
+
+        p2 = Paragraph(subtitle, ps)
+        p2.wrap(SW - 2 * MARGIN, 60)
+        p2.drawOn(self.c, MARGIN, SH * 0.48)
+
+        y = SH * 0.32
+        for line in lines:
+            p3 = Paragraph(line, pb)
+            p3.wrap(SW - 2 * MARGIN, 20)
+            p3.drawOn(self.c, MARGIN, y)
+            y -= 18
+
+        self._footer()
+        self.c.showPage()
+
+    def bullets(self, top_y, items, col_x=MARGIN, col_w=None):
+        if col_w is None:
+            col_w = SW - 2 * MARGIN
+        st = self._styles()
+        y = top_y
+        for item in items:
+            level = item[1] if isinstance(item, tuple) else 0
+            text = item[0] if isinstance(item, tuple) else item
+            indent = col_x + level * 16
             style = ParagraphStyle(
-                "b" + str(level),
-                parent=st["bullet"],
-                leftIndent=indent,
-                bulletIndent=indent - 8,
+                "bl", parent=st["bullet"], leftIndent=14 + level * 14, fontSize=10 - level * 0.5
             )
-            out.append(Paragraph(f"• {text}", style))
-        else:
-            out.append(Paragraph(f"• {item}", st["bullet"]))
-    return out
+            p = Paragraph(f"• {text}", style)
+            w, h = p.wrap(col_w - level * 16, 200)
+            if y - h < FOOTER_H + 0.15 * inch:
+                break
+            p.drawOn(self.c, indent, y - h)
+            y -= h + 3
+        return y
 
-
-def table(st, headers, rows, col_widths=None):
-    data = [headers] + [[Paragraph(str(c), st["body"]) for c in row] for row in rows]
-    tbl = Table(data, colWidths=col_widths, repeatRows=1)
-    tbl.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), MID_GREEN),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 9),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#BDBDBD")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_GREEN]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
+    def draw_box(self, x, y, w, h, text, fill=C_MID, text_color=C_WHITE, radius=8, font_size=9.5):
+        self.c.setFillColor(fill)
+        self.c.setStrokeColor(C_DARK if fill != C_LIGHT else C_LINE)
+        self.c.setLineWidth(0.8)
+        self.c.roundRect(x, y, w, h, radius, fill=1, stroke=1)
+        st = ParagraphStyle(
+            "boxt",
+            fontName="Helvetica-Bold",
+            fontSize=font_size,
+            leading=font_size + 2.5,
+            textColor=text_color,
+            alignment=TA_CENTER,
         )
+        lines = text.split("\n")
+        line_h = font_size + 3
+        total_h = len(lines) * line_h
+        start_y = y + (h + total_h) / 2 - line_h
+        for i, line in enumerate(lines):
+            p = Paragraph(line, st)
+            pw, ph = p.wrap(w - 10, h)
+            p.drawOn(self.c, x + (w - pw) / 2, start_y - i * line_h - ph + line_h)
+
+    def draw_arrow_down(self, x, y, label=""):
+        self.c.setStrokeColor(C_ACCENT)
+        self.c.setFillColor(C_ACCENT)
+        self.c.setLineWidth(2)
+        self.c.line(x, y, x, y - 0.22 * inch)
+        self.c.line(x, y - 0.22 * inch, x - 5, y - 0.14 * inch)
+        self.c.line(x, y - 0.22 * inch, x + 5, y - 0.14 * inch)
+        if label:
+            self.c.setFont("Helvetica-Bold", 8)
+            self.c.setFillColor(C_ACCENT)
+            self.c.drawCentredString(x, y - 0.32 * inch, label)
+
+    def draw_arrow_right(self, x1, y, x2):
+        self.c.setStrokeColor(C_ACCENT)
+        self.c.setFillColor(C_ACCENT)
+        self.c.setLineWidth(2)
+        self.c.line(x1, y, x2, y)
+        self.c.line(x2, y, x2 - 6, y - 4)
+        self.c.line(x2, y, x2 - 6, y + 4)
+
+    def table(self, top_y, headers, rows, col_widths=None):
+        if col_widths is None:
+            n = len(headers)
+            usable = SW - 2 * MARGIN
+            col_widths = [usable / n] * n
+
+        row_h = 0.38 * inch
+        x0 = MARGIN
+        y = top_y
+
+        # header
+        self.c.setFillColor(C_MID)
+        self.c.rect(x0, y - row_h, sum(col_widths), row_h, fill=1, stroke=0)
+        x = x0
+        self.c.setFillColor(C_WHITE)
+        self.c.setFont("Helvetica-Bold", 9)
+        for i, h in enumerate(headers):
+            self.c.drawString(x + 6, y - row_h + 10, str(h)[:40])
+            x += col_widths[i]
+        y -= row_h
+
+        self.c.setFont("Helvetica", 8.5)
+        for ri, row in enumerate(rows):
+            bg = C_LIGHT if ri % 2 == 0 else C_WHITE
+            self.c.setFillColor(bg)
+            self.c.setStrokeColor(C_LINE)
+            self.c.rect(x0, y - row_h, sum(col_widths), row_h, fill=1, stroke=1)
+            x = x0
+            self.c.setFillColor(C_TEXT)
+            for ci, cell in enumerate(row):
+                txt = textwrap.fill(str(cell), width=int(col_widths[ci] / 5.5)) if len(str(cell)) > 35 else str(cell)
+                first_line = txt.split("\n")[0]
+                self.c.drawString(x + 6, y - row_h + 10, first_line[:55])
+                x += col_widths[ci]
+            y -= row_h
+            if y < FOOTER_H + 0.5 * inch:
+                break
+        return y
+
+    def section_label(self, y, text):
+        st = self._styles()
+        p = Paragraph(text, st["h2"])
+        w, h = p.wrap(SW - 2 * MARGIN, 30)
+        p.drawOn(self.c, MARGIN, y - h)
+        return y - h - 8
+
+    def note(self, y, text):
+        st = self._styles()
+        p = Paragraph(text, st["small"])
+        w, h = p.wrap(SW - 2 * MARGIN, 40)
+        p.drawOn(self.c, MARGIN, y - h)
+        return y - h
+
+
+def build():
+    d = SlideDeck(OUTPUT)
+
+    d.cover(
+        "Sustainability Dashboard",
+        "Dokumentasi Alur Data &amp; Rumus Bisnis",
+        [
+            "Mill Onboarding · Supplier Due Diligence · Traceability",
+            "Sumber valid dari codebase — tanpa perubahan kode aplikasi",
+        ],
     )
-    return tbl
 
-
-def flow_box(st, lines):
-    text = "<br/>".join(lines)
-    return Paragraph(text, st["mono"])
-
-
-def cover_page(st):
-    return [
-        Spacer(1, 5 * cm),
-        Paragraph("Sustainability Dashboard", st["cover_title"]),
-        Paragraph("Dokumentasi Alur Data &amp; Rumus Bisnis", st["cover_sub"]),
-        Spacer(1, 1.2 * cm),
-        Paragraph(
-            "Mill Onboarding · Supplier Due Diligence · Modul Terkait",
-            st["cover_sub"],
-        ),
-        Spacer(1, 0.6 * cm),
-        Paragraph(
-            "Sumber valid dari codebase (main.js, GoogleAppsScript-backend-v3-full.gs)",
-            st["cover_sub"],
-        ),
-        PageBreak(),
-    ]
-
-
-def build_pdf():
-    st = build_styles()
-    doc = SimpleDocTemplate(
-        OUTPUT,
-        pagesize=A4,
-        rightMargin=1.8 * cm,
-        leftMargin=1.8 * cm,
-        topMargin=1.8 * cm,
-        bottomMargin=1.8 * cm,
-        title="Sustainability Dashboard - Data Flow Documentation",
-        author="Generated from codebase",
-    )
-
-    story = cover_page(st)
-
-    # TOC
-    story += section_header(st, "Daftar Isi", "Ringkasan 15 bagian")
+    # Slide 2 - TOC
+    y = d.new_slide("Daftar Isi", "15 slide — alur data & rumus bisnis")
     toc = [
         "1. Arsitektur Sistem",
         "2. Supplier Due Diligence (SDD)",
-        "3. SDD — State Machine & Alur",
+        "3. SDD Lifecycle (State Machine)",
         "4. SDD → Kemana Data Mengalir",
         "5. Mapping SDD → Mill Onboarding",
-        "6. Mapping SDD FFB → TTP/TTM",
-        "7. Mill Onboarding — Entry & Output",
-        "8. Supply Task List",
-        "9. Rumus Google Sheet (Read-Only)",
-        "10. Rumus App — Grievance, TTM/TTP, EUDR",
-        "11. Mill Risk Reason",
+        "6. Mapping FFB → Monitoring TTP/TTM",
+        "7. Mill Onboarding — Entry Point",
+        "8. Mill Onboarding → Output",
+        "9. Supply Task List",
+        "10. Rumus Google Sheet",
+        "11. Rumus App (Grievance · TTM · EUDR)",
         "12. Peta Modul & Koneksi",
         "13. Daftar Google Sheets",
         "14. SDD vs EUDR DDS",
         "15. Aturan Validasi",
     ]
-    story += bullets(st, toc)
-    story.append(PageBreak())
+    mid = SW / 2
+    d.bullets(y, toc[:8], col_x=MARGIN, col_w=mid - MARGIN - 0.2 * inch)
+    d.bullets(y, toc[8:], col_x=mid + 0.1 * inch, col_w=mid - MARGIN - 0.2 * inch)
 
-    # 1 Architecture
-    story += section_header(
-        st,
-        "1. Arsitektur Sistem",
-        "Frontend → API Proxy → Google Apps Script → Google Sheets",
+    # Slide 3 - Architecture
+    y = d.new_slide("1. Arsitektur Sistem", "Frontend → API Proxy → Google Apps Script → Google Sheets")
+    boxes_top = [
+        ("Supplier\nDue Diligence", 0.5 * inch),
+        ("Mill\nOnboarding", 2.85 * inch),
+        ("Monitoring\nTTM/TTP", 5.2 * inch),
+        ("EUDR\nPotential", 7.55 * inch),
+        ("Monthly\nReport", 9.9 * inch),
+    ]
+    bw, bh = 2.1 * inch, 0.72 * inch
+    by = y - bh - 0.1 * inch
+    for text, bx in boxes_top:
+        d.draw_box(bx, by, bw, bh, text, fill=C_LIGHT, text_color=C_DARK)
+    cx = SW / 2
+    d.draw_arrow_down(cx, by - 0.05 * inch)
+    d.draw_box(cx - 2.0 * inch, by - 1.05 * inch, 4.0 * inch, 0.55 * inch, "/api/gas-proxy", fill=C_ACCENT)
+    d.draw_arrow_down(cx, by - 1.1 * inch)
+    d.draw_box(cx - 2.6 * inch, by - 1.85 * inch, 5.2 * inch, 0.55 * inch, "Google Apps Script  (doGet / doPost)", fill=C_DARK)
+    d.draw_arrow_down(cx, by - 1.9 * inch)
+    d.draw_box(
+        cx - 3.2 * inch, by - 2.65 * inch, 6.4 * inch, 0.55 * inch,
+        "Google Sheets: SDD_MAIN · Mill Profile · TTP · EUDR · ...",
+        fill=C_MID, font_size=9,
     )
-    story += bullets(
-        st,
-        [
-            "Frontend: Vite SPA (src/main.js + modul panel per fitur)",
-            "API: /api/gas-proxy → doGet / doPost di Google Apps Script",
-            "Database: Google Sheets — setiap modul = satu atau lebih tab sheet",
-            "Backend canonical: scripts/GoogleAppsScript-backend-v3-full.gs",
-            "Prinsip penting:",
-            ("Skor dan risk level mill dihitung di Google Sheet (formula), bukan di web app", 1),
-            ("Web app tidak menulis ulang kolom formula saat save", 1),
-        ],
-    )
-    story.append(Spacer(1, 8))
-    story.append(
-        flow_box(
-            st,
-            [
-                "[Supplier DD] [Mill Onboarding] [TTM/TTP] [EUDR] [Monthly Report]",
-                "                            ↓",
-                "                      /api/gas-proxy",
-                "                            ↓",
-                "                   Google Apps Script",
-                "                            ↓",
-                "         SDD_MAIN · Mill Profile · Monitoring TTP/TTM · ...",
-            ],
-        )
-    )
-    story.append(PageBreak())
+    d.note(by - 3.0 * inch, "<b>Prinsip:</b> Skor/risk mill dihitung di Google Sheet. Web app tidak menulis kolom formula.")
 
-    # 2 SDD
-    story += section_header(
-        st,
-        "2. Supplier Due Diligence (SDD)",
-        "Panel: #panel-supplier-dd",
-    )
-    story += bullets(
-        st,
+    # Slide 4 - SDD overview
+    y = d.new_slide("2. Supplier Due Diligence (SDD)", "Panel #panel-supplier-dd")
+    d.bullets(
+        y,
         [
-            "Penyimpanan: SDD_MAIN (1 baris/submission), SDD_MILL_LIST (Traceability A), SDD_FFB_LIST (Traceability B)",
-            "Primary key: submission_id (format SUB-YYYYMMDD-XXXXXX)",
-            "Supplier type: MILL, KCP, atau TRADER",
-            "Entry point:",
+            "Penyimpanan: <b>SDD_MAIN</b> · <b>SDD_MILL_LIST</b> (Traceability A) · <b>SDD_FFB_LIST</b> (Traceability B)",
+            "Primary key: submission_id  (SUB-YYYYMMDD-XXXXXX)",
+            "Supplier type: MILL · KCP · TRADER",
+            ("Entry point:", 0),
             ("Upload Excel — Main Form + Traceability A/B", 1),
-            ("Screening form manual — SCR fields, GRV, PRI", 1),
-            ("Approve / Hold / Reject oleh approver", 1),
+            ("Screening form — SCR fields, GRV, PRI", 1),
+            ("Approve / Hold / Reject", 1),
             ("NBL Check vs sheet NBL & Unilever NBL", 1),
-            "Legacy: sheet SDD Data (flat) masih didukung via adapter",
+            ("Export PDF screening report", 1),
         ],
     )
-    story.append(PageBreak())
 
-    # 3 SDD state machine
-    story += section_header(st, "3. SDD — State Machine & Alur")
-    story.append(
-        flow_box(
-            st,
-            [
-                "Import Excel",
-                "    ↓ Save Draft → SCR Status: Draft",
-                "    ↓ Submit     → SCR Status: Submitted",
-                "    ↓ Boss Decision:",
-                "         Approve → statusSDD = APPROVED",
-                "         Hold    → statusSDD = ON HOLD",
-                "         Reject  → statusSDD = REJECTED",
-                "    ↓ (APPROVED + Submitted) → Mill Onboarding Task List",
-                "    ↓ '+ Add to Mill' → Mill Onboarding Profile",
-                "    ↓ mill_ttp_sync → Monitoring TTP/TTM",
-                "    ↓ mill_added = true → hilang dari Task List",
-            ],
-        )
-    )
-    story.append(Spacer(1, 10))
-    story.append(
-        Paragraph(
-            "<b>Catatan:</b> TTP tidak di-sync saat SDD di-approve saja. "
-            "Sync TTP terjadi setelah Mill disimpan dari Task List dengan payload mill_ttp_sync.",
-            st["body"],
-        )
-    )
-    story.append(PageBreak())
+    # Slide 5 - SDD lifecycle (vertical flow, center)
+    y = d.new_slide("3. SDD Lifecycle", "State machine dari import hingga onboarding selesai")
+    steps = [
+        ("1. Import Excel", C_MID),
+        ("2. Save Draft  →  SCR: Draft", C_MID),
+        ("3. Submit  →  SCR: Submitted", C_ACCENT),
+        ("4. Boss Decision: Approve / Hold / Reject", C_DARK),
+        ("5. Task List  (APPROVED + Submitted)", C_MID),
+        ("6. + Add to Mill  →  Mill Profile", C_MID),
+        ("7. mill_ttp_sync  →  Monitoring TTP/TTM", C_ACCENT),
+        ("8. mill_added = true  (selesai)", colors.HexColor("#388E3C")),
+    ]
+    bw2 = 5.6 * inch
+    bh2 = 0.44 * inch
+    bx = (SW - bw2) / 2
+    sy = y - 0.08 * inch
+    for i, (txt, col) in enumerate(steps):
+        by2 = sy - i * 0.54 * inch
+        d.draw_box(bx, by2 - bh2, bw2, bh2, txt, fill=col, font_size=9.5)
+        if i < len(steps) - 1:
+            d.draw_arrow_down(bx + bw2 / 2, by2 - bh2 - 0.02 * inch)
+    d.note(sy - len(steps) * 0.54 * inch - 0.15 * inch, "<b>Catatan:</b> TTP sync terjadi SETELAH Mill disimpan — bukan saat approve SDD saja.")
 
-    # 4 SDD downstream
-    story += section_header(st, "4. SDD → Kemana Data Mengalir?")
-    story.append(
-        table(
-            st,
-            ["Trigger", "Target Modul", "Fungsi / Mekanisme"],
-            [
-                ["statusSDD = APPROVED", "Contact List Supplier", "syncContactFromApprovedSubmission_()"],
-                ["APPROVED + Submitted", "Mill Task List", "isApprovedSubmittedSddRow_()"],
-                ["Save Mill dari Task List", "Mill Onboarding Profile", "add / update sheet mill"],
-                ["mill_ttp_sync", "Monitoring TTP/TTM", "syncTtpFromMillOnboarding_*()"],
-                ["NBL Check", "SCR - No Buy List", "runSddNblCheck()"],
-                ["Monthly Report", "Section 01 SDD", "fetchSddList()"],
-                ["Export PDF", "SDD Screening PDF", "sddExportPdf()"],
-            ],
-            col_widths=[4.2 * cm, 4.5 * cm, 7.5 * cm],
-        )
-    )
-    story.append(PageBreak())
-
-    # 5 SDD to Mill mapping
-    story += section_header(
-        st,
-        "5. Mapping Field: SDD → Mill Onboarding",
-        "Fungsi: mapSddRowToMillPayload() / mapSddTmlRowToMillPayload()",
-    )
-    story.append(
-        table(
-            st,
-            ["Kolom Mill", "Sumber SDD"],
-            [
-                ["GROUP NAME", "Group Name"],
-                ["COMPANY NAME", "Company Name"],
-                ["MILL NAME", "Mill Name / KCP Name / TML - Mill Name"],
-                ["COORDINATES", "Latitude + Longitude (comma-separated)"],
-                ["MILL CAPACITY (TON/HOUR)", "Mill Capacity (Ton/Hour)"],
-                ["MILL CATEGORY", "Mill Category / KCP Category"],
-                ["ADDRESS", "Mill Address / KCP Address"],
-                ["MONTH, YEAR", "Periode SDD"],
-                ["SOURCE TYPE", "MILL / KCP / TRADER"],
-                ["TRADER NAME", "Nama trader parent (jika applicable)"],
-                ["UML ID", "TML - UML ID (TML lines)"],
-            ],
-            col_widths=[5.5 * cm, 10.7 * cm],
-        )
-    )
-    story.append(PageBreak())
-
-    # 6 FFB to TTP
-    story += section_header(
-        st,
-        "6. Mapping: SDD FFB → Monitoring TTP/TTM",
-        "Prinsip: 1 baris TTP = 1 pemasok FFB (Traceability B) + konteks Main Form",
-    )
-    story.append(
-        table(
-            st,
-            ["Kolom TTP", "Sumber SDD"],
-            [
-                ["GROUP / COMPANY / MILL NAME", "Mill Onboarding identity"],
-                ["FFB SUPPLIER GROUP / NAME", "FFB - Supplier Group/Name"],
-                ["CATEGORY", "FFB - Supplier Category"],
-                ["LAT, LONG", "FFB - Latitude/Longitude"],
-                ["VILLAGE, SUBDISTRICT, DISTRICT", "FFB location fields"],
-                ["CONCESION / PLANTED AREA", "FFB area fields"],
-                ["LEGALITAS, ISPO/RSPO/ISCC", "FFB certification"],
-                ["FFB SUPPLY to MILL (TON)", "FFB - Total Supply FFB (Ton)"],
-                ["submission_id, ffb_line_id", "Metadata sync (upsert)"],
-            ],
-            col_widths=[5.5 * cm, 10.7 * cm],
-        )
-    )
-    story.append(
-        Paragraph(
-            "Referensi lengkap: docs/sdd-to-ttm-ttp-field-mapping.md",
-            st["note"],
-        )
-    )
-    story.append(PageBreak())
-
-    # 7 Mill onboarding
-    story += section_header(
-        st,
-        "7. Mill Onboarding — Entry & Output",
-        "Sheet: Mill Onboarding Profile (CPO/PK) · Mill Onboarding Waste (POME/SHELL)",
-    )
-    story.append(Paragraph("Cara data masuk:", st["h2"]))
-    story += bullets(
-        st,
+    # Slide 6 - SDD downstream
+    y = d.new_slide("4. SDD → Kemana Data Mengalir?", "Trigger · target · fungsi backend")
+    d.table(
+        y,
+        ["Trigger", "Target", "Fungsi"],
         [
-            "Manual Add/Edit — modal #btn-add-mill",
-            "SDD Task List — '+ Add to Mill' dari approved screening",
-            "Supply Excel Import — upload → draft → submit",
+            ["APPROVED", "Contact List", "syncContactFromApprovedSubmission_"],
+            ["APPROVED + Submitted", "Mill Task List", "isApprovedSubmittedSddRow_"],
+            ["Save Mill", "Mill Profile", "add / update sheet mill"],
+            ["mill_ttp_sync", "TTP/TTM", "syncTtpFromMillOnboarding_*"],
+            ["NBL Check", "SCR - No Buy List", "runSddNblCheck()"],
+            ["Report period", "Monthly Report §01", "fetchSddList()"],
+        ],
+        col_widths=[2.4 * inch, 2.5 * inch, 3.4 * inch],
+    )
+
+    # Slide 7 - SDD to Mill mapping
+    y = d.new_slide("5. Mapping SDD → Mill Onboarding", "mapSddRowToMillPayload() / mapSddTmlRowToMillPayload()")
+    d.table(
+        y,
+        ["Kolom Mill", "Sumber SDD"],
+        [
+            ["GROUP NAME", "Group Name"],
+            ["COMPANY NAME", "Company Name"],
+            ["MILL NAME", "Mill Name / KCP Name / TML - Mill Name"],
+            ["COORDINATES", "Latitude + Longitude"],
+            ["MILL CAPACITY", "Mill Capacity (Ton/Hour)"],
+            ["SOURCE TYPE", "MILL / KCP / TRADER"],
+            ["TRADER NAME", "Nama trader parent"],
+            ["UML ID", "TML - UML ID"],
+        ],
+        col_widths=[3.2 * inch, 4.8 * inch],
+    )
+
+    # Slide 8 - FFB to TTP
+    y = d.new_slide("6. Mapping FFB → TTP/TTM", "1 baris TTP = 1 pemasok FFB + konteks Main Form")
+    d.table(
+        y,
+        ["Kolom TTP", "Sumber"],
+        [
+            ["GROUP / COMPANY / MILL", "Mill Onboarding identity"],
+            ["FFB SUPPLIER GROUP/NAME", "FFB - Supplier Group/Name"],
+            ["CATEGORY", "FFB - Supplier Category"],
+            ["LAT / LONG", "FFB - Latitude/Longitude"],
+            ["AREA / LEGALITAS / CERT", "FFB fields"],
+            ["FFB SUPPLY to MILL (TON)", "FFB - Total Supply FFB"],
+            ["submission_id", "Metadata upsert"],
+        ],
+        col_widths=[3.5 * inch, 4.5 * inch],
+    )
+
+    # Slide 9 - Mill entry
+    y = d.new_slide("7. Mill Onboarding — Entry Point", "Mill Profile (CPO/PK) · Mill Waste (POME/SHELL)")
+    d.bullets(
+        y,
+        [
+            "<b>3 cara data masuk:</b>",
+            ("Manual Add/Edit — modal #btn-add-mill", 1),
+            ("SDD Task List — '+ Add to Mill'", 1),
+            ("Supply Excel Import — upload → draft → submit", 1),
+            "<b>Supply routing:</b>",
+            ("CPO/PK → sheet mill", 1),
+            ("POME/SHELL → sheet millWaste", 1),
+            ("KCP plant → FACILITY NAME PK", 1),
+            ("Refinery → FACILITY NAME CPO", 1),
         ],
     )
-    story.append(Paragraph("Supply routing:", st["h2"]))
-    story += bullets(
-        st,
-        [
-            "CPO/PK → sheet mill",
-            "POME (ISCC/INS) / SHELL → sheet millWaste",
-            "KCP plant → FACILITY NAME PK",
-            "Refinery plant → FACILITY NAME CPO",
-        ],
-    )
-    story.append(Spacer(1, 8))
-    story.append(Paragraph("Data mengalir ke:", st["h2"]))
-    story.append(
-        table(
-            st,
-            ["Consumer", "Join Key", "Data Dipakai"],
-            [
-                ["Monitoring TTP/TTM", "GROUP|COMPANY|MILL|UML", "Identity + FFB sync"],
-                ["Monthly Report §02", "Period + risk level", "High-risk MILL rows"],
-                ["Performa Facility", "FACILITY NAME CPO/PK", "Supply, traceability %"],
-                ["Questionnaire Monitoring", "group|company|mill", "Registry mill"],
-                ["EUDR Potential", "group|company|mill", "Identity sync"],
-                ["Mill Executive Report", "Quarter", "Supply, risk, NBL, cert"],
-            ],
-            col_widths=[4.2 * cm, 4.5 * cm, 7.5 * cm],
-        )
-    )
-    story.append(PageBreak())
 
-    # 8 Supply task list
-    story += section_header(st, "8. Supply Task List — Alur")
-    story.append(
-        flow_box(
-            st,
-            [
-                "Upload Excel (PLANT, CATEGORY, COMPANY, MILL, QTY)",
-                "    ↓ Parse & match profil mill",
-                "    ↓ match_status: matched | new | group_mismatch",
-                "    ↓ Save Draft → Supply Import Draft",
-                "    ↓ Review di Task List modal",
-                "    ↓ Submit → submitSupplyDraft_",
-                "    ↓ Append row → Mill Profile / Mill Waste",
-                "    ↓ Google Sheet hitung kolom formula",
-            ],
-        )
-    )
-    story.append(Spacer(1, 10))
-    story += bullets(
-        st,
+    # Slide 10 - Mill output
+    y = d.new_slide("8. Mill Onboarding → Output", "Consumer modules & join key")
+    d.table(
+        y,
+        ["Consumer", "Join Key", "Data"],
         [
-            "CPO/PK submit: kolom produk lain dikosongkan (CPO submit clear PK, dst.)",
-            "Formula columns di-restore dari baris di atas — tidak di-overwrite",
+            ["TTP/TTM", "GROUP|COMPANY|MILL", "Identity + FFB"],
+            ["Monthly Report", "Period + risk", "High-risk mills"],
+            ["Performa Facility", "Facility name", "Supply, trace %"],
+            ["Questionnaire", "group|company|mill", "Registry"],
+            ["EUDR Potential", "group|company|mill", "Identity sync"],
+            ["Executive Report", "Quarter", "Supply, NBL, cert"],
+        ],
+        col_widths=[2.3 * inch, 2.5 * inch, 3.2 * inch],
+    )
+
+    # Slide 11 - Supply task list
+    y = d.new_slide("9. Supply Task List", "Embedded di Mill Onboarding")
+    flow_x = MARGIN
+    flow_y = y - 0.55 * inch
+    fw, fh = 2.0 * inch, 0.5 * inch
+    flow_steps = ["Excel Upload", "Match Profil", "Save Draft", "Review", "Submit", "Mill Sheet"]
+    for i, step in enumerate(flow_steps):
+        bx = flow_x + i * (fw + 0.28 * inch)
+        d.draw_box(bx, flow_y, fw, fh, step, fill=C_MID if i == len(flow_steps) - 1 else C_LIGHT, text_color=C_WHITE if i == len(flow_steps) - 1 else C_DARK, font_size=8.5)
+        if i < len(flow_steps) - 1:
+            d.draw_arrow_right(bx + fw + 0.02 * inch, flow_y + fh / 2, bx + fw + 0.26 * inch)
+    d.bullets(
+        flow_y - 0.35 * inch,
+        [
+            "match_status: matched · new · group_mismatch",
+            "Formula columns di-restore — tidak di-overwrite",
             "Repair drift: reconcileSupplyDraft_()",
         ],
     )
-    story.append(PageBreak())
 
-    # 9 Sheet formulas
-    story += section_header(
-        st,
-        "9. Rumus di Google Sheet (Read-Only dari Web)",
-        "Kolom MILL_FORMULA_HEADERS_ — tidak pernah ditulis dari web app",
-    )
-    story += bullets(
-        st,
+    # Slide 12 - Sheet formulas
+    y = d.new_slide("10. Rumus Google Sheet", "Read-only dari web — MILL_FORMULA_HEADERS_")
+    left_items = [
+        "SCORE · TOTAL SCORE · LEGALITY SCORE",
+        "DEFORESTATION / BURN / PEAT SCORE",
+        "TOTAL GRIEVANCES · POLICY · CERTIFICATION",
+        "RISK LEVEL · RESULT RISK LEVEL",
+        "BUYER NO BUY LIST · SUPPLIER STATUS",
+    ]
+    right_items = [
+        "PERCENTAGE SUPPLY CPO/PK/ISCC/INS/SHELL",
+        "PRODUCT SUPPLY · STATUS SUPPLY",
+        "TOTAL POME SUPPLY · MAX SUPPLY",
+        "REMAINING STOCK · TOTAL SCORE SUPPLY",
+        "SD Monitoring: DAY LEFT · Status · Result",
+    ]
+    d.bullets(y, left_items, col_x=MARGIN, col_w=SW / 2 - MARGIN - 0.15 * inch)
+    d.bullets(y, right_items, col_x=SW / 2 + 0.05 * inch, col_w=SW / 2 - MARGIN - 0.15 * inch)
+
+    # Slide 13 - App formulas
+    y = d.new_slide("11. Rumus App (Frontend)", "Dihitung di web app — bukan di sheet")
+    cards = [
+        ("Grievance Risk", "Total = Σ 6 indikator\n≤8 Low · ≤11 Med · >11 High", 0),
+        ("TTM Coordinate %", "Σ(qty traceable)\n/ Σ(qty total) × 100", 1),
+        ("TTP Aggregate %", "Σ(trace vol)\n/ Σ(supply) × 100", 2),
+        ("EUDR Status", "All criteria PASS\n→ Potential", 3),
+    ]
+    cw, ch = 2.85 * inch, 1.15 * inch
+    for title, body, idx in cards:
+        row, col = idx // 2, idx % 2
+        bx = MARGIN + col * (cw + 0.35 * inch)
+        by = y - 0.2 * inch - row * (ch + 0.35 * inch)
+        d.draw_box(bx, by - ch, cw, 0.32 * inch, title, fill=C_DARK, font_size=10)
+        d.draw_box(bx, by - ch - 0.82 * inch, cw, 0.82 * inch, body, fill=C_LIGHT, text_color=C_DARK, font_size=9)
+
+    # Slide 14 - Module map
+    y = d.new_slide("12. Peta Modul & Koneksi", "Dependensi antar modul")
+    flows = [
+        "SDD (APPROVED) ──────────→ Contact List",
+        "SDD ──→ Task List ──→ Mill ──→ TTP sync",
+        "Supply Excel ──────────────→ Mill Profile",
+        "Mill ──→ EUDR Potential    TTP ──→ EUDR FFB %",
+        "Mill + TTP + GRV + NBL ───→ Monthly Report",
+        "Mill + TTP + Supplied ────→ Performa Facility",
+        "NBL ──→ SDD check + Mill BUYER NO BUY LIST",
+    ]
+    fy = y - 0.15 * inch
+    for line in flows:
+        d.draw_box(MARGIN, fy - 0.42 * inch, SW - 2 * MARGIN, 0.42 * inch, line, fill=C_LIGHT, text_color=C_DARK, font_size=9, radius=6)
+        fy -= 0.52 * inch
+
+    # Slide 15 - Sheets table
+    y = d.new_slide("13. Daftar Google Sheets", "Database tabs per modul")
+    d.table(
+        y,
+        ["Key", "Tab Name", "Modul"],
         [
-            "Skor: SCORE, DEFORESTATION/BURN/PEAT SCORE, TOTAL SCORE SPATIAL, TOTAL SCORE, LEGALITY SCORE",
-            "Agregat: TOTAL GRIEVANCES, TOTAL POLICY, TOTAL CERTIFICATION",
-            "Risk: RISK LEVEL, RESULT RISK LEVEL, BUYER NO BUY LIST, PRIORITY ENGAGEMENT, SUPPLIER STATUS",
-            "Supply %: PERCENTAGE SUPPLY CPO/PK/ISCC/INS/SHELL, PRODUCT SUPPLY",
-            "Waste: TOTAL POME SUPPLY, MAX SUPPLY POME/SHELL, REMAINING STOCK, TOTAL SCORE SUPPLY",
-            "Status: COMPLIMENT/NOT COMPLIMENT, DECLARATION MONITORING, CPO, PK",
-            "SD Monitoring: LAST SD DATE, DAY LEFT, Status, Result, Risk Number",
+            ["mill", "Mill Onboarding Profile", "Mill Onboarding"],
+            ["millWaste", "Mill Onboarding Waste", "Mill Waste"],
+            ["sddMain/Mill/Ffb", "SDD_MAIN / MILL / FFB", "Supplier DD"],
+            ["ttp", "Monitoring TTP/TTM", "Traceability"],
+            ["grievance", "Grievance Monitoring", "Grievance"],
+            ["eudrPotential", "EUDR Potential", "EUDR"],
+            ["contactSupplier", "Contact List Supplier", "Contact"],
         ],
+        col_widths=[2.0 * inch, 3.5 * inch, 2.5 * inch],
     )
-    story.append(PageBreak())
 
-    # 10 App formulas
-    story += section_header(st, "10. Rumus App — Grievance, TTM/TTP, EUDR")
-    story.append(Paragraph("Grievance Risk Score (src/grievance-risk.js)", st["h2"]))
-    story += bullets(
-        st,
+    # Slide 16 - SDD vs DDS
+    y = d.new_slide("14. SDD vs EUDR DDS", "Dua modul terpisah — tidak ada coupling langsung")
+    d.table(
+        y,
+        ["Aspek", "SDD", "EUDR DDS"],
         [
-            "Total Score = jumlah 6 indikator (skor 1–3 masing-masing)",
-            "Total ≤ 8 → Low · Total ≤ 11 → Medium · Total > 11 → High",
-            "Indikator: Publish, Subject, Repeat, Consequence, Group Scale, No Response",
+            ["Panel", "supplier-dd", "due-diligence-statement"],
+            ["Storage", "SDD_MAIN + child", "EUDR DDS + child"],
+            ["Tujuan", "Screening + onboarding", "Export paket EU"],
+            ["Output", "Mill → TTP", "DOCX/PDF buyer"],
         ],
+        col_widths=[1.8 * inch, 2.8 * inch, 2.8 * inch],
     )
-    story.append(Paragraph("TTM Coordinate % (ttpCalcTtmCoordinatePct_)", st["h2"]))
-    story += bullets(
-        st,
-        [
-            "Pool: SOURCE TYPE MILL/TRADER/REFINERY dan SUPPLY CPO/PK > 0",
-            "Traceable: baris dengan koordinat valid",
-            "% = Σ(qty traceable) / Σ(qty total) × 100",
-        ],
-    )
-    story.append(Paragraph("TTP Aggregate % (ttpAggregateTotalTraceablePct_)", st["h2"]))
-    story += bullets(
-        st,
-        [
-            "Primary: Σ(Traceable Volume) / Σ(CPO/PK SUPPLY) × 100",
-            "Fallback: rata-rata kolom % CPO/PK TRACEABLE",
-        ],
-    )
-    story.append(Paragraph("EUDR Potential Status (eudrComputeStatus_)", st["h2"]))
-    story += bullets(
-        st,
-        [
-            "Semua kriteria ENABLED harus PASS → Potential",
-            "Salah satu FAIL → Not Potential",
-            "Kriteria: legality, millCategory (Integrated), ownPlasmaFfb (≥70%), resultRiskLevel (Low),",
-            ("millLocation (APL), certification, grievance, ndpePolicy, noBuyList, deforestation", 1),
-        ],
-    )
-    story.append(PageBreak())
 
-    # 11 Mill risk reason
-    story += section_header(
-        st,
-        "11. Mill Risk Reason Pills",
-        "src/mill-risk-reason.js — interpretasi gap field untuk UI",
-    )
-    story += bullets(
-        st,
-        [
-            "No Coordinate — koordinat kosong/invalid",
-            "Legality Not Complete — LEGALITY SCORE ≠ 1",
-            "Non APL Area — MILL LOC bukan APL",
-            "No NDPE / No Certification",
-            "Deforestation — RISK REDUCTION FACTOR = 1 atau width > 0 ha",
-            "High Deforestation — factor = 2 atau width > 25 ha",
-            "On No Buy List — BUYER NO BUY LIST = Yes",
-            "Mills dengan RESULT RISK LEVEL = Low tidak menampilkan reason pills",
-        ],
-    )
-    story.append(PageBreak())
-
-    # 12 Module map
-    story += section_header(st, "12. Peta Modul & Koneksi")
-    story.append(
-        flow_box(
-            st,
-            [
-                "SDD (APPROVED) ──→ Contact List",
-                "SDD ──→ Mill Task List ──→ Mill Profile ──→ TTP sync",
-                "Supply Excel ──→ Mill Profile",
-                "Mill ──→ EUDR Potential    TTP FFB ──→ EUDR FFB %",
-                "Mill + TTP + Grievance + NBL + EUDR ──→ Monthly Report",
-                "Mill + TTP + Supplied CPO/PK ──→ Performa Facility",
-                "NBL ──→ SDD screening + Mill BUYER NO BUY LIST (sheet formula)",
-            ],
-        )
-    )
-    story.append(PageBreak())
-
-    # 13 Sheets
-    story += section_header(st, "13. Daftar Google Sheets (Database)")
-    story.append(
-        table(
-            st,
-            ["Key", "Tab Name", "Modul"],
-            [
-                ["mill", "Mill Onboarding Profile", "Mill Onboarding"],
-                ["millWaste", "Mill Onboarding Waste", "Mill Waste"],
-                ["supplyDraft", "Supply Import Draft", "Supply Task List"],
-                ["sddMain", "SDD_MAIN", "Supplier Due Diligence"],
-                ["sddMill", "SDD_MILL_LIST", "SDD Traceability A"],
-                ["sddFfb", "SDD_FFB_LIST", "SDD Traceability B"],
-                ["ttp", "Monitoring TTP/TTM", "TTM/TTP"],
-                ["grievance", "Grievance Monitoring", "Grievance"],
-                ["nbl", "NBL / Unilever NBL", "No Buy List"],
-                ["eudrPotential", "EUDR Potential", "EUDR Potential"],
-                ["eudrDds", "EUDR DDS (+ child)", "EUDR DDS export EU"],
-                ["contactSupplier", "Contact List Supplier", "Contact List"],
-            ],
-            col_widths=[3.2 * cm, 5.8 * cm, 7.2 * cm],
-        )
-    )
-    story.append(PageBreak())
-
-    # 14 SDD vs DDS
-    story += section_header(st, "14. Perbedaan: SDD vs EUDR DDS")
-    story.append(
-        table(
-            st,
-            ["Aspek", "SDD", "EUDR DDS"],
-            [
-                ["Panel", "#panel-supplier-dd", "#panel-due-diligence-statement"],
-                ["Storage", "SDD_MAIN / MILL / FFB", "EUDR DDS + child sheets"],
-                ["Tujuan", "Screening internal + onboarding", "Paket export EU EUDR"],
-                ["Output", "Task List → Mill → TTP", "DOCX/PDF untuk buyer"],
-                ["Code", "src/main.js", "src/dds-ui.js"],
-            ],
-            col_widths=[3 * cm, 6.5 * cm, 6.7 * cm],
-        )
-    )
-    story.append(Spacer(1, 10))
-    story.append(
-        Paragraph(
-            "Keduanya terpisah — tidak ada coupling langsung di codebase.",
-            st["body"],
-        )
-    )
-    story.append(PageBreak())
-
-    # 15 Validation
-    story += section_header(st, "15. Aturan Validasi & Guard Rules")
-    story += bullets(
-        st,
+    # Slide 17 - Validation + closing
+    y = d.new_slide("15. Aturan Validasi", "Guard rules mencegah inkonsistensi data")
+    d.bullets(
+        y,
         [
             "SDD Submitted tidak bisa downgrade ke Draft",
-            "Task List: SCR Status = submitted AND statusSDD = APPROVED",
-            "TTP sync: APPROVED + submitted + identity lengkap (GROUP/COMPANY/MILL/UML)",
-            "Supply submit: match_status = matched atau new; company wajib",
+            "Task List: SCR = submitted AND statusSDD = APPROVED",
+            "TTP sync: identity lengkap (GROUP / COMPANY / MILL / UML)",
+            "Supply submit: match_status = matched atau new",
             "Mill save: kolom formula di-strip sebelum write",
-            "EUDR: semua kriteria enabled harus pass untuk Potential",
-            "Grievance: 6 indikator wajib diisi sebelum klasifikasi",
-            "Koordinat: normalizeCoordinate() + recoverCoord() untuk locale Indonesia",
+            "EUDR: semua kriteria enabled harus pass",
+            "Grievance: 6 indikator wajib sebelum klasifikasi",
         ],
     )
-    story.append(Spacer(1, 20))
-    story.append(HRFlowable(width="100%", thickness=1, color=MID_GREEN))
-    story.append(Spacer(1, 8))
-    story.append(
-        Paragraph(
-            "<i>Dokumentasi valid dari codebase · Tidak ada perubahan kode aplikasi</i>",
-            st["note"],
-        )
-    )
 
-    def on_page(canvas, doc_):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(GRAY)
-        canvas.drawString(1.8 * cm, 1.2 * cm, "Sustainability Dashboard — Data Flow Documentation")
-        canvas.drawRightString(A4[0] - 1.8 * cm, 1.2 * cm, f"Halaman {doc_.page}")
-        canvas.restoreState()
+    # Closing slide
+    d.page += 1
+    d.c.setFillColor(C_DARK)
+    d.c.rect(0, 0, SW, SH, fill=1, stroke=0)
+    st = d._styles()
+    pt = ParagraphStyle("end", fontName="Helvetica-Bold", fontSize=32, textColor=C_WHITE, alignment=TA_CENTER)
+    p = Paragraph("Terima Kasih", pt)
+    p.wrap(SW, 60)
+    p.drawOn(d.c, 0, SH * 0.55)
+    ps = ParagraphStyle("ens", fontName="Helvetica", fontSize=13, textColor=colors.HexColor("#C8E6C9"), alignment=TA_CENTER)
+    p2 = Paragraph("Dokumentasi valid · Tanpa perubahan kode aplikasi", ps)
+    p2.wrap(SW, 30)
+    p2.drawOn(d.c, 0, SH * 0.45)
+    d._footer()
+    d.c.showPage()
 
-    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-    print(f"Saved: {OUTPUT}")
+    d.finish()
+    print(f"Saved: {OUTPUT} ({d.page} slides)")
 
 
 if __name__ == "__main__":
-    build_pdf()
+    build()
