@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Sustainability Dashboard — Data Flow</title>
@@ -16,7 +16,6 @@
   }
   .slide:last-child { page-break-after: auto; }
 
-  /* ── Cover ── */
   .slide-cover {
     background: linear-gradient(135deg, #0d3d14 0%, #1b5e20 40%, #2e7d32 100%);
     color: #fff; justify-content: center; align-items: center; text-align: center;
@@ -28,24 +27,21 @@
   }
   .slide-cover h1 { font-size: 46px; font-weight: 800; line-height: 1.15; margin-bottom: 14px; }
   .slide-cover h2 { font-size: 22px; font-weight: 400; color: #c8e6c9; margin-bottom: 36px; }
-  .slide-cover p { font-size: 14px; color: #a5d6a7; max-width: 520px; line-height: 1.6; }
+  .slide-cover p { font-size: 14px; color: #a5d6a7; max-width: 560px; line-height: 1.6; }
   .slide-cover .deco { position: absolute; border-radius: 50%; background: rgba(255,255,255,.06); }
   .slide-cover .d1 { width: 400px; height: 400px; top: -120px; right: -80px; }
   .slide-cover .d2 { width: 250px; height: 250px; bottom: -60px; left: -40px; }
 
-  /* ── Header ── */
   .slide-header {
     background: linear-gradient(90deg, #1b5e20, #2e7d32);
     color: #fff; padding: 18px 36px 16px; flex-shrink: 0;
-    border-left: 6px solid #f57c00;
+    border-left: 6px solid #81c784;
   }
   .slide-header h1 { font-size: 26px; font-weight: 700; }
   .slide-header p { font-size: 13px; color: #c8e6c9; margin-top: 4px; }
 
-  /* ── Body ── */
   .slide-body { flex: 1; padding: 22px 36px 40px; display: flex; flex-direction: column; gap: 14px; }
 
-  /* ── Footer ── */
   .slide-footer {
     position: absolute; bottom: 0; left: 0; right: 0;
     padding: 8px 36px; font-size: 10px; color: #90a4ae;
@@ -53,7 +49,6 @@
     border-top: 1px solid #eceff1; background: #fafafa;
   }
 
-  /* ── Components ── */
   .cols { display: flex; gap: 24px; flex: 1; }
   .col { flex: 1; }
   ul.clean { list-style: none; }
@@ -66,7 +61,7 @@
     width: 8px; height: 8px; border-radius: 50%; background: #2e7d32;
   }
   ul.clean li.sub { padding-left: 38px; font-size: 12.5px; color: #546e7a; }
-  ul.clean li.sub::before { width: 6px; height: 6px; background: #f57c00; top: 14px; left: 18px; }
+  ul.clean li.sub::before { width: 6px; height: 6px; background: #66bb6a; top: 14px; left: 18px; }
 
   .flow-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
   .flow-box {
@@ -76,10 +71,11 @@
     color: #1b5e20; min-width: 110px; line-height: 1.35;
   }
   .flow-box.dark { background: linear-gradient(180deg, #1b5e20, #2e7d32); color: #fff; border-color: #0d3d14; }
-  .flow-box.accent { background: linear-gradient(180deg, #f57c00, #ef6c00); color: #fff; border-color: #e65100; }
-  .flow-arrow { color: #f57c00; font-size: 22px; font-weight: 700; }
+  .flow-box.accent { background: linear-gradient(180deg, #388e3c, #2e7d32); color: #fff; border-color: #1b5e20; }
+  .flow-box.mid { background: linear-gradient(180deg, #a5d6a7, #81c784); color: #1b5e20; border-color: #388e3c; }
+  .flow-arrow { color: #388e3c; font-size: 22px; font-weight: 700; }
 
-  .flow-v { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 480px; margin: 0 auto; }
+  .flow-v { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 520px; margin: 0 auto; }
   .flow-v .flow-box { width: 100%; padding: 10px 20px; font-size: 13px; }
   .flow-v .flow-arrow { transform: rotate(90deg); font-size: 18px; line-height: 1; }
 
@@ -96,18 +92,15 @@
   table.data tr:last-child td { border-bottom: none; }
 
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .card {
-    border-radius: 12px; overflow: hidden;
-    box-shadow: 0 3px 12px rgba(0,0,0,.1);
-  }
+  .card { border-radius: 12px; overflow: hidden; box-shadow: 0 3px 12px rgba(0,0,0,.1); }
   .card-head { background: #1b5e20; color: #fff; padding: 10px 14px; font-size: 13px; font-weight: 700; }
   .card-body { background: #f1f8f4; padding: 12px 14px; font-size: 12px; line-height: 1.55; color: #37474f; }
 
   .note {
-    background: #fff8e1; border-left: 4px solid #f57c00;
-    padding: 10px 14px; font-size: 12px; color: #5d4037; border-radius: 0 8px 8px 0;
+    background: #e8f5e9; border-left: 4px solid #388e3c;
+    padding: 10px 14px; font-size: 12px; color: #1b5e20; border-radius: 0 8px 8px 0;
   }
-  .note b { color: #e65100; }
+  .note b { color: #2e7d32; }
 
   .tag { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 10px;
     font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-right: 6px; }
@@ -127,37 +120,37 @@
 <!-- SLIDE 1 COVER -->
 <div class="slide slide-cover">
   <div class="deco d1"></div><div class="deco d2"></div>
-  <div class="badge">Dokumentasi Teknis · v2</div>
+  <div class="badge">Technical Documentation</div>
   <h1>Sustainability Dashboard</h1>
-  <h2>Alur Data &amp; Rumus Bisnis</h2>
-  <p>Mill Onboarding · Supplier Due Diligence · Traceability<br>Valid dari codebase — tanpa perubahan kode aplikasi</p>
+  <h2>Data Flows &amp; Business Formulas</h2>
+  <p>Mill Onboarding · Supplier Due Diligence · Traceability<br>End-to-end mapping across modules and Google Sheets</p>
 </div>
 
 <!-- SLIDE 2 TOC -->
 <div class="slide">
-  <div class="slide-header"><h1>Daftar Isi</h1><p>18 slide · alur data lengkap</p></div>
+  <div class="slide-header"><h1>Table of Contents</h1><p>19 slides — complete data flow reference</p></div>
   <div class="slide-body">
     <div class="cols">
       <div class="col"><ul class="clean">
-        <li><span class="toc-num">01</span> Arsitektur Sistem</li>
+        <li><span class="toc-num">01</span> System Architecture</li>
         <li><span class="toc-num">02</span> Supplier Due Diligence</li>
         <li><span class="toc-num">03</span> SDD Lifecycle</li>
-        <li><span class="toc-num">04</span> SDD → Kemana Data Mengalir</li>
-        <li><span class="toc-num">05</span> Mapping SDD → Mill</li>
-        <li><span class="toc-num">06</span> Mapping FFB → TTP</li>
+        <li><span class="toc-num">04</span> SDD Data Destinations</li>
+        <li><span class="toc-num">05</span> SDD → Mill Mapping</li>
+        <li><span class="toc-num">06</span> FFB → TTP Mapping</li>
         <li><span class="toc-num">07</span> Mill Onboarding Entry</li>
         <li><span class="toc-num">08</span> Mill Onboarding Output</li>
         <li><span class="toc-num">09</span> Supply Task List</li>
       </ul></div>
       <div class="col"><ul class="clean">
-        <li><span class="toc-num">10</span> Rumus Google Sheet</li>
-        <li><span class="toc-num">11</span> Rumus App (Frontend)</li>
+        <li><span class="toc-num">10</span> Google Sheet Formulas</li>
+        <li><span class="toc-num">11</span> App Formulas (Frontend)</li>
         <li><span class="toc-num">12</span> Grievance &amp; Risk Reason</li>
-        <li><span class="toc-num">13</span> Peta Modul &amp; Koneksi</li>
-        <li><span class="toc-num">14</span> Daftar Google Sheets</li>
+        <li><span class="toc-num">13</span> Module Connection Map</li>
+        <li><span class="toc-num">14</span> Google Sheets Registry</li>
         <li><span class="toc-num">15</span> SDD vs EUDR DDS</li>
-        <li><span class="toc-num">16</span> Aturan Validasi</li>
-        <li><span class="toc-num">17</span> Referensi File Code</li>
+        <li><span class="toc-num">16</span> Validation Rules</li>
+        <li><span class="toc-num">17</span> Code Reference</li>
       </ul></div>
     </div>
   </div>
@@ -166,7 +159,7 @@
 
 <!-- SLIDE 3 ARCH -->
 <div class="slide">
-  <div class="slide-header"><h1>01 · Arsitektur Sistem</h1><p>Frontend → API Proxy → Google Apps Script → Google Sheets</p></div>
+  <div class="slide-header"><h1>01 · System Architecture</h1><p>Frontend → API Proxy → Google Apps Script → Google Sheets</p></div>
   <div class="slide-body" style="justify-content:center;">
     <div class="flow-row" style="margin-bottom:10px;">
       <div class="flow-box">Supplier<br>Due Diligence</div>
@@ -181,7 +174,7 @@
     <div class="flow-row"><div class="flow-box dark" style="min-width:280px;">Google Apps Script · doGet / doPost</div></div>
     <div style="text-align:center;"><span class="flow-arrow">▼</span></div>
     <div class="flow-row"><div class="flow-box dark" style="min-width:420px;">Google Sheets · SDD_MAIN · Mill Profile · TTP · EUDR · …</div></div>
-    <div class="note" style="margin-top:14px;"><b>Prinsip:</b> Skor &amp; risk level mill dihitung di Google Sheet. Web app tidak menulis kolom formula.</div>
+    <div class="note" style="margin-top:14px;"><b>Key principle:</b> Mill scores and risk levels are computed in Google Sheets. The web app never overwrites formula columns.</div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 3</span></div>
 </div>
@@ -194,15 +187,15 @@
       <li><span class="tag">STORAGE</span> SDD_MAIN · SDD_MILL_LIST · SDD_FFB_LIST</li>
       <li><span class="tag">KEY</span> submission_id (SUB-YYYYMMDD-XXXXXX)</li>
       <li><span class="tag">TYPE</span> MILL · KCP · TRADER</li>
-      <li>Upload Excel — Main Form + Traceability A/B</li>
+      <li>Excel upload — Main Form + Traceability A/B</li>
       <li>Screening form — SCR, GRV, PRI fields</li>
     </ul></div>
     <div class="col"><ul class="clean">
-      <li>Approve / Hold / Reject (Boss decision)</li>
-      <li>NBL Check vs NBL &amp; Unilever NBL sheets</li>
+      <li>Approve / Hold / Reject (approver decision)</li>
+      <li>NBL check vs NBL &amp; Unilever NBL sheets</li>
       <li>Export PDF screening report</li>
       <li>TML / FFB spatial screening (modals)</li>
-      <li>Legacy: SDD Data flat sheet (masih didukung)</li>
+      <li>Legacy: flat SDD Data sheet (still supported)</li>
     </ul></div>
   </div></div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 4</span></div>
@@ -210,34 +203,34 @@
 
 <!-- SLIDE 5 LIFECYCLE -->
 <div class="slide">
-  <div class="slide-header"><h1>03 · SDD Lifecycle</h1><p>State machine — import hingga onboarding selesai</p></div>
+  <div class="slide-header"><h1>03 · SDD Lifecycle</h1><p>State machine — from import to onboarding complete</p></div>
   <div class="slide-body" style="align-items:center;">
     <div class="flow-v">
       <div class="flow-box">① Import Excel</div><span class="flow-arrow">→</span>
       <div class="flow-box">② Save Draft → SCR: Draft</div><span class="flow-arrow">→</span>
       <div class="flow-box accent">③ Submit → SCR: Submitted</div><span class="flow-arrow">→</span>
-      <div class="flow-box dark">④ Boss: Approve / Hold / Reject</div><span class="flow-arrow">→</span>
+      <div class="flow-box dark">④ Approver: Approve / Hold / Reject</div><span class="flow-arrow">→</span>
       <div class="flow-box">⑤ Task List (APPROVED + Submitted)</div><span class="flow-arrow">→</span>
       <div class="flow-box">⑥ + Add to Mill → Mill Profile</div><span class="flow-arrow">→</span>
       <div class="flow-box accent">⑦ mill_ttp_sync → TTP/TTM</div><span class="flow-arrow">→</span>
       <div class="flow-box dark">⑧ mill_added = true ✓</div>
     </div>
-    <div class="note" style="margin-top:8px;max-width:480px;"><b>Catatan:</b> TTP sync terjadi SETELAH Mill disimpan — bukan saat approve SDD saja.</div>
+    <div class="note" style="margin-top:8px;max-width:520px;"><b>Note:</b> TTP sync runs after the mill is saved — not on SDD approval alone.</div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 5</span></div>
 </div>
 
 <!-- SLIDE 6 SDD OUT -->
 <div class="slide">
-  <div class="slide-header"><h1>04 · SDD → Kemana Data Mengalir?</h1></div>
+  <div class="slide-header"><h1>04 · SDD Data Destinations</h1></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Trigger</th><th>Target Modul</th><th>Fungsi Backend</th></tr>
+      <tr><th>Trigger</th><th>Target Module</th><th>Backend Function</th></tr>
       <tr><td>statusSDD = APPROVED</td><td>Contact List Supplier</td><td>syncContactFromApprovedSubmission_()</td></tr>
       <tr><td>APPROVED + Submitted</td><td>Mill Task List</td><td>isApprovedSubmittedSddRow_()</td></tr>
-      <tr><td>Save Mill dari Task List</td><td>Mill Onboarding Profile</td><td>add / update sheet mill</td></tr>
+      <tr><td>Save mill from Task List</td><td>Mill Onboarding Profile</td><td>add / update sheet mill</td></tr>
       <tr><td>mill_ttp_sync payload</td><td>Monitoring TTP/TTM</td><td>syncTtpFromMillOnboarding_*()</td></tr>
-      <tr><td>NBL Check</td><td>SCR - No Buy List</td><td>runSddNblCheck()</td></tr>
+      <tr><td>NBL check</td><td>SCR - No Buy List</td><td>runSddNblCheck()</td></tr>
       <tr><td>Report period</td><td>Monthly Report §01</td><td>fetchSddList()</td></tr>
     </table>
   </div>
@@ -246,10 +239,10 @@
 
 <!-- SLIDE 7 MAP MILL -->
 <div class="slide">
-  <div class="slide-header"><h1>05 · Mapping SDD → Mill Onboarding</h1><p>mapSddRowToMillPayload() / mapSddTmlRowToMillPayload()</p></div>
+  <div class="slide-header"><h1>05 · SDD → Mill Onboarding Mapping</h1><p>mapSddRowToMillPayload() / mapSddTmlRowToMillPayload()</p></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Kolom Mill</th><th>Sumber SDD</th></tr>
+      <tr><th>Mill Column</th><th>SDD Source</th></tr>
       <tr><td>GROUP NAME</td><td>Group Name</td></tr>
       <tr><td>COMPANY NAME</td><td>Company Name</td></tr>
       <tr><td>MILL NAME</td><td>Mill Name / KCP Name / TML - Mill Name</td></tr>
@@ -264,34 +257,34 @@
 
 <!-- SLIDE 8 FFB TTP -->
 <div class="slide">
-  <div class="slide-header"><h1>06 · Mapping FFB → TTP/TTM</h1><p>1 baris TTP = 1 pemasok FFB + konteks Main Form</p></div>
+  <div class="slide-header"><h1>06 · FFB → TTP/TTM Mapping</h1><p>One TTP row = one FFB supplier + Main Form context</p></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Kolom TTP</th><th>Sumber SDD / Mill</th></tr>
+      <tr><th>TTP Column</th><th>SDD / Mill Source</th></tr>
       <tr><td>GROUP / COMPANY / MILL NAME</td><td>Mill Onboarding identity</td></tr>
       <tr><td>FFB SUPPLIER GROUP / NAME</td><td>FFB - Supplier Group/Name</td></tr>
       <tr><td>CATEGORY · LAT/LONG · VILLAGE</td><td>FFB location &amp; category fields</td></tr>
-      <tr><td>CONCESION / PLANTED AREA</td><td>FFB area fields</td></tr>
-      <tr><td>LEGALITAS · ISPO/RSPO/ISCC</td><td>FFB certification</td></tr>
+      <tr><td>CONCESSION / PLANTED AREA</td><td>FFB area fields</td></tr>
+      <tr><td>LEGALITY · ISPO/RSPO/ISCC</td><td>FFB certification</td></tr>
       <tr><td>FFB SUPPLY to MILL (TON)</td><td>FFB - Total Supply FFB (Ton)</td></tr>
     </table>
-    <div class="note" style="margin-top:10px;">Referensi lengkap: <b>docs/sdd-to-ttm-ttp-field-mapping.md</b></div>
+    <div class="note" style="margin-top:10px;">Full reference: <b>docs/sdd-to-ttm-ttp-field-mapping.md</b></div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 8</span></div>
 </div>
 
 <!-- SLIDE 9 MILL ENTRY -->
 <div class="slide">
-  <div class="slide-header"><h1>07 · Mill Onboarding — Entry Point</h1><p>Mill Profile (CPO/PK) · Mill Waste (POME/SHELL)</p></div>
+  <div class="slide-header"><h1>07 · Mill Onboarding — Entry Points</h1><p>Mill Profile (CPO/PK) · Mill Waste (POME/SHELL)</p></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
       <li><b>Manual Add/Edit</b><br><span style="font-size:11px;color:#78909c;">Modal #btn-add-mill</span></li>
-      <li><b>SDD Task List</b><br><span style="font-size:11px;color:#78909c;">"+ Add to Mill" dari approved screening</span></li>
+      <li><b>SDD Task List</b><br><span style="font-size:11px;color:#78909c;">"+ Add to Mill" from approved screening</span></li>
       <li><b>Supply Excel Import</b><br><span style="font-size:11px;color:#78909c;">Upload → draft → submit</span></li>
     </ul></div>
     <div class="col"><ul class="clean">
-      <li>CPO/PK → sheet <b>mill</b></li>
-      <li>POME/SHELL → sheet <b>millWaste</b></li>
+      <li>CPO/PK → <b>mill</b> sheet</li>
+      <li>POME/SHELL → <b>millWaste</b> sheet</li>
       <li>KCP plant → <b>FACILITY NAME PK</b></li>
       <li>Refinery → <b>FACILITY NAME CPO</b></li>
       <li>Staging: <b>Supply Import Draft</b></li>
@@ -302,14 +295,14 @@
 
 <!-- SLIDE 10 MILL OUT -->
 <div class="slide">
-  <div class="slide-header"><h1>08 · Mill Onboarding → Output</h1></div>
+  <div class="slide-header"><h1>08 · Mill Onboarding → Outputs</h1></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Consumer</th><th>Join Key</th><th>Data Dipakai</th></tr>
+      <tr><th>Consumer</th><th>Join Key</th><th>Data Used</th></tr>
       <tr><td>Monitoring TTP/TTM</td><td>GROUP|COMPANY|MILL|UML</td><td>Identity + FFB sync</td></tr>
       <tr><td>Monthly Report §02</td><td>Period + risk level</td><td>High-risk MILL rows</td></tr>
-      <tr><td>Performa Facility</td><td>FACILITY NAME CPO/PK</td><td>Supply qty, traceability %</td></tr>
-      <tr><td>Questionnaire Monitoring</td><td>group|company|mill</td><td>Registry mill list</td></tr>
+      <tr><td>Facility Performance</td><td>FACILITY NAME CPO/PK</td><td>Supply qty, traceability %</td></tr>
+      <tr><td>Questionnaire Monitoring</td><td>group|company|mill</td><td>Mill registry</td></tr>
       <tr><td>EUDR Potential</td><td>group|company|mill</td><td>Identity sync</td></tr>
       <tr><td>Mill Executive Report</td><td>Quarter</td><td>Supply, NBL, certification</td></tr>
     </table>
@@ -319,11 +312,11 @@
 
 <!-- SLIDE 11 SUPPLY -->
 <div class="slide">
-  <div class="slide-header"><h1>09 · Supply Task List</h1><p>Embedded di Mill Onboarding panel</p></div>
+  <div class="slide-header"><h1>09 · Supply Task List</h1><p>Embedded in the Mill Onboarding panel</p></div>
   <div class="slide-body" style="justify-content:center;">
     <div class="flow-row">
       <div class="flow-box">Excel<br>Upload</div><span class="flow-arrow">→</span>
-      <div class="flow-box">Match<br>Profil</div><span class="flow-arrow">→</span>
+      <div class="flow-box">Match<br>Profile</div><span class="flow-arrow">→</span>
       <div class="flow-box">Save<br>Draft</div><span class="flow-arrow">→</span>
       <div class="flow-box">Review<br>Modal</div><span class="flow-arrow">→</span>
       <div class="flow-box">Submit<br>Draft</div><span class="flow-arrow">→</span>
@@ -331,7 +324,7 @@
     </div>
     <ul class="clean" style="margin-top:18px;">
       <li>match_status: <b>matched</b> · <b>new</b> · group_mismatch</li>
-      <li>Formula columns di-restore dari baris atas — tidak di-overwrite</li>
+      <li>Formula columns restored from row above — never overwritten</li>
       <li>Repair drift: <b>reconcileSupplyDraft_()</b></li>
     </ul>
   </div>
@@ -340,7 +333,7 @@
 
 <!-- SLIDE 12 SHEET FORMULAS -->
 <div class="slide">
-  <div class="slide-header"><h1>10 · Rumus Google Sheet (Read-Only)</h1><p>MILL_FORMULA_HEADERS_ — tidak pernah ditulis dari web</p></div>
+  <div class="slide-header"><h1>10 · Google Sheet Formulas (Read-Only)</h1><p>MILL_FORMULA_HEADERS_ — never written from the web app</p></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
       <li>SCORE · TOTAL SCORE · LEGALITY SCORE</li>
@@ -362,13 +355,13 @@
 
 <!-- SLIDE 13 APP FORMULAS -->
 <div class="slide">
-  <div class="slide-header"><h1>11 · Rumus App (Frontend)</h1><p>Dihitung di web app — bukan di Google Sheet</p></div>
+  <div class="slide-header"><h1>11 · App Formulas (Frontend)</h1><p>Computed in the web app — not in Google Sheets</p></div>
   <div class="slide-body">
     <div class="cards">
-      <div class="card"><div class="card-head">Grievance Risk Score</div><div class="card-body">Total = Σ 6 indikator (skor 1–3)<br>≤ 8 → Low · ≤ 11 → Medium · &gt; 11 → High<br><i>src/grievance-risk.js</i></div></div>
-      <div class="card"><div class="card-head">TTM Coordinate %</div><div class="card-body">Pool: MILL/TRADER/REFINERY + supply &gt; 0<br>% = Σ(qty traceable) / Σ(qty total) × 100<br><i>ttpCalcTtmCoordinatePct_()</i></div></div>
-      <div class="card"><div class="card-head">TTP Aggregate %</div><div class="card-body">Σ(traceable vol) / Σ(supply) × 100<br>Fallback: avg kolom % TRACEABLE<br><i>ttpAggregateTotalTraceablePct_()</i></div></div>
-      <div class="card"><div class="card-head">EUDR Potential Status</div><div class="card-body">Semua kriteria enabled PASS → Potential<br>Satu fail → Not Potential<br><i>eudrComputeStatus_()</i></div></div>
+      <div class="card"><div class="card-head">Grievance Risk Score</div><div class="card-body">Total = sum of 6 indicators (score 1–3)<br>≤ 8 → Low · ≤ 11 → Medium · &gt; 11 → High<br><i>src/grievance-risk.js</i></div></div>
+      <div class="card"><div class="card-head">TTM Coordinate %</div><div class="card-body">Pool: MILL/TRADER/REFINERY + supply &gt; 0<br>% = Σ(traceable qty) / Σ(total qty) × 100<br><i>ttpCalcTtmCoordinatePct_()</i></div></div>
+      <div class="card"><div class="card-head">TTP Aggregate %</div><div class="card-body">Σ(traceable vol) / Σ(supply) × 100<br>Fallback: avg of % TRACEABLE columns<br><i>ttpAggregateTotalTraceablePct_()</i></div></div>
+      <div class="card"><div class="card-head">EUDR Potential Status</div><div class="card-body">All enabled criteria pass → Potential<br>Any fail → Not Potential<br><i>eudrComputeStatus_()</i></div></div>
     </div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 13</span></div>
@@ -379,12 +372,12 @@
   <div class="slide-header"><h1>12 · Grievance &amp; Mill Risk Reason</h1></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
-      <li><b>Grievance</b> — 6 indikator wajib sebelum klasifikasi</li>
+      <li><b>Grievance</b> — all 6 indicators required before classification</li>
       <li class="sub">Publish · Subject · Repeat · Consequence</li>
       <li class="sub">Group Scale · No Response</li>
     </ul></div>
     <div class="col"><ul class="clean">
-      <li><b>Mill Risk Reason</b> — pills dari gap field</li>
+      <li><b>Mill Risk Reason</b> — UI pills derived from field gaps</li>
       <li class="sub">No Coordinate · Legality Not Complete</li>
       <li class="sub">Non APL · No NDPE · No Certification</li>
       <li class="sub">Deforestation &gt; 0 ha · On No Buy List</li>
@@ -395,24 +388,24 @@
 
 <!-- SLIDE 15 MODULE MAP -->
 <div class="slide">
-  <div class="slide-header"><h1>13 · Peta Modul &amp; Koneksi</h1></div>
+  <div class="slide-header"><h1>13 · Module Connection Map</h1></div>
   <div class="slide-body" style="gap:8px;">
     <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">SDD (APPROVED) ──────────────────→ Contact List Supplier</div>
     <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">SDD ──→ Task List ──→ Mill Profile ──→ TTP sync</div>
     <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Supply Excel ────────────────────→ Mill Profile</div>
     <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill ──→ EUDR Potential &nbsp;&nbsp;&nbsp; TTP FFB ──→ EUDR FFB %</div>
     <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill + TTP + GRV + NBL + EUDR ──→ Monthly Report</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill + TTP + Supplied CPO/PK ───→ Performa Facility</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill + TTP + Supplied CPO/PK ───→ Facility Performance</div>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 15</span></div>
 </div>
 
 <!-- SLIDE 16 SHEETS -->
 <div class="slide">
-  <div class="slide-header"><h1>14 · Daftar Google Sheets</h1></div>
+  <div class="slide-header"><h1>14 · Google Sheets Registry</h1></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Key</th><th>Tab Name</th><th>Modul</th></tr>
+      <tr><th>Key</th><th>Tab Name</th><th>Module</th></tr>
       <tr><td>mill / millWaste</td><td>Mill Onboarding Profile / Waste</td><td>Mill Onboarding</td></tr>
       <tr><td>sddMain/Mill/Ffb</td><td>SDD_MAIN / MILL_LIST / FFB_LIST</td><td>Supplier DD</td></tr>
       <tr><td>ttp</td><td>Monitoring TTP/TTM</td><td>Traceability</td></tr>
@@ -426,14 +419,14 @@
 
 <!-- SLIDE 17 SDD vs DDS -->
 <div class="slide">
-  <div class="slide-header"><h1>15 · SDD vs EUDR DDS</h1><p>Dua modul terpisah — tidak ada coupling langsung</p></div>
+  <div class="slide-header"><h1>15 · SDD vs EUDR DDS</h1><p>Two separate modules — no direct coupling</p></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Aspek</th><th>SDD (Supplier Due Diligence)</th><th>EUDR DDS</th></tr>
+      <tr><th>Aspect</th><th>SDD (Supplier Due Diligence)</th><th>EUDR DDS</th></tr>
       <tr><td>Panel</td><td>#panel-supplier-dd</td><td>#panel-due-diligence-statement</td></tr>
       <tr><td>Storage</td><td>SDD_MAIN + child sheets</td><td>EUDR DDS + child sheets</td></tr>
-      <tr><td>Tujuan</td><td>Screening internal + onboarding</td><td>Paket export EU EUDR</td></tr>
-      <tr><td>Output</td><td>Task List → Mill → TTP</td><td>DOCX/PDF untuk buyer</td></tr>
+      <tr><td>Purpose</td><td>Internal screening + onboarding</td><td>EU EUDR export package</td></tr>
+      <tr><td>Output</td><td>Task List → Mill → TTP</td><td>DOCX/PDF for buyers</td></tr>
     </table>
   </div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 17</span></div>
@@ -441,19 +434,19 @@
 
 <!-- SLIDE 18 VALIDATION -->
 <div class="slide">
-  <div class="slide-header"><h1>16 · Aturan Validasi</h1><p>Guard rules mencegah inkonsistensi data</p></div>
+  <div class="slide-header"><h1>16 · Validation Rules</h1><p>Guard rules that prevent data inconsistency</p></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
-      <li>SDD Submitted tidak bisa downgrade ke Draft</li>
+      <li>Submitted SDD cannot be downgraded to Draft</li>
       <li>Task List: SCR = submitted AND statusSDD = APPROVED</li>
-      <li>TTP sync: identity lengkap (GROUP/COMPANY/MILL/UML)</li>
-      <li>Supply submit: match_status = matched atau new</li>
+      <li>TTP sync: full identity (GROUP/COMPANY/MILL/UML)</li>
+      <li>Supply submit: match_status = matched or new</li>
     </ul></div>
     <div class="col"><ul class="clean">
-      <li>Mill save: kolom formula di-strip sebelum write</li>
-      <li>EUDR: semua kriteria enabled harus pass</li>
-      <li>Grievance: 6 indikator wajib sebelum klasifikasi</li>
-      <li>Koordinat: normalizeCoordinate() + recoverCoord()</li>
+      <li>Mill save: formula columns stripped before write</li>
+      <li>EUDR: all enabled criteria must pass</li>
+      <li>Grievance: all 6 indicators required before classification</li>
+      <li>Coordinates: normalizeCoordinate() + recoverCoord()</li>
     </ul></div>
   </div></div>
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 18</span></div>
@@ -461,7 +454,7 @@
 
 <!-- SLIDE 19 REF -->
 <div class="slide">
-  <div class="slide-header"><h1>17 · Referensi File Code</h1></div>
+  <div class="slide-header"><h1>17 · Code Reference</h1></div>
   <div class="slide-body">
     <table class="data">
       <tr><th>Area</th><th>File</th></tr>
@@ -478,8 +471,8 @@
 
 <!-- SLIDE END -->
 <div class="slide slide-end">
-  <h1>Terima Kasih</h1>
-  <p>Dokumentasi valid dari codebase · Tanpa perubahan kode aplikasi</p>
+  <h1>Thank You</h1>
+  <p>Sustainability Dashboard — Data Flow Documentation</p>
 </div>
 
 </body>
