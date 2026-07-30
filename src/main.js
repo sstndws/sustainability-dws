@@ -4183,7 +4183,7 @@ function normalizeGetArray(data) {
 
 async function apiGet(sheet, opts) {
   opts = opts || {};
-  const bustCache = sheet === 'sdd' || !!opts.bustCache;
+  const bustCache = sheet === 'sdd' || sheet === 'ttp' || !!opts.bustCache;
   const timeoutMs = opts.timeoutMs || (sheet === 'mill' || sheet === 'millWaste' ? 120000 : 60000);
   if (usesGasProxy_()) {
     var secParams = { action: 'getAll', sheet: sheet };
@@ -7047,17 +7047,21 @@ function initDashboardApp() {
 
   function millDefaultExecutivePeriod_() {
     const years = millCollectAvailableYears_();
-    const year = years[0] || new Date().getFullYear();
+    let year = years[0] || new Date().getFullYear();
     let maxMonth = 0;
-    (allData || []).concat(allDataWaste || []).forEach(function(r) {
-      if (parseMillYearSort(millYearVal(r)) !== year) return;
-      const m = parseMillMonthSort(millMonthVal(r));
-      if (m > maxMonth) maxMonth = m;
-    });
+    for (let i = 0; i < years.length; i++) {
+      const y = years[i];
+      const m = millMaxDataMonthForYear_(y);
+      if (m > 0) {
+        year = y;
+        maxMonth = m;
+        break;
+      }
+    }
     const quarter = maxMonth
       ? Math.min(4, Math.max(1, Math.ceil(maxMonth / 3)))
       : Math.min(4, Math.max(1, Math.ceil((new Date().getMonth() + 1) / 3)));
-    return { year: year, quarter: quarter };
+    return { year: year, quarter: quarter, maxMonth: maxMonth };
   }
 
   function millExecutiveGrievanceProgress_(year) {
@@ -7288,6 +7292,106 @@ function initDashboardApp() {
       );
       return millExecutiveTrendPointFromSnap_(q, snap, activeQuarter);
     });
+  }
+
+  function millCountDistinctFacilities_(rows) {
+    const set = new Set();
+    (rows || []).forEach(function(r) {
+      ['FACILITY NAME CPO', 'FACILITY NAME PK', 'Facility Name CPO', 'Facility Name PK'].forEach(function(k) {
+        String(r[k] || '').split(/[,;|]/).forEach(function(part) {
+          const t = part.trim();
+          if (t && t !== '—' && t !== '-') set.add(t.toUpperCase());
+        });
+      });
+    });
+    return set.size;
+  }
+
+  function millOverviewRegistryRows_() {
+    function pick_(src) {
+      return millPickNewestPerEntity_((src || []).filter(function(r) {
+        return millRowHasCompanyName_(r) && mrdShowInMillOnboarding_(r);
+      }));
+    }
+    if (millRegistryProductView === 'waste') return pick_(allDataWaste);
+    if (millRegistryProductView === 'general') {
+      return millMergeGeneralRegistryRows_(pick_(allData), pick_(allDataWaste));
+    }
+    return pick_(allData);
+  }
+
+  function millOverviewBuildSnapshot_() {
+    return aggregateMillExecutiveSnapshot_(millOverviewRegistryRows_(), millExecutiveHelpers_());
+  }
+
+  function millOverviewDataPeriodKey_() {
+    const def = millDefaultExecutivePeriod_();
+    const maxMonth = def.maxMonth != null ? def.maxMonth : millMaxDataMonthForYear_(def.year);
+    const rowCount = (allData || []).length + (allDataWaste || []).length;
+    return def.year + '-M' + String(maxMonth || 0).padStart(2, '0') + '-Q' + def.quarter + '-r' + rowCount;
+  }
+
+  function millOverviewPeriodLabel_(year, quarter, maxMonth) {
+    let label = millExecutivePeriodLabel_(year, quarter);
+    if (maxMonth >= 1 && maxMonth <= 12) {
+      label += ' · ' + millMonthLabel_(maxMonth) + ' ' + year;
+    }
+    return label;
+  }
+
+  function ttpOverviewMillStats_(year, month) {
+    const rows = (year != null && String(year).trim())
+      ? mrdTtpRowsForReportPeriod_(String(year).trim(), month ? String(month).trim() : '')
+      : (Array.isArray(ttpData) ? ttpData : []);
+    const millCol = (ttpFields || []).find(function(h) {
+      return String(h || '').toUpperCase().replace(/\s+/g, ' ') === 'MILL NAME';
+    }) || 'MILL NAME';
+    const mills = new Set();
+    rows.forEach(function(r) {
+      const m = String(r[millCol] || r['MILL NAME'] || '').trim();
+      if (m) mills.add(m.toUpperCase());
+    });
+    return { mills: mills.size, records: rows.length };
+  }
+
+  /** TTP sheet has no month — use full prior calendar year (ref year − 1). */
+  function ttpCollectDataYears_() {
+    const years = new Set();
+    (ttpData || []).forEach(function(r) {
+      const y = parseMillYearSort(ttpYearToken_(r));
+      if (y >= 2000 && y <= 2100) years.add(y);
+    });
+    return years;
+  }
+
+  function overviewTtpTracePeriod_() {
+    const def = millDefaultExecutivePeriod_();
+    const millYear = def.year || new Date().getFullYear();
+    let refYear = millYear;
+    if (ttpLoaded && ttpData && ttpData.length) {
+      ttpCollectDataYears_().forEach(function(y) {
+        if (y > refYear) refYear = y;
+      });
+    }
+    let ttpYear = refYear - 1;
+    const available = ttpCollectDataYears_();
+    if (available.size && !available.has(ttpYear)) {
+      const sorted = Array.from(available).sort(function(a, b) { return b - a; });
+      const fallback = sorted.find(function(y) { return y <= ttpYear; });
+      if (fallback) ttpYear = fallback;
+      else if (sorted.length) ttpYear = sorted[0];
+    }
+    return { year: ttpYear, maxMonth: 0 };
+  }
+
+  function overviewTtpTracePeriodLabel_(year) {
+    return 'TTP ' + String(year || '');
+  }
+
+  function notifyOverviewMetricsRefresh_(opts) {
+    if (typeof window.__overviewMetricsRefresh === 'function') {
+      window.__overviewMetricsRefresh(opts || { force: true });
+    }
   }
 
   function millMaxDataMonthForYear_(year) {
@@ -9210,6 +9314,7 @@ function initDashboardApp() {
       millApplyFetchedWasteRows_(results[1]);
       millWriteSessionCache_(results[0], results[1]);
       millRenderTop5Card_();
+      notifyOverviewMetricsRefresh_({ force: true });
 
       const statTotal = document.getElementById('stat-total');
       const statGroups = document.getElementById('stat-groups');
@@ -13101,6 +13206,7 @@ function initDashboardApp() {
       }
       ttpLoaded = true;
       applyTtpDataFromApi_(rawRows);
+      notifyOverviewMetricsRefresh_({ force: false });
       if (hasUi) {
         document.getElementById('ttpTableHead').innerHTML = ttpMainTableHeadHtml_(true);
         ttpSyncTableLayoutClass_();
@@ -20890,50 +20996,62 @@ function initDashboardApp() {
     await loadMillData();
   }
 
+  async function loadEudrDataCore_() {
+    await ensureMillDataForEudr_();
+    try {
+      if (!ttpLoaded) await loadTTPData();
+    } catch (ttpErr) {
+      console.warn('[EUDR] TTP data unavailable for % FFB Category:', ttpErr);
+    }
+    await loadEudrFormulaConfig_();
+    eudrClearStatusCache_();
+    const mills = eudrBuildMillRegistry_();
+    var raw = [];
+    try {
+      raw = await apiGet('eudrPotential');
+    } catch (getErr) {
+      var gmsg = (getErr && getErr.message) ? getErr.message : String(getErr);
+      if (!/eudrPotential|EUDR Potential|Sheet key not found/i.test(gmsg)) throw getErr;
+      raw = [];
+    }
+    eudrRows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
+    eudrLoaded = true;
+    mrdInvalidateEudrCache_();
+  }
+
   async function loadEudrDataImpl_(force) {
     const loading = document.getElementById('eudr-loading');
     const errorEl = document.getElementById('eudr-error');
     const table = document.getElementById('eudrTable');
-    if (!loading || !errorEl || !table) return;
+    const hasUi = !!(loading && errorEl && table);
     try {
-      loading.style.display = 'block';
-      errorEl.style.display = 'none';
-      table.style.display = 'none';
-      await ensureMillDataForEudr_();
-      try { if (!ttpLoaded) await loadTTPData(); } catch (ttpErr) {
-        console.warn('[EUDR] TTP data unavailable for % FFB Category:', ttpErr);
+      if (hasUi) {
+        loading.style.display = 'block';
+        errorEl.style.display = 'none';
+        table.style.display = 'none';
       }
-      await loadEudrFormulaConfig_();
-      eudrClearStatusCache_();
-      const mills = eudrBuildMillRegistry_();
-      var raw = [];
-      try {
-        raw = await apiGet('eudrPotential');
-      } catch (getErr) {
-        var gmsg = (getErr && getErr.message) ? getErr.message : String(getErr);
-        if (!/eudrPotential|EUDR Potential|Sheet key not found/i.test(gmsg)) throw getErr;
-        raw = [];
+      await loadEudrDataCore_();
+      if (hasUi) {
+        eudrBindTableDelegationOnce_();
+        eudrRenderFormulaPanel_();
+        eudrUpdateStats_();
+        loading.style.display = 'none';
+        table.style.display = 'table';
+        scheduleRenderEudrTable_();
       }
-      eudrRows = eudrMergeDisplay_(mills, Array.isArray(raw) ? raw : []).map(eudrPrepareRow_);
-      eudrLoaded = true;
-      eudrBindTableDelegationOnce_();
-      eudrRenderFormulaPanel_();
-      eudrUpdateStats_();
-      loading.style.display = 'none';
-      table.style.display = 'table';
-      scheduleRenderEudrTable_();
-      mrdInvalidateEudrCache_();
       if (typeof window.rebuildMonthlyReportSnapshot_ === 'function') {
         window.rebuildMonthlyReportSnapshot_();
       }
     } catch (err) {
-      loading.style.display = 'none';
-      errorEl.style.display = 'block';
-      const msg = (err && err.message) ? err.message : String(err);
-      if (/eudrPotential|EUDR Potential|Sheet key not found/i.test(msg)) {
-        errorEl.innerHTML = 'The <strong>EUDR Potential</strong> tab does not exist in the spreadsheet yet. It will be created automatically on first sync — redeploy Apps Script, then refresh.';
-      } else {
-        errorEl.textContent = 'Failed to load EUDR Potential: ' + msg;
+      if (hasUi) {
+        loading.style.display = 'none';
+        errorEl.style.display = 'block';
+        const msg = (err && err.message) ? err.message : String(err);
+        if (/eudrPotential|EUDR Potential|Sheet key not found/i.test(msg)) {
+          errorEl.innerHTML = 'The <strong>EUDR Potential</strong> tab does not exist in the spreadsheet yet. It will be created automatically on first sync — redeploy Apps Script, then refresh.';
+        } else {
+          errorEl.textContent = 'Failed to load EUDR Potential: ' + msg;
+        }
       }
       if (force) throw err;
     }
@@ -22403,7 +22521,7 @@ function initDashboardApp() {
     if (navItem) navItem.classList.add('active');
     openNavGroupForPanel_(name);
     if (name === 'overview' && typeof window.__overviewMetricsRefresh === 'function') {
-      window.__overviewMetricsRefresh();
+      window.__overviewMetricsRefresh({ force: true });
     }
     if (name === 'mill-onboarding') {
       if (!millDataLoaded || !allData.length) {
@@ -26371,6 +26489,7 @@ function initDashboardApp() {
     if (sbNav) sbNav.classList.remove('expanded');
     loadMillData().then(function() {
       console.log('✅ Mill data loaded');
+      notifyOverviewMetricsRefresh_({ force: true });
     }).catch(function(error) {
       console.error('❌ Error loading mill data:', error);
     });
@@ -33139,12 +33258,13 @@ function initDashboardApp() {
     const wantY = String(yearFilter || '').trim();
     const wantM = monthFilter ? String(monthFilter).trim() : '';
     if (!wantY || !ttpData || !ttpData.length) return [];
+    const wantMonthNum = wantM ? parseInt(wantM, 10) : 0;
     return ttpData.filter(function(r) {
       const y = ttpYearToken_(r);
       if (y && y !== wantY) return false;
-      if (wantM && millMonthVal) {
-        const m = String(millMonthVal(r) || '').trim();
-        if (m && m !== wantM) return false;
+      if (wantMonthNum >= 1 && wantMonthNum <= 12) {
+        const mNum = parseMillMonthSort(millMonthVal(r));
+        if (mNum !== wantMonthNum) return false;
       }
       return !y || y === wantY;
     });
@@ -33161,7 +33281,7 @@ function initDashboardApp() {
     const rows = mrdMillRowsForReportPeriod_(millY, millM);
     const ttmCpo = ttpCalcTtmCoordinatePct_(rows, 'cpo');
     const ttmPk = ttpCalcTtmCoordinatePct_(rows, 'pk');
-    const ttpRows = mrdTtpRowsForReportPeriod_(ttpYear, '');
+    const ttpRows = mrdTtpRowsForReportPeriod_(ttpYear, millM);
     const ttpCpoAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'cpo');
     const ttpPkAgg = ttpAggregateTotalTraceablePct_(ttpRows, 'pk');
     return {
@@ -33470,30 +33590,43 @@ function initDashboardApp() {
   }
   window.initMonthlyReportDetail_ = initMonthlyReportDetail_;
 
-  window.refreshOverviewMetricsData_ = async function refreshOverviewMetricsData_() {
-    if (!millDataLoaded || !allData.length) {
-      await loadMillData({ force: !millDataLoaded });
+  function overviewBuildTraceTotals_(year, maxMonth) {
+    const y = String(year || '').trim();
+    const monthFilter = (maxMonth >= 1 && maxMonth <= 12) ? String(maxMonth) : '';
+    try {
+      return mrdBuildTraceTotalsForReport_(y, y, monthFilter);
+    } catch (e) {
+      console.warn('[overview] trace totals failed:', e);
+      return null;
     }
-    const now = new Date();
-    const year = now.getFullYear();
-    const quarter = Math.ceil((now.getMonth() + 1) / 3);
-    const snapshot = millExecutiveBuildSnapshot_(year, quarter, millRegistryProductView);
-    await millExecutiveEnrichSnapshot_(snapshot, year, quarter, {
-      useFacilityTtp: true,
-      facilityTtpTimeoutMs: 12000,
-    });
+  }
+
+  function buildOverviewPayload_() {
+    const def = millDefaultExecutivePeriod_();
+    const year = def.year;
+    const quarter = def.quarter;
+    const maxMonth = def.maxMonth != null ? def.maxMonth : millMaxDataMonthForYear_(year);
+    const tracePeriod = overviewTtpTracePeriod_();
+    const dataPeriodKey = millOverviewDataPeriodKey_()
+      + '-ttp' + (ttpLoaded ? '1' : '0')
+      + '-eudr' + ((eudrRows && eudrRows.length) || 0)
+      + '-trace' + tracePeriod.year + 'm' + (tracePeriod.maxMonth || 0);
+    const registryRows = millOverviewRegistryRows_();
+    const snapshot = millOverviewBuildSnapshot_();
+    const traceTotals = overviewBuildTraceTotals_(tracePeriod.year, tracePeriod.maxMonth);
+    if (traceTotals && !isNaN(traceTotals.ttpCpoPct)) {
+      const ttpAvg = !isNaN(traceTotals.ttpPkPct)
+        ? (traceTotals.ttpCpoPct + traceTotals.ttpPkPct) / 2
+        : traceTotals.ttpCpoPct;
+      snapshot.ttpTrace = {
+        pct: ttpAvg,
+        cpoFmt: traceTotals.ttpCpoFmt,
+        pkFmt: traceTotals.ttpPkFmt,
+        source: 'overview-trace-totals',
+      };
+    }
     let eudrPotential = 0;
     let eudrNotPotential = 0;
-    if (!grvLoaded && typeof loadGrvData === 'function') {
-      try {
-        await loadGrvData();
-      } catch (_e) { /* optional */ }
-    }
-    if (!eudrLoaded && typeof loadEudrData === 'function') {
-      try {
-        await loadEudrData();
-      } catch (_e) { /* optional */ }
-    }
     if (typeof eudrGetDisplayStatus_ === 'function' && eudrRows && eudrRows.length) {
       eudrRows.forEach(function(d) {
         const s = eudrGetDisplayStatus_(d);
@@ -33501,15 +33634,68 @@ function initDashboardApp() {
         else if (s === 'Not Potential') eudrNotPotential++;
       });
     }
+    const ttpStats = ttpOverviewMillStats_(tracePeriod.year, tracePeriod.maxMonth);
     return {
       ok: true,
       year: year,
       quarter: quarter,
-      periodLabel: millExecutivePeriodLabel_(year, quarter),
+      maxMonth: maxMonth,
+      tracePeriod: {
+        year: tracePeriod.year,
+        maxMonth: tracePeriod.maxMonth,
+        label: overviewTtpTracePeriodLabel_(tracePeriod.year),
+      },
+      dataPeriodKey: dataPeriodKey,
+      periodLabel: millOverviewPeriodLabel_(year, quarter, maxMonth),
       snapshot: snapshot,
-      eudr: { potential: eudrPotential, notPotential: eudrNotPotential },
+      traceTotals: traceTotals,
+      facilityCount: millCountDistinctFacilities_(registryRows),
+      ttpMills: ttpStats.mills,
+      ttpRecords: ttpStats.records,
+      eudr: {
+        potential: eudrPotential,
+        notPotential: eudrNotPotential,
+        total: (eudrRows && eudrRows.length) || 0,
+      },
     };
+  }
+
+  async function ensureMillDataForOverview_() {
+    if (millDataLoaded && allData.length) return;
+    if (millHydrateFromSessionCache_()) {
+      millDataLoaded = true;
+      return;
+    }
+    await loadMillData({ force: !millDataLoaded });
+  }
+
+  window.refreshOverviewMetricsDataFast_ = async function refreshOverviewMetricsDataFast_() {
+    await ensureMillDataForOverview_();
+    return buildOverviewPayload_();
   };
+
+  window.refreshOverviewMetricsData_ = async function refreshOverviewMetricsData_() {
+    await ensureMillDataForOverview_();
+    const secondary = [];
+    if (!ttpLoaded && typeof loadTTPData === 'function') {
+      secondary.push(loadTTPData().catch(function() { /* optional */ }));
+    }
+    if (!eudrLoaded) {
+      secondary.push(loadEudrDataCore_().catch(function() { /* optional */ }));
+    }
+    if (secondary.length) {
+      await Promise.all(secondary);
+    }
+    const payload = buildOverviewPayload_();
+    if (!grvLoaded && typeof loadGrvData === 'function') {
+      loadGrvData().then(function() {
+        notifyOverviewMetricsRefresh_({ force: false });
+      }).catch(function() { /* optional */ });
+    }
+    return payload;
+  };
+
+  notifyOverviewMetricsRefresh_({ force: false });
 
   applyDefaultPanel_();
 

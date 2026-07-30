@@ -868,10 +868,30 @@ function doGet(e) {
       } catch (grvErr) {
         grvHdr = false;
       }
+      var ssPing = SpreadsheetApp.getActiveSpreadsheet();
+      var ttpSheetName = resolveSheetTabName_('ttp') || '';
+      var ttpLastRow = 0;
+      var ttpDataRows = 0;
+      try {
+        if (ttpSheetName && ssPing) {
+          var ttpWs = ssPing.getSheetByName(ttpSheetName) || findSheetTabFuzzy_(ssPing, ttpSheetName);
+          if (ttpWs) {
+            ttpLastRow = ttpWs.getLastRow();
+            ttpDataRows = Math.max(0, ttpLastRow - TTP_STANDARD_HEADER_ROW);
+          }
+        }
+      } catch (ttpPingErr) {
+        ttpDataRows = -1;
+      }
       return respond({
         success: true,
         message: 'Apps Script is alive',
         version: 'v3-supply-facility-from-plant',
+        spreadsheetName: ssPing ? ssPing.getName() : '',
+        spreadsheetId: ssPing ? ssPing.getId() : '',
+        ttpSheetTab: ttpSheetName,
+        ttpLastRow: ttpLastRow,
+        ttpDataRows: ttpDataRows,
         blMonitoring: !!resolveSheetTabName_('blMonitoring'),
         sdMonitoring: !!resolveSheetTabName_('sdMonitoring'),
         questionnaireMonitoring: !!resolveSheetTabName_('questionnaireMonitoring'),
