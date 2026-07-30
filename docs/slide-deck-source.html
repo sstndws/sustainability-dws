@@ -128,29 +128,31 @@
 
 <!-- SLIDE 2 TOC -->
 <div class="slide">
-  <div class="slide-header"><h1>Table of Contents</h1><p>19 slides — complete data flow reference</p></div>
+  <div class="slide-header"><h1>Table of Contents</h1><p>24 slides — data flows, traceability formulas &amp; connections</p></div>
   <div class="slide-body">
     <div class="cols">
       <div class="col"><ul class="clean">
         <li><span class="toc-num">01</span> System Architecture</li>
-        <li><span class="toc-num">02</span> Supplier Due Diligence</li>
-        <li><span class="toc-num">03</span> SDD Lifecycle</li>
-        <li><span class="toc-num">04</span> SDD Data Destinations</li>
-        <li><span class="toc-num">05</span> SDD → Mill Mapping</li>
-        <li><span class="toc-num">06</span> FFB → TTP Mapping</li>
-        <li><span class="toc-num">07</span> Mill Onboarding Entry</li>
-        <li><span class="toc-num">08</span> Mill Onboarding Output</li>
-        <li><span class="toc-num">09</span> Supply Task List</li>
+        <li><span class="toc-num">02–04</span> Supplier Due Diligence (SDD)</li>
+        <li><span class="toc-num">05–06</span> SDD → Mill &amp; FFB → TTP Mapping</li>
+        <li><span class="toc-num">07–08</span> Mill Onboarding In / Out</li>
+        <li><span class="toc-num">09</span> Traceability Data Overview</li>
+        <li><span class="toc-num">10</span> TTM Traceable Formula (CPO &amp; PK)</li>
+        <li><span class="toc-num">11</span> TTP Traceable Formula (CPO &amp; PK)</li>
+        <li><span class="toc-num">12</span> TTP Sheet Columns &amp; Conversions</li>
+        <li><span class="toc-num">13</span> Category Mix &amp; Per-Row %</li>
+        <li><span class="toc-num">14</span> Report &amp; Facility Performance Trace</li>
+        <li><span class="toc-num">15</span> Supply Task List</li>
+        <li><span class="toc-num">16</span> Google Sheet Formulas</li>
       </ul></div>
       <div class="col"><ul class="clean">
-        <li><span class="toc-num">10</span> Google Sheet Formulas</li>
-        <li><span class="toc-num">11</span> App Formulas (Frontend)</li>
-        <li><span class="toc-num">12</span> Grievance &amp; Risk Reason</li>
-        <li><span class="toc-num">13</span> Module Connection Map</li>
-        <li><span class="toc-num">14</span> Google Sheets Registry</li>
-        <li><span class="toc-num">15</span> SDD vs EUDR DDS</li>
-        <li><span class="toc-num">16</span> Validation Rules</li>
-        <li><span class="toc-num">17</span> Code Reference</li>
+        <li><span class="toc-num">17</span> Other App Formulas</li>
+        <li><span class="toc-num">18</span> Grievance &amp; Risk Reason</li>
+        <li><span class="toc-num">19</span> Full Module Connection Map</li>
+        <li><span class="toc-num">20</span> Google Sheets Registry</li>
+        <li><span class="toc-num">21</span> SDD vs EUDR DDS</li>
+        <li><span class="toc-num">22</span> Validation Rules</li>
+        <li><span class="toc-num">23</span> Code Reference</li>
       </ul></div>
     </div>
   </div>
@@ -310,9 +312,138 @@
   <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 10</span></div>
 </div>
 
-<!-- SLIDE 11 SUPPLY -->
+<!-- SLIDE 11 TRACE OVERVIEW -->
 <div class="slide">
-  <div class="slide-header"><h1>09 · Supply Task List</h1><p>Embedded in the Mill Onboarding panel</p></div>
+  <div class="slide-header"><h1>09 · Traceability Data Overview</h1><p>Panel #panel-ttm-ttp — Year filter drives all KPI cards</p></div>
+  <div class="slide-body">
+    <table class="data" style="margin-bottom:12px;">
+      <tr><th></th><th>CPO</th><th>PK</th></tr>
+      <tr><td><b>TTM Traceable</b><br><span style="font-size:10px;color:#546e7a;">Mill Onboarding sheet</span></td><td>Coordinate-based supply %</td><td>Coordinate-based supply %</td></tr>
+      <tr><td><b>TTP Traceable</b><br><span style="font-size:10px;color:#546e7a;">Monitoring TTP/TTM sheet</span></td><td>FFB → CPO traceability %</td><td>FFB → PK traceability %</td></tr>
+    </table>
+    <div class="cols">
+      <div class="col"><ul class="clean">
+        <li><b>TTM data source:</b> Mill Onboarding Profile rows (selected year, all quarters)</li>
+        <li><b>TTP data source:</b> Monitoring TTP/TTM rows (filtered by year)</li>
+        <li><b>UI function:</b> renderTtpTraceableStats_()</li>
+      </ul></div>
+      <div class="col"><ul class="clean">
+        <li>Also feeds: Monthly Report KPIs (mrdBuildTraceTotalsForReport_)</li>
+        <li>Also feeds: Facility Performance weighted %</li>
+        <li>Also feeds: Mill Executive Report traceability charts</li>
+        <li>Category mix bar: supplier type % from FFB supply volume</li>
+      </ul></div>
+    </div>
+  </div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 11</span></div>
+</div>
+
+<!-- SLIDE 12 TTM FORMULA -->
+<div class="slide">
+  <div class="slide-header"><h1>10 · TTM Traceable % — Formula</h1><p>ttpCalcTtmCoordinatePct_() · Supply-weighted coordinate check</p></div>
+  <div class="slide-body">
+    <div class="cards" style="margin-bottom:12px;">
+      <div class="card"><div class="card-head">CPO TTM %</div><div class="card-body">
+        <b>Pool:</b> SOURCE TYPE = MILL / TRADER / REFINERY (never KCP)<br>
+        PRODUCT SUPPLY contains CPO — or blank with SUPPLY CPO &gt; 0<br>
+        <b>Traceable row:</b> valid lat/lng coordinate<br>
+        <b>Formula:</b> Σ(SUPPLY CPO traceable) ÷ Σ(SUPPLY CPO total) × 100
+      </div></div>
+      <div class="card"><div class="card-head">PK TTM %</div><div class="card-body">
+        <b>Pool:</b> same SOURCE TYPE filter<br>
+        SUPPLY PK column &gt; 0 (full-year total, not per quarter)<br>
+        <b>Traceable row:</b> valid lat/lng coordinate<br>
+        <b>Formula:</b> Σ(SUPPLY PK traceable) ÷ Σ(SUPPLY PK total) × 100
+      </div></div>
+    </div>
+    <div class="note"><b>Per-mill shortcut (Monthly Report):</b> mrdMillTtmRowPct_() → 100% if valid coordinate, else 0% (binary per row).</div>
+  </div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 12</span></div>
+</div>
+
+<!-- SLIDE 13 TTP FORMULA -->
+<div class="slide">
+  <div class="slide-header"><h1>11 · TTP Traceable % — Formula</h1><p>ttpAggregateTotalTraceablePct_() · Matches sheet footer totals</p></div>
+  <div class="slide-body">
+    <table class="data">
+      <tr><th>Product</th><th>Numerator (Σ)</th><th>Denominator (Σ)</th><th>Display</th></tr>
+      <tr><td><b>CPO</b></td><td>CPO TRACEABLE VOLUME</td><td>CPO SUPPLY TO REFINERY</td><td>#ttp-stat-cpo-traceable</td></tr>
+      <tr><td><b>PK</b></td><td>PK TRACEABLE VOLUME</td><td>PK SUPPLY TO KCP</td><td>#ttp-stat-pk-traceable</td></tr>
+    </table>
+    <ul class="clean" style="margin-top:12px;">
+      <li><b>Primary method:</b> SUM(numerator) ÷ SUM(denominator) × 100 — same as Google Sheet footer</li>
+      <li><b>Fallback:</b> if volume columns missing → average of <b>% CPO TRACEABLE</b> or <b>% PK TRACEABLE</b> per row</li>
+      <li><b>Format:</b> 2 decimal places (e.g. 94.13%) via ttpFormatTraceablePct_()</li>
+      <li><b>Row filter:</b> ttpIsDataRow_() excludes header echoes and "Total Traceable" footer rows</li>
+    </ul>
+  </div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 13</span></div>
+</div>
+
+<!-- SLIDE 14 TTP COLUMNS -->
+<div class="slide">
+  <div class="slide-header"><h1>12 · TTP Sheet — Key Columns &amp; Conversions</h1><p>Per FFB supplier row in Monitoring TTP/TTM registry</p></div>
+  <div class="slide-body"><div class="cols">
+    <div class="col"><ul class="clean">
+      <li><b>Input:</b> FFB SUPPLY to MILL (TON)</li>
+      <li><b>Conversion:</b> FFB → CPO (20%) · FFB → PK (5%)</li>
+      <li><b>Output supply:</b> CPO SUPPLY TO REFINERY · PK SUPPLY TO KCP</li>
+      <li><b>Traceable volume:</b> CPO/PK TRACEABLE VOLUME</li>
+      <li><b>Per-row %:</b> % CPO TRACEABLE · % PK TRACEABLE</li>
+    </ul></div>
+    <div class="col"><ul class="clean">
+      <li><b>Sheet totals:</b> Total CPO % Traceable · Total PK % Traceable</li>
+      <li><b>Identity:</b> GROUP / COMPANY / MILL / UML ID</li>
+      <li><b>FFB context:</b> SUPPLIER GROUP/NAME · CATEGORY · LAT/LONG</li>
+      <li><b>Sync metadata:</b> submission_id · ffb_line_id · synced_at</li>
+      <li><b>Monitoring preserved on re-sync:</b> MSD · trace volumes · % columns</li>
+    </ul></div>
+  </div></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 14</span></div>
+</div>
+
+<!-- SLIDE 15 CATEGORY MIX -->
+<div class="slide">
+  <div class="slide-header"><h1>13 · Category Mix &amp; Group Averages</h1><p>Supplier type breakdown on Traceability panel</p></div>
+  <div class="slide-body">
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="card-head">Category Mix (TTP panel bar)</div><div class="card-body">
+        <b>Function:</b> ttpSupplierPctByCategory_()<br>
+        Weight = FFB SUPPLY to MILL (fallback weight = 1 per row)<br>
+        <b>% per bucket</b> = bucket supply ÷ total supply × 100<br>
+        <b>Buckets:</b> Owned Estate · External Estate · Dealer · Plasma · Cooperative
+      </div></div>
+      <div class="card"><div class="card-head">Registry Group Average</div><div class="card-body">
+        <b>Function:</b> ttpGroupAvgPctHtml_()<br>
+        Uses same ttpAggregateTotalTraceablePct_() per company group<br>
+        Shows CPO/PK aggregate % in grouped table rows
+      </div></div>
+    </div>
+    <div class="note"><b>Category record count mix:</b> ttpComputeCategoryMix_() — % of rows by supplier category (largest-remainder rounding, labels sum to 100%).</div>
+  </div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 15</span></div>
+</div>
+
+<!-- SLIDE 16 REPORT FACILITY TRACE -->
+<div class="slide">
+  <div class="slide-header"><h1>14 · Monthly Report &amp; Facility Performance</h1><p>Downstream consumers of TTM/TTP formulas</p></div>
+  <div class="slide-body">
+    <table class="data">
+      <tr><th>Module</th><th>Function</th><th>Formula</th></tr>
+      <tr><td>Monthly Report KPI</td><td>mrdBuildTraceTotalsForReport_()</td><td>TTM + TTP aggregate for report year (TTP year = report year − 1)</td></tr>
+      <tr><td>Per-mill report row</td><td>mrdBuildTraceRowsForReport_()</td><td>Joins mill ↔ TTP by company; avg % CPO/PK TRACEABLE</td></tr>
+      <tr><td>Facility TTP %</td><td>pfBuildRows_() / pfBuildPkGroups_()</td><td>Σ(supply qty × TTP%) ÷ Σ(supply qty) × 100</td></tr>
+      <tr><td>Facility TTM %</td><td>pfCalcTtmFacilityTrace_()</td><td>Σ(supply qty × TTM%) ÷ Σ(supply qty) · TTM = 100 or 0 per seller</td></tr>
+      <tr><td>ISPO supply %</td><td>pfCalcIspoSupplyPct_()</td><td>Σ(ISPO-certified qty) ÷ total supply × 100</td></tr>
+      <tr><td>Untraceable mills</td><td>Monthly Report §03</td><td>Mills with no FFB supplier in TTP for trace year</td></tr>
+    </table>
+  </div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 16</span></div>
+</div>
+
+<!-- SLIDE 17 SUPPLY -->
+<div class="slide">
+  <div class="slide-header"><h1>15 · Supply Task List</h1><p>Embedded in the Mill Onboarding panel</p></div>
   <div class="slide-body" style="justify-content:center;">
     <div class="flow-row">
       <div class="flow-box">Excel<br>Upload</div><span class="flow-arrow">→</span>
@@ -328,12 +459,12 @@
       <li>Repair drift: <b>reconcileSupplyDraft_()</b></li>
     </ul>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 11</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 17</span></div>
 </div>
 
-<!-- SLIDE 12 SHEET FORMULAS -->
+<!-- SLIDE 18 SHEET FORMULAS -->
 <div class="slide">
-  <div class="slide-header"><h1>10 · Google Sheet Formulas (Read-Only)</h1><p>MILL_FORMULA_HEADERS_ — never written from the web app</p></div>
+  <div class="slide-header"><h1>16 · Google Sheet Formulas (Read-Only)</h1><p>MILL_FORMULA_HEADERS_ — never written from the web app</p></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
       <li>SCORE · TOTAL SCORE · LEGALITY SCORE</li>
@@ -350,26 +481,26 @@
       <li>SD Monitoring: DAY LEFT · Status · Result</li>
     </ul></div>
   </div></div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 12</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 18</span></div>
 </div>
 
-<!-- SLIDE 13 APP FORMULAS -->
+<!-- SLIDE 19 APP FORMULAS -->
 <div class="slide">
-  <div class="slide-header"><h1>11 · App Formulas (Frontend)</h1><p>Computed in the web app — not in Google Sheets</p></div>
+  <div class="slide-header"><h1>17 · Other App Formulas</h1><p>Grievance · EUDR · Mill risk — computed in frontend</p></div>
   <div class="slide-body">
     <div class="cards">
       <div class="card"><div class="card-head">Grievance Risk Score</div><div class="card-body">Total = sum of 6 indicators (score 1–3)<br>≤ 8 → Low · ≤ 11 → Medium · &gt; 11 → High<br><i>src/grievance-risk.js</i></div></div>
-      <div class="card"><div class="card-head">TTM Coordinate %</div><div class="card-body">Pool: MILL/TRADER/REFINERY + supply &gt; 0<br>% = Σ(traceable qty) / Σ(total qty) × 100<br><i>ttpCalcTtmCoordinatePct_()</i></div></div>
-      <div class="card"><div class="card-head">TTP Aggregate %</div><div class="card-body">Σ(traceable vol) / Σ(supply) × 100<br>Fallback: avg of % TRACEABLE columns<br><i>ttpAggregateTotalTraceablePct_()</i></div></div>
-      <div class="card"><div class="card-head">EUDR Potential Status</div><div class="card-body">All enabled criteria pass → Potential<br>Any fail → Not Potential<br><i>eudrComputeStatus_()</i></div></div>
+      <div class="card"><div class="card-head">EUDR Potential Status</div><div class="card-body">All enabled criteria pass → Potential<br>Any fail → Not Potential<br>FFB % by TTP category vs threshold (default 70%)<br><i>eudrComputeStatus_()</i></div></div>
+      <div class="card"><div class="card-head">Mill Risk Reason</div><div class="card-body">UI pills from field gaps: coordinate, legality, NDPE, cert, deforestation, NBL<br>Uses RESULT RISK LEVEL from sheet<br><i>src/mill-risk-reason.js</i></div></div>
+      <div class="card"><div class="card-head">Mill Executive Report</div><div class="card-body">Risk buckets, NBL counts, supply by province/facility<br>Traceability pie: traceable vs untraceable supply<br><i>src/mill-executive-report.js</i></div></div>
     </div>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 13</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 19</span></div>
 </div>
 
-<!-- SLIDE 14 RISK -->
+<!-- SLIDE 20 RISK -->
 <div class="slide">
-  <div class="slide-header"><h1>12 · Grievance &amp; Mill Risk Reason</h1></div>
+  <div class="slide-header"><h1>18 · Grievance &amp; Mill Risk Reason</h1></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
       <li><b>Grievance</b> — all 6 indicators required before classification</li>
@@ -383,26 +514,28 @@
       <li class="sub">Deforestation &gt; 0 ha · On No Buy List</li>
     </ul></div>
   </div></div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 14</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 20</span></div>
 </div>
 
-<!-- SLIDE 15 MODULE MAP -->
+<!-- SLIDE 21 MODULE MAP -->
 <div class="slide">
-  <div class="slide-header"><h1>13 · Module Connection Map</h1></div>
-  <div class="slide-body" style="gap:8px;">
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">SDD (APPROVED) ──────────────────→ Contact List Supplier</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">SDD ──→ Task List ──→ Mill Profile ──→ TTP sync</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Supply Excel ────────────────────→ Mill Profile</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill ──→ EUDR Potential &nbsp;&nbsp;&nbsp; TTP FFB ──→ EUDR FFB %</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill + TTP + GRV + NBL + EUDR ──→ Monthly Report</div>
-    <div class="flow-box" style="width:100%;text-align:left;padding:10px 16px;">Mill + TTP + Supplied CPO/PK ───→ Facility Performance</div>
+  <div class="slide-header"><h1>19 · Full Module Connection Map</h1><p>How data flows across the entire dashboard</p></div>
+  <div class="slide-body" style="gap:6px;font-size:11px;">
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>SDD</b> (APPROVED) → Contact List · Task List → Mill Profile → <b>TTP sync</b> (FFB rows)</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Supply Excel</b> → Supply Draft → Mill Profile → <b>TTM %</b> (SUPPLY CPO/PK + coordinates)</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Mill Profile</b> → EUDR Potential · Questionnaire · Monthly Report §02 · Executive Report</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>TTP sheet</b> → Traceability panel <b>TTP %</b> · Category mix · Monthly Report · Facility Performance</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>TTP FFB rows</b> → EUDR FFB % by category · Untraceable mills detection</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>NBL sheets</b> → SDD screening check · Mill BUYER NO BUY LIST (sheet formula)</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Grievance</b> → Monthly Report · EUDR criteria · Mill grievance flags</div>
+    <div class="flow-box" style="width:100%;text-align:left;padding:8px 14px;"><b>Supplied CPO/PK</b> → Facility Performance weighted TTP/TTM/ISPO %</div>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 15</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 21</span></div>
 </div>
 
-<!-- SLIDE 16 SHEETS -->
+<!-- SLIDE 22 SHEETS -->
 <div class="slide">
-  <div class="slide-header"><h1>14 · Google Sheets Registry</h1></div>
+  <div class="slide-header"><h1>20 · Google Sheets Registry</h1></div>
   <div class="slide-body">
     <table class="data">
       <tr><th>Key</th><th>Tab Name</th><th>Module</th></tr>
@@ -414,12 +547,12 @@
       <tr><td>contactSupplier</td><td>Contact List Supplier</td><td>Contact List</td></tr>
     </table>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 16</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 22</span></div>
 </div>
 
-<!-- SLIDE 17 SDD vs DDS -->
+<!-- SLIDE 23 SDD vs DDS -->
 <div class="slide">
-  <div class="slide-header"><h1>15 · SDD vs EUDR DDS</h1><p>Two separate modules — no direct coupling</p></div>
+  <div class="slide-header"><h1>21 · SDD vs EUDR DDS</h1><p>Two separate modules — no direct coupling</p></div>
   <div class="slide-body">
     <table class="data">
       <tr><th>Aspect</th><th>SDD (Supplier Due Diligence)</th><th>EUDR DDS</th></tr>
@@ -429,12 +562,12 @@
       <tr><td>Output</td><td>Task List → Mill → TTP</td><td>DOCX/PDF for buyers</td></tr>
     </table>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 17</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 23</span></div>
 </div>
 
-<!-- SLIDE 18 VALIDATION -->
+<!-- SLIDE 24 VALIDATION -->
 <div class="slide">
-  <div class="slide-header"><h1>16 · Validation Rules</h1><p>Guard rules that prevent data inconsistency</p></div>
+  <div class="slide-header"><h1>22 · Validation Rules</h1><p>Guard rules that prevent data inconsistency</p></div>
   <div class="slide-body"><div class="cols">
     <div class="col"><ul class="clean">
       <li>Submitted SDD cannot be downgraded to Draft</li>
@@ -449,24 +582,24 @@
       <li>Coordinates: normalizeCoordinate() + recoverCoord()</li>
     </ul></div>
   </div></div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 18</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 24</span></div>
 </div>
 
-<!-- SLIDE 19 REF -->
+<!-- SLIDE 25 REF -->
 <div class="slide">
-  <div class="slide-header"><h1>17 · Code Reference</h1></div>
+  <div class="slide-header"><h1>23 · Code Reference</h1></div>
   <div class="slide-body">
     <table class="data">
-      <tr><th>Area</th><th>File</th></tr>
-      <tr><td>Backend CRUD + sync</td><td>scripts/GoogleAppsScript-backend-v3-full.gs</td></tr>
-      <tr><td>Main app logic</td><td>src/main.js</td></tr>
-      <tr><td>Grievance risk</td><td>src/grievance-risk.js</td></tr>
-      <tr><td>Mill risk reason</td><td>src/mill-risk-reason.js</td></tr>
-      <tr><td>Monthly report</td><td>src/monthly-report-ui.js · monthly-report-pdf.js</td></tr>
-      <tr><td>TTP field mapping</td><td>docs/sdd-to-ttm-ttp-field-mapping.md</td></tr>
+      <tr><th>Area</th><th>File / Function</th></tr>
+      <tr><td>Backend CRUD + TTP sync</td><td>scripts/GoogleAppsScript-backend-v3-full.gs</td></tr>
+      <tr><td>TTM / TTP formulas</td><td>src/main.js — ttpCalcTtmCoordinatePct_ · ttpAggregateTotalTraceablePct_</td></tr>
+      <tr><td>Traceability UI</td><td>partials/panel-ttm-ttp.html · renderTtpTraceableStats_()</td></tr>
+      <tr><td>Monthly report trace</td><td>src/monthly-report-ui.js — mrdBuildTraceTotalsForReport_()</td></tr>
+      <tr><td>Facility performance</td><td>src/main.js — pfCalcTtmFacilityTrace_ · pfBuildRows_()</td></tr>
+      <tr><td>TTP field mapping doc</td><td>docs/sdd-to-ttm-ttp-field-mapping.md</td></tr>
     </table>
   </div>
-  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 19</span></div>
+  <div class="slide-footer"><span>Sustainability Dashboard — Data Flow</span><span>Slide 25</span></div>
 </div>
 
 <!-- SLIDE END -->
