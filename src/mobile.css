@@ -453,8 +453,17 @@
     line-height: 1.35;
   }
 
+  #panel-mill-onboarding {
+    padding-bottom: clamp(96px, 16vh, 180px);
+  }
+
+  #panel-mill-onboarding .mill-registry-card {
+    margin-bottom: clamp(56px, 10vh, 120px);
+  }
+
   #panel-mill-onboarding .mill-registry-table-scroll {
-    max-height: min(58vh, calc(100dvh - 240px));
+    max-height: min(68vh, calc(100dvh - 240px));
+    padding-bottom: 80px;
   }
 
   /* ── TTP toolbar ── */

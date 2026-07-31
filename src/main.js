@@ -9262,6 +9262,7 @@ function initDashboardApp() {
     const loading = document.getElementById('mill-loading');
     const errorEl = document.getElementById('mill-error');
     const table = document.getElementById('millTable');
+    const scrollWrap = document.querySelector('#panel-mill-onboarding .mill-registry-table-scroll');
     const hasMillUi = !!(loading && errorEl && table);
     const millApiOpts = { bustCache: bustCache, timeoutMs: 120000 };
 
@@ -9290,6 +9291,7 @@ function initDashboardApp() {
       hydratedFromCache = true;
       soft = true;
       loading.style.display = 'none';
+      if (scrollWrap) scrollWrap.style.display = '';
       table.style.display = 'table';
       millPdfRebuildDimPanels();
       millSyncPeriodModeUi_();
@@ -9298,7 +9300,8 @@ function initDashboardApp() {
 
     try {
       if (!soft && !hydratedFromCache) {
-        loading.style.display = 'block';
+        loading.style.display = 'flex';
+        if (scrollWrap) scrollWrap.style.display = 'none';
         errorEl.style.display = 'none';
         table.style.display = 'none';
       }
@@ -9327,6 +9330,7 @@ function initDashboardApp() {
 
       if (!soft) {
         loading.style.display = 'none';
+        if (scrollWrap) scrollWrap.style.display = '';
         table.style.display = 'table';
         millPdfDimFilters = { month: new Set(), year: new Set(), group: new Set(), province: new Set() };
         millPeriodMode = 'newest';
@@ -9334,6 +9338,7 @@ function initDashboardApp() {
         millSyncRegistryFiltersVisibility_();
       } else {
         if (loading) loading.style.display = 'none';
+        if (scrollWrap) scrollWrap.style.display = '';
         if (table) table.style.display = 'table';
       }
       millPdfRebuildDimPanels();
@@ -9344,6 +9349,7 @@ function initDashboardApp() {
       if (!soft) {
         if (!millDataLoaded && millHydrateFromSessionCache_()) {
           loading.style.display = 'none';
+          if (scrollWrap) scrollWrap.style.display = '';
           table.style.display = 'table';
           millPdfRebuildDimPanels();
           millSyncPeriodModeUi_();
@@ -9385,39 +9391,6 @@ function initDashboardApp() {
     if (target) {
       dashScrollRowIntoView_(target);
       millScrollToKey_ = '';
-    }
-  }
-
-  let millRegistryScrollLayoutBound = false;
-
-  /** Size registry tbody to fill visible main column (not a fixed vh from page top). */
-  function syncMillRegistryTableScrollHeight_() {
-    const panel = document.getElementById('panel-mill-onboarding');
-    if (!panel || !panel.classList.contains('active')) return;
-    const tableCard = panel.querySelector('.table-card');
-    const scrollEl = panel.querySelector('.mill-registry-table-scroll');
-    if (!tableCard || !scrollEl || tableCard.style.display === 'none') return;
-    const mainContent = document.querySelector('#dashboard .main-content');
-    const bottomRef = mainContent
-      ? mainContent.getBoundingClientRect().bottom
-      : window.innerHeight;
-    const available = Math.floor(bottomRef - scrollEl.getBoundingClientRect().top - 12);
-    scrollEl.style.maxHeight = Math.max(220, available) + 'px';
-  }
-
-  function bindMillRegistryScrollLayoutOnce_() {
-    if (millRegistryScrollLayoutBound) return;
-    millRegistryScrollLayoutBound = true;
-    const onLayout = function() { syncMillRegistryTableScrollHeight_(); };
-    window.addEventListener('resize', onLayout);
-    const mainContent = document.querySelector('#dashboard .main-content');
-    if (mainContent) mainContent.addEventListener('scroll', onLayout, { passive: true });
-    const sidebar = document.getElementById('mainSidebar');
-    if (sidebar) sidebar.addEventListener('transitionend', onLayout);
-    if (typeof ResizeObserver !== 'undefined') {
-      const panel = document.getElementById('panel-mill-onboarding');
-      const tableCard = panel && panel.querySelector('.table-card');
-      if (tableCard) new ResizeObserver(onLayout).observe(tableCard);
     }
   }
 
@@ -10065,8 +10038,6 @@ function initDashboardApp() {
           <td class="mill-td mill-td--supplier">${supplierBadge(d['SUPPLIER STATUS'])}</td>
         </tr>`;
       }).join('');
-    bindMillRegistryScrollLayoutOnce_();
-    requestAnimationFrame(syncMillRegistryTableScrollHeight_);
   }
 
   const btnAddMill = document.getElementById('btn-add-mill');
@@ -22536,9 +22507,6 @@ function initDashboardApp() {
         millSyncRegistryFiltersVisibility_();
       }
       scheduleRenderMillTable();
-      requestAnimationFrame(function() {
-        requestAnimationFrame(syncMillRegistryTableScrollHeight_);
-      });
       const warmExecutivePdfAssets_ = function() {
         getMillExecutiveBackgroundDataUrl_().catch(function() {});
         millEnsureChartModule_().catch(function() {});

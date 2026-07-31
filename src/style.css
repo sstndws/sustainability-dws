@@ -2805,12 +2805,15 @@
      }
    }
 
-   /* Mill Registry: export toolbar (dropdowns align with TTM/TTP) */
-   #panel-mill-onboarding .table-card {
-     overflow: visible;
-   }
+   /* Mill Onboarding — extra bottom space for comfortable page scroll */
    #panel-mill-onboarding {
-     padding-bottom: 24px;
+     padding-bottom: clamp(120px, 18vh, 220px);
+   }
+
+   /* Mill Registry card */
+   #panel-mill-onboarding .mill-registry-card {
+     overflow: hidden;
+     margin-bottom: clamp(72px, 12vh, 140px);
    }
 
    #panel-mill-onboarding .mill-export-toolbar {
@@ -2829,19 +2832,44 @@
      max-height: min(320px, 55vh);
    }
 
-   /* Mill Registry: scroll body + frozen column headers */
+   #panel-mill-onboarding .mill-registry-loading {
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     min-height: 280px;
+     margin: 0;
+     padding: 48px 20px;
+     background: #fff;
+     border-top: 1px solid rgba(139, 26, 26, 0.08);
+     box-sizing: border-box;
+   }
+   #panel-mill-onboarding .mill-registry-loading[style*="display: none"] {
+     display: none !important;
+   }
+   #panel-mill-onboarding .mill-registry-loading:not([style*="display: none"]) ~ .mill-registry-table-scroll {
+     display: none !important;
+   }
+
+   /* Mill Registry: internal table scroll (same pattern as TTP) */
    #panel-mill-onboarding .mill-registry-table-scroll {
-     overflow: auto !important;
-     min-height: 220px;
-     max-height: min(72vh, calc(100dvh - 200px));
+     overflow-x: auto !important;
+     overflow-y: auto !important;
+     max-height: min(75vh, calc(100dvh - 260px));
+     background: #fff;
+     padding-bottom: 96px;
+     box-sizing: border-box;
      -webkit-overflow-scrolling: touch;
      position: relative;
      scrollbar-width: thin;
-     scrollbar-color: rgba(139, 26, 26, 0.18) transparent;
+     scrollbar-color: rgba(139, 26, 26, 0.22) rgba(139, 26, 26, 0.06);
    }
    #panel-mill-onboarding .mill-registry-table-scroll::-webkit-scrollbar {
-     width: 6px;
-     height: 6px;
+     width: 8px;
+     height: 8px;
+   }
+   #panel-mill-onboarding .mill-registry-table-scroll::-webkit-scrollbar-thumb {
+     background: rgba(139, 26, 26, 0.28);
+     border-radius: 999px;
    }
    #panel-mill-onboarding table#millTable.mill-registry-table {
      width: max-content;
@@ -5988,9 +6016,6 @@
      }
      #panel-mill-onboarding .mill-period-filter-panel {
        max-width: min(280px, calc(100vw - 28px));
-     }
-     #panel-mill-onboarding .mill-registry-table-scroll {
-       max-height: min(58vh, calc(100dvh - 220px));
      }
     .mill-profile-qy-export-btn {
       margin-left: 0;
