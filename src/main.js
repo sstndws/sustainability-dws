@@ -5736,6 +5736,7 @@ function initDashboardApp() {
   let currentSearch = '';
   let ttpData = [], ttpFields = [], ttpLoaded = false, ttpPctCol = '', ttpPkPctCol = '', ttpCategoryCol = '', ttpSearch = '';
   let ttpPkTraceVolCol = '', ttpCpoTraceVolCol = '', ttpPkTraceDenomCol = '', ttpCpoTraceDenomCol = '';
+  let ttpCpoConvCol = '', ttpPkConvCol = '';
   let ttpPeriodMode = 'overall'; // year only
   let ttpPeriodYear = '';
   let ttpPeriodQuarter = '';
@@ -5745,7 +5746,10 @@ function initDashboardApp() {
   let ttpLocationCascadeCache_ = null;
   let millLoadPromise = null;
   let millSoftReloadPromise_ = null;
+  let millBackgroundRefreshTimer_ = null;
   let _supplyPostSubmitRefreshTimer = null;
+  const MILL_POST_SUBMIT_REFRESH_MS_ = 18000;
+  const MILL_BG_REFRESH_RETRY_MS_ = 8000;
   let millDataLoaded = false;
   let ttpLoadPromise = null;
   let grvLoadPromise = null;
@@ -9255,10 +9259,59 @@ function initDashboardApp() {
     }
   }
 
+  function millHasSessionCache_() {
+    const cached = millReadSessionCache_();
+    return !!(cached && Array.isArray(cached.rows) && cached.rows.length);
+  }
+
+  function millAnySupplySubmitInFlight_() {
+    if (window._supplyBulkSubmitInFlight) return true;
+    return (window._supplyDraftBatches || []).some(function(b) {
+      return b && b._submitInFlight;
+    });
+  }
+
+  /** Show registry table immediately from memory or sessionStorage — no spinner. */
+  function millRevealRegistryFromCacheOrMemory_() {
+    const loading = document.getElementById('mill-loading');
+    const errorEl = document.getElementById('mill-error');
+    const table = document.getElementById('millTable');
+    const scrollWrap = document.querySelector('#panel-mill-onboarding .mill-registry-table-scroll');
+    if (!table) return false;
+
+    const hasMemory = millDataLoaded && allData && allData.length > 0;
+    if (!hasMemory && !millHydrateFromSessionCache_()) return false;
+
+    if (loading) loading.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (scrollWrap) scrollWrap.style.display = '';
+    table.style.display = 'table';
+    millPdfRebuildDimPanels();
+    millSyncPeriodModeUi_();
+    scheduleRenderMillTable();
+    return true;
+  }
+
+  /** Debounced background refresh; waits until supply submit finishes on GAS. */
+  function scheduleMillBackgroundRefresh_(opts) {
+    opts = opts || {};
+    const delayMs = opts.delayMs != null ? Number(opts.delayMs) : MILL_BG_REFRESH_RETRY_MS_;
+    if (millBackgroundRefreshTimer_) clearTimeout(millBackgroundRefreshTimer_);
+    millBackgroundRefreshTimer_ = setTimeout(function() {
+      millBackgroundRefreshTimer_ = null;
+      if (millAnySupplySubmitInFlight_()) {
+        scheduleMillBackgroundRefresh_({ delayMs: MILL_BG_REFRESH_RETRY_MS_ });
+        return;
+      }
+      reloadMillDataSoft_().catch(function() {});
+    }, Math.max(0, delayMs));
+  }
+
   async function loadMillDataImpl(opts) {
     opts = opts || {};
     let soft = !!opts.soft;
     const bustCache = !!opts.bustCache;
+    const preferCache = opts.preferCache !== false;
     const loading = document.getElementById('mill-loading');
     const errorEl = document.getElementById('mill-error');
     const table = document.getElementById('millTable');
@@ -9287,19 +9340,16 @@ function initDashboardApp() {
     if (!hasMillUi) return;
 
     let hydratedFromCache = false;
-    if (!soft && !bustCache && !millDataLoaded && millHydrateFromSessionCache_()) {
-      hydratedFromCache = true;
-      soft = true;
-      loading.style.display = 'none';
-      if (scrollWrap) scrollWrap.style.display = '';
-      table.style.display = 'table';
-      millPdfRebuildDimPanels();
-      millSyncPeriodModeUi_();
-      scheduleRenderMillTable();
+    const hadInMemory = millDataLoaded && allData && allData.length > 0;
+    if (preferCache && !soft && (hadInMemory || millHasSessionCache_())) {
+      if (millRevealRegistryFromCacheOrMemory_()) {
+        hydratedFromCache = !hadInMemory;
+        soft = true;
+      }
     }
 
     try {
-      if (!soft && !hydratedFromCache) {
+      if (!soft && !hydratedFromCache && !hadInMemory) {
         loading.style.display = 'flex';
         if (scrollWrap) scrollWrap.style.display = 'none';
         errorEl.style.display = 'none';
@@ -9395,6 +9445,10 @@ function initDashboardApp() {
   }
 
   async function reloadMillDataSoft_() {
+    if (millAnySupplySubmitInFlight_()) {
+      scheduleMillBackgroundRefresh_({ delayMs: MILL_POST_SUBMIT_REFRESH_MS_ });
+      return;
+    }
     if (millSoftReloadPromise_) return millSoftReloadPromise_;
     const scrollEl = document.querySelector('#panel-mill-onboarding .table-scroll');
     const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
@@ -9419,8 +9473,8 @@ function initDashboardApp() {
         // (that hid the list and felt like endless loading after submit).
         console.warn('[Mill] Soft reload failed:', err && err.message ? err.message : err);
         scheduleRenderMillTable();
-        if (typeof window.showSddToast === 'function') {
-          window.showSddToast('Mill list not updated yet — click Refresh or wait a moment and reopen.', 'warning');
+        if (typeof window.showSddToast === 'function' && !millAnySupplySubmitInFlight_()) {
+          window.showSddToast('Mill list not updated yet — data will refresh when the server is ready.', 'warning');
         }
       }
     })();
@@ -9433,9 +9487,16 @@ function initDashboardApp() {
 
   async function loadMillData(opts) {
     opts = opts || {};
-    if (!opts.force && millDataLoaded) return;
+    if (!opts.force && millDataLoaded && allData && allData.length) {
+      if (opts.scheduleRefresh !== false) {
+        scheduleMillBackgroundRefresh_({
+          delayMs: opts.refreshDelayMs != null ? opts.refreshDelayMs : 6000,
+        });
+      }
+      return;
+    }
     if (millLoadPromise) return millLoadPromise;
-    const implOpts = Object.assign({}, opts);
+    const implOpts = Object.assign({ preferCache: true }, opts);
     if (implOpts.force) implOpts.bustCache = true;
     millLoadPromise = loadMillDataImpl(implOpts);
     try {
@@ -11733,14 +11794,59 @@ function initDashboardApp() {
     }) || '';
   }
 
-  /** Same as sheet footer: SUM(traceable volume) ÷ SUM(supply volume). */
+  function ttpFindConversionCol_(fields, product) {
+    const candidates = product === 'pk'
+      ? ['CONVERSION FFB TO PK (5%)', 'CONVERSION FFB to PK (5%)', 'CONVERSION FFB TO PK']
+      : ['CONVERSION FFB TO CPO (20%)', 'CONVERSION FFB to CPO (20%)', 'CONVERSION FFB TO CPO'];
+    return ttpPickHeaderCol_(fields, candidates, {
+      excludePct: true,
+      tag: product === 'pk' ? 'PK' : 'CPO',
+    });
+  }
+
+  function ttpRowHasTracePct_(pct) {
+    return !isNaN(pct) && pct > 0;
+  }
+
+  /** Weighted avg of % traceable column by supply volume (ton). */
+  function ttpAggregateSupplyWeightedPct_(rows, pctCol, denCol) {
+    if (!pctCol || !denCol) return { value: NaN, rowsUsed: 0, method: 'weighted-pct' };
+    let wSum = 0;
+    let wDen = 0;
+    let rowsUsed = 0;
+    (rows || []).forEach(function(row) {
+      const pct = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
+      const w = ttpParseNumber_(row[denCol]);
+      if (isNaN(pct) || isNaN(w) || w <= 0) return;
+      wSum += pct * w;
+      wDen += w;
+      rowsUsed++;
+    });
+    if (!rowsUsed || wDen <= 0) {
+      return { value: NaN, rowsUsed: 0, sumDen: wDen, method: 'weighted-pct' };
+    }
+    return {
+      value: wSum / wDen,
+      rowsUsed: rowsUsed,
+      sumDen: wDen,
+      method: 'weighted-pct',
+      pctCol: pctCol,
+      denCol: denCol,
+    };
+  }
+
+  /** Excel footer: SUM(imputed traceable ton) ÷ SUM(supply ton). CPO skips blank-trace rows and may use CONVERSION × % when volume is empty. */
   function ttpAggregateTotalTraceablePct_(rows, product) {
-    const numCol = product === 'pk' ? ttpPkTraceVolCol : ttpCpoTraceVolCol;
-    const denCol = product === 'pk' ? ttpPkTraceDenomCol : ttpCpoTraceDenomCol;
-    const pctCol = product === 'pk' ? ttpPkPctCol : ttpPctCol;
+    const isCpo = product === 'cpo';
+    const numCol = isCpo ? ttpCpoTraceVolCol : ttpPkTraceVolCol;
+    const denCol = isCpo ? ttpCpoTraceDenomCol : ttpPkTraceDenomCol;
+    const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
+    const convCol = isCpo ? ttpCpoConvCol : ttpPkConvCol;
     const dataRows = (rows || []).filter(ttpIsDataRow_);
 
-    if (!numCol || !denCol) {
+    if (!denCol) {
+      const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
+      if (!isNaN(weighted.value)) return weighted;
       const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
       legacy.method = 'average';
       return legacy;
@@ -11748,48 +11854,64 @@ function initDashboardApp() {
 
     let sumNum = 0;
     let sumDen = 0;
-    let rowsWithNum = 0;
+    let rowsFromVol = 0;
+    let rowsFromConv = 0;
+    let rowsFromPct = 0;
     let rowsWithDen = 0;
     dataRows.forEach(function(row) {
-      const n = ttpParseNumber_(row[numCol]);
       const d = ttpParseNumber_(row[denCol]);
-      if (!isNaN(n)) {
+      if (isNaN(d) || d <= 0) return;
+      const n = numCol ? ttpParseNumber_(row[numCol]) : NaN;
+      const p = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
+      const hasVol = numCol && !isNaN(n) && n > 0;
+      const hasPct = ttpRowHasTracePct_(p);
+
+      if (isCpo && !hasVol && !hasPct) return;
+
+      let added = false;
+      if (hasVol) {
         sumNum += n;
-        rowsWithNum++;
+        rowsFromVol++;
+        added = true;
+      } else if (isCpo && convCol) {
+        const c = ttpParseNumber_(row[convCol]);
+        if (!isNaN(c) && c > 0 && hasPct) {
+          sumNum += c * p / 100;
+          rowsFromConv++;
+          added = true;
+        }
       }
-      if (!isNaN(d)) {
-        sumDen += d;
-        if (d > 0) rowsWithDen++;
+      if (!added && hasPct) {
+        sumNum += d * p / 100;
+        rowsFromPct++;
       }
+
+      sumDen += d;
+      rowsWithDen++;
     });
 
-    if (!rowsWithNum || sumDen <= 0) {
-      return {
-        value: NaN,
-        rowsUsed: 0,
-        totalRows: dataRows.length,
-        method: 'sum',
-        numCol: numCol,
-        denCol: denCol,
-        sumNum: sumNum,
-        sumDen: sumDen
-      };
+    if (!sumDen || (!rowsFromVol && !rowsFromConv && !rowsFromPct)) {
+      const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
+      if (!isNaN(weighted.value)) return weighted;
+      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
+      legacy.method = 'average';
+      return legacy;
     }
 
-    const ratio = sumNum / sumDen;
-    const value = ratio <= 1.5 ? ratio * 100 : ratio;
-
     return {
-      value: value,
+      value: (sumNum / sumDen) * 100,
       rowsUsed: dataRows.length,
-      rowsWithNum: rowsWithNum,
+      rowsFromVol: rowsFromVol,
+      rowsFromConv: rowsFromConv,
+      rowsFromPct: rowsFromPct,
       rowsWithDen: rowsWithDen,
       totalRows: dataRows.length,
-      method: 'sum',
-      numCol: numCol,
+      method: 'imputed-sum',
+      numCol: numCol || pctCol,
       denCol: denCol,
+      convCol: convCol || '',
       sumNum: sumNum,
-      sumDen: sumDen
+      sumDen: sumDen,
     };
   }
 
@@ -11889,7 +12011,18 @@ function initDashboardApp() {
 
     if (cpoEl) {
       cpoEl.textContent = ttpFormatTraceablePct_(cpoAgg.value);
-      cpoEl.title = cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
+      cpoEl.title = cpoAgg.method === 'imputed-sum' && cpoAgg.sumDen > 0
+        ? 'SUM(imputed traceable ton) ÷ SUM(' + cpoAgg.denCol + ') — same logic as Excel footer'
+          + '\nPer row: CPO Traceable Volume if filled'
+          + (cpoAgg.convCol ? '; else ' + cpoAgg.convCol + ' × %CPO ÷ 100' : '')
+          + '; else CPO SUPPLY × %CPO ÷ 100'
+          + '\nRows with no volume and 0% CPO are excluded from the total (Excel filter).'
+          + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
+          + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
+          + '\n(' + (cpoAgg.rowsFromVol || 0) + ' from volume · '
+          + (cpoAgg.rowsFromConv || 0) + ' from conversion · '
+          + (cpoAgg.rowsFromPct || 0) + ' from % imputed)'
+        : cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
         ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
           + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
@@ -11898,10 +12031,21 @@ function initDashboardApp() {
     }
     if (pkEl) {
       pkEl.textContent = ttpFormatTraceablePct_(pkAgg.value);
-      pkEl.title = pkAgg.method === 'sum' && pkAgg.sumDen > 0
+      pkEl.title = pkAgg.method === 'imputed-sum' && pkAgg.sumDen > 0
+        ? 'SUM(imputed traceable ton) ÷ SUM(' + pkAgg.denCol + ')'
+          + '\nPer row: PK Traceable Volume if filled, else PK SUPPLY × %PK ÷ 100'
+          + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
+          + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
+          + '\n(' + (pkAgg.rowsFromVol || 0) + ' from volume · ' + (pkAgg.rowsFromPct || 0) + ' from % imputed)'
+        : pkAgg.method === 'sum' && pkAgg.sumDen > 0
         ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ')'
           + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
+        : pkAgg.method === 'weighted-pct' && pkAgg.sumDen > 0
+        ? 'Weighted avg of ' + (pkAgg.pctCol || '% PK TRACEABLE')
+          + ' by ' + (pkAgg.denCol || 'PK SUPPLY to KCP')
+          + '\n' + pkAgg.rowsUsed + ' rows · ' + ttpFormatTtpTon_(pkAgg.sumDen) + ' ton supply'
+          + ' = ' + ttpFormatTraceablePct_(pkAgg.value)
         : 'No PK traceable data for this period';
     }
     if (ttmCpoEl) {
@@ -13106,6 +13250,8 @@ function initDashboardApp() {
     ttpCpoTraceVolCol = ttpFindTraceableVolCol_(ttpFields, 'cpo');
     ttpPkTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'pk');
     ttpCpoTraceDenomCol = ttpFindTraceableDenomCol_(ttpFields, 'cpo');
+    ttpCpoConvCol = ttpFindConversionCol_(ttpFields, 'cpo');
+    ttpPkConvCol = ttpFindConversionCol_(ttpFields, 'pk');
     ttpData = ttpData.filter(ttpIsDataRow_);
     ttpUniqueValuesCache = Object.create(null);
     ttpLocationCascadeCache_ = null;
@@ -22495,8 +22641,9 @@ function initDashboardApp() {
       window.__overviewMetricsRefresh({ force: true });
     }
     if (name === 'mill-onboarding') {
+      millRevealRegistryFromCacheOrMemory_();
       if (!millDataLoaded || !allData.length) {
-        loadMillData({ force: !millDataLoaded });
+        loadMillData({ force: !millDataLoaded, preferCache: true, scheduleRefresh: false });
       } else if (currentFilter === 'Task List') {
         currentFilter = 'All';
         filterChipEls.forEach(function(c) { c.classList.toggle('active', c.dataset.filter === 'All'); });
@@ -22505,8 +22652,12 @@ function initDashboardApp() {
         if (taskPanel) taskPanel.style.display = 'none';
         if (tableCard) tableCard.style.display = '';
         millSyncRegistryFiltersVisibility_();
+        scheduleRenderMillTable();
+        scheduleMillBackgroundRefresh_({ delayMs: millAnySupplySubmitInFlight_() ? MILL_POST_SUBMIT_REFRESH_MS_ : 6000 });
+      } else {
+        scheduleRenderMillTable();
+        scheduleMillBackgroundRefresh_({ delayMs: millAnySupplySubmitInFlight_() ? MILL_POST_SUBMIT_REFRESH_MS_ : 6000 });
       }
-      scheduleRenderMillTable();
       const warmExecutivePdfAssets_ = function() {
         getMillExecutiveBackgroundDataUrl_().catch(function() {});
         millEnsureChartModule_().catch(function() {});
@@ -30322,9 +30473,7 @@ function initDashboardApp() {
   }
 
   async function supplyRecoverChunkAfterTransportError_(batch, bId, chunk, chunkNum, failures, errors) {
-    if (typeof reloadMillDataSoft_ === 'function') {
-      try { await reloadMillDataSoft_(); } catch (_) { /* keep going */ }
-    }
+    scheduleMillBackgroundRefresh_({ delayMs: MILL_POST_SUBMIT_REFRESH_MS_ });
     supplyReconcileBatchLocal_(batch);
     const recovered = new Set();
     chunk.forEach(function(p) {
@@ -30590,6 +30739,7 @@ function initDashboardApp() {
     if (taskPanel) taskPanel.style.display = 'none';
     if (tableCard) tableCard.style.display = '';
     millSyncRegistryFiltersVisibility_();
+    millRevealRegistryFromCacheOrMemory_();
     scheduleRenderMillTable();
     if (typeof updateMillPdfExportScope === 'function') updateMillPdfExportScope();
   }
@@ -30967,40 +31117,32 @@ function initDashboardApp() {
     else supplyPatchBatchFooterSubmitCount_(key);
   }
 
-  /** Best-effort refresh after submit — debounced, coalesced, never blocks UI. */
+  /** Best-effort refresh after submit — show cached table first, refresh later. */
   function supplyRefreshAfterSubmit_(opts) {
     opts = opts || {};
     if (_supplyPostSubmitRefreshTimer) clearTimeout(_supplyPostSubmitRefreshTimer);
+    const submittedN = opts.submittedN != null ? Number(opts.submittedN) : 0;
+    const delayMs = submittedN > 0 ? 3000 : 2000;
     _supplyPostSubmitRefreshTimer = setTimeout(function() {
       _supplyPostSubmitRefreshTimer = null;
-      const submittedN = opts.submittedN != null ? Number(opts.submittedN) : 0;
       const showMill = opts.showMill !== false && submittedN > 0;
       const reloadDrafts = currentFilter === 'Task List';
-      const prevRowCount = (allDataRaw && allDataRaw.length) || 0;
 
-      function reloadMillOnce_() {
-        return typeof reloadMillDataSoft_ === 'function' ? reloadMillDataSoft_() : Promise.resolve();
+      if (showMill) {
+        supplyShowMillOnboardingList_();
+      } else {
+        millRevealRegistryFromCacheOrMemory_();
+        scheduleRenderMillTable();
       }
 
-      reloadMillOnce_()
-        .then(function() {
-          const grew = ((allDataRaw && allDataRaw.length) || 0) > prevRowCount;
-          if (submittedN > 0 && !grew && typeof reloadMillDataSoft_ === 'function') {
-            return new Promise(function(r) { setTimeout(r, 2500); }).then(reloadMillOnce_);
-          }
-        })
-        .then(function() {
-          if (showMill) supplyShowMillOnboardingList_();
-          else scheduleRenderMillTable();
-        })
-        .catch(function() {
-          if (showMill) supplyShowMillOnboardingList_();
-        })
-        .then(function() {
-          if (!reloadDrafts || typeof loadSupplyDraftsFromServer_ !== 'function') return;
-          return loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
-        });
-    }, 2000);
+      scheduleMillBackgroundRefresh_({
+        delayMs: submittedN > 0 ? MILL_POST_SUBMIT_REFRESH_MS_ : MILL_BG_REFRESH_RETRY_MS_,
+      });
+
+      if (reloadDrafts && typeof loadSupplyDraftsFromServer_ === 'function') {
+        loadSupplyDraftsFromServer_({ preserveUi: true }).catch(function() {});
+      }
+    }, delayMs);
   }
 
   function supplyPatchBatchFooter_(batchId) {
