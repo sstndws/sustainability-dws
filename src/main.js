@@ -8920,24 +8920,34 @@ function initDashboardApp() {
     panel.style.margin = '';
   }
 
+  function millToolbarDropdownSize_(panel) {
+    if (!panel || !panel.id) {
+      return { minW: 220, maxW: 280, flipBelow: 220, flipAbove: 120, maxH: 320 };
+    }
+    if (panel.id === 'millPdfFilterDimsPanel') {
+      return { minW: 280, maxW: 420, flipBelow: 300, flipAbove: 180, maxH: 480 };
+    }
+    if (panel.id === 'millPdfColsPanel') {
+      return { minW: 260, maxW: 360, flipBelow: 260, flipAbove: 140, maxH: 360 };
+    }
+    return { minW: 220, maxW: 280, flipBelow: 220, flipAbove: 120, maxH: 320 };
+  }
+
   function millPositionPeriodDropdownPanel_(btn, panel) {
     if (!btn || !panel || !panel.classList.contains('open')) return;
     if (typeof ttpAnchorPanelToBody_ === 'function') ttpAnchorPanelToBody_(panel);
-    if (typeof ttpPositionDropdownPanel_ === 'function') {
-      ttpPositionDropdownPanel_(btn, panel);
-      return;
-    }
+    const size = millToolbarDropdownSize_(panel);
     const rect = btn.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
-    const minW = 220;
-    const maxW = 280;
+    const minW = size.minW;
+    const maxW = size.maxW;
     const width = Math.min(Math.max(rect.width, minW), maxW, window.innerWidth - 24);
     const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
     const gap = 8;
     const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - 12);
     const spaceAbove = Math.max(0, rect.top - gap - 12);
-    const openUp = spaceBelow < 220 && spaceAbove >= 120;
-    const maxH = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    const openUp = spaceBelow < size.flipBelow && spaceAbove >= size.flipAbove;
+    const maxH = Math.min(size.maxH, Math.max(160, openUp ? spaceAbove : spaceBelow));
     panel.classList.add('ttp-dropdown-panel--fixed');
     panel.style.position = 'fixed';
     panel.style.left = left + 'px';
@@ -8960,6 +8970,8 @@ function initDashboardApp() {
 
   function millRepositionOpenPeriodDropdowns_() {
     [
+      ['millPdfBtnFilterDims', 'millPdfFilterDimsPanel'],
+      ['millPdfBtnCols', 'millPdfColsPanel'],
       ['millBtnFilterMonth', 'millMonthFilterPanel'],
       ['millBtnFilterYear', 'millYearFilterPanel'],
     ].forEach(function(pair) {
@@ -8984,7 +8996,12 @@ function initDashboardApp() {
       const panel = document.getElementById(pair[1]);
       if (panel) {
         panel.classList.remove('open');
-        if (panel.id === 'millMonthFilterPanel' || panel.id === 'millYearFilterPanel') {
+        if (
+          panel.id === 'millPdfFilterDimsPanel' ||
+          panel.id === 'millPdfColsPanel' ||
+          panel.id === 'millMonthFilterPanel' ||
+          panel.id === 'millYearFilterPanel'
+        ) {
           millClearPeriodDropdownPosition_(panel);
         }
       }
@@ -9028,18 +9045,10 @@ function initDashboardApp() {
       });
     }
 
-    bindMillDimDropdown_('millPdfBtnFilterDims', 'millPdfFilterDimsPanel');
+    bindMillDimDropdown_('millPdfBtnFilterDims', 'millPdfFilterDimsPanel', true);
     if (bMonth && pMonth) bindMillDimDropdown_('millBtnFilterMonth', 'millMonthFilterPanel', true);
     if (bYear && pYear) bindMillDimDropdown_('millBtnFilterYear', 'millYearFilterPanel', true);
-    bCols.addEventListener('click', function(e) {
-      e.stopPropagation();
-      const isOpen = pCols.classList.contains('open');
-      closeMillToolbarDropdowns_();
-      if (!isOpen) {
-        pCols.classList.add('open');
-        bCols.classList.add('active');
-      }
-    });
+    bindMillDimDropdown_('millPdfBtnCols', 'millPdfColsPanel', true);
 
     if (!window.__sddMillPdfDropdownOutsideClickBound) {
       window.__sddMillPdfDropdownOutsideClickBound = true;
@@ -9051,6 +9060,8 @@ function initDashboardApp() {
           document.getElementById('millPdfColWrap'),
         ];
         const panels = [
+          document.getElementById('millPdfFilterDimsPanel'),
+          document.getElementById('millPdfColsPanel'),
           document.getElementById('millMonthFilterPanel'),
           document.getElementById('millYearFilterPanel'),
         ];

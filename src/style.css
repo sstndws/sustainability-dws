@@ -3616,6 +3616,13 @@
      min-width: 280px;
      max-width: min(420px, calc(100vw - 32px));
    }
+   .ttp-dropdown-panel--fixed.mill-pdf-filter-panel {
+     overflow-y: auto;
+     -webkit-overflow-scrolling: touch;
+   }
+   .ttp-dropdown-panel--fixed.mill-pdf-filter-panel .mill-pdf-dim-list {
+     max-height: min(140px, 28vh);
+   }
    .mill-pdf-toolbar-hint {
      margin: 0;
      padding: 8px 14px 10px;
