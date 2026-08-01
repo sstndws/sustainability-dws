@@ -21,7 +21,7 @@ Internal dashboard for mill onboarding, supply task lists, supplier due diligenc
 
 ---
 
-## Architecture (high level)
+## Architecture
 
 ```mermaid
 flowchart LR
