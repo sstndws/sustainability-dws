@@ -6006,6 +6006,7 @@ function supplySubmitKindFromDraftGs_(row) {
   var hasIscc = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
   var hasIns = row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '';
   var hasShell = row['SUPPLY SHELL'] != null && String(row['SUPPLY SHELL']).trim() !== '';
+  if (hasIscc && hasIns) return 'POME_BOTH';
   if (hasIscc) return 'POME_ISCC';
   if (hasIns) return 'POME_INS';
   if (hasShell) return 'SHELL_GGL';
@@ -6017,6 +6018,8 @@ function supplySubmitKindFromDraftGs_(row) {
   if (!stRaw) return 'CPO';
   if (stRaw === 'POME_ISCC') return 'POME_ISCC';
   if (stRaw === 'POME_INS') return 'POME_INS';
+  if (stRaw === 'POME_ISCC+POME_INS' || stRaw === 'POME_BOTH') return 'POME_BOTH';
+  if (stRaw.indexOf('POME_ISCC') >= 0 && stRaw.indexOf('POME_INS') >= 0) return 'POME_BOTH';
   if (stRaw === 'SHELL_GGL') return 'SHELL_GGL';
   if (stRaw === 'PK') return 'PK';
   if (stRaw === 'CPO') return 'CPO';
@@ -6029,6 +6032,8 @@ function supplySubmitKindFromDraftGs_(row) {
 function supplyDraftMarkKindsCompatibleGs_(submitKind, objKind) {
   var a = String(submitKind || '').toUpperCase();
   var b = String(objKind || '').toUpperCase();
+  if (a === 'POME_BOTH') return b === 'POME_ISCC' || b === 'POME_INS' || b === 'POME_BOTH';
+  if (b === 'POME_BOTH') return a === 'POME_ISCC' || a === 'POME_INS' || a === 'POME_BOTH';
   if (supplyIsWasteSubmitKind_(a)) return a === b;
   if (a === 'BOTH') return b === 'CPO' || b === 'PK' || b === 'BOTH';
   if (b === 'BOTH') return a === 'CPO' || a === 'PK' || a === 'BOTH';
@@ -6037,7 +6042,7 @@ function supplyDraftMarkKindsCompatibleGs_(submitKind, objKind) {
 
 function supplyIsWasteSubmitKind_(kind) {
   var k = String(kind || '').trim().toUpperCase();
-  return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL';
+  return k === 'POME_ISCC' || k === 'POME_INS' || k === 'POME_BOTH' || k === 'SHELL_GGL';
 }
 
 function findMillRowsByCompanyGs_(millData, millHeaders, companyName) {
@@ -6270,15 +6275,20 @@ function millForceWriteFacilityFromPlantGs_(sheet, headers, targetRow, row, patc
     writeFac_('FACILITY NAME CPO', facCpo);
     writeFac_('FACILITY NAME PK', facPk);
   } else if (supplyIsWasteSubmitKind_(kind)) {
-    var wasteMap = {
-      POME_ISCC: 'FACILITY NAME ISCC',
-      POME_INS: 'FACILITY NAME INS',
-      SHELL_GGL: 'FACILITY NAME SHELL',
-    };
-    var wh = wasteMap[kind];
-    if (wh) {
-      var wv = supplyFacilityFromDraftGs_(src, wh, kind);
-      writeFac_(wh, wv);
+    if (kind === 'POME_BOTH') {
+      writeFac_('FACILITY NAME ISCC', supplyFacilityFromDraftGs_(src, 'FACILITY NAME ISCC', kind));
+      writeFac_('FACILITY NAME INS', supplyFacilityFromDraftGs_(src, 'FACILITY NAME INS', kind));
+    } else {
+      var wasteMap = {
+        POME_ISCC: 'FACILITY NAME ISCC',
+        POME_INS: 'FACILITY NAME INS',
+        SHELL_GGL: 'FACILITY NAME SHELL',
+      };
+      var wh = wasteMap[kind];
+      if (wh) {
+        var wv = supplyFacilityFromDraftGs_(src, wh, kind);
+        writeFac_(wh, wv);
+      }
     }
   }
 }
@@ -6654,11 +6664,11 @@ function supplyFacilityFromDraftGs_(row, field, submitKind) {
   var src = direct || plant;
   if (!src) return '';
   if (field === 'FACILITY NAME ISCC') {
-    if (submitKind === 'POME_ISCC') return src;
+    if (submitKind === 'POME_ISCC' || submitKind === 'POME_BOTH') return src;
     return '';
   }
   if (field === 'FACILITY NAME INS') {
-    if (submitKind === 'POME_INS') return src;
+    if (submitKind === 'POME_INS' || submitKind === 'POME_BOTH') return src;
     return '';
   }
   if (field === 'FACILITY NAME SHELL') {
@@ -7064,18 +7074,18 @@ function buildSupplyPatchFromDraftGs_(row) {
       patch['SUPPLY PK'] = qtyPk;
     }
   }
-  if (submitKind === 'POME_ISCC') {
+  if (submitKind === 'POME_ISCC' || submitKind === 'POME_BOTH') {
     var facIscc = supplyFacilityFromDraftGs_(row, 'FACILITY NAME ISCC', submitKind);
     if (facIscc) patch['FACILITY NAME ISCC'] = facIscc;
     qtyWaste = row['SUPPLY ISCC'];
-    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY) qtyWaste = row.SUPPLY_QTY;
+    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY && submitKind === 'POME_ISCC') qtyWaste = row.SUPPLY_QTY;
     if (qtyWaste !== undefined && qtyWaste !== null && String(qtyWaste).trim() !== '') patch['SUPPLY ISCC'] = qtyWaste;
   }
-  if (submitKind === 'POME_INS') {
+  if (submitKind === 'POME_INS' || submitKind === 'POME_BOTH') {
     var facIns = supplyFacilityFromDraftGs_(row, 'FACILITY NAME INS', submitKind);
     if (facIns) patch['FACILITY NAME INS'] = facIns;
     qtyWaste = row['SUPPLY INS'];
-    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY) qtyWaste = row.SUPPLY_QTY;
+    if ((qtyWaste === undefined || qtyWaste === null || String(qtyWaste).trim() === '') && row.SUPPLY_QTY && submitKind === 'POME_INS') qtyWaste = row.SUPPLY_QTY;
     if (qtyWaste !== undefined && qtyWaste !== null && String(qtyWaste).trim() !== '') patch['SUPPLY INS'] = qtyWaste;
   }
   if (submitKind === 'SHELL_GGL') {
