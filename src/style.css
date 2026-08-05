@@ -6362,6 +6362,12 @@
   letter-spacing: 0.4px;
   color: #8A7070;
 }
+.supply-type-flow__hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6a4a4a;
+}
 .supply-type-flow__opts {
   display: grid;
   grid-template-columns: 1fr 1fr;

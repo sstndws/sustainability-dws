@@ -15402,7 +15402,18 @@ function initDashboardApp() {
     return candidates.slice().sort(millProfileComparePeriodDesc_)[0];
   }
 
-  function blAssessMonitoringRowWarningsSync_(ttpRow) {
+  /** Buyer on the open Declaration / Shipping form (used for per-buyer NBL gating). */
+  function blGetDeclarationBuyer_() {
+    const buyerInput = blFindBuyerInput_();
+    return buyerInput ? String(buyerInput.value || '').trim() : '';
+  }
+
+  /**
+   * NBL save gate is buyer-scoped:
+   *   • block when declaration buyer matches an NBL riser for the linked mill
+   *   • allow when mill is NBL only for other buyers (different riser)
+   */
+  function blAssessMonitoringRowWarningsSync_(ttpRow, declarationBuyer) {
     const warnings = [];
     const company = blField_(ttpRow, ['COMPANY NAME']);
     const group = blField_(ttpRow, ['GROUP NAME']);
@@ -15410,14 +15421,17 @@ function initDashboardApp() {
     if (millRow) {
       const risk = millResolvedRiskLevelForStats_(millRow);
       if (String(risk || '').toLowerCase().includes('high')) warnings.push('High risk');
-      if (millIsNblYes_(millRow['BUYER NO BUY LIST'])) warnings.push('No Buy List');
     }
-    if (_nblListsCache) {
+    const buyer = String(declarationBuyer != null ? declarationBuyer : blGetDeclarationBuyer_()).trim();
+    if (buyer && _nblListsCache) {
       const nblMatches = millNblSourceMatchesForRow_({
         'GROUP NAME': group === '—' ? '' : group,
         'COMPANY NAME': company === '—' ? '' : company,
       }, _nblListsCache);
-      if (nblMatches.length && warnings.indexOf('No Buy List') === -1) warnings.push('No Buy List');
+      const scoped = nblMatches.filter(function(m) {
+        return blBuyerMatchesNblRiser_(buyer, m.riser);
+      });
+      if (scoped.length) warnings.push('No Buy List');
     }
     return warnings;
   }
@@ -15428,7 +15442,7 @@ function initDashboardApp() {
     if (pick._row) {
       srcRow = (ttpData || []).find(function(r) { return r._row === pick._row; });
     }
-    const warnings = blAssessMonitoringRowWarningsSync_(srcRow || pick);
+    const warnings = blAssessMonitoringRowWarningsSync_(srcRow || pick, blGetDeclarationBuyer_());
     return warnings.indexOf('No Buy List') !== -1;
   }
 
@@ -15463,10 +15477,13 @@ function initDashboardApp() {
     const company = blField_(src, ['COMPANY NAME']);
     const msg = (pickLabel || 'Selected') + ' · ' + company + ': ' + warnings.join(' · ');
     const hasNbl = warnings.indexOf('No Buy List') !== -1;
+    const buyerLabel = blGetDeclarationBuyer_();
     if (hasNbl && typeof window.showSddNotification === 'function') {
       window.showSddNotification(
         'No Buy List — cannot save',
-        msg + '\n\nThis supplier is suspended on the No Buy List. Remove the link before saving the BL record.',
+        msg + '\n\nThis supplier is on the No Buy List for buyer '
+          + (buyerLabel || 'this declaration')
+          + '. Remove the link or choose a different buyer before saving.',
         'warning'
       );
     } else if (typeof window.showSddToast === 'function') {
@@ -17136,11 +17153,14 @@ function initDashboardApp() {
       }
       const nblViolations = blGetSelectedMonitoringNblViolations_();
       if (nblViolations.length) {
+        const buyerLabel = String(fields['BUYER'] || '').trim();
         alert(
           'Cannot save this record.\n\n'
-          + 'The following linked TTM/TTP is on the No Buy List (NBL / suspended):\n\n'
+          + 'The following linked TTM/TTP is on the No Buy List for buyer '
+          + (buyerLabel ? buyerLabel : 'this declaration')
+          + ':\n\n'
           + nblViolations.map(function(l) { return '• ' + l; }).join('\n')
-          + '\n\nRemove the suspended supplier before saving.'
+          + '\n\nRemove the suspended supplier or choose a different buyer before saving.'
         );
         return;
       }
@@ -28263,11 +28283,20 @@ function initDashboardApp() {
 
   function supplyImportIsWaste_(kind) {
     const k = String(kind || '').trim().toUpperCase();
-    return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL';
+    return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL'
+      || k === 'POME_ISCC+POME_INS'
+      || (k.indexOf('POME_ISCC') >= 0 && k.indexOf('POME_INS') >= 0);
+  }
+
+  function supplyImportIsPome_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    return k === 'POME_ISCC' || k === 'POME_INS' || k === 'POME_ISCC+POME_INS'
+      || (k.indexOf('POME_ISCC') >= 0 && k.indexOf('POME_INS') >= 0);
   }
 
   function supplyWasteKindFromType_(kind) {
     const k = String(kind || '').trim().toUpperCase();
+    if (k === 'POME_ISCC+POME_INS' || (k.indexOf('POME_ISCC') >= 0 && k.indexOf('POME_INS') >= 0)) return null;
     if (k === 'POME_ISCC') return { qty: 'SUPPLY ISCC', pct: SUPPLY_PCT_COL_ISCC, facility: 'FACILITY NAME ISCC', product: 'POME ISCC' };
     if (k === 'POME_INS') return { qty: 'SUPPLY INS', pct: SUPPLY_PCT_COL_INS, facility: 'FACILITY NAME INS', product: 'POME INS' };
     if (k === 'SHELL_GGL') return { qty: 'SUPPLY SHELL', pct: SUPPLY_PCT_COL_SHELL, facility: 'FACILITY NAME SHELL', product: 'SHELL GGL' };
@@ -28276,6 +28305,7 @@ function initDashboardApp() {
 
   function supplyKindLabel_(kind) {
     const k = String(kind || '').trim().toUpperCase();
+    if (k === 'POME_ISCC+POME_INS' || (k.indexOf('POME_ISCC') >= 0 && k.indexOf('POME_INS') >= 0)) return 'POME ISCC+INS';
     if (k === 'POME_ISCC') return 'POME ISCC';
     if (k === 'POME_INS') return 'POME INS';
     if (k === 'SHELL_GGL') return 'SHELL GGL';
@@ -28746,7 +28776,17 @@ function initDashboardApp() {
       var mKind = supplyRowSupplyKindStrict_(m);
       // CPO / PK / CPO+PK: allow flexible kind overlap for period presence.
       if (supplyImportIsWaste_(wantKind) || supplyImportIsWaste_(mKind)) {
-        if (wantKind !== mKind) continue;
+        if (supplyImportIsPome_(wantKind) && supplyImportIsPome_(mKind)) {
+          const draftHasIscc = wantKind === 'POME_ISCC' || wantKind === 'POME_ISCC+POME_INS';
+          const draftHasIns = wantKind === 'POME_INS' || wantKind === 'POME_ISCC+POME_INS';
+          const millHasIscc = mKind === 'POME_ISCC' || mKind === 'POME_ISCC+POME_INS'
+            || (m['SUPPLY ISCC'] != null && String(m['SUPPLY ISCC']).trim() !== '');
+          const millHasIns = mKind === 'POME_INS' || mKind === 'POME_ISCC+POME_INS'
+            || (m['SUPPLY INS'] != null && String(m['SUPPLY INS']).trim() !== '');
+          if (draftHasIscc && !millHasIscc && !(draftHasIns && millHasIns)) continue;
+          if (draftHasIns && !millHasIns && !(draftHasIscc && millHasIscc)) continue;
+          if (!draftHasIscc && !draftHasIns && wantKind !== mKind) continue;
+        } else if (wantKind !== mKind) continue;
       } else {
         var draftHasCpo = wantKind === 'CPO' || wantKind === 'CPO+PK';
         var draftHasPk = wantKind === 'PK' || wantKind === 'CPO+PK';
@@ -28883,8 +28923,18 @@ function initDashboardApp() {
   }
 
   function supplyCombineSupplyTypes_(a, b) {
-    if (supplyImportIsWaste_(a)) return String(a || '').trim().toUpperCase() || 'POME_ISCC';
-    if (supplyImportIsWaste_(b)) return String(b || '').trim().toUpperCase() || 'POME_ISCC';
+    const au = String(a || '').trim().toUpperCase();
+    const bu = String(b || '').trim().toUpperCase();
+    if (supplyImportIsPome_(au) || supplyImportIsPome_(bu)) {
+      const hasIscc = au.indexOf('POME_ISCC') >= 0 || bu.indexOf('POME_ISCC') >= 0;
+      const hasIns = au.indexOf('POME_INS') >= 0 || bu.indexOf('POME_INS') >= 0;
+      if (hasIscc && hasIns) return 'POME_ISCC+POME_INS';
+      if (hasIscc) return 'POME_ISCC';
+      if (hasIns) return 'POME_INS';
+      return 'POME_ISCC';
+    }
+    if (supplyImportIsWaste_(a)) return au || 'SHELL_GGL';
+    if (supplyImportIsWaste_(b)) return bu || 'SHELL_GGL';
     const types = [];
     function addToken(raw) {
       const u = String(raw || '').trim().toUpperCase();
@@ -28900,6 +28950,11 @@ function initDashboardApp() {
 
   function supplyRowSupplyKindStrict_(row) {
     if (!row) return 'CPO';
+    const hasIsccQty = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
+    const hasInsQty = row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '';
+    if (hasIsccQty && hasInsQty) return 'POME_ISCC+POME_INS';
+    if (hasIsccQty) return 'POME_ISCC';
+    if (hasInsQty) return 'POME_INS';
     const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
     const hasPkQty = row['SUPPLY PK'] != null && String(row['SUPPLY PK']).trim() !== '';
     // Qty columns win over supply_type label — prevents CPO+PK type with only CPO qty
@@ -28908,7 +28963,9 @@ function initDashboardApp() {
     if (hasPkQty) return 'PK';
     if (hasCpoQty) return 'CPO';
     const st = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
-    if (supplyImportIsWaste_(st)) return st;
+    if (st === 'POME_ISCC+POME_INS' || (st.indexOf('POME_ISCC') >= 0 && st.indexOf('POME_INS') >= 0)) return 'POME_ISCC+POME_INS';
+    if (supplyImportIsPome_(st)) return st === 'POME_INS' ? 'POME_INS' : 'POME_ISCC';
+    if (st === 'SHELL_GGL') return 'SHELL_GGL';
     if (st === 'PK') return 'PK';
     if (st === 'CPO') return 'CPO';
     if (st === 'CPO+PK' || st === 'BOTH' || (st.indexOf('CPO') >= 0 && st.indexOf('PK') >= 0)) return 'CPO+PK';
@@ -28927,6 +28984,7 @@ function initDashboardApp() {
 
   function supplyMergeProductSupplyField_(row) {
     const k = supplyRowSupplyKindStrict_(row);
+    if (k === 'POME_ISCC+POME_INS') return 'POME ISCC, POME INS';
     if (k === 'POME_ISCC') return 'POME ISCC';
     if (k === 'POME_INS') return 'POME INS';
     if (k === 'SHELL_GGL') return 'SHELL GGL';
@@ -28944,6 +29002,49 @@ function initDashboardApp() {
     return batch.rows.filter(function(row) {
       return !supplyRowIsSubmitted_(row) && supplyCompanyKey_(row['COMPANY NAME']) === wantCo;
     });
+  }
+
+  /** Pasangan company dengan baris POME ISCC terpisah + POME INS (belum submit). */
+  function supplyFindMergeablePomeIsccInsPairs_(batch) {
+    if (!batch || !supplyImportIsPome_(batch.supply_type)) return [];
+    const byCo = {};
+    (batch.rows || []).forEach(function(row, idx) {
+      if (supplyRowIsSubmitted_(row) || row._merged_away) return;
+      const co = supplyCompanyKey_(row['COMPANY NAME']);
+      if (!co) return;
+      if (!byCo[co]) byCo[co] = [];
+      byCo[co].push({ row: row, idx: idx });
+    });
+    const pairs = [];
+    Object.keys(byCo).forEach(function(co) {
+      const list = byCo[co];
+      const isccRows = list.filter(function(x) { return supplyRowSupplyKindStrict_(x.row) === 'POME_ISCC'; });
+      const insRows = list.filter(function(x) { return supplyRowSupplyKindStrict_(x.row) === 'POME_INS'; });
+      if (isccRows.length === 1 && insRows.length === 1) {
+        pairs.push({
+          company: list[0].row['COMPANY NAME'] || co,
+          isccIdx: isccRows[0].idx,
+          insIdx: insRows[0].idx,
+        });
+      }
+    });
+    return pairs;
+  }
+
+  /** Gabung manual: 1 baris POME ISCC + 1 baris POME INS (company sama) → satu baris merged. */
+  function supplyMergePomeIsccInsPairsInBatch_(batch) {
+    const pairs = supplyFindMergeablePomeIsccInsPairs_(batch);
+    if (!pairs.length) return 0;
+    pairs.sort(function(a, b) { return b.insIdx - a.insIdx; });
+    pairs.forEach(function(p) {
+      const target = batch.rows[p.isccIdx];
+      const source = batch.rows[p.insIdx];
+      if (!target || !source) return;
+      supplyMergeDraftRows_(target, source);
+      batch.rows.splice(p.insIdx, 1);
+    });
+    if (batch) batch.supply_type = supplyCombineSupplyTypes_(batch.supply_type, 'POME_ISCC+POME_INS');
+    return pairs.length;
   }
 
   /** Pasangan company dengan baris CPO terpisah + PK (belum submit) — kandidat gabung manual. */
@@ -28994,6 +29095,10 @@ function initDashboardApp() {
     let waste = {};
     (batch.rows || []).forEach(function(r) {
       const k = supplyRowSupplyKindStrict_(r);
+      if (k === 'POME_ISCC+POME_INS') {
+        waste['POME_ISCC+POME_INS'] = (waste['POME_ISCC+POME_INS'] || 0) + 1;
+        return;
+      }
       if (supplyImportIsWaste_(k)) {
         waste[k] = (waste[k] || 0) + 1;
         return;
@@ -29016,6 +29121,28 @@ function initDashboardApp() {
     const rm = String(row.month || row.MONTH || row.quarter || row.QUARTER || '').trim();
     const ry = String(row.year || row.YEAR || '').trim();
     return rm === String(month || '').trim() && ry === String(year || '').trim();
+  }
+
+  /** Baris draft yang bisa dilengkapi lawan jenisnya (POME ISCC↔POME INS) — month, year, company sama. */
+  function supplyFindDraftRowForPomeMerge_(batch, month, year, companyName, incomingKind) {
+    if (!batch || !batch.rows || !batch.rows.length) return null;
+    if (!supplyImportIsPome_(incomingKind)) return null;
+    const wantCo = supplyCompanyKey_(companyName);
+    if (!wantCo) return null;
+    const ik = incomingKind === 'POME_INS' ? 'POME_INS' : 'POME_ISCC';
+    for (let i = 0; i < batch.rows.length; i++) {
+      const row = batch.rows[i];
+      if (supplyRowIsSubmitted_(row)) continue;
+      if (!supplyDraftPeriodMatches_(row, month, year)) continue;
+      if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) continue;
+      const existingKind = supplyRowSupplyKindStrict_(row);
+      if (existingKind === 'POME_ISCC+POME_INS') return null;
+      if (existingKind === ik) return null;
+      if ((existingKind === 'POME_ISCC' && ik === 'POME_INS') || (existingKind === 'POME_INS' && ik === 'POME_ISCC')) {
+        return row;
+      }
+    }
+    return null;
   }
 
   /** Baris draft yang bisa dilengkapi lawan jenisnya (CPO↔PK) — month, year, company sama. */
@@ -29209,7 +29336,12 @@ function initDashboardApp() {
     if (wasteCfg) {
       existing.supply_type = kind;
       existing.SUPPLY_TYPE = kind;
-      existing['PRODUCT SUPPLY'] = wasteCfg.product;
+      const ekPome = supplyRowSupplyKindStrict_(existing);
+      if ((ekPome === 'POME_ISCC' && kind === 'POME_INS') || (ekPome === 'POME_INS' && kind === 'POME_ISCC')) {
+        supplyStampDualPomeType_(existing);
+      } else {
+        existing['PRODUCT SUPPLY'] = wasteCfg.product;
+      }
       supplyRematchDraftRow_(existing, batch);
       return;
     }
@@ -29219,6 +29351,24 @@ function initDashboardApp() {
     }
     supplyStampDualSupplyType_(existing);
     supplyRematchDraftRow_(existing, batch);
+  }
+
+  /** After POME ISCC+INS merge — stamp type only when both qty columns are present. */
+  function supplyStampDualPomeType_(row) {
+    if (!row) return;
+    const hasIscc = row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '';
+    const hasIns = row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '';
+    if (hasIscc && hasIns) {
+      row.supply_type = 'POME_ISCC+POME_INS';
+      row.SUPPLY_TYPE = 'POME_ISCC+POME_INS';
+      row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+    } else if (hasIns) {
+      row.supply_type = 'POME_INS';
+      row.SUPPLY_TYPE = 'POME_INS';
+    } else if (hasIscc) {
+      row.supply_type = 'POME_ISCC';
+      row.SUPPLY_TYPE = 'POME_ISCC';
+    }
   }
 
   /** After CPO+PK merge — stamp type only when both qty columns are present. */
@@ -29239,9 +29389,23 @@ function initDashboardApp() {
     }
   }
 
-  /** Gabungkan dua draft row (mis. batch CPO + batch PK periode sama) per company. */
+  /** Gabungkan dua draft row (mis. batch CPO + batch PK, atau POME ISCC + POME INS) per company. */
   function supplyMergeDraftRows_(target, source) {
     if (!target || !source) return;
+    if (source[SUPPLY_PCT_COL_ISCC] != null && String(source[SUPPLY_PCT_COL_ISCC]).trim() !== '') {
+      target[SUPPLY_PCT_COL_ISCC] = source[SUPPLY_PCT_COL_ISCC];
+    }
+    if (source[SUPPLY_PCT_COL_INS] != null && String(source[SUPPLY_PCT_COL_INS]).trim() !== '') {
+      target[SUPPLY_PCT_COL_INS] = source[SUPPLY_PCT_COL_INS];
+    }
+    if (source['FACILITY NAME ISCC']) target['FACILITY NAME ISCC'] = source['FACILITY NAME ISCC'];
+    if (source['FACILITY NAME INS']) target['FACILITY NAME INS'] = source['FACILITY NAME INS'];
+    if (source['SUPPLY ISCC'] != null && String(source['SUPPLY ISCC']).trim() !== '') {
+      target['SUPPLY ISCC'] = source['SUPPLY ISCC'];
+    }
+    if (source['SUPPLY INS'] != null && String(source['SUPPLY INS']).trim() !== '') {
+      target['SUPPLY INS'] = source['SUPPLY INS'];
+    }
     if (source[SUPPLY_PCT_COL_CPO] != null && String(source[SUPPLY_PCT_COL_CPO]).trim() !== '') {
       target[SUPPLY_PCT_COL_CPO] = source[SUPPLY_PCT_COL_CPO];
     }
@@ -29257,7 +29421,15 @@ function initDashboardApp() {
       target['SUPPLY PK'] = source['SUPPLY PK'];
     }
     if (source['SOURCE TYPE'] && !target['SOURCE TYPE']) target['SOURCE TYPE'] = source['SOURCE TYPE'];
+    supplyStampDualPomeType_(target);
     supplyStampDualSupplyType_(target);
+  }
+
+  function supplyConsolidateBatchKindKey_(kindKey) {
+    const k = String(kindKey || '').trim().toUpperCase();
+    if (supplyImportIsPome_(k)) return 'POME';
+    if (supplyImportIsWaste_(k)) return k;
+    return 'MAIN';
   }
 
   function supplyConsolidateBatchesByPeriod_(batchList) {
@@ -29270,7 +29442,7 @@ function initDashboardApp() {
         return;
       }
       const kindKey = String(b.supply_type || '').trim().toUpperCase();
-      const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + (supplyImportIsWaste_(kindKey) ? ('|' + kindKey) : '');
+      const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + '|' + supplyConsolidateBatchKindKey_(kindKey);
       if (!openByPeriod[pk]) {
         openByPeriod[pk] = b;
         if (b.batch_id != null) b.batch_id = supplyBatchIdKey_(b.batch_id);
@@ -29291,9 +29463,17 @@ function initDashboardApp() {
   }
 
   function supplyCountMergeableImportRows_(parsedRows, month, year, supplyType) {
-    if (supplyImportIsWaste_(supplyType)) return 0;
     const batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     if (!batch || !parsedRows || !parsedRows.length) return 0;
+    if (supplyImportIsPome_(supplyType)) {
+      let n = 0;
+      parsedRows.forEach(function(r) {
+        const names = supplyResolveNamesFromExcel_(r);
+        if (supplyFindDraftRowForPomeMerge_(batch, month, year, names.company, supplyType)) n++;
+      });
+      return n;
+    }
+    if (supplyImportIsWaste_(supplyType)) return 0;
     const kind = supplyType === 'PK' ? 'PK' : 'CPO';
     let n = 0;
     parsedRows.forEach(function(r) {
@@ -29807,7 +29987,7 @@ function initDashboardApp() {
     return out;
   }
 
-  /** Gabung baris CPO + PK (company & periode sama) jadi satu submit CPO+PK. */
+  /** Gabung baris CPO + PK atau POME ISCC + POME INS (company & periode sama) jadi satu submit row. */
   function supplyCoalesceSubmitRowsByCompanyPeriod_(rows, batch) {
     const groups = new Map();
     (rows || []).forEach(function(r) {
@@ -29836,6 +30016,21 @@ function initDashboardApp() {
       if (cpoRows.length === 1 && pkRows.length === 1) {
         supplyMergeDraftRows_(cpoRows[0], pkRows[0]);
         out.push(cpoRows[0]);
+        return;
+      }
+      const pomeDualRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'POME_ISCC+POME_INS'; });
+      const isccRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'POME_ISCC'; });
+      const insRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'POME_INS'; });
+      if (pomeDualRows.length >= 1) {
+        const target = pomeDualRows[0];
+        isccRows.forEach(function(r) { if (r !== target) supplyMergeDraftRows_(target, r); });
+        insRows.forEach(function(r) { if (r !== target) supplyMergeDraftRows_(target, r); });
+        out.push(target);
+        return;
+      }
+      if (isccRows.length === 1 && insRows.length === 1) {
+        supplyMergeDraftRows_(isccRows[0], insRows[0]);
+        out.push(isccRows[0]);
         return;
       }
       out.push.apply(out, list);
@@ -29875,12 +30070,16 @@ function initDashboardApp() {
 
   function supplyResolveKindFromDraft_(draftRow, batch) {
     const rowKind = String((draftRow && draftRow.supply_type) || (draftRow && draftRow.SUPPLY_TYPE) || '').trim().toUpperCase();
-    if (supplyImportIsWaste_(rowKind)) return rowKind;
+    if (rowKind === 'POME_ISCC+POME_INS' || (rowKind.indexOf('POME_ISCC') >= 0 && rowKind.indexOf('POME_INS') >= 0)) return 'POME_ISCC+POME_INS';
+    if (supplyImportIsPome_(rowKind)) return rowKind === 'POME_INS' ? 'POME_INS' : 'POME_ISCC';
+    if (rowKind === 'SHELL_GGL') return 'SHELL_GGL';
     if (rowKind === 'CPO+PK' || (rowKind.indexOf('CPO') >= 0 && rowKind.indexOf('PK') >= 0)) return 'CPO+PK';
     if (rowKind === 'PK') return 'PK';
     if (rowKind === 'CPO') return 'CPO';
     const batchKind = String((batch && batch.supply_type) || '').trim().toUpperCase();
-    if (supplyImportIsWaste_(batchKind)) return batchKind;
+    if (batchKind === 'POME_ISCC+POME_INS' || (batchKind.indexOf('POME_ISCC') >= 0 && batchKind.indexOf('POME_INS') >= 0)) return 'POME_ISCC+POME_INS';
+    if (supplyImportIsPome_(batchKind)) return batchKind === 'POME_INS' ? 'POME_INS' : 'POME_ISCC';
+    if (batchKind === 'SHELL_GGL') return 'SHELL_GGL';
     if (batchKind === 'PK') return 'PK';
     if (batchKind === 'CPO') return 'CPO';
     return 'CPO';
@@ -29929,6 +30128,15 @@ function initDashboardApp() {
       if (kind === 'SHELL_GGL') q = (qtyShell != null && String(qtyShell).trim() !== '') ? qtyShell : legacyQty;
       if (q != null && String(q).trim() !== '') out[wasteCfg.qty] = q;
       if (plant) out[wasteCfg.facility] = plant;
+      return out;
+    }
+    if (kind === 'POME_ISCC+POME_INS') {
+      if (qtyIscc != null && String(qtyIscc).trim() !== '') out['SUPPLY ISCC'] = qtyIscc;
+      if (qtyIns != null && String(qtyIns).trim() !== '') out['SUPPLY INS'] = qtyIns;
+      const facIscc = supplyNormalizePlantValue_((draftRow && draftRow['FACILITY NAME ISCC']) || '');
+      const facIns = supplyNormalizePlantValue_((draftRow && draftRow['FACILITY NAME INS']) || '');
+      if (facIscc) out['FACILITY NAME ISCC'] = facIscc;
+      if (facIns) out['FACILITY NAME INS'] = facIns;
       return out;
     }
     if (kind === 'PK') {
@@ -30392,7 +30600,7 @@ function initDashboardApp() {
     if (!wrap) return;
     wrap.querySelectorAll(
       '[data-action="submit-selected"], [data-action="submit-row"], [data-action="retry-failed"], '
-      + '[data-action="merge-cpo-pk"], [data-action="delete-batch"]'
+      + '[data-action="merge-cpo-pk"], [data-action="merge-pome-iscc-ins"], [data-action="delete-batch"]'
     ).forEach(function(el) {
       if (locked) {
         el.setAttribute('disabled', 'disabled');
@@ -31592,6 +31800,9 @@ function initDashboardApp() {
 
   function supplyTypeBadgeHtml_(supplyKind) {
     const k = String(supplyKind || 'CPO').toUpperCase();
+    if (k === 'POME_ISCC+POME_INS' || (k.indexOf('POME_ISCC') >= 0 && k.indexOf('POME_INS') >= 0)) {
+      return '<span class="supply-badge supply-badge--cpopk">POME ISCC+INS</span>';
+    }
     if (k === 'POME_ISCC') return '<span class="supply-badge supply-badge--cpopk">POME ISCC</span>';
     if (k === 'POME_INS') return '<span class="supply-badge supply-badge--cpopk">POME INS</span>';
     if (k === 'SHELL_GGL') return '<span class="supply-badge supply-badge--cpopk">SHELL GGL</span>';
@@ -31605,6 +31816,11 @@ function initDashboardApp() {
   function supplyRowTypePillsHtml_(row) {
     const parts = [];
     const kind = supplyRowSupplyKindStrict_(row);
+    if (kind === 'POME_ISCC+POME_INS') {
+      parts.push('<span class="supply-pill supply-pill--cpopk">POME ISCC</span>');
+      parts.push('<span class="supply-pill supply-pill--cpopk">POME INS</span>');
+      return '<span class="supply-row-pills">' + parts.join('') + '</span>';
+    }
     if (supplyImportIsWaste_(kind)) {
       return '<span class="supply-row-pills"><span class="supply-pill supply-pill--cpopk">' + escHtml(supplyKindLabel_(kind)) + '</span></span>';
     }
@@ -31634,6 +31850,9 @@ function initDashboardApp() {
       if (supplyPeriodKey_(b.month || b.quarter, b.year) !== want) return false;
       if (!wantType) return true;
       const batchType = String(b.supply_type || '').trim().toUpperCase();
+      if (supplyImportIsPome_(wantType) || supplyImportIsPome_(batchType)) {
+        return supplyImportIsPome_(wantType) && supplyImportIsPome_(batchType);
+      }
       if (supplyImportIsWaste_(wantType)) return batchType === wantType;
       return !supplyImportIsWaste_(batchType);
     }) || null;
@@ -31672,7 +31891,15 @@ function initDashboardApp() {
     const importKind = supplyImportType_();
     const rowCount = (batch.rows || []).length;
     const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
-    if (supplyImportIsWaste_(kind) || supplyImportIsWaste_(importKind)) {
+    if (supplyImportIsPome_(kind) || supplyImportIsPome_(importKind)) {
+      if (kind.indexOf('POME_ISCC') >= 0 && kind.indexOf('POME_INS') >= 0) {
+        hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' rows, POME ISCC+INS). This import adds new rows (does not replace existing rows).';
+      } else if ((kind === 'POME_ISCC' && importKind === 'POME_INS') || (kind === 'POME_INS' && importKind === 'POME_ISCC')) {
+        hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import ' + supplyKindLabel_(importKind) + ' will <strong>merge</strong> into the same company row (fill SUPPLY/FACILITY ' + supplyKindLabel_(importKind) + ').';
+      } else {
+        hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import will add or update POME rows by company+period.';
+      }
+    } else if (supplyImportIsWaste_(kind) || supplyImportIsWaste_(importKind)) {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import will add or update waste rows by company+period.';
     } else if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' rows, CPO+PK). This import adds new rows (does not replace existing rows).';
@@ -32004,7 +32231,7 @@ function initDashboardApp() {
       if (wasteCfg && matchedN > 0) {
         statTxt += ' · profile copied from Mill Onboarding (see Match column)';
       }
-      if (!wasteCfg && mergeableN > 0) {
+      if (mergeableN > 0) {
         statTxt += ' · ' + mergeableN + ' will be merged into existing rows (same company + period)';
       }
       stats.textContent = statTxt;
@@ -32106,7 +32333,12 @@ function initDashboardApp() {
 
     parsedRows.forEach(function(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
-      const mergeTarget = wasteCfg ? null : supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
+      let mergeTarget = null;
+      if (supplyImportIsPome_(kind)) {
+        mergeTarget = supplyFindDraftRowForPomeMerge_(batch, month, year, names.company, kind);
+      } else if (!wasteCfg) {
+        mergeTarget = supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
+      }
       if (mergeTarget) {
         supplyApplyImportToDraftRow_(mergeTarget, r, kind, batch);
         return;
@@ -32114,7 +32346,9 @@ function initDashboardApp() {
       batch.rows.push(buildDraftFromExcel_(r, idx));
     });
 
-    batch.supply_type = wasteCfg ? kind : supplyCombineSupplyTypes_(batch.supply_type, kind);
+    batch.supply_type = wasteCfg
+      ? (supplyImportIsPome_(kind) ? supplyCombineSupplyTypes_(batch.supply_type, kind) : kind)
+      : supplyCombineSupplyTypes_(batch.supply_type, kind);
     (batch.rows || []).forEach(supplyNormalizeDraftQtyFields_);
     window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
     batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
@@ -32333,6 +32567,7 @@ function initDashboardApp() {
       const isPartial   = !isSubmitted && doneCount > 0;
       const typeBadge   = supplyBatchTypeSummaryHtml_(b);
       const mergeableN  = supplyFindMergeableCpoPkPairs_(b).length;
+      const mergeablePomeN = supplyFindMergeablePomeIsccInsPairs_(b).length;
       const statusBadge = isSubmitted
         ? '<span class="supply-badge supply-badge--submitted">Submitted</span>'
         : (isPartial
@@ -32340,6 +32575,7 @@ function initDashboardApp() {
           : '<span class="supply-badge supply-badge--draft">Draft</span>');
       const createdAt = b.created_at ? new Date(b.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
       const dualCount = b.rows ? b.rows.filter(function(r) { return supplyRowHasCpo_(r) && supplyRowHasPk_(r); }).length : 0;
+      const dualPomeCount = b.rows ? b.rows.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'POME_ISCC+POME_INS'; }).length : 0;
 
       return '<div class="supply-batch-card" data-batch-id="' + escHtml(b.batch_id) + '">'
         + '<div class="supply-batch-card-head">'
@@ -32353,6 +32589,7 @@ function initDashboardApp() {
         + (warnCount ? '<span class="supply-stat-chip supply-stat-chip--warn">' + warnCount + ' group</span>' : '')
         + (newCount ? '<span class="supply-stat-chip supply-stat-chip--new">' + newCount + ' new</span>' : '')
         + (dualCount ? '<span class="supply-stat-chip"><span class="supply-pill supply-pill--cpopk">CPO+PK</span> ' + dualCount + '</span>' : '')
+        + (dualPomeCount ? '<span class="supply-stat-chip"><span class="supply-pill supply-pill--cpopk">POME ISCC+INS</span> ' + dualPomeCount + '</span>' : '')
         + (doneCount > 0 ? '<span class="supply-stat-chip supply-stat-chip--ok">' + doneCount + '/' + rowCount + ' submitted</span>' : '')
         + '</div>'
         + (createdAt ? '<span class="supply-batch-date">' + createdAt + '</span>' : '')
@@ -32362,6 +32599,7 @@ function initDashboardApp() {
         + (!isSubmitted ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="rematch-batch" data-batch="' + escHtml(b.batch_id) + '" title="Reload mill data from Mill Onboarding (width, grievance, etc.)">↻ Restore profile</button>' : '')
         + '<button type="button" class="supply-btn supply-btn--ghost" data-action="reconcile-batch" data-batch="' + escHtml(b.batch_id) + '" title="Sync Task List status with Mill Onboarding (fix Submitted vs missing)">Repair status</button>'
         + (!isSubmitted && mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(b.batch_id) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+        + (!isSubmitted && mergeablePomeN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-pome-iscc-ins" data-batch="' + escHtml(b.batch_id) + '">Merge POME ISCC+INS (' + mergeablePomeN + ')</button>' : '')
         + '<button type="button" class="supply-btn supply-btn--danger" data-action="delete-batch" data-batch="' + escHtml(b.batch_id) + '">Delete</button>'
         + '</div>'
         + '</div>'
@@ -32450,6 +32688,14 @@ function initDashboardApp() {
     ];
     const kind = String(batch && batch.supply_type || '').trim().toUpperCase();
     const wasteCfg = supplyWasteKindFromType_(kind);
+    if (kind === 'POME_ISCC+POME_INS' || (kind.indexOf('POME_ISCC') >= 0 && kind.indexOf('POME_INS') >= 0)) {
+      return base.concat([
+        ['FACILITY NAME ISCC', 'Facility ISCC'],
+        ['SUPPLY ISCC', 'Qty POME ISCC'],
+        ['FACILITY NAME INS', 'Facility INS'],
+        ['SUPPLY INS', 'Qty POME INS'],
+      ]);
+    }
     if (wasteCfg) {
       return base.concat([
         ['PLANT', 'Plant'],
@@ -32491,6 +32737,14 @@ function initDashboardApp() {
       const q = row[wasteCfg.qty];
       if (q != null && String(q).trim() !== '') return q;
       return row.SUPPLY_QTY != null ? row.SUPPLY_QTY : '';
+    }
+    if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS') {
+      const direct = row[key];
+      if (direct != null && String(direct).trim() !== '') return direct;
+      return '';
+    }
+    if (key === 'FACILITY NAME ISCC' || key === 'FACILITY NAME INS') {
+      return row[key] || '';
     }
     if (key === 'SUPPLY CPO' || key === 'SUPPLY PK') {
       const direct = row[key];
@@ -32577,6 +32831,7 @@ function initDashboardApp() {
     const checkedN = supplyCountFooterSubmit_(batchId);
     const hasOpenRows = batch ? (batch.rows || []).some(function(r) { return !supplyRowIsSubmitted_(r); }) : false;
     const mergeableN = batch ? supplyFindMergeableCpoPkPairs_(batch).length : 0;
+    const mergeablePomeN = batch ? supplyFindMergeablePomeIsccInsPairs_(batch).length : 0;
     const targetSheet = supplyBatchTargetSheetLabel_(batch);
     const btnTitle = checkedN === 0
       ? 'Check the rows to submit'
@@ -32587,6 +32842,7 @@ function initDashboardApp() {
       + '<div class="supply-batch-toolbar__actions">'
       + '<button type="button" class="supply-btn supply-btn--ghost" data-action="save-draft" data-batch="' + escHtml(batchId) + '">Save Draft</button>'
       + (mergeableN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-cpo-pk" data-batch="' + escHtml(batchId) + '">Merge CPO+PK (' + mergeableN + ')</button>' : '')
+      + (mergeablePomeN > 0 ? '<button type="button" class="supply-btn supply-btn--ghost" data-action="merge-pome-iscc-ins" data-batch="' + escHtml(batchId) + '">Merge POME ISCC+INS (' + mergeablePomeN + ')</button>' : '')
       + (hasOpenRows ? '<button type="button" class="supply-btn supply-btn--primary" data-action="submit-selected" data-batch="' + escHtml(batchId) + '" title="' + escHtml(btnTitle) + '" aria-disabled="' + (checkedN === 0 ? 'true' : 'false') + '">Submit Selected (' + checkedN + ')</button>' : '')
       + '</div>'
       + '</div>';
@@ -32767,6 +33023,28 @@ function initDashboardApp() {
         .then(function() {
           btn.disabled = false;
           alert('✓ ' + merged + ' pairs merged. Submitting the merged row will fill both SUPPLY CPO and SUPPLY PK.');
+        })
+        .catch(function(err) {
+          btn.disabled = false;
+          alert('Save failed: ' + err.message);
+        });
+      return;
+    }
+
+    if (action === 'merge-pome-iscc-ins') {
+      const pairs = supplyFindMergeablePomeIsccInsPairs_(batch);
+      if (!pairs.length) {
+        alert('No POME ISCC + POME INS pairs (same company) available to merge.');
+        return;
+      }
+      if (!confirm('Merge ' + pairs.length + ' row pairs (1 POME ISCC + 1 POME INS per company) into one merged row? Separate POME INS rows will be removed from the draft.')) return;
+      btn.textContent = '…'; btn.disabled = true;
+      const merged = supplyMergePomeIsccInsPairsInBatch_(batch);
+      renderSupplyDraftList_({ expandBatchIds: [bId] });
+      apiPost({ action: 'saveSupplyDraft', batch_id: bId, rows: (batch.rows || []).map(supplyNormalizeDraftRowForApi_), meta: supplyBatchMetaForApi_(batch) })
+        .then(function() {
+          btn.disabled = false;
+          alert('✓ ' + merged + ' pairs merged. Submitting the merged row will fill both SUPPLY ISCC and SUPPLY INS.');
         })
         .catch(function(err) {
           btn.disabled = false;
