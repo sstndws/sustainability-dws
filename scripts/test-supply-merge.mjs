@@ -134,4 +134,106 @@ assert(mixedDraft['FACILITY NAME CPO'] === 'CRC', 'mixed cell: CRC → CPO colum
 assert(mixedDraft['FACILITY NAME PK'] === 'KCP PURA', 'mixed cell: KCP → PK column');
 
 console.log('Supply separate-row tests:', passed, 'passed,', failed, 'failed');
+
+// ── POME ISCC + POME INS merge (Task List import) ─────────────────────────
+const SUPPLY_PCT_COL_ISCC = 'PERCENTAGE SUPPLY ISCC';
+const SUPPLY_PCT_COL_INS = 'PERCENTAGE SUPPLY INS';
+
+function supplyImportIsWaste_(kind) {
+  const k = String(kind || '').trim().toUpperCase();
+  if (k === 'POME_ISCC' || k === 'POME INS' || k === 'POME_INS' || k === 'SHELL_GGL') return true;
+  return k.indexOf('POME_ISCC') >= 0 || k.indexOf('POME_INS') >= 0 || k.indexOf('SHELL_GGL') >= 0;
+}
+function supplyCombineSupplyTypes_(a, b) {
+  function wasteTokens(raw) {
+    const out = [];
+    function add(u) {
+      if (!u) return;
+      if (u === 'POME ISCC') u = 'POME_ISCC';
+      if (u === 'POME INS') u = 'POME_INS';
+      if (u === 'SHELL GGL') u = 'SHELL_GGL';
+      if ((u === 'POME_ISCC' || u === 'POME_INS' || u === 'SHELL_GGL') && out.indexOf(u) === -1) out.push(u);
+    }
+    String(raw || '').trim().toUpperCase().split('+').forEach(function(part) { add(String(part || '').trim()); });
+    return out;
+  }
+  const wa = wasteTokens(a);
+  const wb = wasteTokens(b);
+  if (wa.length || wb.length) {
+    const merged = wa.slice();
+    wb.forEach(function(t) { if (merged.indexOf(t) === -1) merged.push(t); });
+    const order = ['POME_ISCC', 'POME_INS', 'SHELL_GGL'];
+    merged.sort(function(x, y) { return order.indexOf(x) - order.indexOf(y); });
+    return merged.join('+');
+  }
+  return 'CPO';
+}
+function supplyWasteQtyKindsOnRow_(row) {
+  const out = [];
+  if (row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '') out.push('POME_ISCC');
+  if (row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '') out.push('POME_INS');
+  if (row['SUPPLY SHELL'] != null && String(row['SUPPLY SHELL']).trim() !== '') out.push('SHELL_GGL');
+  return out;
+}
+function supplyStampWasteSupplyType_(row) {
+  const kinds = supplyWasteQtyKindsOnRow_(row);
+  if (kinds.length) {
+    row.supply_type = kinds.join('+');
+    row.SUPPLY_TYPE = row.supply_type;
+  }
+  row['PRODUCT SUPPLY'] = kinds.map(function(k) {
+    return k === 'POME_ISCC' ? 'POME ISCC' : (k === 'POME_INS' ? 'POME INS' : 'SHELL GGL');
+  }).join('; ');
+}
+function supplyMergeWasteDraftRows_(target, source) {
+  [
+    [SUPPLY_PCT_COL_ISCC, 'SUPPLY ISCC', 'FACILITY NAME ISCC'],
+    [SUPPLY_PCT_COL_INS, 'SUPPLY INS', 'FACILITY NAME INS'],
+  ].forEach(function(triple) {
+    if (source[triple[0]] != null && String(source[triple[0]]).trim() !== '') target[triple[0]] = source[triple[0]];
+    if (source[triple[1]] != null && String(source[triple[1]]).trim() !== '') target[triple[1]] = source[triple[1]];
+    if (source[triple[2]]) target[triple[2]] = source[triple[2]];
+  });
+  supplyStampWasteSupplyType_(target);
+}
+function supplyConsolidateWasteBatches_(batchList) {
+  const openByPeriod = {};
+  const result = [];
+  (batchList || []).forEach(function(b) {
+    const kindKey = String(b.supply_type || '').trim().toUpperCase();
+    const pk = (b.month || '') + '|' + (b.year || '') + (supplyImportIsWaste_(kindKey) ? '|WASTE' : '');
+    if (!openByPeriod[pk]) {
+      openByPeriod[pk] = b;
+      result.push(b);
+      return;
+    }
+    const target = openByPeriod[pk];
+    (b.rows || []).forEach(function(r) { target.rows.push(r); });
+    target.supply_type = supplyCombineSupplyTypes_(target.supply_type, b.supply_type);
+  });
+  return result;
+}
+
+const wasteBatchIscc = {
+  month: '2', year: '2026', supply_type: 'POME_ISCC',
+  rows: [{ 'COMPANY NAME': 'GUNUNG RIJUAN', supply_type: 'POME_ISCC', 'SUPPLY ISCC': 800, month: '2', year: '2026' }],
+};
+const wasteBatchIns = {
+  month: '2', year: '2026', supply_type: 'POME_INS',
+  rows: [{ 'COMPANY NAME': 'GUNUNG RIJUAN', supply_type: 'POME_INS', 'SUPPLY INS': 450, month: '2', year: '2026' }],
+};
+const consolidated = supplyConsolidateWasteBatches_([wasteBatchIscc, wasteBatchIns]);
+assert(consolidated.length === 1, 'ISCC + INS batches merge to one waste batch');
+assert(consolidated[0].supply_type === 'POME_ISCC+POME_INS', 'batch type combines ISCC+INS');
+assert(consolidated[0].rows.length === 2, 'both rows kept until pair merge');
+
+const mergedRow = Object.assign({}, consolidated[0].rows[0]);
+supplyMergeWasteDraftRows_(mergedRow, consolidated[0].rows[1]);
+assert(mergedRow['SUPPLY ISCC'] === 800, 'merged row keeps ISCC qty');
+assert(mergedRow['SUPPLY INS'] === 450, 'merged row keeps INS qty');
+assert(mergedRow.supply_type === 'POME_ISCC+POME_INS', 'merged row type ISCC+INS');
+assert(mergedRow['PRODUCT SUPPLY'].indexOf('POME ISCC') >= 0, 'product includes POME ISCC');
+assert(mergedRow['PRODUCT SUPPLY'].indexOf('POME INS') >= 0, 'product includes POME INS');
+
+console.log('Supply waste-merge tests:', passed, 'passed,', failed, 'failed');
 process.exit(failed ? 1 : 0);

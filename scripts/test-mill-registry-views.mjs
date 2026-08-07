@@ -184,11 +184,21 @@ function millMergeGeneralRegistryRows_(mainRows, wasteRows) {
   });
   wasteByKey.forEach(function(wastes, key) {
     if (wasteKeysUsed.has(key)) return;
-    wastes.forEach(function(w) {
+    const orphans = wastes.filter(function(w) {
       const mk = millRegistryEntityKey_(w);
-      if (mk && mainMills.has(mk)) return;
-      out.push(w);
+      return !(mk && mainMills.has(mk));
     });
+    if (!orphans.length) return;
+    if (orphans.length === 1) {
+      out.push(orphans[0]);
+      return;
+    }
+    const merged = Object.assign({}, orphans[0]);
+    merged['PRODUCT SUPPLY'] = millJoinProductSupplyTokens_(orphans);
+    merged._millQtySummary = millBuildQtySummaryFromRows_(orphans);
+    merged._millGeneralMerged = true;
+    merged._millGeneralMergeCount = orphans.length;
+    out.push(merged);
   });
   return out;
 }
@@ -252,6 +262,29 @@ const wasteOnly = [{ 'COMPANY NAME': 'WASTE ONLY CO', MONTH: '3', YEAR: '2026', 
 const merged3 = millMergeGeneralRegistryRows_([], wasteOnly);
 assert(merged3.length === 1, 'waste-only row kept when no main row');
 assert(millCollectProductSupplyTokens_(merged3[0]).indexOf('POME ISCC') >= 0, 'waste-only product');
+
+// POME ISCC + POME INS split rows (same company + period) → one merged waste row
+const wasteIsccIns = [
+  { 'COMPANY NAME': 'GUNUNG RIJUAN SEJAHTERA', 'MILL NAME': 'Mill A', MONTH: '2', YEAR: '2026', 'SUPPLY ISCC': 800, 'PRODUCT SUPPLY': 'POME ISCC' },
+  { 'COMPANY NAME': 'GUNUNG RIJUAN SEJAHTERA', 'MILL NAME': 'Mill B', MONTH: '2', YEAR: '2026', 'SUPPLY INS': 450, 'PRODUCT SUPPLY': 'POME INS' },
+];
+const mergedWasteSplit = millMergeGeneralRegistryRows_([], wasteIsccIns);
+assert(mergedWasteSplit.length === 1, 'ISCC+INS waste split rows merge to one');
+assert(mergedWasteSplit[0]['PRODUCT SUPPLY'].indexOf('POME ISCC') >= 0, 'merged waste includes POME ISCC');
+assert(mergedWasteSplit[0]['PRODUCT SUPPLY'].indexOf('POME INS') >= 0, 'merged waste includes POME INS');
+assert(mergedWasteSplit[0]._millQtySummary.indexOf('POME ISCC:') >= 0, 'merged waste qty ISCC');
+assert(mergedWasteSplit[0]._millQtySummary.indexOf('POME INS:') >= 0, 'merged waste qty INS');
+
+// General: main + separate ISCC and INS waste rows same period
+const wasteBoth = [
+  { 'COMPANY NAME': 'ABDI BORNEO PLANTATIONS', MONTH: '2', YEAR: '2026', 'SUPPLY ISCC': 300, 'PRODUCT SUPPLY': 'POME ISCC' },
+  { 'COMPANY NAME': 'ABDI BORNEO PLANTATIONS', MONTH: '2', YEAR: '2026', 'SUPPLY INS': 1200, 'PRODUCT SUPPLY': 'POME INS' },
+];
+const mergedBoth = millMergeGeneralRegistryRows_(mainRows, wasteBoth);
+assert(mergedBoth.length === 1, 'main + ISCC + INS waste → one row');
+assert(mergedBoth[0]['PRODUCT SUPPLY'].indexOf('CPO') >= 0, 'general merge keeps CPO');
+assert(mergedBoth[0]['PRODUCT SUPPLY'].indexOf('POME ISCC') >= 0, 'general merge includes POME ISCC');
+assert(mergedBoth[0]['PRODUCT SUPPLY'].indexOf('POME INS') >= 0, 'general merge includes POME INS');
 
 // newest per mill name — same mill name collapses across company/period
 function millRowPeriodSortKey_(r) {

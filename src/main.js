@@ -3997,8 +3997,8 @@ const AUTH_GATE_ENABLED = isAuthGateEnabled();
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyY5XQofvUy0iCBVk27_6NWBs0BvuxWgyqqi0js_Gfejpbw4B9FAdBw62op_EGLb6Fg/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbyY5XQofvUy0iCBVk27_6NWBs0BvuxWgyqqi0js_Gfejpbw4B9FAdBw62op_EGLb6Fg';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
@@ -6887,6 +6887,11 @@ function initDashboardApp() {
       return newer;
     }
     if (sk > 0) return millMergeRegistrySupplyRows_(existing, incoming);
+    // Same company + month + year but period key unparseable — still merge POME ISCC/INS split rows.
+    if (millGeneralStrictMergeKey_(existing) === millGeneralStrictMergeKey_(incoming)
+      && millGeneralStrictMergeKey_(existing) !== '\u0001\u0001') {
+      return millMergeRegistrySupplyRows_(existing, incoming);
+    }
     return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
   }
 
@@ -9584,6 +9589,15 @@ function initDashboardApp() {
 
   /** Kunci gabungan tampilan tabel: company + mill + bulan + tahun sama → satu baris. */
   function millTablePeriodEntityKey_(row) {
+    const isWasteRow = String(row && row._millSheetSource || '').toLowerCase() === 'waste';
+    if (isWasteRow) {
+      // Waste: POME ISCC / INS often split across rows — group by company + period only.
+      return [
+        String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
+        String(millMonthVal(row) || '').trim().toLowerCase(),
+        String(millYearVal(row) || '').trim().toLowerCase(),
+      ].join('\u0001');
+    }
     return [
       String(pickMillCompanyName_(row) || '').trim().toLowerCase(),
       String(millPickField_(row, ['MILL NAME', 'Mill Name']) || '').trim().toLowerCase(),
@@ -9878,14 +9892,42 @@ function initDashboardApp() {
 
     wasteByKey.forEach(function(wastes, key) {
       if (wasteKeysUsed.has(key)) return;
-      wastes.forEach(function(w) {
+      const orphans = wastes.filter(function(w) {
         const mk = millRegistryEntityKey_(w);
-        if (mk && mainMills.has(mk)) return;
-        out.push(w);
+        return !(mk && mainMills.has(mk));
       });
+      if (!orphans.length) return;
+      if (orphans.length === 1) {
+        out.push(orphans[0]);
+        return;
+      }
+      out.push(millMergeGeneralMemberRow_({
+        primary: orphans[0],
+        members: orphans,
+      }));
     });
 
     return out;
+  }
+
+  /** Gabung baris waste (POME ISCC / INS / Shell) per company + bulan + tahun. */
+  function millMergeWasteRowsByCompanyPeriod_(rows) {
+    const groups = new Map();
+    const order = [];
+    (rows || []).forEach(function(r) {
+      if (!pickMillCompanyName_(r)) return;
+      const key = millGeneralStrictMergeKey_(r);
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.push(key);
+      }
+      groups.get(key).push(r);
+    });
+    return order.map(function(key) {
+      const members = groups.get(key);
+      if (!members || members.length < 2) return members[0];
+      return millMergeGeneralMemberRow_({ primary: members[0], members: members });
+    }).filter(Boolean);
   }
 
   function millRegistryBaseRows_(source) {
@@ -9895,7 +9937,9 @@ function initDashboardApp() {
         && millRowMatchesChipAndSearch(d)
         && millRowMatchesPdfDimFilters(d);
     });
-    return millApplyRegistryPeriodView_(rows);
+    rows = millApplyRegistryPeriodView_(rows);
+    if (source === 'waste') rows = millMergeWasteRowsByCompanyPeriod_(rows);
+    return rows;
   }
 
   function millSyncProductViewUi_() {
@@ -10471,7 +10515,10 @@ function initDashboardApp() {
     if (millRegistryProductView === 'waste') {
       const key = millGeneralMergeKey_(row);
       const waste = millRegistryBaseRows_('waste').filter(function(r) { return millGeneralMergeKey_(r) === key; });
-      if (waste[0]) return waste[0];
+      if (waste.length === 1) return waste[0];
+      if (waste.length > 1) {
+        return millMergeGeneralMemberRow_({ primary: waste[0], members: waste });
+      }
     }
     return row;
   }
@@ -28263,7 +28310,8 @@ function initDashboardApp() {
 
   function supplyImportIsWaste_(kind) {
     const k = String(kind || '').trim().toUpperCase();
-    return k === 'POME_ISCC' || k === 'POME_INS' || k === 'SHELL_GGL';
+    if (k === 'POME_ISCC' || k === 'POME INS' || k === 'POME_INS' || k === 'SHELL_GGL') return true;
+    return k.indexOf('POME_ISCC') >= 0 || k.indexOf('POME_INS') >= 0 || k.indexOf('SHELL_GGL') >= 0;
   }
 
   function supplyWasteKindFromType_(kind) {
@@ -28883,8 +28931,31 @@ function initDashboardApp() {
   }
 
   function supplyCombineSupplyTypes_(a, b) {
-    if (supplyImportIsWaste_(a)) return String(a || '').trim().toUpperCase() || 'POME_ISCC';
-    if (supplyImportIsWaste_(b)) return String(b || '').trim().toUpperCase() || 'POME_ISCC';
+    function wasteTokens(raw) {
+      const out = [];
+      function add(u) {
+        if (!u) return;
+        if (u === 'POME ISCC') u = 'POME_ISCC';
+        if (u === 'POME INS') u = 'POME_INS';
+        if (u === 'SHELL GGL') u = 'SHELL_GGL';
+        if ((u === 'POME_ISCC' || u === 'POME_INS' || u === 'SHELL_GGL') && out.indexOf(u) === -1) out.push(u);
+      }
+      String(raw || '').trim().toUpperCase().split('+').forEach(function(part) {
+        add(String(part || '').trim());
+      });
+      return out;
+    }
+    const wa = wasteTokens(a);
+    const wb = wasteTokens(b);
+    if (wa.length || wb.length) {
+      const merged = wa.slice();
+      wb.forEach(function(t) {
+        if (merged.indexOf(t) === -1) merged.push(t);
+      });
+      const order = ['POME_ISCC', 'POME_INS', 'SHELL_GGL'];
+      merged.sort(function(x, y) { return order.indexOf(x) - order.indexOf(y); });
+      return merged.join('+');
+    }
     const types = [];
     function addToken(raw) {
       const u = String(raw || '').trim().toUpperCase();
@@ -28898,6 +28969,27 @@ function initDashboardApp() {
     return types[0] || 'CPO';
   }
 
+  function supplyWasteQtyKindsOnRow_(row) {
+    if (!row) return [];
+    millNormalizeWasteQtyAliasesOnRow_(row);
+    const out = [];
+    if (row['SUPPLY ISCC'] != null && String(row['SUPPLY ISCC']).trim() !== '') out.push('POME_ISCC');
+    if (row['SUPPLY INS'] != null && String(row['SUPPLY INS']).trim() !== '') out.push('POME_INS');
+    if (row['SUPPLY SHELL'] != null && String(row['SUPPLY SHELL']).trim() !== '') out.push('SHELL_GGL');
+    return out;
+  }
+
+  function supplyStampWasteSupplyType_(row) {
+    if (!row) return;
+    millNormalizeWasteQtyAliasesOnRow_(row);
+    const kinds = supplyWasteQtyKindsOnRow_(row);
+    if (kinds.length) {
+      row.supply_type = kinds.join('+');
+      row.SUPPLY_TYPE = row.supply_type;
+    }
+    row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
+  }
+
   function supplyRowSupplyKindStrict_(row) {
     if (!row) return 'CPO';
     const hasCpoQty = row['SUPPLY CPO'] != null && String(row['SUPPLY CPO']).trim() !== '';
@@ -28907,6 +28999,9 @@ function initDashboardApp() {
     if (hasCpoQty && hasPkQty) return 'CPO+PK';
     if (hasPkQty) return 'PK';
     if (hasCpoQty) return 'CPO';
+    const wasteKinds = supplyWasteQtyKindsOnRow_(row);
+    if (wasteKinds.length > 1) return wasteKinds.join('+');
+    if (wasteKinds.length === 1) return wasteKinds[0];
     const st = String(row.supply_type || row.SUPPLY_TYPE || '').trim().toUpperCase();
     if (supplyImportIsWaste_(st)) return st;
     if (st === 'PK') return 'PK';
@@ -28926,10 +29021,19 @@ function initDashboardApp() {
   }
 
   function supplyMergeProductSupplyField_(row) {
+    const wasteKinds = supplyWasteQtyKindsOnRow_(row);
+    if (wasteKinds.length) {
+      return wasteKinds.map(function(k) { return supplyKindLabel_(k); }).join('; ');
+    }
     const k = supplyRowSupplyKindStrict_(row);
     if (k === 'POME_ISCC') return 'POME ISCC';
     if (k === 'POME_INS') return 'POME INS';
     if (k === 'SHELL_GGL') return 'SHELL GGL';
+    if (supplyImportIsWaste_(k)) {
+      return String(k || '').split('+').map(function(part) {
+        return supplyKindLabel_(part.trim());
+      }).filter(Boolean).join('; ');
+    }
     if (k === 'CPO+PK') return 'CPO, PK';
     if (k === 'PK') return 'PK';
     if (k === 'CPO') return 'CPO';
@@ -28987,6 +29091,71 @@ function initDashboardApp() {
     return pairs.length;
   }
 
+  function supplyMergeWasteDraftRows_(target, source) {
+    if (!target || !source) return;
+    millNormalizeWasteQtyAliasesOnRow_(source);
+    millNormalizeWasteQtyAliasesOnRow_(target);
+    [
+      [SUPPLY_PCT_COL_ISCC, 'SUPPLY ISCC', 'FACILITY NAME ISCC'],
+      [SUPPLY_PCT_COL_INS, 'SUPPLY INS', 'FACILITY NAME INS'],
+      [SUPPLY_PCT_COL_SHELL, 'SUPPLY SHELL', 'FACILITY NAME SHELL'],
+    ].forEach(function(triple) {
+      const pctField = triple[0];
+      const qtyField = triple[1];
+      const facField = triple[2];
+      if (source[pctField] != null && String(source[pctField]).trim() !== '') target[pctField] = source[pctField];
+      if (source[qtyField] != null && String(source[qtyField]).trim() !== '') target[qtyField] = source[qtyField];
+      if (source[facField]) target[facField] = source[facField];
+    });
+    if (source['SOURCE TYPE'] && !target['SOURCE TYPE']) target['SOURCE TYPE'] = source['SOURCE TYPE'];
+    supplyStampWasteSupplyType_(target);
+  }
+
+  function supplyFindMergeableWastePairs_(batch) {
+    const byCo = {};
+    (batch.rows || []).forEach(function(row, idx) {
+      if (supplyRowIsSubmitted_(row)) return;
+      const co = supplyCompanyKey_(row['COMPANY NAME']);
+      if (!co) return;
+      if (!byCo[co]) byCo[co] = [];
+      byCo[co].push({ row: row, idx: idx });
+    });
+    const pairs = [];
+    Object.keys(byCo).forEach(function(co) {
+      const list = byCo[co];
+      const isccRows = list.filter(function(x) { return supplyRowSupplyKindStrict_(x.row) === 'POME_ISCC'; });
+      const insRows = list.filter(function(x) { return supplyRowSupplyKindStrict_(x.row) === 'POME_INS'; });
+      if (isccRows.length === 1 && insRows.length === 1) {
+        pairs.push({
+          company: list[0].row['COMPANY NAME'] || co,
+          isccIdx: isccRows[0].idx,
+          insIdx: insRows[0].idx,
+        });
+      }
+    });
+    return pairs;
+  }
+
+  /** Gabung baris POME ISCC + POME INS (company & periode sama) → satu baris waste. */
+  function supplyMergeWastePairsInBatch_(batch) {
+    const pairs = supplyFindMergeableWastePairs_(batch);
+    if (!pairs.length) return 0;
+    pairs.sort(function(a, b) { return b.insIdx - a.insIdx; });
+    pairs.forEach(function(p) {
+      const target = batch.rows[p.isccIdx];
+      const source = batch.rows[p.insIdx];
+      if (!target || !source) return;
+      supplyMergeWasteDraftRows_(target, source);
+      batch.rows.splice(p.insIdx, 1);
+    });
+    if (batch && batch.rows && batch.rows.length) {
+      batch.supply_type = (batch.rows || []).reduce(function(acc, r) {
+        return supplyCombineSupplyTypes_(acc, r.supply_type || r.SUPPLY_TYPE || '');
+      }, batch.supply_type || 'POME_ISCC');
+    }
+    return pairs.length;
+  }
+
   function supplyBatchTypeSummaryHtml_(batch) {
     let cpoN = 0;
     let pkN = 0;
@@ -29036,6 +29205,26 @@ function initDashboardApp() {
       if ((existingKind === 'CPO' && ik === 'PK') || (existingKind === 'PK' && ik === 'CPO')) {
         return row;
       }
+    }
+    return null;
+  }
+
+  /** Baris draft waste (POME ISCC / INS / Shell) — merge ke company+period yang sama. */
+  function supplyFindDraftRowForWasteMerge_(batch, month, year, companyName, incomingKind) {
+    if (!batch || !batch.rows || !batch.rows.length) return null;
+    if (!supplyImportIsWaste_(incomingKind)) return null;
+    const wantCo = supplyCompanyKey_(companyName);
+    if (!wantCo) return null;
+    for (let i = 0; i < batch.rows.length; i++) {
+      const row = batch.rows[i];
+      if (supplyRowIsSubmitted_(row)) continue;
+      if (!supplyDraftPeriodMatches_(row, month, year)) continue;
+      if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) continue;
+      const existingKind = supplyRowSupplyKindStrict_(row);
+      if (!supplyImportIsWaste_(existingKind)) continue;
+      if (existingKind === incomingKind) return row;
+      if (existingKind.indexOf('+') >= 0) return row;
+      return row;
     }
     return null;
   }
@@ -29207,9 +29396,7 @@ function initDashboardApp() {
     if (r.CATEGORY && !existing['SOURCE TYPE']) existing['SOURCE TYPE'] = String(r.CATEGORY).trim().toUpperCase();
     supplyApplyParsedQtyToDraft_(existing, r, kind);
     if (wasteCfg) {
-      existing.supply_type = kind;
-      existing.SUPPLY_TYPE = kind;
-      existing['PRODUCT SUPPLY'] = wasteCfg.product;
+      supplyStampWasteSupplyType_(existing);
       supplyRematchDraftRow_(existing, batch);
       return;
     }
@@ -29270,7 +29457,7 @@ function initDashboardApp() {
         return;
       }
       const kindKey = String(b.supply_type || '').trim().toUpperCase();
-      const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + (supplyImportIsWaste_(kindKey) ? ('|' + kindKey) : '');
+      const pk = supplyPeriodKey_(b.month || b.quarter, b.year) + (supplyImportIsWaste_(kindKey) ? '|WASTE' : '');
       if (!openByPeriod[pk]) {
         openByPeriod[pk] = b;
         if (b.batch_id != null) b.batch_id = supplyBatchIdKey_(b.batch_id);
@@ -29291,7 +29478,16 @@ function initDashboardApp() {
   }
 
   function supplyCountMergeableImportRows_(parsedRows, month, year, supplyType) {
-    if (supplyImportIsWaste_(supplyType)) return 0;
+    if (supplyImportIsWaste_(supplyType)) {
+      const batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
+      if (!batch || !parsedRows || !parsedRows.length) return 0;
+      let n = 0;
+      parsedRows.forEach(function(r) {
+        const names = supplyResolveNamesFromExcel_(r);
+        if (supplyFindDraftRowForWasteMerge_(batch, month, year, names.company, supplyType)) n++;
+      });
+      return n;
+    }
     const batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
     if (!batch || !parsedRows || !parsedRows.length) return 0;
     const kind = supplyType === 'PK' ? 'PK' : 'CPO';
@@ -29821,6 +30017,17 @@ function initDashboardApp() {
     groups.forEach(function(list) {
       if (list.length === 1) {
         out.push(list[0]);
+        return;
+      }
+      const wasteOnly = list.every(function(r) {
+        return supplyImportIsWaste_(supplyRowSupplyKindStrict_(r));
+      });
+      if (wasteOnly) {
+        const target = list[0];
+        list.slice(1).forEach(function(r) {
+          if (r !== target) supplyMergeWasteDraftRows_(target, r);
+        });
+        out.push(target);
         return;
       }
       const dualRows = list.filter(function(r) { return supplyRowSupplyKindStrict_(r) === 'CPO+PK'; });
@@ -31603,6 +31810,12 @@ function initDashboardApp() {
   }
 
   function supplyRowTypePillsHtml_(row) {
+    const wasteKinds = supplyWasteQtyKindsOnRow_(row);
+    if (wasteKinds.length) {
+      return '<span class="supply-row-pills">' + wasteKinds.map(function(k) {
+        return '<span class="supply-pill supply-pill--cpopk">' + escHtml(supplyKindLabel_(k)) + '</span>';
+      }).join('') + '</span>';
+    }
     const parts = [];
     const kind = supplyRowSupplyKindStrict_(row);
     if (supplyImportIsWaste_(kind)) {
@@ -31634,7 +31847,7 @@ function initDashboardApp() {
       if (supplyPeriodKey_(b.month || b.quarter, b.year) !== want) return false;
       if (!wantType) return true;
       const batchType = String(b.supply_type || '').trim().toUpperCase();
-      if (supplyImportIsWaste_(wantType)) return batchType === wantType;
+      if (supplyImportIsWaste_(wantType)) return supplyImportIsWaste_(batchType);
       return !supplyImportIsWaste_(batchType);
     }) || null;
   }
@@ -31673,7 +31886,11 @@ function initDashboardApp() {
     const rowCount = (batch.rows || []).length;
     const mLabel = millMonthLabel_(parseInt(m, 10)) + ' ' + m;
     if (supplyImportIsWaste_(kind) || supplyImportIsWaste_(importKind)) {
-      hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import will add or update waste rows by company+period.';
+      if (supplyImportIsWaste_(kind) && supplyImportIsWaste_(importKind) && kind !== importKind) {
+        hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' waste rows). Import ' + supplyKindLabel_(importKind) + ' will merge into the same company row (POME ISCC + POME INS together).';
+      } else {
+        hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' ' + supplyKindLabel_(kind) + ' rows). Import will add or update waste rows by company+period.';
+      }
     } else if (kind.indexOf('CPO') >= 0 && kind.indexOf('PK') >= 0) {
       hintEl.textContent = 'Draft ' + mLabel + ' ' + y + ' already exists (' + rowCount + ' rows, CPO+PK). This import adds new rows (does not replace existing rows).';
     } else if ((kind === 'CPO' && importKind === 'PK') || (kind === 'PK' && importKind === 'CPO')) {
@@ -32004,7 +32221,7 @@ function initDashboardApp() {
       if (wasteCfg && matchedN > 0) {
         statTxt += ' · profile copied from Mill Onboarding (see Match column)';
       }
-      if (!wasteCfg && mergeableN > 0) {
+      if (mergeableN > 0) {
         statTxt += ' · ' + mergeableN + ' will be merged into existing rows (same company + period)';
       }
       stats.textContent = statTxt;
@@ -32106,7 +32323,9 @@ function initDashboardApp() {
 
     parsedRows.forEach(function(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
-      const mergeTarget = wasteCfg ? null : supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
+      const mergeTarget = wasteCfg
+        ? supplyFindDraftRowForWasteMerge_(batch, month, year, names.company, kind)
+        : supplyFindDraftRowForCpoPkMerge_(batch, month, year, names.company, kind);
       if (mergeTarget) {
         supplyApplyImportToDraftRow_(mergeTarget, r, kind, batch);
         return;
@@ -32114,7 +32333,8 @@ function initDashboardApp() {
       batch.rows.push(buildDraftFromExcel_(r, idx));
     });
 
-    batch.supply_type = wasteCfg ? kind : supplyCombineSupplyTypes_(batch.supply_type, kind);
+    batch.supply_type = supplyCombineSupplyTypes_(batch.supply_type, kind);
+    if (wasteCfg) supplyMergeWastePairsInBatch_(batch);
     (batch.rows || []).forEach(supplyNormalizeDraftQtyFields_);
     window._supplyDraftBatches = supplyConsolidateBatchesByPeriod_(window._supplyDraftBatches);
     batch = supplyFindOpenPeriodBatch_(month, year, supplyType);
@@ -33285,6 +33505,7 @@ function initDashboardApp() {
             row['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(row);
           });
           b.supply_type = batchType;
+          if (supplyImportIsWaste_(batchType)) supplyMergeWastePairsInBatch_(b);
           supplyNormalizeBatchSubmittedState_(b);
           supplySyncCompanyDraftAcrossBatch_(b);
           supplyRefreshDraftProfilePointers_(b);
