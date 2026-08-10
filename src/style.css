@@ -3579,6 +3579,13 @@
     display: flex;
     gap: 6px;
   }
+  .mill-col-filter-menu .mill-col-filter-hint {
+    flex-shrink: 0;
+    padding: 0 12px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #8a7070;
+  }
   .mill-col-filter-menu .mill-col-filter-foot {
     flex-shrink: 0;
     display: flex;

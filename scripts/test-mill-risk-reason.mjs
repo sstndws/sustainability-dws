@@ -75,6 +75,16 @@ assert.deepEqual(
   ['No Coordinate', 'Non APL Area', 'No NDPE Commitment', 'No Certification']
 );
 
+assert.deepEqual(
+  millRiskReasonGaps_({
+    ...cleanLow,
+    'MILL LOC': 'Non APL',
+    'HGU/HGB': 'No',
+    'RESULT RISK LEVEL': 'HIGH',
+  }),
+  ['Legality Not Complete', 'No HGU/HGB', 'Non APL Area']
+);
+
 assert.equal(
   millRiskReason_({
     ...cleanLow,

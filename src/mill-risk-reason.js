@@ -118,6 +118,11 @@ function legalityNotComplete_(row) {
   return false;
 }
 
+function hasNoHguHgb_(row) {
+  const v = pickRowField_(row, ['HGU/HGB', 'HGU / HGB', 'HGU HGB']);
+  return isExplicitNo_(v);
+}
+
 function isNonApl_(row) {
   const loc = pickRowField_(row, FIELD_ALIASES.millLoc);
   if (isBlankCell_(loc)) return false;
@@ -165,6 +170,7 @@ export function millRiskReasonGaps_(row) {
   const gaps = [];
   if (!hasValidCoordinate_(row)) gaps.push('No Coordinate');
   if (legalityNotComplete_(row)) gaps.push('Legality Not Complete');
+  if (hasNoHguHgb_(row)) gaps.push('No HGU/HGB');
   if (isNonApl_(row)) gaps.push('Non APL Area');
   if (hasNoNdpe_(row)) gaps.push('No NDPE Commitment');
   if (hasNoCertification_(row)) gaps.push('No Certification');

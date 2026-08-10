@@ -8426,12 +8426,20 @@ function initDashboardApp() {
   }
 
   const MILL_TABLE_FILTER_COLS = [
-    'RESULT RISK LEVEL','GROUP NAME','COMPANY NAME','MILL NAME','PROVINCE',
+    'RESULT RISK LEVEL','RISK REASON','GROUP NAME','COMPANY NAME','MILL NAME','PROVINCE',
     'SUPPLIER STATUS','BUYER NO BUY LIST','CERTIFICATION',
     'FACILITY NAME CPO','FACILITY NAME PK','PRODUCT SUPPLY'
   ];
 
+  function millRiskReasonTokensForRow_(row) {
+    return millRiskReasonTokens_(row, { millIsNblYes: millIsNblYes_ });
+  }
+
   function getMillFilterCellValue(row, colKey) {
+    if (colKey === 'RISK REASON') {
+      const tokens = millRiskReasonTokensForRow_(row);
+      return tokens.length ? tokens.join('; ') : '—';
+    }
     if (colKey === 'MONTH') return String(millMonthVal(row) || '—');
     if (colKey === 'YEAR') return String(millYearVal(row) || '—');
     if (colKey === 'COMPANY NAME') return pickMillCompanyName_(row) || '—';
@@ -8444,11 +8452,23 @@ function initDashboardApp() {
   function millRefreshFilterOptions(baseRows) {
     millFilterOptions = {};
     MILL_TABLE_FILTER_COLS.forEach(function(col) {
-      millFilterOptions[col] = Array.from(new Set(baseRows.map(function(r) {
-        return getMillFilterCellValue(r, col);
-      }))).sort(function(a, b) {
-        return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
-      });
+      if (col === 'RISK REASON') {
+        const tokenSet = new Set();
+        (baseRows || []).forEach(function(r) {
+          millRiskReasonTokensForRow_(r).forEach(function(tok) {
+            if (tok) tokenSet.add(tok);
+          });
+        });
+        millFilterOptions[col] = Array.from(tokenSet).sort(function(a, b) {
+          return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
+        });
+      } else {
+        millFilterOptions[col] = Array.from(new Set(baseRows.map(function(r) {
+          return getMillFilterCellValue(r, col);
+        }))).sort(function(a, b) {
+          return String(a).localeCompare(String(b), 'id', { sensitivity: 'base' });
+        });
+      }
       if (!Array.isArray(millColumnFilters[col])) millColumnFilters[col] = [];
     });
   }
@@ -8457,6 +8477,10 @@ function initDashboardApp() {
     return MILL_TABLE_FILTER_COLS.every(function(col) {
       var active = millColumnFilters[col];
       if (!Array.isArray(active) || !active.length) return true;
+      if (col === 'RISK REASON') {
+        const tokens = millRiskReasonTokensForRow_(row);
+        return active.every(function(sel) { return tokens.indexOf(sel) !== -1; });
+      }
       return active.indexOf(getMillFilterCellValue(row, col)) !== -1;
     });
   }
@@ -8603,11 +8627,14 @@ function initDashboardApp() {
       menu.setAttribute('role', 'dialog');
       menu.innerHTML =
         '<div class="ttp-dropdown-head mill-col-filter-head">'
-        + '<span class="ttp-dropdown-title">' + escHtml(col) + '</span>'
+        + '<span class="ttp-dropdown-title">' + escHtml(col === 'RISK REASON' ? 'Risk Reason' : col) + '</span>'
         + '<div class="ttp-dropdown-actions mill-col-filter-actions">'
         + '<button type="button" data-act="all">All</button>'
         + '<button type="button" data-act="none">None</button>'
         + '</div></div>'
+        + (col === 'RISK REASON'
+          ? '<div class="mill-col-filter-hint">Row must include every selected reason.</div>'
+          : '')
         + '<div class="ttp-dropdown-search"><input type="text" class="mill-col-filter-search" placeholder="Search values…" autocomplete="off"></div>'
         + '<div class="mill-col-filter-list ttp-dropdown-list"></div>'
         + '<div class="mill-col-filter-foot">'
