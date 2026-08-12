@@ -84,23 +84,38 @@ function supplyWasteProfileMatchPriority_(candidate, supplyKind) {
   if (candidate && supplyTaskListRowIsProfileReference_(candidate) && !candidate._millSheetSource) return 3;
   return candidate && candidate._row ? 2 : 1;
 }
+function supplyWasteProfileCandidateBeats_(next, best, supplyKind) {
+  if (!best) return true;
+  if (!supplyImportIsWaste_(supplyKind)) {
+    const skN = millRowPeriodSortKey_(next);
+    const skB = millRowPeriodSortKey_(best);
+    if (skN !== skB) return skN > skB;
+    const priN = supplyWasteProfileMatchPriority_(next, supplyKind);
+    const priB = supplyWasteProfileMatchPriority_(best, supplyKind);
+    if (priN !== priB) return priN > priB;
+    return (next._row || 0) > (best._row || 0);
+  }
+  const priN = supplyWasteProfileMatchPriority_(next, supplyKind);
+  const priB = supplyWasteProfileMatchPriority_(best, supplyKind);
+  if (priN !== priB) return priN > priB;
+  const skN = millRowPeriodSortKey_(next);
+  const skB = millRowPeriodSortKey_(best);
+  if (skN !== skB) return skN > skB;
+  return (next._row || 0) > (best._row || 0);
+}
 function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, batches, opts) {
   opts = opts || {};
   const wantCo = supplyCompanyKey_(company);
   if (!wantCo) return null;
   const kindIsWaste = supplyImportIsWaste_(supplyKind);
   let best = null;
-  let bestSk = 0;
-  let bestPri = 0;
   (batches || []).forEach(function(b) {
     if (opts.excludeBatchId && b.batch_id === opts.excludeBatchId) return;
     if (supplyImportIsWaste_(b.supply_type) !== kindIsWaste) return;
     (b.rows || []).forEach(function(row) {
       if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
       if (!supplyTaskListRowIsProfileReference_(row)) return;
-      const sk = millRowPeriodSortKey_(row);
-      const pri = supplyWasteProfileMatchPriority_(row, supplyKind);
-      if (!best || sk > bestSk || (sk === bestSk && pri > bestPri)) { best = row; bestSk = sk; bestPri = pri; }
+      if (supplyWasteProfileCandidateBeats_(row, best, supplyKind)) best = row;
     });
   });
   return best;
@@ -122,12 +137,8 @@ function supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batc
     }
   }
   let best = null;
-  let bestSk = 0;
-  let bestPri = 0;
   candidates.forEach(function(c) {
-    const sk = millRowPeriodSortKey_(c);
-    const pri = supplyWasteProfileMatchPriority_(c, kind);
-    if (!best || sk > bestSk || (sk === bestSk && pri > bestPri)) { best = c; bestSk = sk; bestPri = pri; }
+    if (supplyWasteProfileCandidateBeats_(c, best, kind)) best = c;
   });
   return best;
 }
@@ -187,6 +198,16 @@ assert(pomeOnlyMatch.row['GROUP NAME'] === 'GRP B', 'Profile from submitted task
 const shellMatch = supplyFindMillProfileMatch_({ COMPANY_NAME: 'OTHER WASTE' }, 'SHELL_GGL', pools, batches);
 assert(shellMatch.status === 'matched', 'Shell matches previous month task list');
 assert(shellMatch.row['GROUP NAME'] === 'GRP A', 'Profile copied from task list row');
+
+// Jan waste beats Jun main when both are candidates (wrong period bug)
+const junMainPools = {
+  main: [{ 'COMPANY NAME': 'DUAL CO', MONTH: '6', YEAR: '2026', 'SUPPLY CPO': 100, _row: 99 }],
+  waste: [{ 'COMPANY NAME': 'DUAL CO', MONTH: '1', YEAR: '2026', 'SUPPLY ISCC': 10, _row: 22, _millSheetSource: 'waste' }],
+};
+const janOverJun = supplyFindMillProfileMatch_({ COMPANY_NAME: 'DUAL CO' }, 'POME_ISCC', junMainPools, []);
+assert(janOverJun.status === 'matched', 'Jan waste beats Jun main CPO');
+assert(janOverJun.row._millSheetSource === 'waste', 'Uses waste row not June CPO');
+assert(janOverJun.row.MONTH === '1' || janOverJun.row.MONTH === 1, 'Profile month is January not June');
 
 console.log('\nSupply waste match tests:', passed, 'passed,', failed, 'failed');
 process.exit(failed ? 1 : 0);

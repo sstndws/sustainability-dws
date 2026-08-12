@@ -9563,7 +9563,7 @@ function initDashboardApp() {
   async function loadMillData(opts) {
     opts = opts || {};
     if (!opts.force && millDataLoaded && allData && allData.length) {
-      if (opts.ensureWaste && !millWasteDataLoaded) {
+      if (!millWasteDataLoaded) {
         await loadMillWasteIfNeeded_(opts);
       }
       if (opts.scheduleRefresh !== false) {
@@ -10030,8 +10030,16 @@ function initDashboardApp() {
     const m = String(mode || '').trim().toLowerCase();
     millRegistryProductView = (m === 'main' || m === 'waste') ? m : 'general';
     millSyncProductViewUi_();
-    scheduleRenderMillTable();
-    if (isMillOnboardingPanelActive_()) scheduleRefreshMillExecutiveReport_();
+    const needWaste = millRegistryProductView === 'waste' || millRegistryProductView === 'general';
+    function afterViewChange_() {
+      scheduleRenderMillTable();
+      if (isMillOnboardingPanelActive_()) scheduleRefreshMillExecutiveReport_();
+    }
+    if (needWaste && !millWasteDataLoaded && typeof loadMillWasteIfNeeded_ === 'function') {
+      loadMillWasteIfNeeded_().then(afterViewChange_).catch(afterViewChange_);
+    } else {
+      afterViewChange_();
+    }
   }
 
   function millSupplyCpoCellText_(row) {
@@ -29686,6 +29694,29 @@ function initDashboardApp() {
     return candidate && candidate._row ? 2 : 1;
   }
 
+  /** Waste imports: source tier beats newer CPO period (e.g. Jan waste over Jun main). */
+  function supplyWasteProfileCandidateBeats_(next, best, supplyKind) {
+    if (!best) return true;
+    if (!supplyImportIsWaste_(supplyKind)) {
+      const skN = millRowPeriodSortKey_(next);
+      const skB = millRowPeriodSortKey_(best);
+      if (skN !== skB) return skN > skB;
+      const priN = supplyWasteProfileMatchPriority_(next, supplyKind);
+      const priB = supplyWasteProfileMatchPriority_(best, supplyKind);
+      if (priN !== priB) return priN > priB;
+      return (next._row || supplyDraftRowUpdatedTs_(next) || 0)
+        > (best._row || supplyDraftRowUpdatedTs_(best) || 0);
+    }
+    const priN = supplyWasteProfileMatchPriority_(next, supplyKind);
+    const priB = supplyWasteProfileMatchPriority_(best, supplyKind);
+    if (priN !== priB) return priN > priB;
+    const skN = millRowPeriodSortKey_(next);
+    const skB = millRowPeriodSortKey_(best);
+    if (skN !== skB) return skN > skB;
+    return (next._row || supplyDraftRowUpdatedTs_(next) || 0)
+      > (best._row || supplyDraftRowUpdatedTs_(best) || 0);
+  }
+
   function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, opts) {
     opts = opts || {};
     const wantCo = supplyCompanyKey_(company);
@@ -29743,19 +29774,8 @@ function initDashboardApp() {
     }
 
     let best = null;
-    let bestSk = 0;
-    let bestPri = 0;
-    let bestTs = 0;
     candidates.forEach(function(c) {
-      const sk = millRowPeriodSortKey_(c);
-      const pri = supplyWasteProfileMatchPriority_(c, kind);
-      const ts = c._row || supplyDraftRowUpdatedTs_(c) || 0;
-      if (!best || sk > bestSk || (sk === bestSk && (pri > bestPri || (pri === bestPri && ts > bestTs)))) {
-        best = c;
-        bestSk = sk;
-        bestPri = pri;
-        bestTs = ts;
-      }
+      if (supplyWasteProfileCandidateBeats_(c, best, kind)) best = c;
     });
     return best;
   }
