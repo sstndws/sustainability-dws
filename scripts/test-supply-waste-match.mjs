@@ -74,28 +74,39 @@ function supplyPickBestProfileFromPool_(pool, company) {
 }
 function supplyTaskListRowIsProfileReference_(row) {
   if (!row) return false;
-  if (row._submitted || row.profile_draft_saved === 'true') return true;
+  if (row._submitted || row.status === 'submitted' || row.profile_draft_saved === 'true') return true;
   if (String(row.match_status || '').toLowerCase() === 'matched') return true;
   return !!(String(row['GROUP NAME'] || '').trim());
 }
-function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, batches) {
+function supplyWasteProfileMatchPriority_(candidate, supplyKind) {
+  if (!supplyImportIsWaste_(supplyKind)) return candidate && candidate._row ? 2 : 1;
+  if (candidate && candidate._millSheetSource === 'waste') return 4;
+  if (candidate && supplyTaskListRowIsProfileReference_(candidate) && !candidate._millSheetSource) return 3;
+  return candidate && candidate._row ? 2 : 1;
+}
+function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, batches, opts) {
+  opts = opts || {};
   const wantCo = supplyCompanyKey_(company);
   if (!wantCo) return null;
   const kindIsWaste = supplyImportIsWaste_(supplyKind);
   let best = null;
   let bestSk = 0;
+  let bestPri = 0;
   (batches || []).forEach(function(b) {
+    if (opts.excludeBatchId && b.batch_id === opts.excludeBatchId) return;
     if (supplyImportIsWaste_(b.supply_type) !== kindIsWaste) return;
     (b.rows || []).forEach(function(row) {
       if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
       if (!supplyTaskListRowIsProfileReference_(row)) return;
       const sk = millRowPeriodSortKey_(row);
-      if (!best || sk > bestSk) { best = row; bestSk = sk; }
+      const pri = supplyWasteProfileMatchPriority_(row, supplyKind);
+      if (!best || sk > bestSk || (sk === bestSk && pri > bestPri)) { best = row; bestSk = sk; bestPri = pri; }
     });
   });
   return best;
 }
-function supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batches) {
+function supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batches, opts) {
+  opts = opts || {};
   const kind = String(supplyKind || 'CPO').trim().toUpperCase();
   const want = String(company || '').trim();
   if (!want) return null;
@@ -103,7 +114,7 @@ function supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batc
   const onboardingBest = supplyPickBestProfileFromPool_(supplyOnboardingPoolForKind_(kind, pools), want);
   if (onboardingBest) candidates.push(onboardingBest);
   if (supplyImportIsWaste_(kind)) {
-    const taskBest = supplyPickLatestTaskListProfileForCompany_(want, kind, batches);
+    const taskBest = supplyPickLatestTaskListProfileForCompany_(want, kind, batches, opts);
     if (taskBest) candidates.push(taskBest);
     if (!onboardingBest && !taskBest) {
       const mainBest = supplyPickBestProfileFromPool_(pools.main, want);
@@ -112,25 +123,29 @@ function supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batc
   }
   let best = null;
   let bestSk = 0;
+  let bestPri = 0;
   candidates.forEach(function(c) {
     const sk = millRowPeriodSortKey_(c);
-    if (!best || sk > bestSk) { best = c; bestSk = sk; }
+    const pri = supplyWasteProfileMatchPriority_(c, kind);
+    if (!best || sk > bestSk || (sk === bestSk && pri > bestPri)) { best = c; bestSk = sk; bestPri = pri; }
   });
   return best;
 }
-function supplyFindMillProfileMatch_(excelRow, supplyKind, pools, batches) {
+function supplyFindMillProfileMatch_(excelRow, supplyKind, pools, batches, opts) {
   const company = String(excelRow.COMPANY_NAME || excelRow.company || '').trim();
   if (!company) return { status: 'new', row: null };
-  const ref = supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batches);
+  const ref = supplyPickLatestMillProfileForCompany_(company, supplyKind, pools, batches, opts);
   return ref ? { status: 'matched', row: ref } : { status: 'new', row: null };
 }
 
 const pools = {
   main: [
     { 'COMPANY NAME': 'WASTE CO', MONTH: '1', YEAR: '2026', 'SUPPLY CPO': 100, _row: 10 },
+    { 'COMPANY NAME': 'DUAL CO', MONTH: '1', YEAR: '2026', 'SUPPLY CPO': 100, _row: 11 },
   ],
   waste: [
-    { 'COMPANY NAME': 'WASTE CO', MONTH: '1', YEAR: '2026', 'SUPPLY ISCC': 50, _row: 20 },
+    { 'COMPANY NAME': 'WASTE CO', MONTH: '1', YEAR: '2026', 'SUPPLY ISCC': 50, _row: 20, _millSheetSource: 'waste' },
+    { 'COMPANY NAME': 'POME ONLY', MONTH: '1', YEAR: '2026', 'SUPPLY ISCC': 30, _row: 21, _millSheetSource: 'waste' },
   ],
 };
 const batches = [{
@@ -138,6 +153,9 @@ const batches = [{
   rows: [{
     'COMPANY NAME': 'OTHER WASTE', MONTH: '1', YEAR: '2026',
     'GROUP NAME': 'GRP A', profile_draft_saved: 'true', match_status: 'matched',
+  }, {
+    'COMPANY NAME': 'POME ONLY', MONTH: '1', YEAR: '2026',
+    'GROUP NAME': 'GRP B', status: 'submitted', match_status: 'matched',
   }],
 }];
 
@@ -150,6 +168,20 @@ assert(cpoMatch.row._row === 10, 'CPO profile from main sheet');
 const pomeMatch = supplyFindMillProfileMatch_({ COMPANY_NAME: 'WASTE CO' }, 'POME_ISCC', pools, batches);
 assert(pomeMatch.status === 'matched', 'POME matches waste onboarding');
 assert(pomeMatch.row._row === 20, 'POME profile from waste sheet not CPO row');
+
+// Company with CPO on main + waste row — POME prefers waste sheet
+const dualMatch = supplyFindMillProfileMatch_({ COMPANY_NAME: 'DUAL CO' }, 'POME_ISCC', {
+  main: pools.main,
+  waste: [{ 'COMPANY NAME': 'DUAL CO', MONTH: '1', YEAR: '2026', 'SUPPLY ISCC': 10, _row: 22, _millSheetSource: 'waste' }],
+}, batches);
+assert(dualMatch.status === 'matched', 'Dual company POME matches waste not CPO');
+assert(dualMatch.row._millSheetSource === 'waste', 'Dual company uses waste profile');
+
+// POME-only company matches via prior submitted task list when waste pool empty
+const pomeOnlyPools = { main: pools.main, waste: [] };
+const pomeOnlyMatch = supplyFindMillProfileMatch_({ COMPANY_NAME: 'POME ONLY' }, 'POME_ISCC', pomeOnlyPools, batches);
+assert(pomeOnlyMatch.status === 'matched', 'POME-only matches January submitted task list');
+assert(pomeOnlyMatch.row['GROUP NAME'] === 'GRP B', 'Profile from submitted task list row');
 
 // Shell import matches prior task list when no onboarding row
 const shellMatch = supplyFindMillProfileMatch_({ COMPANY_NAME: 'OTHER WASTE' }, 'SHELL_GGL', pools, batches);

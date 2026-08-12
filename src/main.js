@@ -5731,6 +5731,7 @@ function initDashboardApp() {
   let allDataWasteRaw = [];
   let allDataWaste = [];
   let millWasteDataLoaded = false;
+  let millWasteLoadPromise = null;
   let millRegistryProductView = 'general';
   let currentFilter = 'All';
   let currentSearch = '';
@@ -9528,9 +9529,43 @@ function initDashboardApp() {
     }
   }
 
+  async function loadMillWasteIfNeeded_(opts) {
+    opts = opts || {};
+    if (!opts.force && millWasteDataLoaded) return;
+    if (millWasteLoadPromise) return millWasteLoadPromise;
+    millWasteLoadPromise = (async function() {
+      try {
+        const rows = await apiGet('millWaste', {
+          bustCache: !!opts.bustCache,
+          timeoutMs: 120000,
+        });
+        millApplyFetchedWasteRows_(Array.isArray(rows) ? rows : []);
+        const cached = millReadSessionCache_();
+        if (cached && Array.isArray(cached.rows) && cached.rows.length) {
+          millWriteSessionCache_(cached.rows, Array.isArray(rows) ? rows : []);
+        }
+      } catch (err) {
+        console.warn('[Mill] Waste sheet load failed:', err && err.message ? err.message : err);
+        millWasteDataLoaded = true;
+        if (!allDataWasteRaw || !allDataWasteRaw.length) {
+          allDataWasteRaw = [];
+          allDataWaste = [];
+        }
+      }
+    })();
+    try {
+      await millWasteLoadPromise;
+    } finally {
+      millWasteLoadPromise = null;
+    }
+  }
+
   async function loadMillData(opts) {
     opts = opts || {};
     if (!opts.force && millDataLoaded && allData && allData.length) {
+      if (opts.ensureWaste && !millWasteDataLoaded) {
+        await loadMillWasteIfNeeded_(opts);
+      }
       if (opts.scheduleRefresh !== false) {
         scheduleMillBackgroundRefresh_({
           delayMs: opts.refreshDelayMs != null ? opts.refreshDelayMs : 6000,
@@ -29644,6 +29679,13 @@ function initDashboardApp() {
   }
 
   /** Previous Task List rows (any month) — e.g. month-1 waste profile for month-2 import. */
+  function supplyWasteProfileMatchPriority_(candidate, supplyKind) {
+    if (!supplyImportIsWaste_(supplyKind)) return candidate && candidate._row ? 2 : 1;
+    if (candidate && candidate._millSheetSource === 'waste') return 4;
+    if (candidate && supplyTaskListRowIsProfileReference_(candidate) && !candidate._millSheetSource) return 3;
+    return candidate && candidate._row ? 2 : 1;
+  }
+
   function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, opts) {
     opts = opts || {};
     const wantCo = supplyCompanyKey_(company);
@@ -29651,6 +29693,7 @@ function initDashboardApp() {
     const kindIsWaste = supplyImportIsWaste_(supplyKind);
     let best = null;
     let bestSk = 0;
+    let bestPri = 0;
     let bestTs = 0;
     (window._supplyDraftBatches || []).forEach(function(b) {
       if (opts.excludeBatchId && supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(opts.excludeBatchId)) return;
@@ -29660,10 +29703,12 @@ function initDashboardApp() {
         if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
         if (!supplyTaskListRowIsProfileReference_(row)) return;
         const sk = millRowPeriodSortKey_(row);
+        const pri = supplyWasteProfileMatchPriority_(row, supplyKind);
         const ts = supplyDraftRowUpdatedTs_(row) || (row._row || 0);
-        if (!best || sk > bestSk || (sk === bestSk && ts > bestTs)) {
+        if (!best || sk > bestSk || (sk === bestSk && (pri > bestPri || (pri === bestPri && ts > bestTs)))) {
           best = row;
           bestSk = sk;
+          bestPri = pri;
           bestTs = ts;
         }
       });
@@ -29675,7 +29720,8 @@ function initDashboardApp() {
    * Profil referensi — baris period terbaru dengan COMPANY NAME sama.
    * Waste / shell: Mill Onboarding Waste + Task List bulan sebelumnya (+ main fallback).
    */
-  function supplyPickLatestMillProfileForCompany_(company, supplyKind) {
+  function supplyPickLatestMillProfileForCompany_(company, supplyKind, opts) {
+    opts = opts || {};
     const kind = String(supplyKind || 'CPO').trim().toUpperCase();
     const want = String(company || '').trim();
     if (!want) return null;
@@ -29685,7 +29731,7 @@ function initDashboardApp() {
     if (onboardingBest) candidates.push(onboardingBest);
 
     if (supplyImportIsWaste_(kind)) {
-      const taskBest = supplyPickLatestTaskListProfileForCompany_(want, kind);
+      const taskBest = supplyPickLatestTaskListProfileForCompany_(want, kind, opts);
       if (taskBest) candidates.push(taskBest);
       if (!onboardingBest && !taskBest) {
         const mainBest = supplyPickBestProfileFromPool_(
@@ -29699,17 +29745,37 @@ function initDashboardApp() {
     let best = null;
     let bestSk = 0;
     let bestPri = 0;
+    let bestTs = 0;
     candidates.forEach(function(c) {
       const sk = millRowPeriodSortKey_(c);
-      const pri = c._row ? 2 : 1;
+      const pri = supplyWasteProfileMatchPriority_(c, kind);
       const ts = c._row || supplyDraftRowUpdatedTs_(c) || 0;
-      if (!best || sk > bestSk || (sk === bestSk && (pri > bestPri || (pri === bestPri && ts > (best._row || supplyDraftRowUpdatedTs_(best) || 0))))) {
+      if (!best || sk > bestSk || (sk === bestSk && (pri > bestPri || (pri === bestPri && ts > bestTs)))) {
         best = c;
         bestSk = sk;
         bestPri = pri;
+        bestTs = ts;
       }
     });
     return best;
+  }
+
+  /** Load Mill Onboarding (+ waste sheet) and prior Task List before import matching. */
+  async function supplyEnsureMillProfilesLoadedForImport_(supplyType, opts) {
+    opts = opts || {};
+    const needWaste = supplyImportIsWaste_(supplyType)
+      || (window._supplyDraftBatches || []).some(function(b) { return supplyImportIsWaste_(b.supply_type); });
+    if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
+      await loadMillData({ ensureWaste: needWaste });
+    } else if (needWaste && !millWasteDataLoaded && typeof loadMillWasteIfNeeded_ === 'function') {
+      await loadMillWasteIfNeeded_();
+    }
+    if (opts.skipDraftLoad) return;
+    if (_supplyDraftLoadPromise) {
+      await _supplyDraftLoadPromise;
+    } else if (typeof loadSupplyDraftsFromServer_ === 'function' && !window._supplyDraftBatchesLoaded) {
+      await loadSupplyDraftsFromServer_({ preserveUi: true });
+    }
   }
 
   function supplyFindMillReferenceProfile_(company, supplyKind) {
@@ -29730,7 +29796,7 @@ function initDashboardApp() {
     return supplyFindMillReferenceProfile_(company, supplyKind);
   }
 
-  function supplyFindMillProfileMatch_(excelRow, supplyKind) {
+  function supplyFindMillProfileMatch_(excelRow, supplyKind, opts) {
     const excel = (excelRow && excelRow.company !== undefined)
       ? excelRow
       : supplyResolveNamesFromExcel_(excelRow || {});
@@ -29739,7 +29805,7 @@ function initDashboardApp() {
     if (!company) return { status: 'new', row: null };
 
     const kind = String(supplyKind || 'CPO').trim().toUpperCase();
-    const ref = supplyFindMillReferenceProfile_(company, kind);
+    const ref = supplyPickLatestMillProfileForCompany_(company, kind, opts || {});
     if (ref) return { status: 'matched', row: ref };
     return { status: 'new', row: null };
   }
@@ -29760,11 +29826,11 @@ function initDashboardApp() {
       COMPANY_GROUP_NAME: draftRow['GROUP NAME'],
       PLANT: draftRow[facField] || draftRow.PLANT || '',
     };
-    const found = supplyFindMillProfileMatch_(excelLike, matchKind);
+    const found = supplyFindMillProfileMatch_(excelLike, matchKind, { excludeBatchId: batch && batch.batch_id });
     draftRow.match_status = found.status;
     draftRow['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(draftRow);
     if (found.status === 'matched' && found.row) {
-      const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'], matchKind) || found.row;
+      const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'], matchKind, { excludeBatchId: batch && batch.batch_id }) || found.row;
       draftRow.target_mill_row = latest._row;
       draftRow._mill_row = latest._row;
       draftRow._profile_group_hint = '';
@@ -31446,6 +31512,7 @@ function initDashboardApp() {
     opts = opts || {};
     if (_supplyPostSubmitRefreshTimer) clearTimeout(_supplyPostSubmitRefreshTimer);
     const submittedN = opts.submittedN != null ? Number(opts.submittedN) : 0;
+    if (submittedN > 0) millWasteDataLoaded = false;
     const delayMs = submittedN > 0 ? 3000 : 2000;
     _supplyPostSubmitRefreshTimer = setTimeout(function() {
       _supplyPostSubmitRefreshTimer = null;
@@ -32026,7 +32093,9 @@ function initDashboardApp() {
 
   // Supply import state — must be declared before initSupplyImport() runs loadSupplyDraftsFromServer_().
   window._supplyDraftBatches = window._supplyDraftBatches || [];
+  window._supplyDraftBatchesLoaded = window._supplyDraftBatchesLoaded || false;
   let _supplyBuildTaskInFlight = null;
+  let _supplyDraftLoadPromise = null;
 
   (function initSupplyImport() {
     // ── Year field (free input — tidak dibatasi dropdown) ───────────────────
@@ -32357,9 +32426,7 @@ function initDashboardApp() {
   }
 
   async function buildSupplyTaskListImpl_(parsedRows, month, year, supplyType) {
-    if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
-      await loadMillData();
-    }
+    await supplyEnsureMillProfilesLoadedForImport_(supplyType);
 
     const now = new Date().toISOString();
     const wasteCfg = supplyWasteKindFromType_(supplyType);
@@ -32388,8 +32455,8 @@ function initDashboardApp() {
 
     function buildDraftFromExcel_(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
-      const found = supplyFindMillProfileMatch_(r, kind);
-      const profile = supplyPickLatestMillProfileForCompany_(names.company, kind) || found.row;
+      const found = supplyFindMillProfileMatch_(r, kind, { excludeBatchId: batchId });
+      const profile = supplyPickLatestMillProfileForCompany_(names.company, kind, { excludeBatchId: batchId }) || found.row;
 
       const draft = {
         draft_id:       batchId + '_' + Date.now() + '_' + idx,
@@ -33563,7 +33630,8 @@ function initDashboardApp() {
         return loadSupplyDraftsFromServer_(opts);
       });
     }
-    return apiGet('supplyDraft', { bustCache: !!opts.bustCache })
+    if (_supplyDraftLoadPromise) return _supplyDraftLoadPromise;
+    _supplyDraftLoadPromise = apiGet('supplyDraft', { bustCache: !!opts.bustCache })
       .then(function(data) {
         window._supplyDraftLoadError = '';
         data = normalizeGetArray(data);
@@ -33571,6 +33639,7 @@ function initDashboardApp() {
         if (!Array.isArray(data) || !data.length) {
           // Empty server sheet = empty Task List. Do not resurrect local memory.
           window._supplyDraftBatches = [];
+          window._supplyDraftBatchesLoaded = true;
           renderSupplyDraftList_(renderOpts);
           return;
         }
@@ -33644,26 +33713,33 @@ function initDashboardApp() {
           if (ts && (now - ts) >= 120000) delete tomb[pk];
           return true;
         });
-        if ((!allDataRaw || !allDataRaw.length) && typeof loadMillData === 'function') {
-          return loadMillData().then(function() {
-            window._supplyDraftBatches.forEach(function(b) {
-              supplySyncCompanyDraftAcrossBatch_(b);
-              (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
-            });
-            renderSupplyDraftList_(renderOpts);
+        function rematchDraftBatchesAfterProfiles_() {
+          window._supplyDraftBatches.forEach(function(b) {
+            supplySyncCompanyDraftAcrossBatch_(b);
+            (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
           });
+          window._supplyDraftBatchesLoaded = true;
+          renderSupplyDraftList_(renderOpts);
         }
-        window._supplyDraftBatches.forEach(function(b) {
-          supplySyncCompanyDraftAcrossBatch_(b);
-          (b.rows || []).forEach(function(row) { supplyRematchDraftRow_(row, b); });
+        const needWasteRematch = (window._supplyDraftBatches || []).some(function(b) {
+          return supplyImportIsWaste_(b.supply_type);
         });
-        renderSupplyDraftList_(renderOpts);
+        if (typeof supplyEnsureMillProfilesLoadedForImport_ === 'function') {
+          const probeType = needWasteRematch ? 'POME_ISCC' : 'CPO';
+          return supplyEnsureMillProfilesLoadedForImport_(probeType, { skipDraftLoad: true })
+            .then(rematchDraftBatchesAfterProfiles_);
+        }
+        rematchDraftBatchesAfterProfiles_();
       })
       .catch(function(err) {
         window._supplyDraftLoadError = err && err.message ? err.message : String(err);
         console.warn('[supplyDraft] Load drafts failed:', window._supplyDraftLoadError);
         renderSupplyDraftList_(renderOpts);
+      })
+      .finally(function() {
+        _supplyDraftLoadPromise = null;
       });
+    return _supplyDraftLoadPromise;
   }
   window.loadSupplyDraftsFromServer_ = loadSupplyDraftsFromServer_;
   // ─── END SUPPLY IMPORT ────────────────────────────────────────────────────
