@@ -10233,26 +10233,33 @@ function initDashboardApp() {
 
   function millProfileSameEntityRows_(anchorRow) {
     if (!anchorRow || typeof anchorRow !== 'object') return [];
-    let src = [];
     const wasteSrc = (allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []);
     const mainSrc = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
-    const isWasteAnchor = String(anchorRow._millSheetSource || '').toLowerCase() === 'waste';
-    if (isWasteAnchor || millRegistryProductView === 'waste') {
-      src = wasteSrc;
-    } else if (millRegistryProductView === 'general') {
-      src = [].concat(mainSrc || [], wasteSrc || []);
-    } else {
-      src = mainSrc;
-    }
+    // Profile popup always shows main + waste history (not just the active registry tab).
+    const src = [].concat(mainSrc || [], wasteSrc || []);
     if (!src.length) return [anchorRow];
     const wantKey = millRegistryEntityKey_(anchorRow);
     if (!wantKey || wantKey === '\u0001') return [anchorRow];
-    // Match company + mill only (same key as registry "newest" mode).
-    // Group may change between periods (e.g. MULTI PLANTATION → MUKTI) — still one mill.
     const rows = src.filter(function(r) {
       return millRegistryEntityKey_(r) === wantKey;
     });
     return rows.length ? rows : [anchorRow];
+  }
+
+  /** Merge main + waste rows for the same mill and period (e.g. PK + POME ISCC in Jan). */
+  function millProfileMergedRowForPeriod_(siblings, yTok, mTok) {
+    const matches = (siblings || []).filter(function(r) {
+      return millPdfTokenForCell(millYearVal(r)) === yTok
+        && millPdfTokenForCell(millMonthVal(r)) === mTok;
+    });
+    if (!matches.length) return null;
+    if (matches.length === 1) return matches[0];
+    let merged = matches[0];
+    for (let i = 1; i < matches.length; i++) {
+      merged = millMergeRegistrySupplyRows_(merged, matches[i]);
+    }
+    merged._millProfileMerged = true;
+    return merged;
   }
 
   function millProfileComparePeriodDesc_(a, b) {
@@ -10572,22 +10579,28 @@ function initDashboardApp() {
 
   function millProfileHeaderSupplyRow_(row) {
     if (!row || typeof row !== 'object') return row;
-    if (millRegistryProductView === 'general') {
-      const key = millGeneralMergeKey_(row);
-      if (!key || key === '\u0001\u0001') return row;
-      const main = millRegistryBaseRows_('main').filter(function(r) { return millGeneralMergeKey_(r) === key; });
-      const waste = millRegistryBaseRows_('waste').filter(function(r) { return millGeneralMergeKey_(r) === key; });
-      if (main.length || waste.length) {
-        const merged = millMergeGeneralRegistryRows_(main, waste);
-        if (merged[0]) return merged[0];
-      }
+    const key = millGeneralMergeKey_(row);
+    if (!key || key === '\u0001\u0001') return row;
+    const yTok = millPdfTokenForCell(millYearVal(row));
+    const mTok = millPdfTokenForCell(millMonthVal(row));
+    function samePeriod_(r) {
+      return millGeneralMergeKey_(r) === key
+        && millPdfTokenForCell(millYearVal(r)) === yTok
+        && millPdfTokenForCell(millMonthVal(r)) === mTok;
+    }
+    const wasteSrc = (allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []);
+    const mainSrc = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+    const main = mainSrc.filter(samePeriod_);
+    const waste = wasteSrc.filter(samePeriod_);
+    if (main.length || waste.length) {
+      const merged = millMergeGeneralRegistryRows_(main, waste);
+      if (merged[0]) return merged[0];
     }
     if (millRegistryProductView === 'waste') {
-      const key = millGeneralMergeKey_(row);
-      const waste = millRegistryBaseRows_('waste').filter(function(r) { return millGeneralMergeKey_(r) === key; });
-      if (waste.length === 1) return waste[0];
-      if (waste.length > 1) {
-        return millMergeGeneralMemberRow_({ primary: waste[0], members: waste });
+      const wasteOnly = wasteSrc.filter(function(r) { return millGeneralMergeKey_(r) === key; });
+      if (wasteOnly.length === 1) return wasteOnly[0];
+      if (wasteOnly.length > 1) {
+        return millMergeGeneralMemberRow_({ primary: wasteOnly[0], members: wasteOnly });
       }
     }
     return row;
@@ -10757,6 +10770,16 @@ function initDashboardApp() {
     return v;
   }
 
+  function millProfileRowHasWasteSupply_(d) {
+    if (!d) return false;
+    millNormalizeWasteQtyAliasesOnRow_(d);
+    if (millWasteSupplyQty_(d, 'ISCC') > 0 || millWasteSupplyQty_(d, 'INS') > 0 || millWasteSupplyQty_(d, 'SHELL') > 0) {
+      return true;
+    }
+    const ps = String(d['PRODUCT SUPPLY'] || '').toUpperCase();
+    return ps.indexOf('POME') >= 0 || ps.indexOf('SHELL') >= 0;
+  }
+
   function millProfileBuildSectionsHtml_(d) {
     function millProfileFormatSupplyValue_(raw) {
       if (raw == null) return '';
@@ -10780,7 +10803,8 @@ function initDashboardApp() {
     }
 
     const isWasteProfile = String(d && d._millSheetSource || '').toLowerCase() === 'waste'
-      || millRegistryProductView === 'waste';
+      || millRegistryProductView === 'waste'
+      || millProfileRowHasWasteSupply_(d);
     const sections = isWasteProfile ? millWasteProfileSections_() : [
       {
         title: 'Mill Identity',
@@ -10916,7 +10940,8 @@ function initDashboardApp() {
     const ySel = document.getElementById('millProfileYearSel');
     const mSel = document.getElementById('millProfileMonthSel');
     if (!ySel || !mSel) return siblings[0];
-    const row = millProfileFindRowByPeriodTok_(siblings, ySel.value, mSel.value);
+    const row = millProfileMergedRowForPeriod_(siblings, ySel.value, mSel.value)
+      || millProfileFindRowByPeriodTok_(siblings, ySel.value, mSel.value);
     return row || siblings[0];
   }
 
@@ -11091,7 +11116,9 @@ function initDashboardApp() {
     }
     const yTok = ySel.value;
     const mTok = mSel.value;
-    const row = millProfileFindRowByPeriodTok_(siblings, yTok, mTok) || siblings[0];
+    const row = millProfileMergedRowForPeriod_(siblings, yTok, mTok)
+      || millProfileFindRowByPeriodTok_(siblings, yTok, mTok)
+      || siblings[0];
     if (!row) return;
     millProfileUpdateHeaderFromRow_(row);
     millProfileRenderBody_(row);
@@ -11137,7 +11164,9 @@ function initDashboardApp() {
       yTokFinal = ySel.value;
       mTokFinal = mSel.value;
     }
-    const displayRow = millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, mTokFinal) || anchor;
+    const displayRow = millProfileMergedRowForPeriod_(millProfileVariantRows_, yTokFinal, mTokFinal)
+      || millProfileFindRowByPeriodTok_(millProfileVariantRows_, yTokFinal, mTokFinal)
+      || anchor;
     millProfileUpdateHeaderFromRow_(displayRow);
     millProfileRenderBody_(displayRow);
 
@@ -22770,21 +22799,29 @@ function initDashboardApp() {
     }
     if (name === 'mill-onboarding') {
       millRevealRegistryFromCacheOrMemory_();
+      function afterMillPanelReady_() {
+        if (currentFilter === 'Task List') {
+          currentFilter = 'All';
+          filterChipEls.forEach(function(c) { c.classList.toggle('active', c.dataset.filter === 'All'); });
+          const taskPanel = document.getElementById('mill-task-list-panel');
+          const tableCard = document.querySelector('#panel-mill-onboarding .table-card');
+          if (taskPanel) taskPanel.style.display = 'none';
+          if (tableCard) tableCard.style.display = '';
+          millSyncRegistryFiltersVisibility_();
+        }
+        scheduleRenderMillTable();
+        scheduleMillBackgroundRefresh_({
+          delayMs: millAnySupplySubmitInFlight_() ? MILL_POST_SUBMIT_REFRESH_MS_ : 6000,
+        });
+      }
       if (!millDataLoaded || !allData.length) {
-        loadMillData({ force: !millDataLoaded, preferCache: true, scheduleRefresh: false });
-      } else if (currentFilter === 'Task List') {
-        currentFilter = 'All';
-        filterChipEls.forEach(function(c) { c.classList.toggle('active', c.dataset.filter === 'All'); });
-        const taskPanel = document.getElementById('mill-task-list-panel');
-        const tableCard = document.querySelector('#panel-mill-onboarding .table-card');
-        if (taskPanel) taskPanel.style.display = 'none';
-        if (tableCard) tableCard.style.display = '';
-        millSyncRegistryFiltersVisibility_();
-        scheduleRenderMillTable();
-        scheduleMillBackgroundRefresh_({ delayMs: millAnySupplySubmitInFlight_() ? MILL_POST_SUBMIT_REFRESH_MS_ : 6000 });
+        loadMillData({ force: !millDataLoaded, preferCache: true, scheduleRefresh: false })
+          .then(afterMillPanelReady_)
+          .catch(afterMillPanelReady_);
+      } else if (!millWasteDataLoaded && typeof loadMillWasteIfNeeded_ === 'function') {
+        loadMillWasteIfNeeded_().then(afterMillPanelReady_).catch(afterMillPanelReady_);
       } else {
-        scheduleRenderMillTable();
-        scheduleMillBackgroundRefresh_({ delayMs: millAnySupplySubmitInFlight_() ? MILL_POST_SUBMIT_REFRESH_MS_ : 6000 });
+        afterMillPanelReady_();
       }
       const warmExecutivePdfAssets_ = function() {
         getMillExecutiveBackgroundDataUrl_().catch(function() {});
