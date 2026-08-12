@@ -28492,7 +28492,7 @@ function initDashboardApp() {
     const match = supplyFindMillProfileMatch_(excelRow, kind);
     let html = supplyMatchBadgeHtml_(match.status);
     if (match.status === 'matched') {
-      const profile = supplyPickLatestMillProfileForCompany_(names.company) || match.row;
+      const profile = supplyPickLatestMillProfileForCompany_(names.company, kind) || match.row;
       const label = supplyMillProfilePeriodFromRow_(profile);
       if (label) {
         html += '<span class="supply-match-pill supply-match-pill--profile-period" title="Data will be copied from the Mill Onboarding profile for this period">Profile: ' + escHtml(label) + '</span>';
@@ -28643,7 +28643,8 @@ function initDashboardApp() {
   function supplyLookupMillProfileForDraft_(draftRow, batch) {
     if (!draftRow) return null;
     const company = String(draftRow['COMPANY NAME'] || '').trim();
-    const latest = supplyPickLatestMillProfileForCompany_(company);
+    const kind2 = supplyResolveKindFromDraft_(draftRow, batch);
+    const latest = supplyPickLatestMillProfileForCompany_(company, kind2);
     if (latest) {
       if (latest._row) {
         draftRow.target_mill_row = latest._row;
@@ -28652,10 +28653,9 @@ function initDashboardApp() {
       return latest;
     }
     if (draftRow._mill_row != null) {
-      const cached = supplyGetMillProfileByRow_(draftRow._mill_row);
+      const cached = supplyGetMillProfileByRow_(draftRow._mill_row, { supplyKind: kind2 });
       if (cached) return cached;
     }
-    const kind2 = supplyResolveKindFromDraft_(draftRow, batch);
     const facField = supplyFacilityFieldForKind_(kind2);
     const found = supplyFindMillProfileMatch_({
       COMPANY_NAME: draftRow['COMPANY NAME'],
@@ -29615,17 +29615,18 @@ function initDashboardApp() {
     return millProductSupplyMatchesCpo_(profileRow);
   }
 
-  /**
-   * Profil referensi — baris period terbaru dengan COMPANY NAME sama (bukan baris pertama di sheet).
-   */
-  function supplyPickLatestMillProfileForCompany_(company) {
-    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
+  function supplyOnboardingPoolForKind_(supplyKind) {
+    return supplyOnboardingPoolForBatch_({ supply_type: supplyKind || 'CPO' });
+  }
+
+  function supplyPickBestProfileFromPool_(pool, company) {
     const want = String(company || '').trim();
-    if (!want) return null;
+    if (!want || !pool || !pool.length) return null;
     let best = null;
     let bestSk = 0;
-    src.forEach(function(d) {
+    pool.forEach(function(d) {
       if (!supplyCompanyMatchesProfile_(want, d)) return;
+      if (supplyMillRowIsEmptySlot_(d)) return;
       const sk = millRowPeriodSortKey_(d);
       if (!best || sk > bestSk || (sk === bestSk && (d._row || 0) > (best._row || 0))) {
         best = d;
@@ -29635,8 +29636,84 @@ function initDashboardApp() {
     return best;
   }
 
-  function supplyFindMillReferenceProfile_(company) {
-    return supplyPickLatestMillProfileForCompany_(company);
+  function supplyTaskListRowIsProfileReference_(row) {
+    if (!row) return false;
+    if (supplyRowIsSubmitted_(row) || supplyDraftSavedFlag_(row)) return true;
+    if (String(row.match_status || '').toLowerCase() === 'matched') return true;
+    return !!(String(row['GROUP NAME'] || '').trim() || String(row['UML ID'] || '').trim());
+  }
+
+  /** Previous Task List rows (any month) — e.g. month-1 waste profile for month-2 import. */
+  function supplyPickLatestTaskListProfileForCompany_(company, supplyKind, opts) {
+    opts = opts || {};
+    const wantCo = supplyCompanyKey_(company);
+    if (!wantCo) return null;
+    const kindIsWaste = supplyImportIsWaste_(supplyKind);
+    let best = null;
+    let bestSk = 0;
+    let bestTs = 0;
+    (window._supplyDraftBatches || []).forEach(function(b) {
+      if (opts.excludeBatchId && supplyBatchIdKey_(b.batch_id) === supplyBatchIdKey_(opts.excludeBatchId)) return;
+      const batchIsWaste = supplyImportIsWaste_(b.supply_type);
+      if (batchIsWaste !== kindIsWaste) return;
+      (b.rows || []).forEach(function(row) {
+        if (supplyCompanyKey_(row['COMPANY NAME']) !== wantCo) return;
+        if (!supplyTaskListRowIsProfileReference_(row)) return;
+        const sk = millRowPeriodSortKey_(row);
+        const ts = supplyDraftRowUpdatedTs_(row) || (row._row || 0);
+        if (!best || sk > bestSk || (sk === bestSk && ts > bestTs)) {
+          best = row;
+          bestSk = sk;
+          bestTs = ts;
+        }
+      });
+    });
+    return best;
+  }
+
+  /**
+   * Profil referensi — baris period terbaru dengan COMPANY NAME sama.
+   * Waste / shell: Mill Onboarding Waste + Task List bulan sebelumnya (+ main fallback).
+   */
+  function supplyPickLatestMillProfileForCompany_(company, supplyKind) {
+    const kind = String(supplyKind || 'CPO').trim().toUpperCase();
+    const want = String(company || '').trim();
+    if (!want) return null;
+
+    const candidates = [];
+    const onboardingBest = supplyPickBestProfileFromPool_(supplyOnboardingPoolForKind_(kind), want);
+    if (onboardingBest) candidates.push(onboardingBest);
+
+    if (supplyImportIsWaste_(kind)) {
+      const taskBest = supplyPickLatestTaskListProfileForCompany_(want, kind);
+      if (taskBest) candidates.push(taskBest);
+      if (!onboardingBest && !taskBest) {
+        const mainBest = supplyPickBestProfileFromPool_(
+          (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []),
+          want
+        );
+        if (mainBest) candidates.push(mainBest);
+      }
+    }
+
+    let best = null;
+    let bestSk = 0;
+    let bestPri = 0;
+    candidates.forEach(function(c) {
+      const sk = millRowPeriodSortKey_(c);
+      const pri = c._row ? 2 : 1;
+      const ts = c._row || supplyDraftRowUpdatedTs_(c) || 0;
+      if (!best || sk > bestSk || (sk === bestSk && (pri > bestPri || (pri === bestPri && ts > (best._row || supplyDraftRowUpdatedTs_(best) || 0))))) {
+        best = c;
+        bestSk = sk;
+        bestPri = pri;
+      }
+    });
+    return best;
+  }
+
+  function supplyFindMillReferenceProfile_(company, supplyKind) {
+    return supplyPickLatestMillProfileForCompany_(company, supplyKind);
   }
 
   function supplyMillRowIsEmptySlot_(profile) {
@@ -29649,8 +29726,8 @@ function initDashboardApp() {
   }
 
   /** @deprecated use supplyFindMillReferenceProfile_ — jangan dipakai untuk submit target */
-  function supplyResolveMillTargetRow_(company) {
-    return supplyFindMillReferenceProfile_(company);
+  function supplyResolveMillTargetRow_(company, supplyKind) {
+    return supplyFindMillReferenceProfile_(company, supplyKind);
   }
 
   function supplyFindMillProfileMatch_(excelRow, supplyKind) {
@@ -29661,7 +29738,8 @@ function initDashboardApp() {
     const company = String(excel.company || '').trim();
     if (!company) return { status: 'new', row: null };
 
-    const ref = supplyFindMillReferenceProfile_(company);
+    const kind = String(supplyKind || 'CPO').trim().toUpperCase();
+    const ref = supplyFindMillReferenceProfile_(company, kind);
     if (ref) return { status: 'matched', row: ref };
     return { status: 'new', row: null };
   }
@@ -29686,7 +29764,7 @@ function initDashboardApp() {
     draftRow.match_status = found.status;
     draftRow['PRODUCT SUPPLY'] = supplyMergeProductSupplyField_(draftRow);
     if (found.status === 'matched' && found.row) {
-      const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME']) || found.row;
+      const latest = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'], matchKind) || found.row;
       draftRow.target_mill_row = latest._row;
       draftRow._mill_row = latest._row;
       draftRow._profile_group_hint = '';
@@ -30207,7 +30285,8 @@ function initDashboardApp() {
   function supplyMergeProfilePrefillIntoDraftRow_(draftRow, batch) {
     if (!draftRow) return;
     if (supplyDraftSavedFlag_(draftRow)) return;
-    const profileRow = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'])
+    const kind = supplyResolveKindFromDraft_(draftRow, batch);
+    const profileRow = supplyPickLatestMillProfileForCompany_(draftRow['COMPANY NAME'], kind)
       || supplyLookupMillProfileForDraft_(draftRow, batch);
     if (!profileRow) return;
     const merged = supplyProfileIdentityPrefillFromRow_(profileRow);
@@ -31465,11 +31544,23 @@ function initDashboardApp() {
     }
   }
 
-  function supplyGetMillProfileByRow_(rowNum) {
+  function supplyGetMillProfileByRow_(rowNum, opts) {
     if (!rowNum) return null;
-    const src = (allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []);
-    for (let i = 0; i < src.length; i++) {
-      if (src[i]._row === rowNum) return src[i];
+    opts = opts || {};
+    const kind = String(opts.supplyKind || '').trim().toUpperCase();
+    const pools = [];
+    if (supplyImportIsWaste_(kind)) {
+      pools.push(supplyOnboardingPoolForKind_(kind));
+      pools.push((allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []));
+    } else {
+      pools.push((allDataRaw && allDataRaw.length) ? allDataRaw : (allData || []));
+      pools.push((allDataWasteRaw && allDataWasteRaw.length) ? allDataWasteRaw : (allDataWaste || []));
+    }
+    for (let p = 0; p < pools.length; p++) {
+      const src = pools[p] || [];
+      for (let i = 0; i < src.length; i++) {
+        if (src[i]._row === rowNum) return src[i];
+      }
     }
     return null;
   }
@@ -31513,7 +31604,8 @@ function initDashboardApp() {
     supplyEnsureDraftPeriodOnRows_([draftRow], batch);
 
     const company = String(draftRow['COMPANY NAME'] || '').trim();
-    if (!supplyFindMillReferenceProfile_(company) && draftRow.match_status !== 'new') {
+    const submitKind = supplyResolveKindFromDraft_(draftRow, batch);
+    if (!supplyFindMillReferenceProfile_(company, submitKind) && draftRow.match_status !== 'new') {
       throw new Error('Mill profile not found. Re-match the batch first.');
     }
 
@@ -32297,7 +32389,7 @@ function initDashboardApp() {
     function buildDraftFromExcel_(r, idx) {
       const names = supplyResolveNamesFromExcel_(r);
       const found = supplyFindMillProfileMatch_(r, kind);
-      const profile = supplyPickLatestMillProfileForCompany_(names.company) || found.row;
+      const profile = supplyPickLatestMillProfileForCompany_(names.company, kind) || found.row;
 
       const draft = {
         draft_id:       batchId + '_' + Date.now() + '_' + idx,
