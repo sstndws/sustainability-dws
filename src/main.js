@@ -11998,7 +11998,6 @@ function initDashboardApp() {
     const numCol = isCpo ? ttpCpoTraceVolCol : ttpPkTraceVolCol;
     const denCol = isCpo ? ttpCpoTraceDenomCol : ttpPkTraceDenomCol;
     const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
-    const convCol = isCpo ? ttpCpoConvCol : ttpPkConvCol;
     const dataRows = (rows || []).filter(ttpIsDataRow_);
 
     if (!denCol) {
@@ -12012,7 +12011,6 @@ function initDashboardApp() {
     let sumNum = 0;
     let sumDen = 0;
     let rowsFromVol = 0;
-    let rowsFromConv = 0;
     let rowsFromPct = 0;
     let rowsWithDen = 0;
     dataRows.forEach(function(row) {
@@ -12030,13 +12028,6 @@ function initDashboardApp() {
         sumNum += n;
         rowsFromVol++;
         added = true;
-      } else if (isCpo && convCol) {
-        const c = ttpParseNumber_(row[convCol]);
-        if (!isNaN(c) && c > 0 && hasPct) {
-          sumNum += c * p / 100;
-          rowsFromConv++;
-          added = true;
-        }
       }
       if (!added && hasPct) {
         sumNum += d * p / 100;
@@ -12047,7 +12038,7 @@ function initDashboardApp() {
       rowsWithDen++;
     });
 
-    if (!sumDen || (!rowsFromVol && !rowsFromConv && !rowsFromPct)) {
+    if (!sumDen || (!rowsFromVol && !rowsFromPct)) {
       const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
       if (!isNaN(weighted.value)) return weighted;
       const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
@@ -12059,14 +12050,13 @@ function initDashboardApp() {
       value: (sumNum / sumDen) * 100,
       rowsUsed: dataRows.length,
       rowsFromVol: rowsFromVol,
-      rowsFromConv: rowsFromConv,
       rowsFromPct: rowsFromPct,
       rowsWithDen: rowsWithDen,
       totalRows: dataRows.length,
       method: 'imputed-sum',
       numCol: numCol || pctCol,
       denCol: denCol,
-      convCol: convCol || '',
+      convCol: '',
       sumNum: sumNum,
       sumDen: sumDen,
     };
@@ -12170,14 +12160,11 @@ function initDashboardApp() {
       cpoEl.textContent = ttpFormatTraceablePct_(cpoAgg.value);
       cpoEl.title = cpoAgg.method === 'imputed-sum' && cpoAgg.sumDen > 0
         ? 'SUM(imputed traceable ton) ÷ SUM(' + cpoAgg.denCol + ') — same logic as Excel footer'
-          + '\nPer row: CPO Traceable Volume if filled'
-          + (cpoAgg.convCol ? '; else ' + cpoAgg.convCol + ' × %CPO ÷ 100' : '')
-          + '; else CPO SUPPLY × %CPO ÷ 100'
+          + '\nPer row: CPO Traceable Volume if filled; else CPO SUPPLY × %CPO ÷ 100'
           + '\nRows with no volume and 0% CPO are excluded from the total (Excel filter).'
           + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
           + '\n(' + (cpoAgg.rowsFromVol || 0) + ' from volume · '
-          + (cpoAgg.rowsFromConv || 0) + ' from conversion · '
           + (cpoAgg.rowsFromPct || 0) + ' from % imputed)'
         : cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
         ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
