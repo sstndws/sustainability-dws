@@ -11877,8 +11877,8 @@ function initDashboardApp() {
       denominator: ['PK SUPPLY TO KCP', 'PK SUPPLY TO KCP (TON)', 'PK SUPPLY']
     },
     cpo: {
-      numerator: ['CPO TRACEABLE', 'CPO TRACEABLE VOLUME'],
-      denominator: ['CPO SUPPLY TO REFINERY']
+      numerator: ['CPO TRACEABLE', 'CPO TRACEABLE VOLUME', 'TOTAL CPO TRACEABLE', 'CPO TRACEABLE (TON)'],
+      denominator: ['CPO SUPPLY TO REFINERY', 'CPO SUPPLY TO REFINERY (TON)', 'TOTAL CPO SUPPLY', 'CPO SUPPLY (TON)', 'CPO SUPPLY']
     }
   };
 
@@ -11901,8 +11901,8 @@ function initDashboardApp() {
         if (excludeTotal && u.includes('TOTAL')) return false;
         if (tag && !u.includes(tag)) return false;
         if (want.includes('SUPPLY') && u.includes('CONVERSION')) return false;
-        if (want.includes('CPO SUPPLY') && !u.includes('REFINERY')) return false;
-        if (want.includes('PK SUPPLY') && !u.includes('KCP')) return false;
+        if (want.includes('CPO SUPPLY') && want.includes('REFINERY') && !u.includes('REFINERY')) return false;
+        if (want.includes('PK SUPPLY') && want.includes('KCP') && !u.includes('KCP')) return false;
         if (u.includes('TRACEABLE') && u.includes('%')) return false;
         return u.includes(want) || u === want;
       });
