@@ -11992,7 +11992,12 @@ function initDashboardApp() {
     };
   }
 
-  /** Excel footer: SUM(imputed traceable ton) ÷ SUM(supply ton). CPO skips blank-trace rows and may use CONVERSION × % when volume is empty. */
+  /**
+   * Sheet footer formula: SUM(traceable-vol col) ÷ SUM(supply col) for the period.
+   * Matches e.g. SUM(AO) / SUM(AH) for CPO and SUM(AN) / SUM(AF) for PK.
+   * All rows with supply > 0 are included (even 0-traceable rows), matching SUMIF behaviour.
+   * Falls back to supply-weighted %col average when volume columns are unavailable.
+   */
   function ttpAggregateTotalTraceablePct_(rows, product) {
     const isCpo = product === 'cpo';
     const numCol = isCpo ? ttpCpoTraceVolCol : ttpPkTraceVolCol;
@@ -12000,66 +12005,40 @@ function initDashboardApp() {
     const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
     const dataRows = (rows || []).filter(ttpIsDataRow_);
 
-    if (!denCol) {
-      const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
-      if (!isNaN(weighted.value)) return weighted;
-      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
-      legacy.method = 'average';
-      return legacy;
+    // Direct SUM(traceable) / SUM(supply) — exact match to sheet footer formula
+    if (numCol && denCol) {
+      let sumNum = 0, sumDen = 0, rowsUsed = 0;
+      dataRows.forEach(function(row) {
+        const d = ttpParseNumber_(row[denCol]);
+        if (isNaN(d) || d <= 0) return;
+        const n = ttpParseNumber_(row[numCol]);
+        sumNum += (isNaN(n) ? 0 : n);
+        sumDen += d;
+        rowsUsed++;
+      });
+      if (sumDen > 0) {
+        return {
+          value: (sumNum / sumDen) * 100,
+          rowsUsed: rowsUsed,
+          method: 'direct-sum',
+          numCol: numCol,
+          denCol: denCol,
+          sumNum: sumNum,
+          sumDen: sumDen,
+        };
+      }
     }
 
-    let sumNum = 0;
-    let sumDen = 0;
-    let rowsFromVol = 0;
-    let rowsFromPct = 0;
-    let rowsWithDen = 0;
-    dataRows.forEach(function(row) {
-      const d = ttpParseNumber_(row[denCol]);
-      if (isNaN(d) || d <= 0) return;
-      const n = numCol ? ttpParseNumber_(row[numCol]) : NaN;
-      const p = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
-      const hasVol = numCol && !isNaN(n) && n > 0;
-      const hasPct = ttpRowHasTracePct_(p);
-
-      if (isCpo && !hasVol && !hasPct) return;
-
-      let added = false;
-      if (hasVol) {
-        sumNum += n;
-        rowsFromVol++;
-        added = true;
-      }
-      if (!added && hasPct) {
-        sumNum += d * p / 100;
-        rowsFromPct++;
-      }
-
-      sumDen += d;
-      rowsWithDen++;
-    });
-
-    if (!sumDen || (!rowsFromVol && !rowsFromPct)) {
+    // Fallback: supply-weighted average of % column
+    if (denCol) {
       const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
       if (!isNaN(weighted.value)) return weighted;
-      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
-      legacy.method = 'average';
-      return legacy;
     }
 
-    return {
-      value: (sumNum / sumDen) * 100,
-      rowsUsed: dataRows.length,
-      rowsFromVol: rowsFromVol,
-      rowsFromPct: rowsFromPct,
-      rowsWithDen: rowsWithDen,
-      totalRows: dataRows.length,
-      method: 'imputed-sum',
-      numCol: numCol || pctCol,
-      denCol: denCol,
-      convCol: '',
-      sumNum: sumNum,
-      sumDen: sumDen,
-    };
+    // Last resort: simple average of % column
+    const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
+    legacy.method = 'average';
+    return legacy;
   }
 
   function ttpAggregateTraceablePctFromCol_(rows, pctCol) {
@@ -12158,33 +12137,25 @@ function initDashboardApp() {
 
     if (cpoEl) {
       cpoEl.textContent = ttpFormatTraceablePct_(cpoAgg.value);
-      cpoEl.title = cpoAgg.method === 'imputed-sum' && cpoAgg.sumDen > 0
-        ? 'SUM(imputed traceable ton) ÷ SUM(' + cpoAgg.denCol + ') — same logic as Excel footer'
-          + '\nPer row: CPO Traceable Volume if filled; else CPO SUPPLY × %CPO ÷ 100'
-          + '\nRows with no volume and 0% CPO are excluded from the total (Excel filter).'
+      cpoEl.title = cpoAgg.method === 'direct-sum' && cpoAgg.sumDen > 0
+        ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ') — sheet footer formula'
           + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
-          + '\n(' + (cpoAgg.rowsFromVol || 0) + ' from volume · '
-          + (cpoAgg.rowsFromPct || 0) + ' from % imputed)'
-        : cpoAgg.method === 'sum' && cpoAgg.sumDen > 0
-        ? 'SUM(' + cpoAgg.numCol + ') ÷ SUM(' + cpoAgg.denCol + ')'
-          + '\n' + ttpFormatTtpTon_(cpoAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(cpoAgg.sumDen)
-          + ' ton = ' + ttpFormatTraceablePct_(cpoAgg.value)
-          + '\nCompare with total CPO Traceable & CPO SUPPLY to REFINERY columns in the sheet (same period).'
+          + '\n' + cpoAgg.rowsUsed + ' rows · includes 0%-traceable rows in denominator'
+        : cpoAgg.method === 'weighted-pct' && cpoAgg.sumDen > 0
+        ? 'Weighted avg of ' + (cpoAgg.pctCol || '% CPO TRACEABLE')
+          + ' by ' + (cpoAgg.denCol || 'CPO SUPPLY')
+          + '\n' + cpoAgg.rowsUsed + ' rows · ' + ttpFormatTtpTon_(cpoAgg.sumDen) + ' ton supply'
+          + ' = ' + ttpFormatTraceablePct_(cpoAgg.value)
         : 'No CPO traceable data for this period';
     }
     if (pkEl) {
       pkEl.textContent = ttpFormatTraceablePct_(pkAgg.value);
-      pkEl.title = pkAgg.method === 'imputed-sum' && pkAgg.sumDen > 0
-        ? 'SUM(imputed traceable ton) ÷ SUM(' + pkAgg.denCol + ')'
-          + '\nPer row: PK Traceable Volume if filled, else PK SUPPLY × %PK ÷ 100'
+      pkEl.title = pkAgg.method === 'direct-sum' && pkAgg.sumDen > 0
+        ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ') — sheet footer formula'
           + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
           + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
-          + '\n(' + (pkAgg.rowsFromVol || 0) + ' from volume · ' + (pkAgg.rowsFromPct || 0) + ' from % imputed)'
-        : pkAgg.method === 'sum' && pkAgg.sumDen > 0
-        ? 'SUM(' + pkAgg.numCol + ') ÷ SUM(' + pkAgg.denCol + ')'
-          + '\n' + ttpFormatTtpTon_(pkAgg.sumNum) + ' ÷ ' + ttpFormatTtpTon_(pkAgg.sumDen)
-          + ' ton = ' + ttpFormatTraceablePct_(pkAgg.value)
+          + '\n' + pkAgg.rowsUsed + ' rows · includes 0%-traceable rows in denominator'
         : pkAgg.method === 'weighted-pct' && pkAgg.sumDen > 0
         ? 'Weighted avg of ' + (pkAgg.pctCol || '% PK TRACEABLE')
           + ' by ' + (pkAgg.denCol || 'PK SUPPLY to KCP')
