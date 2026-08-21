@@ -11993,11 +11993,14 @@ function initDashboardApp() {
   }
 
   /**
-   * Sheet footer: SUMIF(traceableCol, ">0", traceableCol) ÷ SUMIF(traceableCol, ">0", supplyCol).
-   * Only rows where traceable volume > 0 contribute to both numerator AND denominator —
-   * matching the spreadsheet where 0%-traceable rows are blank in the formula column and
-   * therefore excluded from the supply denominator as well.
-   * Falls back to supply-weighted %col average when volume columns are unavailable.
+   * Sheet footer: SUM(traceable-vol col) ÷ SUM(supply col).
+   *
+   * CPO: numerator = SUM(AO where AO > 0); denominator = SUM(AH where AO > 0 OR %CPO > 0).
+   *   Rows with no traceable vol AND no % are excluded entirely.
+   *   Rows with %CPO > 0 but blank AO add supply to denominator only (no imputation).
+   *
+   * PK: original behaviour — rows with direct vol use that; rows with %PK but no vol
+   *   impute supply × %PK ÷ 100; ALL rows with PK supply count in denominator.
    */
   function ttpAggregateTotalTraceablePct_(rows, product) {
     const isCpo = product === 'cpo';
@@ -12006,41 +12009,65 @@ function initDashboardApp() {
     const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
     const dataRows = (rows || []).filter(ttpIsDataRow_);
 
-    // SUMIF(AO, ">0", AO) / SUMIF(AO, ">0", AH) — matches sheet footer
-    if (numCol && denCol) {
-      let sumNum = 0, sumDen = 0, rowsUsed = 0;
-      dataRows.forEach(function(row) {
-        const n = ttpParseNumber_(row[numCol]);
-        if (isNaN(n) || n <= 0) return;          // skip rows with no traceable volume
-        const d = ttpParseNumber_(row[denCol]);
-        if (isNaN(d) || d <= 0) return;
-        sumNum += n;
-        sumDen += d;
-        rowsUsed++;
-      });
-      if (sumDen > 0) {
-        return {
-          value: (sumNum / sumDen) * 100,
-          rowsUsed: rowsUsed,
-          method: 'direct-sum',
-          numCol: numCol,
-          denCol: denCol,
-          sumNum: sumNum,
-          sumDen: sumDen,
-        };
-      }
-    }
-
-    // Fallback: supply-weighted average of % column
-    if (denCol) {
+    if (!denCol) {
       const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
       if (!isNaN(weighted.value)) return weighted;
+      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
+      legacy.method = 'average';
+      return legacy;
     }
 
-    // Last resort: simple average of % column
-    const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
-    legacy.method = 'average';
-    return legacy;
+    let sumNum = 0;
+    let sumDen = 0;
+    let rowsFromVol = 0;
+    let rowsFromPct = 0;
+    let rowsWithDen = 0;
+    dataRows.forEach(function(row) {
+      const d = ttpParseNumber_(row[denCol]);
+      if (isNaN(d) || d <= 0) return;
+      const n = numCol ? ttpParseNumber_(row[numCol]) : NaN;
+      const p = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
+      const hasVol = numCol && !isNaN(n) && n > 0;
+      const hasPct = ttpRowHasTracePct_(p);
+
+      // CPO: skip rows that have neither traceable volume nor a positive % (truly no CPO data)
+      if (isCpo && !hasVol && !hasPct) return;
+
+      if (hasVol) {
+        sumNum += n;
+        rowsFromVol++;
+      } else if (!isCpo && hasPct) {
+        // PK only: impute supply × % when no direct traceable vol column
+        sumNum += d * p / 100;
+        rowsFromPct++;
+      }
+      // CPO with hasPct but no vol: supply goes to denominator, no numerator imputation
+
+      sumDen += d;
+      rowsWithDen++;
+    });
+
+    if (!sumDen || (!rowsFromVol && !rowsFromPct)) {
+      const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
+      if (!isNaN(weighted.value)) return weighted;
+      const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
+      legacy.method = 'average';
+      return legacy;
+    }
+
+    return {
+      value: (sumNum / sumDen) * 100,
+      rowsUsed: dataRows.length,
+      rowsFromVol: rowsFromVol,
+      rowsFromPct: rowsFromPct,
+      rowsWithDen: rowsWithDen,
+      totalRows: dataRows.length,
+      method: 'direct-sum',
+      numCol: numCol || pctCol,
+      denCol: denCol,
+      sumNum: sumNum,
+      sumDen: sumDen,
+    };
   }
 
   function ttpAggregateTraceablePctFromCol_(rows, pctCol) {
