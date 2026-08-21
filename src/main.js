@@ -11993,23 +11993,28 @@ function initDashboardApp() {
   }
 
   /**
-   * Sheet footer: SUM(traceable-vol col) ÷ SUM(supply col).
+   * Replicates the sheet footer formulas exactly:
+   *   CPO % = SUM(AO4:AO1861)           / SUMIF(B4:B1861, 2025, AH4:AH1861)
+   *   PK  % = SUM(AN4:AN1861)           / SUMIF(B4:B1861, 2025, AF4:AF1861)
    *
-   * CPO: numerator = SUM(AO where AO > 0); denominator = SUM(AH where AO > 0 OR %CPO > 0).
-   *   Rows with no traceable vol AND no % are excluded entirely.
-   *   Rows with %CPO > 0 but blank AO add supply to denominator only (no imputation).
-   *
-   * PK: original behaviour — rows with direct vol use that; rows with %PK but no vol
-   *   impute supply × %PK ÷ 100; ALL rows with PK supply count in denominator.
+   * Both numerator and denominator use ONLY rows where a year was explicitly
+   * detected (ttpYearToken_ != '').  Un-yeard rows come from other years whose
+   * supply inflates the denominator — the sheet SUMIF skips them.
    */
   function ttpAggregateTotalTraceablePct_(rows, product) {
     const isCpo = product === 'cpo';
     const numCol = isCpo ? ttpCpoTraceVolCol : ttpPkTraceVolCol;
     const denCol = isCpo ? ttpCpoTraceDenomCol : ttpPkTraceDenomCol;
     const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
-    const dataRows = (rows || []).filter(ttpIsDataRow_);
 
-    if (!denCol) {
+    // SUMIF semantics: restrict to rows that have an explicit year tag.
+    // rows comes from ttpGetPeriodRows_() which already keeps only the selected
+    // year OR un-yeard rows; we drop the un-yeard ones here to match SUMIF.
+    const dataRows = (rows || [])
+      .filter(ttpIsDataRow_)
+      .filter(function(r) { return !!ttpYearToken_(r); });
+
+    if (!denCol || !numCol) {
       const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
       if (!isNaN(weighted.value)) return weighted;
       const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
@@ -12017,37 +12022,20 @@ function initDashboardApp() {
       return legacy;
     }
 
+    // SUM(numCol) / SUM(denCol) — no year filter needed inside (already applied above)
     let sumNum = 0;
     let sumDen = 0;
-    let rowsFromVol = 0;
-    let rowsFromPct = 0;
-    let rowsWithDen = 0;
+    let rowsUsed = 0;
     dataRows.forEach(function(row) {
       const d = ttpParseNumber_(row[denCol]);
       if (isNaN(d) || d <= 0) return;
-      const n = numCol ? ttpParseNumber_(row[numCol]) : NaN;
-      const p = ttpNormalizePctNumber_(ttpParsePctValue_(row[pctCol]));
-      const hasVol = numCol && !isNaN(n) && n > 0;
-      const hasPct = ttpRowHasTracePct_(p);
-
-      // CPO: skip rows that have neither traceable volume nor a positive % (truly no CPO data)
-      if (isCpo && !hasVol && !hasPct) return;
-
-      if (hasVol) {
-        sumNum += n;
-        rowsFromVol++;
-      } else if (!isCpo && hasPct) {
-        // PK only: impute supply × % when no direct traceable vol column
-        sumNum += d * p / 100;
-        rowsFromPct++;
-      }
-      // CPO with hasPct but no vol: supply goes to denominator, no numerator imputation
-
+      const n = ttpParseNumber_(row[numCol]);
+      sumNum += (isNaN(n) || n < 0) ? 0 : n;
       sumDen += d;
-      rowsWithDen++;
+      rowsUsed++;
     });
 
-    if (!sumDen || (!rowsFromVol && !rowsFromPct)) {
+    if (!sumDen) {
       const weighted = ttpAggregateSupplyWeightedPct_(dataRows, pctCol, denCol);
       if (!isNaN(weighted.value)) return weighted;
       const legacy = ttpAggregateTraceablePctFromCol_(dataRows, pctCol);
@@ -12057,13 +12045,9 @@ function initDashboardApp() {
 
     return {
       value: (sumNum / sumDen) * 100,
-      rowsUsed: dataRows.length,
-      rowsFromVol: rowsFromVol,
-      rowsFromPct: rowsFromPct,
-      rowsWithDen: rowsWithDen,
-      totalRows: dataRows.length,
+      rowsUsed: rowsUsed,
       method: 'direct-sum',
-      numCol: numCol || pctCol,
+      numCol: numCol,
       denCol: denCol,
       sumNum: sumNum,
       sumDen: sumDen,
