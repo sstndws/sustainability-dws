@@ -11993,9 +11993,10 @@ function initDashboardApp() {
   }
 
   /**
-   * Sheet footer formula: SUM(traceable-vol col) ÷ SUM(supply col) for the period.
-   * Matches e.g. SUM(AO) / SUM(AH) for CPO and SUM(AN) / SUM(AF) for PK.
-   * All rows with supply > 0 are included (even 0-traceable rows), matching SUMIF behaviour.
+   * Sheet footer: SUMIF(traceableCol, ">0", traceableCol) ÷ SUMIF(traceableCol, ">0", supplyCol).
+   * Only rows where traceable volume > 0 contribute to both numerator AND denominator —
+   * matching the spreadsheet where 0%-traceable rows are blank in the formula column and
+   * therefore excluded from the supply denominator as well.
    * Falls back to supply-weighted %col average when volume columns are unavailable.
    */
   function ttpAggregateTotalTraceablePct_(rows, product) {
@@ -12005,14 +12006,15 @@ function initDashboardApp() {
     const pctCol = isCpo ? ttpPctCol : ttpPkPctCol;
     const dataRows = (rows || []).filter(ttpIsDataRow_);
 
-    // Direct SUM(traceable) / SUM(supply) — exact match to sheet footer formula
+    // SUMIF(AO, ">0", AO) / SUMIF(AO, ">0", AH) — matches sheet footer
     if (numCol && denCol) {
       let sumNum = 0, sumDen = 0, rowsUsed = 0;
       dataRows.forEach(function(row) {
+        const n = ttpParseNumber_(row[numCol]);
+        if (isNaN(n) || n <= 0) return;          // skip rows with no traceable volume
         const d = ttpParseNumber_(row[denCol]);
         if (isNaN(d) || d <= 0) return;
-        const n = ttpParseNumber_(row[numCol]);
-        sumNum += (isNaN(n) ? 0 : n);
+        sumNum += n;
         sumDen += d;
         rowsUsed++;
       });
