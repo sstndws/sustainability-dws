@@ -22850,23 +22850,29 @@ function initDashboardApp() {
 
   // ─── PERFORMA FACILITY ────────────────────────────────────────────────────────
   (function setupPerformaFacility_() {
+    /** Wide default range plus years from Mill Onboarding (same idea as Monthly Report). */
+    function pfCollectAvailableYears_() {
+      const years = new Set();
+      const now = new Date().getFullYear();
+      for (let y = now + 1; y >= 2000; y--) years.add(String(y));
+      (allData || []).concat(allDataWaste || []).forEach(function(r) {
+        const y = parseMillYearSort(millYearVal(r));
+        if (y >= 2000 && y <= 2100) years.add(String(y));
+      });
+      return Array.from(years).sort(function(a, b) { return Number(b) - Number(a); });
+    }
+
     function pfPopulateYears_() {
       const sel = document.getElementById('pfYearSel');
       if (!sel) return;
-      const existing = Array.from(sel.options).map(function(o) { return o.value; });
-      const years = new Set();
-      (allData || []).forEach(function(r) {
-        const y = String(millYearVal(r) || '').trim();
-        if (y) years.add(y);
-      });
-      Array.from(years).sort(function(a, b) { return Number(b) - Number(a); }).forEach(function(y) {
-        if (existing.indexOf(y) === -1) {
-          const opt = document.createElement('option');
-          opt.value = y;
-          opt.textContent = y;
-          sel.appendChild(opt);
-        }
-      });
+      const prev = String(sel.value || '').trim();
+      const years = pfCollectAvailableYears_();
+      sel.innerHTML = '<option value="">All</option>'
+        + years.map(function(y) {
+          return '<option value="' + escAttr_(y) + '">' + escHtml(y) + '</option>';
+        }).join('');
+      if (prev === '') sel.value = '';
+      else if (years.indexOf(prev) >= 0) sel.value = prev;
     }
 
     function pfIsValidFacilityName_(name) {
@@ -23528,23 +23534,28 @@ function initDashboardApp() {
       return rowNorm === filterNorm;
     }
 
-    /** Newest Month + Year found in Mill Onboarding (allData). */
+    /** Newest Month + Year found in Mill Onboarding (allData); year-only fallback when month missing. */
     function pfDetectLatestMillPeriod_() {
       let bestY = 0;
       let bestM = 0;
+      let bestYOnly = 0;
       (allData || []).forEach(function(r) {
         const y = parseMillYearSort(millYearVal(r));
         const m = parseMillMonthSort(millMonthVal(r));
+        if (y > bestYOnly) bestYOnly = y;
         if (!y || !m) return;
         if (y > bestY || (y === bestY && m > bestM)) {
           bestY = y;
           bestM = m;
         }
       });
-      return {
-        year: bestY ? String(bestY) : '',
-        month: bestM ? String(bestM) : '',
-      };
+      if (bestY) {
+        return { year: String(bestY), month: String(bestM) };
+      }
+      if (bestYOnly) {
+        return { year: String(bestYOnly), month: '' };
+      }
+      return { year: String(new Date().getFullYear()), month: '' };
     }
 
     function pfGetPeriodFilters_() {
@@ -23717,6 +23728,7 @@ function initDashboardApp() {
         ySel.value = latest.year;
       }
       if (latest.month) mSel.value = String(latest.month);
+      else mSel.value = '';
       _pfDefaultPeriodApplied = true;
     }
 
