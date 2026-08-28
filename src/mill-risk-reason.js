@@ -132,7 +132,22 @@ function isNonApl_(row) {
   return false;
 }
 
+/**
+ * Waste-only rows (Product Supply = POME ISCC/INS/Shell, no CPO/PK) come from
+ * the Waste Product onboarding sheet, which has no NDPE Commitment column at
+ * all — a blank NDPE field there is not a real gap, just a field that was
+ * never collected.
+ */
+function isWasteOnlyProductSupply_(row) {
+  const ps = pickRowField_(row, ['PRODUCT SUPPLY']).toUpperCase();
+  if (!ps) return false;
+  const hasMain = /\bCPO\b/.test(ps) || /\bPK\b/.test(ps);
+  const hasWaste = ps.indexOf('POME') >= 0 || ps.indexOf('SHELL') >= 0 || ps.indexOf('GGL') >= 0;
+  return hasWaste && !hasMain;
+}
+
 function hasNoNdpe_(row) {
+  if (isWasteOnlyProductSupply_(row)) return false;
   const v = pickRowField_(row, FIELD_ALIASES.ndpe);
   if (isBlankCell_(v)) return true;
   return isExplicitNo_(v);
