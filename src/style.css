@@ -2995,6 +2995,11 @@
    .mill-risk-reason-pill-list--profile {
      margin-top: 2px;
    }
+   .mill-risk-reason-pill-list--profile .mill-risk-reason-pill {
+     white-space: normal;
+     text-align: left;
+     max-width: 100%;
+   }
    .mp-metric-sub--risk-reason {
      margin-top: 6px;
      max-width: 42ch;
