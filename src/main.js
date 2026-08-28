@@ -8332,7 +8332,8 @@ function initDashboardApp() {
     if (s.includes('deforest')) return 'mill-risk-reason-pill--deforest';
     if (s.includes('grievance')) return 'mill-risk-reason-pill--grievance';
     if (s.includes('coordinate') || s.includes('legality') || s.includes('apl')
-      || s.includes('ndpe') || s.includes('certification')) {
+      || s.includes('ndpe') || s.includes('certification') || s.includes('certificate')
+      || s.includes('over supply') || s.includes('ghg') || s.includes('declaration')) {
       return 'mill-risk-reason-pill--gap';
     }
     return 'mill-risk-reason-pill--other';

@@ -36,10 +36,17 @@ const FIELD_ALIASES = {
   environmentGrievance: [
     'ENVIRONMENT GRIEVANCE', 'ENVIRONMENT GRIEVANCES', 'ENVIRONMENT', 'Environment',
   ],
+  pctSupplyPome: ['PERCENTAGE SUPPLY ISCC', 'PERCENTAGE SUPPLY POME', '% SUPPLY ISCC'],
+  pctSupplyShell: ['PERCENTAGE SUPPLY SHELL', '% SUPPLY SHELL'],
+  ghgValue: ['GHG VALUE', 'GHG Value'],
+  declaration: ['DECLARATION MONITORING', 'Declaration Monitoring'],
 };
 
 /** Ha threshold aligned with mill form Medium tier for deforestation width. */
 const HIGH_DEFORESTATION_HA = 25;
+
+/** Waste sheet's own AN formula: IF(GHG < 35, 1, 0) — 35+ loses the point. */
+const HIGH_GHG_VALUE_THRESHOLD = 35;
 
 function pickRowField_(row, keys) {
   if (!row || typeof row !== 'object') return '';
@@ -133,21 +140,34 @@ function isNonApl_(row) {
 }
 
 /**
- * Waste-only rows (Product Supply = POME ISCC/INS/Shell, no CPO/PK) come from
- * the Waste Product onboarding sheet, which has no NDPE Commitment column at
- * all — a blank NDPE field there is not a real gap, just a field that was
- * never collected.
+ * Waste-only rows come from the Waste Product onboarding sheet. Its own
+ * RESULT RISK LEVEL formula (AN = IF(GHG<35,1,0) + over-supply-ok +
+ * TOTAL CERTIFICATION + Declaration + IF(Compliment="C",1,0)) never
+ * references Legality/HGU/APL/NDPE/Deforestation/Grievance at all — those
+ * fields aren't even collected on this sheet — so the generic mill gap
+ * checks below must not run against waste-only rows.
+ *
+ * Detection is structural first (GHG VALUE / MAX SUPPLY POME only exist as
+ * keys on rows read from the Waste sheet, even when their value is blank —
+ * PRODUCT SUPPLY text alone is unreliable since that formula can render
+ * blank before any supply is entered) then confirmed by the absence of any
+ * CPO/PK involvement, so a company merged with a real main mill profile
+ * (which does have NDPE/legality data) still gets the main gap checks.
  */
 function isWasteOnlyProductSupply_(row) {
+  if (!row || typeof row !== 'object') return false;
+  const hasWasteShape = Object.prototype.hasOwnProperty.call(row, 'GHG VALUE')
+    || Object.prototype.hasOwnProperty.call(row, 'PERCENTAGE SUPPLY ISCC')
+    || Object.prototype.hasOwnProperty.call(row, 'MAX SUPPLY POME');
+  if (!hasWasteShape) return false;
   const ps = pickRowField_(row, ['PRODUCT SUPPLY']).toUpperCase();
-  if (!ps) return false;
-  const hasMain = /\bCPO\b/.test(ps) || /\bPK\b/.test(ps);
-  const hasWaste = ps.indexOf('POME') >= 0 || ps.indexOf('SHELL') >= 0 || ps.indexOf('GGL') >= 0;
-  return hasWaste && !hasMain;
+  const hasMain = /\bCPO\b/.test(ps) || /\bPK\b/.test(ps)
+    || !isBlankCell_(pickRowField_(row, ['SUPPLY CPO']))
+    || !isBlankCell_(pickRowField_(row, ['SUPPLY PK']));
+  return !hasMain;
 }
 
 function hasNoNdpe_(row) {
-  if (isWasteOnlyProductSupply_(row)) return false;
   const v = pickRowField_(row, FIELD_ALIASES.ndpe);
   if (isBlankCell_(v)) return true;
   return isExplicitNo_(v);
@@ -177,11 +197,71 @@ function grievanceYes_(row, aliases) {
   return false;
 }
 
+/** "51,99%" / "279,41%" (Indonesian comma-decimal display) or a raw 0–1 fraction → percent number. */
+function parseWastePercent_(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s || s.indexOf('#') === 0) return NaN;
+  const hasPercentSign = s.indexOf('%') >= 0;
+  let cleaned = s.replace(/%/g, '').replace(/\s/g, '');
+  if (/,\d+$/.test(cleaned)) cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  else cleaned = cleaned.replace(/,/g, '');
+  const n = parseFloat(cleaned);
+  if (!Number.isFinite(n)) return NaN;
+  return hasPercentSign ? n : n * 100;
+}
+
+/** GHG VALUE cells use plain period-decimal numbers ("16.33"), not the comma format above. */
+function parseWasteNumber_(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s || s.indexOf('#') === 0) return NaN;
+  const n = parseFloat(s.replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** AD = Total POME Supply / Max Supply POME; sheet's AJ point requires AD < 100%. */
+function hasOverSupplyPome_(row) {
+  const n = parseWastePercent_(pickRowField_(row, FIELD_ALIASES.pctSupplyPome));
+  return Number.isFinite(n) && n > 100;
+}
+
+/** AH = Supply Shell / Max Supply Shell; sheet's AJ point requires AH < 100%. */
+function hasOverSupplyShell_(row) {
+  const n = parseWastePercent_(pickRowField_(row, FIELD_ALIASES.pctSupplyShell));
+  return Number.isFinite(n) && n > 100;
+}
+
+/** AK GHG Value; sheet's AN formula awards a point only when GHG < 35. */
+function hasHighGhgValue_(row) {
+  const n = parseWasteNumber_(pickRowField_(row, FIELD_ALIASES.ghgValue));
+  return Number.isFinite(n) && n > HIGH_GHG_VALUE_THRESHOLD;
+}
+
 /**
- * Collect Risk / Pengurangan phrases from the sheet row (handwritten mapping).
- * @returns {string[]}
+ * AL Declaration Monitoring: 0 = declaration filed late (risk), 1 = on time
+ * (safe), blank = the SD Monitoring lookup hasn't matched anything yet
+ * (monitoring not running for this row) — not itself a risk signal.
  */
-export function millRiskReasonGaps_(row) {
+function isDeclarationLate_(row) {
+  const raw = pickRowField_(row, FIELD_ALIASES.declaration);
+  if (isBlankCell_(raw)) return false;
+  const n = parseWasteNumber_(raw);
+  return n === 0;
+}
+
+/** Waste Product sheet's own risk gaps — mirrors its AN/AO scoring formula exactly. */
+function wasteRiskReasonGaps_(row) {
+  const gaps = [];
+  if (!hasValidCoordinate_(row)) gaps.push('No Coordinate');
+  if (hasNoCertification_(row)) gaps.push('No Certificate');
+  if (hasOverSupplyPome_(row)) gaps.push('Over Supply POME');
+  if (hasOverSupplyShell_(row)) gaps.push('Over Supply Shell');
+  if (hasHighGhgValue_(row)) gaps.push('High GHG Value');
+  if (isDeclarationLate_(row)) gaps.push('Declaration Late');
+  return gaps;
+}
+
+/** Main Mill Onboarding sheet's risk gaps (Legality, HGU/HGB, APL, NDPE, Deforestation, Grievance). */
+function mainRiskReasonGaps_(row) {
   const gaps = [];
   if (!hasValidCoordinate_(row)) gaps.push('No Coordinate');
   if (legalityNotComplete_(row)) gaps.push('Legality Not Complete');
@@ -209,6 +289,14 @@ export function millRiskReasonGaps_(row) {
   }
 
   return gaps;
+}
+
+/**
+ * Collect Risk / Pengurangan phrases from the sheet row (handwritten mapping).
+ * @returns {string[]}
+ */
+export function millRiskReasonGaps_(row) {
+  return isWasteOnlyProductSupply_(row) ? wasteRiskReasonGaps_(row) : mainRiskReasonGaps_(row);
 }
 
 export function millResolvedRiskLevelFromRow_(row) {
