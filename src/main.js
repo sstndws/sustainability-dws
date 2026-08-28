@@ -8333,7 +8333,8 @@ function initDashboardApp() {
     if (s.includes('grievance')) return 'mill-risk-reason-pill--grievance';
     if (s.includes('coordinate') || s.includes('legality') || s.includes('apl')
       || s.includes('ndpe') || s.includes('certification') || s.includes('certificate')
-      || s.includes('over supply') || s.includes('ghg') || s.includes('declaration')) {
+      || s.includes('over supply') || s.includes('ghg') || s.includes('declaration')
+      || s.includes('compliment')) {
       return 'mill-risk-reason-pill--gap';
     }
     return 'mill-risk-reason-pill--other';

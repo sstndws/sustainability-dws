@@ -248,15 +248,35 @@ function isDeclarationLate_(row) {
   return n === 0;
 }
 
+/**
+ * Waste sheet's AN formula adds TOTAL CERTIFICATION (V) directly, not the
+ * CERTIFICATION text list — a company can have certificates listed in text
+ * while TOTAL CERTIFICATION still scores 0, and that 0 is what actually
+ * drives its RESULT RISK LEVEL down. Read the score column itself.
+ */
+function hasNoCertificateWaste_(row) {
+  const total = pickRowField_(row, FIELD_ALIASES.totalCertification);
+  if (isBlankCell_(total)) return false;
+  const n = parseTotalScore_(total);
+  return n === 0;
+}
+
+/** Waste sheet's AN formula: IF(Compliment="C",1,0) — anything else loses the point. */
+function isNotCompliment_(row) {
+  const code = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
+  return code !== 'C';
+}
+
 /** Waste Product sheet's own risk gaps — mirrors its AN/AO scoring formula exactly. */
 function wasteRiskReasonGaps_(row) {
   const gaps = [];
   if (!hasValidCoordinate_(row)) gaps.push('No Coordinate');
-  if (hasNoCertification_(row)) gaps.push('No Certificate');
+  if (hasNoCertificateWaste_(row)) gaps.push('No Certificate');
   if (hasOverSupplyPome_(row)) gaps.push('Over Supply POME');
   if (hasOverSupplyShell_(row)) gaps.push('Over Supply Shell');
   if (hasHighGhgValue_(row)) gaps.push('High GHG Value');
   if (isDeclarationLate_(row)) gaps.push('Declaration Late');
+  if (isNotCompliment_(row)) gaps.push('Not Compliment');
   return gaps;
 }
 
