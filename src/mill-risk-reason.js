@@ -382,6 +382,11 @@ export function millRiskReasonTokens_(row, opts) {
 
   if (tokens.length) return tokens;
 
+  // Waste-only rows only ever explain via the specific waste gaps above — no
+  // generic "Assessment outcome" filler, even when none of those gaps fired
+  // (e.g. Declaration Monitoring hasn't synced a value yet on this row).
+  if (isWasteOnlyProductSupply_(row)) return [];
+
   if (!resolved) return [];
   const compliment = normalizeComplimentCode_(pickRowField_(row, FIELD_ALIASES.compliment));
   const totalScore = parseTotalScore_(pickRowField_(row, FIELD_ALIASES.totalScore));
