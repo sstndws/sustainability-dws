@@ -6890,7 +6890,7 @@ function initDashboardApp() {
     if (sk > 0) return millMergeRegistrySupplyRows_(existing, incoming);
     // Same company + month + year but period key unparseable — still merge POME ISCC/INS split rows.
     if (millGeneralStrictMergeKey_(existing) === millGeneralStrictMergeKey_(incoming)
-      && millGeneralStrictMergeKey_(existing) !== '\u0001\u0001') {
+      && millGeneralStrictMergeKey_(existing) !== '\u0001\u0001\u0001') {
       return millMergeRegistrySupplyRows_(existing, incoming);
     }
     return (incoming._row || 0) > (existing._row || 0) ? incoming : existing;
@@ -9878,10 +9878,21 @@ function initDashboardApp() {
     return y ? String(y) : String(millYearVal(row) || '').toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  /** Kunci gabungan General: company + bulan + tahun (exact — no wildcard). */
+  /** Mill/plant identity for merge keys — blank when no distinct mill name so unnamed rows still merge as before. */
+  function millGeneralMillKey_(row) {
+    return millRegistryMillNameToken_(row).toLowerCase();
+  }
+
+  /**
+   * Kunci gabungan General: company + mill/plant + bulan + tahun (exact — no wildcard).
+   * Mill/plant is required so two different plants sharing the same Company Name
+   * in the same month/year are never merged into one row (qty and GHG Value must
+   * stay per-plant, not blended from whichever row happens to be primary).
+   */
   function millGeneralStrictMergeKey_(row) {
     return [
       millGeneralCompanyKey_(row),
+      millGeneralMillKey_(row),
       millGeneralMonthKey_(row),
       millGeneralYearKey_(row),
     ].join('\u0001');
