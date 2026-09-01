@@ -5619,10 +5619,12 @@ function initDashboardApp() {
         ],
       },
       {
+        // Supply ISCC/INS/Total POME Supply moved to the header Quantity card
+        // and the Facility fields below (per-facility qty) — showing them
+        // again here just duplicated the same numbers.
         title: 'Supply POME',
         fields: [
-          ['SUPPLY ISCC', 'Supply POME ISCC'], ['SUPPLY INS', 'Supply POME INS'],
-          ['TOTAL POME SUPPLY', 'Total POME Supply'], ['MAX SUPPLY POME', 'Max Supply POME'],
+          ['MAX SUPPLY POME', 'Max Supply POME'],
           ['REMAINING STOCK POME', 'Remaining Stock POME'], ['PERCENTAGE SUPPLY ISCC', 'Percentage Supply ISCC'],
         ],
       },
@@ -9836,8 +9838,17 @@ function initDashboardApp() {
       push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
       push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']);
-    push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']);
+    // TOTAL POME SUPPLY is the sheet's own SUM of ISCC+INS across every facility
+    // row for this mill/month — prefer it so a mill supplying several facilities
+    // shows its real monthly total instead of just one facility's ISCC/INS slice
+    // (whichever row happened to be picked as "primary" when rows were merged).
+    const totalPomeRaw = millPickRawField_(row, ['TOTAL POME SUPPLY', 'Total POME Supply']);
+    if (millParseSupplyQty_(totalPomeRaw) > 0) {
+      parts.push('POME: ' + millFormatSupplyQtyDisplay_(totalPomeRaw));
+    } else {
+      push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']);
+      push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']);
+    }
     push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']);
     return parts.join('; ');
   }
@@ -10082,6 +10093,51 @@ function initDashboardApp() {
       return ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply SHELL', 'Supply POME SHELL'];
     }
     return [];
+  }
+
+  function millWasteFacilityNameField_(kind) {
+    const k = String(kind || '').trim().toUpperCase();
+    if (k === 'ISCC' || k === 'POME_ISCC' || k === 'POME ISCC') return 'FACILITY NAME ISCC';
+    if (k === 'INS' || k === 'POME_INS' || k === 'POME INS') return 'FACILITY NAME INS';
+    if (k === 'SHELL' || k === 'SHELL_GGL' || k === 'SHELL GGL') return 'FACILITY NAME SHELL';
+    return '';
+  }
+
+  /**
+   * "Facility: qty" per source row — a mill can supply several facilities in
+   * the same month, and each pre-merge member row carries one facility's own
+   * name + qty. Reading _millGeneralMergeSources (set when rows were merged
+   * by company+mill+period) shows how much actually went to each facility,
+   * instead of a bare joined name list with no numbers.
+   */
+  function millWasteFacilityQtyText_(row, kind) {
+    const facilityField = millWasteFacilityNameField_(kind);
+    if (!facilityField || !row) return '';
+    const members = (row._millGeneralMergeSources && row._millGeneralMergeSources.length)
+      ? row._millGeneralMergeSources
+      : [row];
+    const order = [];
+    const byKey = new Map();
+    members.forEach(function(m) {
+      const raw = String((m && m[facilityField]) || '').trim();
+      if (!raw || raw === '—' || raw === '-') return;
+      const qty = millWasteSupplyQty_(m, kind);
+      raw.split(/[,;/]+/).forEach(function(part) {
+        const name = part.trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!byKey.has(key)) {
+          byKey.set(key, { name: name, qty: 0 });
+          order.push(key);
+        }
+        byKey.get(key).qty += qty;
+      });
+    });
+    if (!order.length) return '';
+    return order.map(function(key) {
+      const entry = byKey.get(key);
+      return entry.qty > 0 ? (entry.name + ': ' + millFormatSupplyQtyDisplay_(entry.qty)) : entry.name;
+    }).join('; ');
   }
 
   function millWasteSupplyCellText_(row, kind) {
@@ -10886,6 +10942,9 @@ function initDashboardApp() {
               val = millProfileComplimentFromRow_(d);
             } else if (key === 'MILL CAPACITY' || key === 'MILL CAPACITY (TON/HOUR)') {
               val = millCapacityFromRow_(d) || millProfileResolveField_(d, key);
+            } else if (key === 'FACILITY NAME ISCC' || key === 'FACILITY NAME INS' || key === 'FACILITY NAME SHELL') {
+              const kindMap = { 'FACILITY NAME ISCC': 'ISCC', 'FACILITY NAME INS': 'INS', 'FACILITY NAME SHELL': 'SHELL' };
+              val = millWasteFacilityQtyText_(d, kindMap[key]) || millProfileResolveField_(d, key);
             } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
               || key === 'TOTAL POME SUPPLY' || key === 'MAX SUPPLY POME' || key === 'REMAINING STOCK POME'
               || key === 'MAX SUPPLY SHELL' || key === 'REMAINING STOCK SHELL'
