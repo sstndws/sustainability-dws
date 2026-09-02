@@ -9823,6 +9823,27 @@ function initDashboardApp() {
     ).join('; ');
   }
 
+  /** Pre-merge source rows for a (possibly merged) mill/waste row — falls back to the row itself. */
+  function millWasteMergeMembers_(row) {
+    if (!row) return [];
+    return (row._millGeneralMergeSources && row._millGeneralMergeSources.length) ? row._millGeneralMergeSources : [row];
+  }
+
+  /**
+   * True monthly POME total = SUM(SUPPLY ISCC) + SUM(SUPPLY INS) across every
+   * merged member row. The sheet's own TOTAL POME SUPPLY column is a per-row
+   * formula — a mill supplying several facilities has that number split
+   * across separate physical rows (each with only ISCC or only INS filled),
+   * so no single row's TOTAL POME SUPPLY reflects the true combined total.
+   */
+  function millWastePomeTotalQty_(row) {
+    let total = 0;
+    millWasteMergeMembers_(row).forEach(function(m) {
+      total += millWasteSupplyQty_(m, 'ISCC') + millWasteSupplyQty_(m, 'INS');
+    });
+    return total;
+  }
+
   function millBuildQtySummaryFromRow_(row) {
     if (!row) return '';
     const parts = [];
@@ -9838,16 +9859,9 @@ function initDashboardApp() {
       push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
       push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    // TOTAL POME SUPPLY is the sheet's own SUM of ISCC+INS across every facility
-    // row for this mill/month — prefer it so a mill supplying several facilities
-    // shows its real monthly total instead of just one facility's ISCC/INS slice
-    // (whichever row happened to be picked as "primary" when rows were merged).
-    const totalPomeRaw = millPickRawField_(row, ['TOTAL POME SUPPLY', 'Total POME Supply']);
-    if (millParseSupplyQty_(totalPomeRaw) > 0) {
-      parts.push('POME: ' + millFormatSupplyQtyDisplay_(totalPomeRaw));
-    } else {
-      push('POME ISCC', ['SUPPLY ISCC', 'Supply ISCC', 'SUPPLY_ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC']);
-      push('POME INS', ['SUPPLY INS', 'Supply INS', 'SUPPLY_INS', 'SUPPLY POME INS', 'Supply POME INS']);
+    const pomeTotal = millWastePomeTotalQty_(row);
+    if (pomeTotal > 0) {
+      parts.push('POME: ' + millFormatSupplyQtyDisplay_(pomeTotal));
     }
     push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']);
     return parts.join('; ');
@@ -10113,25 +10127,22 @@ function initDashboardApp() {
   function millWasteFacilityQtyText_(row, kind) {
     const facilityField = millWasteFacilityNameField_(kind);
     if (!facilityField || !row) return '';
-    const members = (row._millGeneralMergeSources && row._millGeneralMergeSources.length)
-      ? row._millGeneralMergeSources
-      : [row];
     const order = [];
     const byKey = new Map();
-    members.forEach(function(m) {
-      const raw = String((m && m[facilityField]) || '').trim();
-      if (!raw || raw === '—' || raw === '-') return;
+    millWasteMergeMembers_(row).forEach(function(m) {
+      // Keep each member row's facility name whole (never split a single
+      // row's own cell text) — a row can legitimately read "EUP - TD; EUP -
+      // LG" as one compound name, and splitting it would duplicate that row's
+      // qty onto both halves instead of showing it once, correctly.
+      const name = String((m && m[facilityField]) || '').trim();
+      if (!name || name === '—' || name === '-') return;
       const qty = millWasteSupplyQty_(m, kind);
-      raw.split(/[,;/]+/).forEach(function(part) {
-        const name = part.trim();
-        if (!name) return;
-        const key = name.toLowerCase();
-        if (!byKey.has(key)) {
-          byKey.set(key, { name: name, qty: 0 });
-          order.push(key);
-        }
-        byKey.get(key).qty += qty;
-      });
+      const key = name.toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, { name: name, qty: 0 });
+        order.push(key);
+      }
+      byKey.get(key).qty += qty;
     });
     if (!order.length) return '';
     return order.map(function(key) {
