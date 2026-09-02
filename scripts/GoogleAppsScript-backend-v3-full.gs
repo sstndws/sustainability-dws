@@ -4736,7 +4736,15 @@ function addRow(sheetKey, data, insertAfter) {
       var v = sdPickValue_(patch, headers, h);
       return coerceSheetDateValue_(v !== undefined ? v : '');
     });
-    const targetRow = Math.max(sheet.getLastRow(), 1) + 1;
+    var targetRow;
+    // insertAfter: used for an extra Apostille/SD Number row — insert it right
+    // below the row it belongs with instead of always appending at sheet end.
+    if (insertAfter != null && insertAfter !== '' && Number(insertAfter) >= 1) {
+      targetRow = Number(insertAfter) + 1;
+      sheet.insertRowAfter(Number(insertAfter));
+    } else {
+      targetRow = Math.max(sheet.getLastRow(), 1) + 1;
+    }
     sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
     sdRestoreFormulaColumnsGs_(sheet, headers, targetRow);
     return { success: true, row: targetRow };

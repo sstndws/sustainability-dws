@@ -533,18 +533,27 @@ export function createSdMonitoringController_(deps) {
       // First SD Number: updates the existing row in edit mode, or creates
       // the first row in add mode — same as before, full data including qty.
       const firstPayload = Object.assign({}, split.shared, split.pairs[0]);
+      // anchorRow tracks where the *next* extra row should be inserted, so
+      // every additional Apostille lands right below the previous one —
+      // never appended at the end of the whole sheet.
+      let anchorRow = 0;
       if (editRowNum >= 2) {
         await apiPost({ action: 'update', sheet: SD_SHEET_KEY, row: editRowNum, data: firstPayload }, opts);
+        anchorRow = editRowNum;
       } else {
-        await apiPost({ action: 'add', sheet: SD_SHEET_KEY, data: firstPayload }, opts);
+        const res = await apiPost({ action: 'add', sheet: SD_SHEET_KEY, data: firstPayload }, opts);
+        anchorRow = (res && res.row) ? Number(res.row) : 0;
       }
-      // Extra Apostille numbers: always a brand-new row each — same
-      // Company/DO/Contract/dates, but Mill Netto / Netto Bulking left blank
-      // so the sheet's supply totals don't count this contract's quantity twice.
+      // Extra Apostille numbers: always a brand-new row each, inserted right
+      // after the row before it — same Company/DO/Contract/dates, but Mill
+      // Netto / Netto Bulking left blank so supply totals don't double-count.
       for (let i = 1; i < split.pairs.length; i++) {
         const extraPayload = Object.assign({}, split.shared, split.pairs[i]);
         SD_NO_DUPLICATE_QTY_FIELDS.forEach(function(f) { extraPayload[f] = ''; });
-        await apiPost({ action: 'add', sheet: SD_SHEET_KEY, data: extraPayload }, opts);
+        const body = { action: 'add', sheet: SD_SHEET_KEY, data: extraPayload };
+        if (anchorRow >= 2) body.insertAfter = anchorRow;
+        const res = await apiPost(body, opts);
+        if (res && res.row) anchorRow = Number(res.row);
       }
       closeSdFormModal_();
       await reloadSdDataSoft_();
