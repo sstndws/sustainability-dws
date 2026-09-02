@@ -4,6 +4,7 @@
  */
 
 import { buildBrandedExcelSheet_ } from './excel-brand-header.js';
+import { initDashDateFields } from './dash-date-field.js';
 
 const SD_SHEET_KEY = 'sdMonitoring';
 
@@ -109,6 +110,13 @@ export function createSdMonitoringController_(deps) {
   let sdDetailCurrent = null;
   let sdTableDelegationBound = false;
   let sdActive = false;
+  // Additional SD Number/Date pairs for the record being edited/added — one
+  // contract can carry more than one Apostille, each becoming its own sheet
+  // row (same Company/DO/Contract, Mill Netto + Netto Bulking left blank so
+  // quantity totals never double-count). Ids are never reused so removing a
+  // middle row can't collide with one added later.
+  let sdExtraIds_ = [];
+  let sdExtraSeq_ = 0;
 
   function sdCategoryPills_(raw) {
     const parts = String(raw || '')
@@ -368,6 +376,52 @@ export function createSdMonitoringController_(deps) {
         compGrid.innerHTML = '';
       }
     }
+    renderSdExtraSdRows_();
+    initDashDateFields(document.getElementById('sdFormBody'));
+  }
+
+  /** One "Additional SD Number" row: its own SD Number + SD Date + a remove button. */
+  function sdExtraRowHtml_(id) {
+    return ''
+      + '<div class="sd-extra-row" data-sd-extra-id="' + id + '">'
+      + '<div class="form-field">'
+      + '<label>SD Number</label>'
+      + '<input type="text" data-field="SD NUMBER__' + id + '" placeholder="SD Number">'
+      + '</div>'
+      + dashDateFieldHtml('SD DATE__' + id, '', { label: 'SD Date', id: 'sd-extra-date-' + id })
+      + '<button type="button" class="btn-row btn-delete sd-extra-remove" data-sd-extra-remove="' + id + '" title="Remove this SD Number">Remove</button>'
+      + '</div>';
+  }
+
+  /** Only used on initial form open, when sdExtraIds_ is always empty — see openSdFormModal_. */
+  function renderSdExtraSdRows_() {
+    const list = document.getElementById('sdFormExtraSdList');
+    if (!list) return;
+    list.innerHTML = sdExtraIds_.map(sdExtraRowHtml_).join('');
+  }
+
+  /**
+   * Add/remove touch the DOM directly (append/remove one row) instead of
+   * re-rendering the whole list — a full re-render would wipe out whatever
+   * the user already typed into other extra rows still on screen.
+   */
+  function addSdExtraRow_() {
+    sdExtraSeq_ += 1;
+    const id = sdExtraSeq_;
+    sdExtraIds_.push(id);
+    const list = document.getElementById('sdFormExtraSdList');
+    if (!list) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = sdExtraRowHtml_(id);
+    const el = wrap.firstElementChild;
+    list.appendChild(el);
+    initDashDateFields(el);
+  }
+
+  function removeSdExtraRow_(id) {
+    sdExtraIds_ = sdExtraIds_.filter(function(x) { return x !== id; });
+    const el = document.querySelector('.sd-extra-row[data-sd-extra-id="' + id + '"]');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
   function collectSdFormData_() {
@@ -402,6 +456,8 @@ export function createSdMonitoringController_(deps) {
     const saveBtn = document.getElementById('sdFormSave');
     if (titleEl) titleEl.textContent = sdFormMode === 'edit' ? 'Edit SD Record' : 'Add SD Record';
     if (saveBtn) saveBtn.textContent = 'Save SD';
+    sdExtraIds_ = [];
+    sdExtraSeq_ = 0;
     buildSdFormFields_(row);
     if (typeof lockScroll === 'function') lockScroll();
     document.body.classList.add('bl-form-open');
@@ -421,6 +477,39 @@ export function createSdMonitoringController_(deps) {
     sdFormMode = 'add';
   }
 
+  /** Fields that must never be copied onto an additional-Apostille row — they'd double-count supply. */
+  const SD_NO_DUPLICATE_QTY_FIELDS = ['MILL NETTO', 'Netto Bulking'];
+
+  /**
+   * Split the raw collected form data into the shared record fields (Company,
+   * DO, Contract, dates, netto, …) and the list of SD Number/Date pairs the
+   * user entered — the primary pair plus any "+ Add SD Number" rows.
+   */
+  function sdSplitFormPayload_(raw) {
+    const shared = {};
+    const extraByKey = {};
+    Object.keys(raw).forEach(function(k) {
+      const m = /^(SD NUMBER|SD DATE)__(\d+)$/.exec(k);
+      if (m) {
+        const id = m[2];
+        if (!extraByKey[id]) extraByKey[id] = {};
+        extraByKey[id][m[1]] = raw[k];
+        return;
+      }
+      shared[k] = raw[k];
+    });
+    const pairs = [{ 'SD NUMBER': shared['SD NUMBER'] || '', 'SD DATE': shared['SD DATE'] || '' }];
+    Object.keys(extraByKey).forEach(function(id) {
+      const p = extraByKey[id];
+      if (String(p['SD NUMBER'] || '').trim() || String(p['SD DATE'] || '').trim()) {
+        pairs.push({ 'SD NUMBER': p['SD NUMBER'] || '', 'SD DATE': p['SD DATE'] || '' });
+      }
+    });
+    delete shared['SD NUMBER'];
+    delete shared['SD DATE'];
+    return { shared: shared, pairs: pairs };
+  }
+
   async function saveSdForm_() {
     const saveBtn = document.getElementById('sdFormSave');
     if (saveBtn && saveBtn.disabled) return;
@@ -429,34 +518,40 @@ export function createSdMonitoringController_(deps) {
       : (sdFormMode === 'edit' && sdFormRow && sdFormRow._row != null
         ? Number(sdFormRow._row)
         : 0);
-    const payload = collectSdFormData_();
-    if (!String(payload['COMPANY NAME'] || '').trim() && !String(payload['DO NUMBER'] || '').trim()) {
+    const raw = collectSdFormData_();
+    if (!String(raw['COMPANY NAME'] || '').trim() && !String(raw['DO NUMBER'] || '').trim()) {
       alert('Enter at least Company Name or DO Number.');
       return;
     }
+    const split = sdSplitFormPayload_(raw);
     if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving…';
     }
     try {
       const opts = gasOpts ? { baseUrl: gasOpts.baseUrl } : undefined;
+      // First SD Number: updates the existing row in edit mode, or creates
+      // the first row in add mode — same as before, full data including qty.
+      const firstPayload = Object.assign({}, split.shared, split.pairs[0]);
       if (editRowNum >= 2) {
-        await apiPost({
-          action: 'update',
-          sheet: SD_SHEET_KEY,
-          row: editRowNum,
-          data: payload,
-        }, opts);
+        await apiPost({ action: 'update', sheet: SD_SHEET_KEY, row: editRowNum, data: firstPayload }, opts);
       } else {
-        await apiPost({
-          action: 'add',
-          sheet: SD_SHEET_KEY,
-          data: payload,
-        }, opts);
+        await apiPost({ action: 'add', sheet: SD_SHEET_KEY, data: firstPayload }, opts);
+      }
+      // Extra Apostille numbers: always a brand-new row each — same
+      // Company/DO/Contract/dates, but Mill Netto / Netto Bulking left blank
+      // so the sheet's supply totals don't count this contract's quantity twice.
+      for (let i = 1; i < split.pairs.length; i++) {
+        const extraPayload = Object.assign({}, split.shared, split.pairs[i]);
+        SD_NO_DUPLICATE_QTY_FIELDS.forEach(function(f) { extraPayload[f] = ''; });
+        await apiPost({ action: 'add', sheet: SD_SHEET_KEY, data: extraPayload }, opts);
       }
       closeSdFormModal_();
       await reloadSdDataSoft_();
-      if (typeof showToast === 'function') showToast('SD record saved.', 'success');
+      const msg = split.pairs.length > 1
+        ? split.pairs.length + ' SD records saved (' + split.pairs.length + ' Apostille numbers).'
+        : 'SD record saved.';
+      if (typeof showToast === 'function') showToast(msg, 'success');
     } catch (err) {
       alert('Failed to save SD: ' + (err.message || err));
     } finally {
@@ -657,6 +752,13 @@ export function createSdMonitoringController_(deps) {
     document.getElementById('sdFormClose')?.addEventListener('click', closeSdFormModal_);
     document.getElementById('sdFormCancel')?.addEventListener('click', closeSdFormModal_);
     document.getElementById('sdFormSave')?.addEventListener('click', saveSdForm_);
+    document.getElementById('sdFormAddSdBtn')?.addEventListener('click', addSdExtraRow_);
+    document.getElementById('sdFormExtraSdList')?.addEventListener('click', function(e) {
+      const btn = e.target.closest('.sd-extra-remove');
+      if (!btn) return;
+      const id = parseInt(btn.getAttribute('data-sd-extra-remove'), 10);
+      if (id) removeSdExtraRow_(id);
+    });
     formOverlay?.addEventListener('click', function(e) {
       if (e.target === formOverlay) closeSdFormModal_();
     });
