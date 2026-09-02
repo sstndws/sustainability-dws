@@ -88,7 +88,7 @@ async function boot_() {
   if (!SECURE_GAS) {
     // Dev / legacy only — production must use VITE_SECURE_GAS=true (no GAS URL in browser).
     const SDD_LATEST_WEBAPP_URL =
-      'https://script.google.com/macros/s/AKfycbw9zTj3bL0cvytjNK9tBAVDyLXjRyb_DaoYMxxMyymUvrtwXilbjXy8AOGdeiUdKpc_NA/exec';
+      'https://script.google.com/macros/s/AKfycbxDEQowQpufFzjkAfSsJf_-KDBA_euEKJVQc35pjNvrF00Rj_NT5Jwtsnm-1ntUNbWL/exec';
     try {
       localStorage.setItem('SDD_WEBAPP_URL', SDD_LATEST_WEBAPP_URL);
     } catch (e) {
