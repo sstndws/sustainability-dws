@@ -10896,6 +10896,11 @@ function initDashboardApp() {
     const isWasteProfile = String(d && d._millSheetSource || '').toLowerCase() === 'waste'
       || millRegistryProductView === 'waste'
       || millProfileRowHasWasteSupply_(d);
+    // `d` here comes from millMergeRegistrySupplyRows_ (via millProfileMergedRowForPeriod_),
+    // which never tracks its raw member rows — only millProfileHeaderSupplyRow_'s resolution
+    // (same one the header Quantity card uses) sets _millGeneralMergeSources, so the Facility
+    // per-facility breakdown must read from that row instead of `d` directly.
+    const facilitySupplyRow = isWasteProfile ? millProfileHeaderSupplyRow_(d) : d;
     const sections = isWasteProfile ? millWasteProfileSections_() : [
       {
         title: 'Mill Identity',
@@ -10966,7 +10971,7 @@ function initDashboardApp() {
               val = millCapacityFromRow_(d) || millProfileResolveField_(d, key);
             } else if (key === 'FACILITY NAME ISCC' || key === 'FACILITY NAME INS' || key === 'FACILITY NAME SHELL') {
               const kindMap = { 'FACILITY NAME ISCC': 'ISCC', 'FACILITY NAME INS': 'INS', 'FACILITY NAME SHELL': 'SHELL' };
-              val = millWasteFacilityQtyText_(d, kindMap[key]) || millProfileResolveField_(d, key);
+              val = millWasteFacilityQtyText_(facilitySupplyRow, kindMap[key]) || millProfileResolveField_(d, key);
             } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
               || key === 'TOTAL POME SUPPLY' || key === 'MAX SUPPLY POME' || key === 'REMAINING STOCK POME'
               || key === 'MAX SUPPLY SHELL' || key === 'REMAINING STOCK SHELL'
