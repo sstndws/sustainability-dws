@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   const gasUrl = String(env_('GAS_WEBAPP_URL') || '')
     .trim()
     .replace(/^["']|["']$/g, '')
-    || 'https://script.google.com/macros/s/AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw/exec';
+    || 'https://script.google.com/macros/s/AKfycbw9zTj3bL0cvytjNK9tBAVDyLXjRyb_DaoYMxxMyymUvrtwXilbjXy8AOGdeiUdKpc_NA/exec';
   const gasSecret = env_('GAS_API_SECRET');
 
   if (!/^https:\/\/script\.google\.com\/macros\/s\/AKfycb[\w-]+\/exec\/?$/.test(gasUrl)) {

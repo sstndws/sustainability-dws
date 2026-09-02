@@ -23,7 +23,7 @@ export function gasProxyApiPlugin() {
 
         const env = loadEnv(server.config.mode, process.cwd(), '');
         const gasUrl = String(env.GAS_WEBAPP_URL || '').trim()
-          || 'https://script.google.com/macros/s/AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw/exec';
+          || 'https://script.google.com/macros/s/AKfycbw9zTj3bL0cvytjNK9tBAVDyLXjRyb_DaoYMxxMyymUvrtwXilbjXy8AOGdeiUdKpc_NA/exec';
         const gasSecret = env.GAS_API_SECRET || '';
 
         if (req.method === 'OPTIONS') {

@@ -3997,8 +3997,8 @@ const AUTH_GATE_ENABLED = isAuthGateEnabled();
   }
 
 /** Fallback web app URL — override with window.SDD_WEBAPP_URL (full …/exec URL). */
-var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw/exec';
-var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbx48qfYTM065xIYQFUYp10flWKXEs7pzCfxVJbNVP-mYWxzb3eIXFWLn6VrObl9PyWMdw';
+var SDD_DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw9zTj3bL0cvytjNK9tBAVDyLXjRyb_DaoYMxxMyymUvrtwXilbjXy8AOGdeiUdKpc_NA/exec';
+var SDD_WEBAPP_DEPLOYMENT_ID = 'AKfycbw9zTj3bL0cvytjNK9tBAVDyLXjRyb_DaoYMxxMyymUvrtwXilbjXy8AOGdeiUdKpc_NA';
 
 function normalizeSddWebAppUrl_(raw) {
   var u = String(raw || '').trim();
