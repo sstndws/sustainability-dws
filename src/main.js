@@ -9823,10 +9823,21 @@ function initDashboardApp() {
     ).join('; ');
   }
 
-  /** Pre-merge source rows for a (possibly merged) mill/waste row — falls back to the row itself. */
+  /**
+   * Pre-merge source rows for a (possibly merged) mill/waste row.
+   * Two independent merge passes can produce the row shown in the profile
+   * modal — the registry merge (millMergeWasteRowsByCompanyPeriod_ /
+   * millMergeGeneralRegistryRows_, tagging _millGeneralMergeSources) and the
+   * table-display collapse (millCollapseRowsForTableDisplay_, tagging
+   * _millTableMergeSources, grouped by company+period only — no facility
+   * distinction). Whichever ran last is the one attached to this row, so
+   * check both instead of assuming one.
+   */
   function millWasteMergeMembers_(row) {
     if (!row) return [];
-    return (row._millGeneralMergeSources && row._millGeneralMergeSources.length) ? row._millGeneralMergeSources : [row];
+    const sources = (row._millGeneralMergeSources && row._millGeneralMergeSources.length && row._millGeneralMergeSources)
+      || (row._millTableMergeSources && row._millTableMergeSources.length && row._millTableMergeSources);
+    return sources || [row];
   }
 
   /**
