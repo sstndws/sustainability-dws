@@ -10134,10 +10134,11 @@ function initDashboardApp() {
    * name + qty. Reading _millGeneralMergeSources (set when rows were merged
    * by company+mill+period) shows how much actually went to each facility,
    * instead of a bare joined name list with no numbers.
+   * @returns {string[]} one "Name: qty" entry per facility (or just "Name" if qty is 0)
    */
-  function millWasteFacilityQtyText_(row, kind) {
+  function millWasteFacilityQtyEntries_(row, kind) {
     const facilityField = millWasteFacilityNameField_(kind);
-    if (!facilityField || !row) return '';
+    if (!facilityField || !row) return [];
     const order = [];
     const byKey = new Map();
     millWasteMergeMembers_(row).forEach(function(m) {
@@ -10155,11 +10156,21 @@ function initDashboardApp() {
       }
       byKey.get(key).qty += qty;
     });
-    if (!order.length) return '';
     return order.map(function(key) {
       const entry = byKey.get(key);
       return entry.qty > 0 ? (entry.name + ': ' + millFormatSupplyQtyDisplay_(entry.qty)) : entry.name;
-    }).join('; ');
+    });
+  }
+
+  /** Per-facility qty rendered as pills (matches cert-pill styling used elsewhere in the profile modal). */
+  function millWasteFacilityQtyPillsHtml_(row, kind) {
+    const entries = millWasteFacilityQtyEntries_(row, kind);
+    if (!entries.length) return '';
+    return '<div class="cert-pill-list cert-pill-list--profile mill-facility-qty-pill-list">'
+      + entries.map(function(entry) {
+        return '<span class="cert-pill mill-facility-qty-pill">' + escHtml(entry) + '</span>';
+      }).join('')
+      + '</div>';
   }
 
   function millWasteSupplyCellText_(row, kind) {
@@ -10971,7 +10982,8 @@ function initDashboardApp() {
               val = millCapacityFromRow_(d) || millProfileResolveField_(d, key);
             } else if (key === 'FACILITY NAME ISCC' || key === 'FACILITY NAME INS' || key === 'FACILITY NAME SHELL') {
               const kindMap = { 'FACILITY NAME ISCC': 'ISCC', 'FACILITY NAME INS': 'INS', 'FACILITY NAME SHELL': 'SHELL' };
-              val = millWasteFacilityQtyText_(facilitySupplyRow, kindMap[key]) || millProfileResolveField_(d, key);
+              val = millWasteFacilityQtyPillsHtml_(facilitySupplyRow, kindMap[key])
+                || certPillsHtml_(millProfileResolveField_(d, key), { className: 'cert-pill-list cert-pill-list--profile mill-facility-qty-pill-list', itemClassName: 'cert-pill mill-facility-qty-pill' });
             } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
               || key === 'TOTAL POME SUPPLY' || key === 'MAX SUPPLY POME' || key === 'REMAINING STOCK POME'
               || key === 'MAX SUPPLY SHELL' || key === 'REMAINING STOCK SHELL'
