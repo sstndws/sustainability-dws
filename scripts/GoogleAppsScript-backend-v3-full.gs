@@ -4731,20 +4731,29 @@ function addRow(sheetKey, data, insertAfter) {
   if (sheetKey === 'sdMonitoring') {
     headers = ensureSdMonitoringHeaders_();
     const patch = sdStripFormulaFromPatchGs_(data || {});
-    const newRow = headers.map(function(h) {
-      if (sdIsFormulaColumnGs_(h)) return '';
-      var v = sdPickValue_(patch, headers, h);
-      return coerceSheetDateValue_(v !== undefined ? v : '');
-    });
     var targetRow;
+    var aboveRowVals = null;
     // insertAfter: used for an extra Apostille/SD Number row — insert it right
     // below the row it belongs with instead of always appending at sheet end.
     if (insertAfter != null && insertAfter !== '' && Number(insertAfter) >= 1) {
       targetRow = Number(insertAfter) + 1;
+      // Read the row it's inserted after BEFORE shifting — same row index either way.
+      aboveRowVals = sheet.getRange(Number(insertAfter), 1, 1, headers.length).getValues()[0];
       sheet.insertRowAfter(Number(insertAfter));
     } else {
       targetRow = Math.max(sheet.getLastRow(), 1) + 1;
     }
+    const newRow = headers.map(function(h, idx) {
+      if (sdIsFormulaColumnGs_(h)) return '';
+      var v = sdPickValue_(patch, headers, h);
+      // Web form doesn't expose every sheet column (e.g. FACILITY NAME) as an
+      // editable field. For an extra Apostille row, a column the client never
+      // sent at all (v === undefined) belongs with the row above it — inherit
+      // it instead of leaving it blank. A column the client explicitly sent
+      // as '' (Mill Netto / Netto Bulking, kept blank on purpose) still wins.
+      if (v === undefined && aboveRowVals) return aboveRowVals[idx];
+      return coerceSheetDateValue_(v !== undefined ? v : '');
+    });
     sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
     sdRestoreFormulaColumnsGs_(sheet, headers, targetRow);
     return { success: true, row: targetRow };
