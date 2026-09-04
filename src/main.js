@@ -9841,18 +9841,18 @@ function initDashboardApp() {
   }
 
   /**
-   * True monthly POME total = SUM(SUPPLY ISCC) + SUM(SUPPLY INS) across every
-   * merged member row. The sheet's own TOTAL POME SUPPLY column is a per-row
-   * formula — a mill supplying several facilities has that number split
-   * across separate physical rows (each with only ISCC or only INS filled),
-   * so no single row's TOTAL POME SUPPLY reflects the true combined total.
+   * True monthly SUM(kind) across every merged member row — a mill supplying
+   * several facilities has its POME ISCC/INS split across separate physical
+   * rows (each with only one of the two filled), so no single row's own
+   * field reflects the true combined total for that kind.
    */
-  function millWastePomeTotalQty_(row) {
+  function millWastePomeKindQty_(row, kind) {
     let total = 0;
     millWasteMergeMembers_(row).forEach(function(m) {
-      total += millWasteSupplyQty_(m, 'ISCC') + millWasteSupplyQty_(m, 'INS');
+      total += millWasteSupplyQty_(m, kind);
     });
-    return total;
+    // Round off float drift from summing decimals (e.g. 75.3 + 294.16 → …0004).
+    return Math.round(total * 100) / 100;
   }
 
   function millBuildQtySummaryFromRow_(row) {
@@ -9870,9 +9870,15 @@ function initDashboardApp() {
       push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
       push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    const pomeTotal = millWastePomeTotalQty_(row);
+    // Total first, then the ISCC/INS breakdown right after it — total alone
+    // reads ambiguous ("is this ISCC or INS?"), so show both together.
+    const pomeIscc = millWastePomeKindQty_(row, 'ISCC');
+    const pomeIns = millWastePomeKindQty_(row, 'INS');
+    const pomeTotal = pomeIscc + pomeIns;
     if (pomeTotal > 0) {
       parts.push('POME: ' + millFormatSupplyQtyDisplay_(pomeTotal));
+      if (pomeIscc > 0) parts.push('POME ISCC: ' + millFormatSupplyQtyDisplay_(pomeIscc));
+      if (pomeIns > 0) parts.push('POME INS: ' + millFormatSupplyQtyDisplay_(pomeIns));
     }
     push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']);
     return parts.join('; ');
