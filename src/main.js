@@ -5619,11 +5619,12 @@ function initDashboardApp() {
         ],
       },
       {
-        // Supply ISCC/INS/Total POME Supply moved to the header Quantity card
-        // and the Facility fields below (per-facility qty) — showing them
-        // again here just duplicated the same numbers.
+        // Total POME Supply lives in the header Quantity card; Supply ISCC/INS
+        // here are the per-kind breakdown (member-aware sum, not one row's own
+        // field — see millWastePomeKindQty_).
         title: 'Supply POME',
         fields: [
+          ['SUPPLY ISCC', 'Supply POME ISCC'], ['SUPPLY INS', 'Supply POME INS'],
           ['MAX SUPPLY POME', 'Max Supply POME'],
           ['REMAINING STOCK POME', 'Remaining Stock POME'], ['PERCENTAGE SUPPLY ISCC', 'Percentage Supply ISCC'],
         ],
@@ -9870,15 +9871,11 @@ function initDashboardApp() {
       push('CPO', ['SUPPLY CPO', 'Supply CPO', 'SUPPLY_CPO']);
       push('PK', ['SUPPLY PK', 'Supply PK', 'SUPPLY_PK']);
     }
-    // Total first, then the ISCC/INS breakdown right after it — total alone
-    // reads ambiguous ("is this ISCC or INS?"), so show both together.
-    const pomeIscc = millWastePomeKindQty_(row, 'ISCC');
-    const pomeIns = millWastePomeKindQty_(row, 'INS');
-    const pomeTotal = pomeIscc + pomeIns;
+    // Quantity card stays total-only — the ISCC/INS breakdown lives in the
+    // Supply POME section below instead (see millProfileBuildSectionsHtml_).
+    const pomeTotal = millWastePomeKindQty_(row, 'ISCC') + millWastePomeKindQty_(row, 'INS');
     if (pomeTotal > 0) {
       parts.push('POME: ' + millFormatSupplyQtyDisplay_(pomeTotal));
-      if (pomeIscc > 0) parts.push('POME ISCC: ' + millFormatSupplyQtyDisplay_(pomeIscc));
-      if (pomeIns > 0) parts.push('POME INS: ' + millFormatSupplyQtyDisplay_(pomeIns));
     }
     push('SHELL GGL', ['SUPPLY SHELL', 'Supply SHELL', 'SUPPLY_SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL']);
     return parts.join('; ');
@@ -10990,15 +10987,19 @@ function initDashboardApp() {
               const kindMap = { 'FACILITY NAME ISCC': 'ISCC', 'FACILITY NAME INS': 'INS', 'FACILITY NAME SHELL': 'SHELL' };
               val = millWasteFacilityQtyPillsHtml_(facilitySupplyRow, kindMap[key])
                 || certPillsHtml_(millProfileResolveField_(d, key), { className: 'cert-pill-list cert-pill-list--profile mill-facility-qty-pill-list', itemClassName: 'cert-pill mill-facility-qty-pill' });
-            } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS' || key === 'SUPPLY SHELL'
+            } else if (key === 'SUPPLY ISCC' || key === 'SUPPLY INS') {
+              // Member-aware sum (same source as the header total) — a single
+              // row's own field only covers one facility when supply is split
+              // across several physical rows for the same mill/month.
+              const kindQty = millWastePomeKindQty_(facilitySupplyRow, key === 'SUPPLY ISCC' ? 'ISCC' : 'INS');
+              val = kindQty > 0 ? millFormatSupplyQtyDisplay_(kindQty) : '';
+            } else if (key === 'SUPPLY SHELL'
               || key === 'TOTAL POME SUPPLY' || key === 'MAX SUPPLY POME' || key === 'REMAINING STOCK POME'
               || key === 'MAX SUPPLY SHELL' || key === 'REMAINING STOCK SHELL'
               || key === 'PERCENTAGE SUPPLY ISCC' || key === 'PERCENTAGE SUPPLY SHELL'
               || key === 'GHG VALUE' || key === 'RISK REDUCTION FACTOR' || key === 'TOTAL SCORE SUPPLY'
               || key === 'TOTAL RISK LEVEL') {
               const aliasMap = {
-                'SUPPLY ISCC': ['SUPPLY ISCC', 'SUPPLY POME ISCC', 'Supply POME ISCC'],
-                'SUPPLY INS': ['SUPPLY INS', 'SUPPLY POME INS', 'Supply POME INS'],
                 'SUPPLY SHELL': ['SUPPLY SHELL', 'SUPPLY POME SHELL', 'Supply POME SHELL'],
               };
               const raw = millPickRawField_(d, aliasMap[key] || [key]);
